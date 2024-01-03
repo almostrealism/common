@@ -146,6 +146,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			AcceleratedComputationEvaluable<T> ev = new AcceleratedComputationEvaluable<>(ctx, this);
 			ev.setKernelStructureSupported(false);
 			ev.setDestinationFactory(destination.getDestinationFactory());
+			ev.compile();
 			return ev;
 		}
 	}

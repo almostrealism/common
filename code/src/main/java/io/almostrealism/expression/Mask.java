@@ -16,9 +16,9 @@
 
 package io.almostrealism.expression;
 
-public class Mask extends Conditional {
-	public Mask(Expression<Boolean> mask, Expression<Double> value) {
-		super(mask, value, (Expression) new IntegerConstant(0));
+public class Mask<T extends Number> extends Conditional<T> {
+	public Mask(Expression<Boolean> mask, Expression<T> value) {
+		super(value.getType(), mask, (Expression) value, (Expression) new IntegerConstant(0));
 	}
 
 	public Expression<Boolean> getMask() { return (Expression<Boolean>) getChildren().get(0); }

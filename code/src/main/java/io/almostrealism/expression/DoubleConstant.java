@@ -17,10 +17,12 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.stream.IntStream;
 
 public class DoubleConstant extends Constant<Double> {
 	private double value;
@@ -52,7 +54,17 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public Number[] kernelSeq(int len) {
+		return IntStream.range(0, len).mapToObj(i -> value).toArray(Number[]::new);
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
 		return OptionalInt.of((int) Math.ceil(value));
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return value;
 	}
 }

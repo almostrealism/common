@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
@@ -32,10 +33,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails> {
 	public static boolean enableArgumentKernelSize = true;
+	public static boolean enableKernelDestination = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private boolean kernel;
@@ -58,6 +61,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private Map<ArrayVariable<?>, MemoryData> mappings;
 	private MemoryData kernelArgs[];
 	private Evaluable kernelArgEvaluables[];
+	private Evaluable kernelArgDestinations[];
 
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
@@ -82,9 +86,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public int getCount() { return count; }
 
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
-		long start = System.nanoTime();
-
-		if (output != this.output || !Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
+		if (kernelArgEvaluables == null || output != this.output || !Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
 			this.output = output;
 			this.args = args;
 
@@ -110,6 +112,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			kernelArgs = new MemoryData[arguments.size()];
 			kernelArgEvaluables = new Evaluable[arguments.size()];
+			kernelArgDestinations = new Evaluable[arguments.size()];
 
 			/*
 			 * In the first pass, kernel size is inferred from Producer arguments that
@@ -145,6 +148,15 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelArgEvaluables[i] = ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
+				}
+			}
+
+			i: for (int i = 0; i < arguments.size(); i++) {
+				if (kernelArgDestinations[i] != null) continue i;
+
+				Supplier<?> p = arguments.get(i).getProducer();
+				if (p instanceof ProducerComputationBase<?,?>) {
+					kernelArgDestinations[i] = ((ProducerComputationBase<?,?>) p).getDestination();
 				}
 			}
 
@@ -194,8 +206,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			if (kernelArgEvaluables[i] instanceof KernelizedEvaluable) {
-				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].createDestination(kernelSize);
+			if (enableKernelDestination && kernelArgEvaluables[i] instanceof KernelizedEvaluable) {
+				kernelArgs[i] = kernelArgDestinations[i] == null ?
+						(MemoryData) kernelArgEvaluables[i].createDestination(kernelSize) :
+						(MemoryData) kernelArgDestinations[i].createDestination(kernelSize);
 
 				long time = System.nanoTime() - start; start = System.nanoTime();
 				AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);

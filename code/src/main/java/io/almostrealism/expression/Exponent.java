@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -39,14 +38,19 @@ public class Exponent extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalInt upperBound() {
-		OptionalInt l = getChildren().get(0).upperBound();
-		OptionalInt r = getChildren().get(1).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
 			return OptionalInt.of((int) Math.pow(l.getAsInt(), r.getAsInt()));
 		}
 
 		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.pow(children[0].doubleValue(), children[1].doubleValue());
 	}
 
 	@Override

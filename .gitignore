@@ -4,5 +4,7 @@
 /**/target/
 **/*.versionsBackup
 
+**/*.hwcache/**
+**/*.hprof
 /utils/data/**
 /utils/results/**

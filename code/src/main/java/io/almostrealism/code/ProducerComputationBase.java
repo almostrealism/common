@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,4 +27,6 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 
 	@Override
 	public Variable getOutputVariable() { return outputVariable == null ? getArgument(null, 0) : outputVariable; }
+
+	public Evaluable<O> getDestination() { return (Evaluable<O>) getOutputVariable().getProducer().get(); }
 }

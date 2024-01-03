@@ -17,9 +17,15 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Arrays;
+import java.util.OptionalInt;
+
 public class KernelIndex extends StaticReference<Integer> {
+	private static Integer[] kernelSeq;
+
 	private int axis;
 
 	public KernelIndex() {
@@ -39,6 +45,11 @@ public class KernelIndex extends StaticReference<Integer> {
 	public int getKernelAxis() { return axis; }
 
 	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
+	}
+
+	@Override
 	public boolean isKernelValue() { return true; }
 
 	@Override
@@ -55,5 +66,23 @@ public class KernelIndex extends StaticReference<Integer> {
 	@Override
 	public Number kernelValue(int kernelIndex) {
 		return Integer.valueOf(kernelIndex);
+	}
+
+	@Override
+	public Number[] kernelSeq(int len) {
+		if (kernelSeq == null || kernelSeq.length < len) {
+			updateKernelSeq(len);
+		}
+
+		return processSeq(kernelSeq, len);
+	}
+
+	protected synchronized static void updateKernelSeq(int len) {
+		if (kernelSeq == null || kernelSeq.length < len) {
+			kernelSeq = new Integer[len];
+			for (int i = 0; i < len; i++) {
+				kernelSeq[i] = Integer.valueOf(i);
+			}
+		}
 	}
 }

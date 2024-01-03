@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -35,6 +34,11 @@ public class Negation extends UnaryExpression<Boolean> {
 		Optional<Boolean> value = getChildren().get(0).booleanValue();
 		if (value.isEmpty()) return value;
 		return Optional.of(!value.get());
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return children[0].doubleValue() == 0 ? 1 : 0;
 	}
 
 	@Override

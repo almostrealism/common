@@ -17,19 +17,14 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesMatcher;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
-	public static boolean enableKernelSimplification = false;
-	public static boolean enableKernelConstantReplacement = false;
 	public static boolean enableKernelWarnings = false;
 
 	private boolean fp;
@@ -82,8 +77,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
-		return getChildren().get(1).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return getChildren().get(1).upperBound(context);
 	}
 
 	@Override
@@ -105,58 +100,23 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 		if (input.intValue().isPresent()) {
 			if (input.intValue().getAsInt() == 0) {
-				return (Expression) new IntegerConstant(0);
+				return new IntegerConstant(0);
 			} else if (mod.intValue().isPresent() && !fp) {
 				if (mod.intValue().getAsInt() == 1) {
 					return input;
 				} else if (mod.intValue().getAsInt() != 0) {
-					return (Expression) new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
+					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {
 					System.out.println("WARN: Module zero encountered while simplifying expression");
 				}
 			}
 		} else if (mod.intValue().isPresent()) {
 			int m = mod.intValue().getAsInt();
+			if (m == 1) return new IntegerConstant(0);
 
-			if (m == 1) {
-				return (Expression) new IntegerConstant(0);
-			} else if (enableKernelSimplification && input.isKernelValue()) {
-				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
-
-				if (limit.isPresent()) {
-					if (limit.getAsInt() > 2048) {
-						if (enableKernelWarnings)
-							System.out.println("WARN: Kernel series period is very large");
-					} else {
-						List<Number> distinct = input.imod(m).getDistinctKernelValues(limit.getAsInt());
-
-						if (distinct != null && distinct.size() == 1) {
-							if (distinct.get(0) instanceof Integer) {
-								return new IntegerConstant(distinct.get(0).intValue());
-							} else {
-								return new DoubleConstant(distinct.get(0).doubleValue());
-							}
-						}
-
-						return KernelSeriesMatcher.simplify(input.imod(m), m);
-					}
-				}
-			} else if (enableKernelConstantReplacement && input.isKernelValue()) {
-				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
-
-				if (limit.isPresent()) {
-					if (limit.getAsInt() > 10000) {
-						if (enableKernelWarnings)
-							System.out.println("WARN: Kernel series period is very large");
-					} else {
-						Number values[] = input.kernelSeq(limit.getAsInt());
-
-						if (Arrays.stream(values).allMatch(i -> i instanceof Integer) &&
-								Arrays.stream(values).mapToInt(i -> i.intValue() % m).distinct().count() == 1) {
-							return new IntegerConstant(values[0].intValue() % m);
-						}
-					}
-				}
+			OptionalInt u = input.upperBound(context);
+			if (u.isPresent() && u.getAsInt() < m) {
+				return input;
 			}
 		} else if (input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
@@ -170,7 +130,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		}
 
-		return (Expression<Double>) flat;
+		return flat;
 	}
 
 	@Override
@@ -184,6 +144,15 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return getChildren().get(0).kernelValue(kernelIndex).doubleValue() % getChildren().get(1).kernelValue(kernelIndex).doubleValue();
 		} else {
 			return getChildren().get(0).kernelValue(kernelIndex).intValue() % getChildren().get(1).kernelValue(kernelIndex).intValue();
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		if (fp) {
+			return children[0].doubleValue() % children[1].doubleValue();
+		} else {
+			return children[0].intValue() % children[1].intValue();
 		}
 	}
 }

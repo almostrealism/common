@@ -19,9 +19,11 @@ package io.almostrealism.relation;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
-	boolean enableStrictIsolation = false;
+	int minCount = 1 << 8;
+	int maxCount = 1 << 24;
 
 	@Override
 	default ParallelProcess<P, T> generate(List<P> children) {
@@ -35,15 +37,23 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		children = children.stream().map(Process::optimize).collect(Collectors.toList());
 
-		long p = children.stream()
-					.mapToInt(ParallelProcess::count)
-					.filter(v -> v != 0).distinct().count();
-		long tot = children.stream()
-					.mapToInt(ParallelProcess::count)
-					.distinct().sum();
-		if (p <= 1 && tot == getCount()) {
+		int counts[] = children.stream().mapToInt(ParallelProcess::count).filter(v -> v != 0).distinct().toArray();
+
+		long cn = getCount();
+		long p = counts.length;
+		long tot = IntStream.of(counts).sum();
+		long max =  IntStream.of(counts).max().orElse(0);
+
+		if (p <= 1 && tot == cn) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
-		} else if (!enableStrictIsolation && getCount() > tot) {
+		} else if (cn >= max) {
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		} else if (max > maxCount) {
+			if (cn < minCount) {
+				System.out.println("WARN: Count " + max + " is too high to isolate, " +
+						"but the resulting process will have a count of only " + cn);
+			}
+
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 

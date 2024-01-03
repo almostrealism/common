@@ -21,29 +21,37 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
-import java.text.DecimalFormat;
-import java.util.Comparator;
-import java.util.Map;
+import java.util.function.Function;
 
 public class OperationProfile implements Named, ConsoleFeatures {
 	public static long id = 0;
 
 	private String name;
 	private TimingMetric metric;
+	private Function<OperationMetadata, String> key;
 
 	public OperationProfile() {
 		this("default");
 	}
 
 	public OperationProfile(String name) {
+		this(name, OperationProfile::defaultKey);
+	}
+
+	public OperationProfile(String name, Function<OperationMetadata, String> key) {
 		this.name = name;
 		this.metric = console().timing(name + "_prof" + id++);
+		setKey(key);
 	}
 
 	@Override
 	public String getName() { return name; }
 
 	public TimingMetric getMetric() { return metric; }
+
+	public Function<OperationMetadata, String> getKey() { return key; }
+
+	public void setKey(Function<OperationMetadata, String> key) { this.key = key; }
 
 	public void print() { log(summary()); }
 
@@ -72,14 +80,26 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public void recordDuration(OperationMetadata metadata, long nanos) {
-		String key = metadata.getShortDescription();
-		if (key == null) key = "<unknown>";
-		if (metadata.getContextName() != null) key += " [" + metadata.getContextName() + "]";
-		metric.addEntry(key, nanos);
+		metric.addEntry(key.apply(metadata), nanos);
 	}
 
 	public void clear() { metric.clear(); }
 
 	@Override
 	public Console console() { return Computation.console; }
+
+	public static String defaultKey(OperationMetadata metadata) {
+		String key = metadata.getShortDescription();
+		if (key == null) key = "<unknown>";
+		if (metadata.getContextName() != null) key += " [" + metadata.getContextName() + "]";
+		return key;
+	}
+
+	public static Function<OperationMetadata, String> appendContext(Function<OperationMetadata, String> key) {
+		return metadata -> {
+			String result = key.apply(metadata);
+			if (metadata.getContextName() != null) result += " [" + metadata.getContextName() + "]";
+			return result;
+		};
+	}
 }

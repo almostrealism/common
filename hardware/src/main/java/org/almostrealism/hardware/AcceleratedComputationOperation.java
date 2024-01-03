@@ -42,6 +42,7 @@ import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
@@ -107,6 +108,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public boolean isKernelStructureSupported() { return kernelStructureSupported; }
+
+	@Override
+	public OptionalInt getKernelMaximum() {
+		return isFixedCount() ? OptionalInt.of(getCount()) : OptionalInt.empty();
+	}
 
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
@@ -213,8 +219,10 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
-		if (kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
-				kernelSeriesCache.getMaximumLength().getAsInt()) {
+		if ((getKernelMaximum().isPresent() && process.getKernelSize() !=
+					getKernelMaximum().getAsInt()) ||
+				(kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
+					kernelSeriesCache.getMaximumLength().getAsInt())) {
 			throw new UnsupportedOperationException();
 		}
 

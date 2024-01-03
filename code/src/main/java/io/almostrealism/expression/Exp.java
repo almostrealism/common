@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -35,13 +36,17 @@ public class Exp extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalInt upperBound() {
-		OptionalInt v = getChildren().get(0).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) {
 			return OptionalInt.of((int) Math.ceil(Math.exp(v.getAsInt())));
 		}
 
 		return OptionalInt.empty();
+	}
+
+	public Number evaluate(Number... children) {
+		return Math.exp(children[0].doubleValue());
 	}
 
 	@Override

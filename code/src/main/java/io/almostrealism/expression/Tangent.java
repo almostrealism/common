@@ -31,6 +31,11 @@ public class Tangent extends Expression<Double> {
 	}
 
 	@Override
+	public Number evaluate(Number... children) {
+		return Math.tan(children[0].doubleValue());
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1) {
 			throw new UnsupportedOperationException();

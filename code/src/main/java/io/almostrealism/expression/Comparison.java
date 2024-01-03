@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.Arrays;
@@ -39,33 +38,39 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	@Override
 	public int[] booleanSeq(int len) {
 		if (latestBooleanSeq != null && latestBooleanSeq.length >= len) {
-			return Arrays.copyOf(latestBooleanSeq, len);
+			return processSeq(latestBooleanSeq, len);
 		} else if (!getLeft().isKernelValue() || !getRight().isKernelValue()) {
 			return super.booleanSeq(len);
 		}
 
-		long start = System.nanoTime();
+		int seq[] = checkSingle(getLeft(), getRight(), len);
+		if (seq != null) return seq;
+		seq = checkSingle(getRight(), getLeft(), len);
+		if (seq != null) return seq;
 
-		try {
-			int seq[] = checkSingle(getLeft(), getRight(), len);
-			if (seq != null) return seq;
-			seq = checkSingle(getRight(), getLeft(), len);
-			if (seq != null) return seq;
-
-			Number l[] = getLeft().kernelSeq(len);
-			Number r[] = getRight().kernelSeq(len);
-			seq = IntStream.range(0, len)
-					.map(i -> compare(l[i], r[i]) ? 1 : 0)
-					.toArray();
-			latestBooleanSeq = seq;
-			return seq;
-		} finally {
-			timing.addEntry("booleanSeq", System.nanoTime() - start);
-		}
+		Number l[] = getLeft().kernelSeq(len);
+		Number r[] = getRight().kernelSeq(len);
+		seq = IntStream.range(0, len)
+				.map(i -> compare(l[i], r[i]) ? 1 : 0)
+				.toArray();
+		latestBooleanSeq = seq;
+		return seq;
 	}
 
 	protected int[] checkSingle(Expression left, Expression right, int len) {
 		return null;
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return compare(children[0], children[1]) ? 1 : 0;
+	}
+
+	@Override
+	protected Expression<Boolean> populate(Expression<?> oldExpression) {
+		if (oldExpression instanceof Comparison)
+			latestBooleanSeq = ((Comparison) oldExpression).latestBooleanSeq;
+		return super.populate(oldExpression);
 	}
 
 	@Override
@@ -86,8 +91,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		if (ld.isPresent() && rd.isPresent())
 			return new BooleanConstant(compare(ld.getAsDouble(), rd.getAsDouble()));
 
-		if (enableKernelSimplification && context.getSeriesProvider() != null) {
-			OptionalInt max = context.getSeriesProvider().getMaximumLength();
+		if (enableKernelSimplification) {
+			OptionalInt max = context.getKernelMaximum();
 
 			if (max.isPresent() && left.isKernelValue() && right.isKernelValue()) {
 				distribution.addEntry("comparisonSimplify", 1);

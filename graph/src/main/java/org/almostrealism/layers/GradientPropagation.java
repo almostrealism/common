@@ -20,6 +20,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
@@ -35,7 +36,7 @@ import java.util.stream.Stream;
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
 
 	public static boolean enableDiagnosticGrad = false;
-	public static boolean enableDiagnosticWeight = true;
+	public static boolean enableDiagnosticWeight = false;
 
 	private final Factor<PackedCollection<?>> operator;
 	private final Producer<PackedCollection<?>>[] weights;
@@ -67,7 +68,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 										Receptor<PackedCollection<?>> next) {
 		TraversalPolicy shape = shape(input);
 
-		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
+		Supplier<CollectionProducer<PackedCollection<?>>> function = () -> (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
 		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
 		PackedCollection<?> gradOut = new PackedCollection<>(shape);
 
@@ -76,7 +77,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 
 		OperationList op = new OperationList("Gradient Propagation");
 
-		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input)
+		Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
 				.reshape(outSize, inSize)
 				.traverse(1)
 				.multiply(c(gradient).reshape(outSize).traverse(1).expand(inSize))
@@ -100,10 +101,10 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 		}
 
 		for (int i = 0; i < weights.length; i++) {
-			int weightSize = shape(weights[0]).getTotalSize();
-			Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[0]);
+			int weightSize = shape(weights[i]).getTotalSize();
+			Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[i]);
 
-			Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0])
+			Producer<PackedCollection<?>> deltaOutDeltaWeight = function.get().delta(weights[i])
 					.reshape(outSize, weightSize)
 					.traverse(1)
 					.multiply(c(gradient).reshape(outSize).traverse(1).expand(weightSize))

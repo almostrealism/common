@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
@@ -31,6 +32,11 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
 		super(context, c, true);
+	}
+
+	@Override
+	public ProducerComputation<T> getComputation() {
+		return (ProducerComputation<T>) super.getComputation();
 	}
 
 	public IntFunction<Multiple<T>> getDestinationFactory() {
@@ -86,10 +92,5 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	 */
 	protected T postProcessOutput(MemoryData output, int offset) {
 		return (T) output;
-	}
-
-	@Override
-	public ProducerComputation<T> getComputation() {
-		return (ProducerComputation<T>) super.getComputation();
 	}
 }

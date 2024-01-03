@@ -40,12 +40,12 @@ public abstract class ContextSpecific<T> implements ContextListener {
 	}
 
 	public void init() {
-		if (val.isEmpty()) val.push(new SuppliedValue(supply));
+		if (val.isEmpty()) val.push(createValue(supply));
 		Hardware.getLocalHardware().addContextListener(this);
 	}
 
 	public T getValue() {
-		if (val.isEmpty()) val.push(new SuppliedValue(supply));
+		if (val.isEmpty()) val.push(createValue(supply));
 
 		T v = val.peek().getValue();
 
@@ -60,7 +60,7 @@ public abstract class ContextSpecific<T> implements ContextListener {
 
 	@Override
 	public void contextStarted(DataContext ctx) {
-		val.push(new SuppliedValue(supply));
+		val.push(createValue(supply));
 	}
 
 	@Override

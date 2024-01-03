@@ -606,8 +606,6 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void enumerateRepeatMapReduceSmall() {
-//		Mod.enableKernelSimplification = true;
-
 //		Known to fail
 //		int r = 8;
 //		int c = 8;

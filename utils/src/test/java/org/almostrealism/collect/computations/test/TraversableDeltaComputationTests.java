@@ -341,6 +341,15 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProduct() {
+		matmulEnumerateProduct(false);
+	}
+
+	@Test
+	public void matmulEnumerateProductOptimized() {
+		matmulEnumerateProduct(true);
+	}
+
+	public void matmulEnumerateProduct(boolean optimize) {
 		int count = 1;
 		int dim = 3;
 
@@ -385,7 +394,14 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				.get().into(sparse.each()).evaluate();
 		print(outSize, weightSize, sparse);
 
-		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
+		Supplier<Runnable> cda;
+
+		if (optimize) {
+			cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy))).optimize();
+		} else {
+			cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
+		}
+
 		cda.get().run();
 		System.out.println(w.toArrayString());
 		assertEquals(999.8, w.toDouble(0));

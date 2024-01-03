@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.scope.Scope;
@@ -266,13 +267,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainVerySmall() {
 		if (skipLongTests) return;
 
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 4;
+		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, 2, 10));
+		train(input, model(dim, dim, 3, 4, 10));
 	}
 
 
@@ -283,7 +284,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 36;
+		int dim = 50;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -317,46 +318,47 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator");
+		HardwareOperator.profile = new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName));
 		OperationProfile profile = new OperationProfile("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
-		// Scope.console.flag();
+		try {
+			int count = 100 * 1000;
 
-		int count = 100 * 1000;
+			for (int i = 0; i < count; i++) {
+				input.fill(pos -> 0.5 + 0.5 * Math.random());
 
-		for (int i = 0; i < count; i++) {
-			input.fill(pos -> 0.5 + 0.5 * Math.random());
+				compiled.forward(input);
 
-			compiled.forward(input);
+				if (i % 1000 == 0) {
+					log("Input Size = " + input.getShape() +
+							"\t | epoch = " + i / 1000);
+				}
 
-			if (i % 1000 == 0) {
-				log("Input Size = " + input.getShape() +
-						"\t | epoch = " + i / 1000);
+				compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+
+				if (i % 1000 == 0) {
+					log("\t\tbackprop\t\t\t" +
+							" | epoch = " + i / 1000);
+				}
 			}
-
-			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-
-			if (i % 1000 == 0) {
-				log("\t\tbackprop\t\t" +
-						" | epoch = " + i / 1000);
-			}
+		} finally {
+			profile.print();
+			HardwareOperator.profile.print();
+			AcceleratedOperation.printTimes();
 		}
-
-		profile.print();
-		HardwareOperator.profile.print();
-		AcceleratedOperation.printTimes();
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
-		log("Created model");
+//		model.addLayer(pool2d(2));
+//		model.addBlock(flatten());
+//		model.addLayer(dense(denseSize));
+//		model.addLayer(softmax());
+		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}
 }

@@ -24,11 +24,11 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Conditional extends Expression<Double> {
-	public static boolean enableKernelSimplification = true;
+public class Conditional<T extends Number> extends Expression<T> {
+	public static boolean enableKernelSimplification = false;
 
-	protected Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		super(Double.class, condition, positive, negative);
+	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		super(type, condition, positive, negative);
 	}
 
 	@Override
@@ -38,14 +38,19 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
-		OptionalInt l = getChildren().get(1).upperBound();
-		OptionalInt r = getChildren().get(2).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt l = getChildren().get(1).upperBound(context);
+		OptionalInt r = getChildren().get(2).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
 			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
 		}
 
 		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return children[0].doubleValue() != 0.0 ? children[1] : children[2];
 	}
 
 	@Override
@@ -76,18 +81,41 @@ public class Conditional extends Expression<Double> {
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
 
-		if (enableKernelSimplification && context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
-			OptionalInt max = context.getSeriesProvider().getMaximumLength();
-			int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
-			Expression exp = seq == null ? null : context.getSeriesProvider().getSeries(seq);
+		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
+			if (enableKernelSimplification) {
+				OptionalInt max = context.getKernelMaximum();
+				int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
+				Expression exp = seq == null ? null : context.getSeriesProvider().getSeries(seq, condition::countNodes);
 
-			if (exp != null) {
-				if (rd.isPresent() && rd.getAsDouble() == 0) {
-					return exp.multiply(positive);
-				} else if (ld.isPresent() && ld.getAsDouble() == 0) {
-					return exp.add(1).imod(2).multiply(negative);
-				} else {
-					return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+				if (exp != null) {
+					if (rd.isPresent() && rd.getAsDouble() == 0) {
+						return exp.multiply(positive);
+					} else if (ld.isPresent() && ld.getAsDouble() == 0) {
+						return exp.add(1).imod(2).multiply(negative);
+					} else {
+						return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+					}
+				}
+			} else {
+				Expression<?> exp = context.getSeriesProvider().getSeries(condition);
+				Optional<Boolean> r = exp.booleanValue();
+
+				if (r.isPresent()) {
+					return r.get() ? positive : negative;
+				} else if (exp instanceof Equals) {
+					OptionalDouble d = ((Equals) exp).getRight().doubleValue();
+
+					if (d.isPresent() && d.getAsDouble() == 1.0) {
+						exp = ((Equals) exp).getLeft();
+
+						if (rd.isPresent() && rd.getAsDouble() == 0) {
+							return exp.multiply(positive);
+						} else if (ld.isPresent() && ld.getAsDouble() == 0) {
+							return exp.add(1).imod(2).multiply(negative);
+						} else {
+							return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+						}
+					}
 				}
 			}
 		}
@@ -96,7 +124,7 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
 		return Conditional.create((Expression<Boolean>) children.get(0),
 				(Expression<Double>) children.get(1),
@@ -114,6 +142,6 @@ public class Conditional extends Expression<Double> {
 			return new Mask(condition.not(), negative);
 		}
 
-		return new Conditional(condition, positive, negative);
+		return new Conditional(Double.class, condition, positive, negative);
 	}
 }

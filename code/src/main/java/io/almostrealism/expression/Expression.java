@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.util.ArrayItem;
+import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
@@ -50,6 +52,11 @@ import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements KernelTree<Expression<?>>, ConsoleFeatures {
 	public static boolean enableSimplification = true;
+	public static boolean enableKernelSeqCache = false;
+	public static boolean enableBatchEvaluation = false;
+	public static int maxCacheItemSize = 16;
+	public static int maxCacheItems = 128;
+
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
 	public static DistributionMetric distribution = Scope.console.distribution("expressionCounts");
@@ -57,7 +64,17 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
+	private static LanguageOperations lang;
+	private static FrequencyCache<String, ArrayItem<Number>> kernelSeqCache;
 	private static int simplifyDepth;
+
+	static {
+		lang = new LanguageOperationsStub();
+
+		if (enableKernelSeqCache) {
+			kernelSeqCache = new FrequencyCache<>(maxCacheItems, 0.7);
+		}
+	}
 
 	private Class<T> type;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -66,7 +83,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
-	private Number[] latestKernelSeq;
 
 	public Expression(Class<T> type) {
 		setType(type);
@@ -128,13 +144,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return KernelSeries.infinite();
 	}
 
-	public List<Number> getDistinctKernelValues(int kernelMax) {
-		if (!isKernelValue()) return null;
-
-		return Arrays.stream(kernelSeq(kernelMax)).distinct().collect(Collectors.toList());
-	}
-
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return i;
 
@@ -144,29 +154,52 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return OptionalInt.empty();
 	}
 
+	public Number evaluate(Number... children) {
+		throw new UnsupportedOperationException();
+	}
+
+	public Number[] batchEvaluate(List<Number[]> children, int len) {
+		return IntStream.range(0, len).parallel()
+				.mapToObj(i -> evaluate(children.stream().map(c -> c[i]).toArray(Number[]::new)))
+				.toArray(Number[]::new);
+	}
+
 	public Number kernelValue(int kernelIndex) {
 		throw new UnsupportedOperationException();
 	}
 
 	public Number[] kernelSeq(int len) {
-		long start = System.nanoTime();
+		int nodes = countNodes();
+		String exp = nodes <= maxCacheItemSize ? getExpression(lang) : null;
 
-		try {
-			if (latestKernelSeq != null && latestKernelSeq.length >= len) {
-				return Arrays.copyOf(latestKernelSeq, len);
-			} else {
-				Number seq[] = IntStream.range(0, len).parallel().mapToObj(this::kernelValue).toArray(Number[]::new);
-				latestKernelSeq = seq;
-				return seq;
+		if (kernelSeqCache != null && exp != null) {
+			Number[] cached = Optional.ofNullable(kernelSeqCache.get(exp))
+					.map(ArrayItem::toArray).orElse(null);
+			if (cached != null && cached.length >= len) {
+				return processSeq(cached, len);
 			}
-		} finally {
-			timing.addEntry("kernelSeq", System.nanoTime() - start);
 		}
+
+		Number seq[];
+
+		if (enableBatchEvaluation) {
+			seq = batchEvaluate(getChildren().stream()
+					.map(e -> e.kernelSeq(len))
+					.collect(Collectors.toList()), len);
+		} else {
+			seq = IntStream.range(0, len).parallel()
+					.mapToObj(this::kernelValue).toArray(Number[]::new);
+		}
+
+		cacheSeq(exp, seq);
+		return seq;
 	}
 
 	public int[] booleanSeq(int len) { return null; }
 
-	public Expression<?> getSimplified() {
+	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
+
+	public Expression<?> getSimplified(KernelStructureContext context) {
 		if (!enableSimplification || isSimple()) return this;
 
 		if (getClass() == Expression.class) {
@@ -175,7 +208,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		}
 
 		LanguageOperations lang = new LanguageOperationsStub();
-		KernelStructureContext context = new NoOpKernelStructureContext();
+		context = context.asNoOp();
 
 		Expression<?> simplified = simplify(context);
 		String exp = simplified.getExpression(lang);
@@ -238,11 +271,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		throw new UnsupportedOperationException();
 	}
 
-	public Minus minus() { return new Minus((Expression) this); }
+	public Minus minus() { return new Minus(this); }
 
-	public Sum add(int operand) { return new Sum((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
-	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
+	public Sum add(int operand) { return new Sum((Expression) this, new IntegerConstant(operand)); }
+	public Sum add(Expression<? extends Number> operand) { return new Sum((Expression) this, operand); }
+	public Difference subtract(Expression<? extends Number> operand) { return new Difference((Expression) this, (Expression) operand); }
 
 	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Product multiply(Expression<? extends Number> operand) { return new Product((Expression) this, (Expression) operand); }
@@ -265,8 +298,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return new Ceiling((Expression) this);
 	}
 
-	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
-	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
+	public Mod mod(Expression<Double> operand) { return new Mod(this, operand); }
+	public Mod mod(Expression<?> operand, boolean fp) { return new Mod(this, operand, fp); }
 	public Mod<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
 	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
 
@@ -281,6 +314,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return new Negation((Expression) this);
 	}
 
+	public Equals eq(double operand) { return new Equals(this, new DoubleConstant(operand)); };
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
 	public Conditional conditional(Expression<?> positive, Expression<?> negative) {
@@ -317,7 +351,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	}
 
 	protected Expression<T> populate(Expression<?> oldExpression) {
-		this.latestKernelSeq = oldExpression.latestKernelSeq;
 		if (oldExpression.isSimple) this.isSimple = true;
 		if (oldExpression.isSeriesSimplificationChild) this.isSeriesSimplificationChild = true;
 		if (oldExpression.seriesProvider != null) this.seriesProvider = oldExpression.seriesProvider;
@@ -345,10 +378,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 			Expression<?> simplified[] = new Expression[children.size()];
 
 			for (int i = 0; i < simplified.length; i++) {
-				simplified[i] = children.get(i).getSimplified();
+				simplified[i] = children.get(i);
+				simplified[i] = simplified[i].simplify(context); // simplified[i].getSimplified(context);
 
 				if (simplified[i].isKernelValue()) {
-					simplified[i] = provider.getSeries(simplified[i]).getSimplified();
+					simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 				}
 			}
@@ -361,7 +395,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		}
 	}
 
-	public boolean isSeriesSimplificationTarget() { return getType() == Boolean.class; }
+	public boolean isSeriesSimplificationTarget() { return true; }
 
 	@Override
 	public boolean equals(Object obj) {
@@ -379,6 +413,24 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	@Override
 	public int hashCode() { return isNull() ? 0 : getExpression(new LanguageOperationsStub()).hashCode(); }
+
+	protected static int[] processSeq(int seq[], int len) {
+		if (seq == null) return null;
+		if (seq.length == len) return seq;
+		return Arrays.copyOf(seq, len);
+	}
+
+	protected static <T> T[] processSeq(T seq[], int len) {
+		if (seq == null) return null;
+		if (seq.length == len) return seq;
+		return Arrays.copyOf(seq, len);
+	}
+
+	private static void cacheSeq(String exp, Number seq[]) {
+		if (kernelSeqCache != null && exp != null) {
+			kernelSeqCache.put(exp, new ArrayItem<>(seq, Number[]::new));
+		}
+	}
 
 	private static Set<Variable<?, ?>> dependencies(Expression expressions[]) {
 		Set<Variable<?, ?>> dependencies = new HashSet<>();

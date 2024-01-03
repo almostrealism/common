@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -44,17 +45,8 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Floor((Expression<Double>) children.get(0));
-	}
-
-	@Override
-	public OptionalInt upperBound() {
-		OptionalInt v = getChildren().get(0).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) return v;
 		return OptionalInt.empty();
 	}
@@ -67,5 +59,19 @@ public class Floor extends Expression<Double> {
 	@Override
 	public Number kernelValue(int kernelIndex) {
 		return Math.floor((double) getChildren().get(0).kernelValue(kernelIndex));
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.floor(children[0].doubleValue());
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Floor((Expression<Double>) children.get(0));
 	}
 }
