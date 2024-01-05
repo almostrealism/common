@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 
 package org.almostrealism.hardware.kernel;
 
@@ -46,7 +45,7 @@ import java.util.stream.DoubleStream;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
-	public static int maxCount = ParallelProcess.maxCount;
+	public static int maxCount = ParallelProcess.maxCount << 6;
 	public static int defaultMaxEntries = 16;
 	public static int minNodeCount = 128;
 
