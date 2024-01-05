@@ -22,10 +22,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
-	boolean enableNarrowMax = false;
+	boolean enableNarrowMax = true;
 	boolean enableContextualCount = false;
 	int minCount = 1 << 8;
-	int targetCount = 1 << 17;
+	int targetCount = 1 << 12; // 1 << 17;
 	int maxCount = 1 << 20;
 
 	@Override
@@ -56,12 +56,15 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		} else if (enableContextualCount && max <= context.getCount()) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
-		} else if (enableNarrowMax ? max > targetCount : max > maxCount) {
-			if (cn < minCount) {
+		} else if (max > maxCount) {
+			if (cn < minCount && context.getCount() < minCount) {
 				System.out.println("WARN: Count " + max + " is too high to isolate, " +
-						"but the resulting process will have a count of only " + cn);
+						"but the resulting process will have a count of only " + cn +
+						" (ctx " + context.getCount() + ")");
 			}
 
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		} else if (enableNarrowMax && max > targetCount && context.getCount() >= minCount) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 
