@@ -26,6 +26,9 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
@@ -40,13 +43,14 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
-	public static boolean enableOperationInputAggregation = true;
+	public static TimingMetric compileTime = console.timing("computationCompile");
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
@@ -188,8 +192,10 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 
+		long start = System.nanoTime();
 		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope().simplify(this);
+		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
 		scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;
@@ -200,6 +206,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		setInputs(scope.getInputs());
 		setArguments(scope.getArguments());
 		outputVariable = getComputation().getOutputVariable();
+
+		if (getComputation() instanceof Shape) {
+			scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+		}
+
 		super.postCompile();
 	}
 
@@ -233,9 +244,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public Variable getOutputVariable() { return outputVariable == null ? computation.getOutputVariable() : outputVariable; }
 
 	@Override
-	public boolean isAggregatedInput() {
-		return enableOperationInputAggregation;
-	}
+	public boolean isAggregatedInput() { return true; }
 
 	@Override
 	public void destroy() {
@@ -246,5 +255,22 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		if (getComputation() instanceof OperationAdapter) {
 			((OperationAdapter) getComputation()).destroy();
 		}
+	}
+
+	public static void printTimes() {
+		printTimes(false);
+	}
+
+	public static void printTimes(boolean verbose) {
+		if (Expression.distribution.getCount() > 0)
+			Expression.distribution.print();
+
+		if (verbose) {
+			KernelSeriesProvider.timing.print();
+		}
+
+		KernelTraversalProvider.timing.print();
+		Scope.timing.print();
+		compileTime.print();
 	}
 }

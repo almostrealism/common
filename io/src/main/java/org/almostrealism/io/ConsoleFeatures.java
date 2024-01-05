@@ -17,8 +17,12 @@
 package org.almostrealism.io;
 
 public interface ConsoleFeatures {
+	default Class getLogClass() {
+		return getClass();
+	}
+
 	default String formatMessage(String msg) {
-		return getClass().getSimpleName() + ": " + msg;
+		return getLogClass().getSimpleName() + ": " + msg;
 	}
 
 	default void log(String message) {

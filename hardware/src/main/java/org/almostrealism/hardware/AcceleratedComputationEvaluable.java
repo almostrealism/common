@@ -79,9 +79,13 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		AcceleratedProcessDetails process = apply(null, args);
-		waitFor(process.getSemaphore());
-		return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+		try {
+			AcceleratedProcessDetails process = apply(null, args);
+			waitFor(process.getSemaphore());
+			return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+		} catch (HardwareException e) {
+			throw new HardwareException("Failed to evaluate " + getName(), e);
+		}
 	}
 
 	/**

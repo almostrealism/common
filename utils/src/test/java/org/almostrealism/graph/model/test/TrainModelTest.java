@@ -25,6 +25,7 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
@@ -271,7 +272,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 50;
+		int dim = 32;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -282,9 +283,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainLarge() {
 		if (skipLongTests) return;
 
-		Tensor<Double> t = tensor(shape(60, 60));
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		int dim = 96;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(60, 60, 3, 8, 10));
+		train(input, model(dim, dim, 3, filters, 10));
 	}
 
 	@Test
@@ -311,8 +317,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
+		double epochMinutes = 0.0;
+
+		int epochSize = 1000;
+
 		try {
-			int count = 100 * 1000;
+			int count = 100 * epochSize;
+
+			long start = 0;
 
 			for (int i = 0; i < count; i++) {
 				input.fill(pos -> 0.5 + 0.5 * Math.random());
@@ -321,20 +333,30 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 				if (i % 1000 == 0) {
 					log("Input Size = " + input.getShape() +
-							"\t | epoch = " + i / 1000);
+							"\t | epoch = " + i / epochSize);
 				}
 
 				compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
 
 				if (i % 1000 == 0) {
+					if (i > 0) {
+						epochMinutes = (System.currentTimeMillis() - start) * epochSize / (60000.0 * i);
+					} else {
+						start = System.currentTimeMillis();
+					}
+
+					String remaining = epochMinutes > 0 ?
+							(int) (epochMinutes * (count - i) / epochSize) +
+									" minutes remaining" : "";
+
 					log("\t\tbackprop\t\t\t" +
-							" | epoch = " + i / 1000);
+							" | epoch = " + i / epochSize + "\t|\t" + remaining);
 				}
 			}
 		} finally {
 			profile.print();
 			HardwareOperator.profile.print();
-			AcceleratedOperation.printTimes();
+			AcceleratedComputationOperation.printTimes();
 		}
 	}
 

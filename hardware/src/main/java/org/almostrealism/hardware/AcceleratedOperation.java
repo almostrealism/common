@@ -375,16 +375,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
 				MTLBuffer.ioTime.print();
 			}
-		}
 
-		if (Expression.distribution.getCount() > 0)
-			Expression.distribution.print();
-
-		KernelSeriesProvider.timing.print();
-		KernelTraversalProvider.timing.print();
-		Expression.timing.print();
-
-		if (verbose) {
 			// Compilation
 			console.println("AcceleratedOperation: Retrieve operator total - " +
 					((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
@@ -392,16 +383,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					((long) NativeCompiler.compileTime.getTotal()) + "sec");
 			console.println("AcceleratedOperation: MTL Compile - " +
 					((long) MetalProgram.compileTime.getTotal()) + "sec");
+		}
 
-			// Runtime
-			console.println("AcceleratedOperation: " +
-					((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
-					((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
-			console.println("AcceleratedOperation Process Body: " +
-					((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
-					((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
-					((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
+		// Runtime
+		console.println("AcceleratedOperation: " +
+				((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
+				((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
+		console.println("AcceleratedOperation Process Body: " +
+				((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
+				((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
+				((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
 
+		if (verbose) {
 			HardwareOperator.prepareArgumentsMetric.print();
 			HardwareOperator.computeDimMasksMetric.print();
 			NativeExecution.dimMaskMetric.print();

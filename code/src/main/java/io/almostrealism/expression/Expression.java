@@ -60,7 +60,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
 	public static DistributionMetric distribution = Scope.console.distribution("expressionCounts");
-	public static TimingMetric timing = Scope.console.timing("expression");
 
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 

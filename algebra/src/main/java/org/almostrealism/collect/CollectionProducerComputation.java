@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
@@ -79,12 +82,12 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default CollectionProducer<T> traverse(int axis) {
-		return new ReshapeProducer<>(axis, (Producer) this);
+		return new ReshapeProducer(axis, this);
 	}
 
 	@Override
 	default CollectionProducer<T> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
+		return new ReshapeProducer(shape, this);
 	}
 
 	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
@@ -98,7 +101,13 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		private CollectionProducer<T> op;
 
 		public IsolatedProcess(CollectionProducer<T> op) {
+			Computation.console.features(this).log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
+
 			this.op = op;
+
+			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
+				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
+			}
 		}
 
 		@Override

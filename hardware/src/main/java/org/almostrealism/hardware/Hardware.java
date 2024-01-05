@@ -417,7 +417,7 @@ public final class Hardware {
 		total *= getPrecision().bytes();
 
 		if (total > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException("It is not possible to allocate " + total + " bytes of memory at once");
+			throw new HardwareException("It is not possible to allocate " + total + " bytes of memory at once");
 		}
 
 		return Optional.ofNullable(getDataContext()).map(dc -> dc.getMemoryProvider(size))

@@ -166,6 +166,24 @@ public class Console {
 		return new Console(this);
 	}
 
+	public <T> ConsoleFeatures features(T type) {
+		return type instanceof Class ? features((Class) type) : features(type.getClass());
+	}
+
+	public ConsoleFeatures features(Class cls) {
+		return new ConsoleFeatures() {
+			@Override
+			public Class getLogClass() {
+				return cls;
+			}
+
+			@Override
+			public Console console() {
+				return Console.this;
+			}
+		};
+	}
+
 	public static Console root() {
 		return root;
 	}

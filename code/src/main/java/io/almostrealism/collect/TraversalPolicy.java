@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Minus;
@@ -23,6 +24,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
+import org.almostrealism.io.Console;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,18 +36,36 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
+	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
+
 	private int dims[];
 	private int traversalAxis;
 
 	public TraversalPolicy(int... dims) {
 		this.dims = dims;
+
+		if (dims.length > 0) {
+			long total = dims[0];
+
+			for (int i = 1; i < dims.length; i++) {
+				total *= dims[i];
+
+				if (total > MAX_SIZE || total < 0) {
+					throw new IllegalArgumentException();
+				}
+			}
+		}
 	}
 
 	public int size(int depth) {
+		return Math.toIntExact(sizeLong(depth));
+	}
+
+	public long sizeLong(int depth) {
 		if (dims.length == 0) return 0;
 		if (depth == dims.length) return 1;
 		if (depth > dims.length) throw new IllegalArgumentException("Depth is greater than the number of dimensions");
-		return IntStream.range(depth, dims.length).map(i -> dims[i]).reduce((x, y) -> x * y).getAsInt();
+		return IntStream.range(depth, dims.length).mapToLong(i -> dims[i]).reduce((x, y) -> x * y).getAsLong();
 	}
 
 	public int length(int axis) {
@@ -230,10 +250,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	public int getSize() { return size(traversalAxis); }
 
+	public long getSizeLong() { return sizeLong(traversalAxis); }
+
 	public int getTotalSize() { return size(0); }
 
+	public long getTotalSizeLong() { return sizeLong(0); }
+
 	@Override
-	public int getCount() { return getTotalSize() / getSize(); }
+	public int getCount() { return Math.toIntExact(getTotalSizeLong() / getSizeLong()); }
 
 	public int getDimensions() { return dims.length; }
 
