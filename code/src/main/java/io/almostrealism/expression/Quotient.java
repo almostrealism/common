@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	protected Quotient(List<Expression<?>> values) {
@@ -64,12 +63,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
-		Number numerator = getChildren().get(0).kernelValue(indexValues);
-		Number denominator = getChildren().get(1).kernelValue(indexValues);
+		Number numerator = getChildren().get(0).value(indexValues);
+		Number denominator = getChildren().get(1).value(indexValues);
 
 		if (numerator instanceof Integer && denominator instanceof Integer) {
 			return ((Integer) numerator) / ((Integer) denominator);

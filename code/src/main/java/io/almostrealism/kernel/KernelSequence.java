@@ -18,6 +18,7 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IndexValues;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.util.ArrayItem;
 
 public class KernelSequence extends ArrayItem<Number> {
@@ -26,7 +27,7 @@ public class KernelSequence extends ArrayItem<Number> {
 	}
 
 	public static KernelSequence of(Expression<?> exp, IndexValues values, int len) {
-		return new KernelSequence(values.apply(exp).kernelSeq(len));
+		return new KernelSequence(values.apply(exp).sequence(new KernelIndex(), len));
 	}
 
 	public static KernelSequence of(Number[] values) {

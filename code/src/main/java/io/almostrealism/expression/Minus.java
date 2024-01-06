@@ -45,8 +45,8 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
-		Number v = getChildren().get(0).kernelValue(indexValues);
+	public Number value(IndexValues indexValues) {
+		Number v = getChildren().get(0).value(indexValues);
 		if (v instanceof Integer) return -1 * (Integer) v;
 		return -1.0 * (Double) v;
 	}

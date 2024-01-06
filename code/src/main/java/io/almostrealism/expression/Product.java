@@ -28,7 +28,6 @@ import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
@@ -70,9 +69,9 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(indexValues))
+				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
 		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {

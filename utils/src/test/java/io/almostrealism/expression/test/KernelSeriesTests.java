@@ -20,13 +20,14 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
 
 public class KernelSeriesTests implements ExpressionFeatures {
 	private static LanguageOperations lang = new LanguageOperationsStub();
@@ -156,7 +157,9 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		Expression c = a.add(b).imod(18);
 		validateSeries(c);
 
-		Expression e = KernelSeriesMatcher.simplify(c, 18);
+		Expression e = KernelSeriesMatcher.match(
+				Arrays.stream(c.sequence(new KernelIndex(), 18))
+						.mapToDouble(v -> v.doubleValue()).toArray(), true);
 		Assert.assertEquals("(kernel0) % (18)", e.getExpression(new LanguageOperationsStub()));
 	}
 
@@ -285,7 +288,7 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		int period = series.getPeriod().orElseThrow();
 		System.out.println("Reported Period: " + period);
 
-		Number[] values = exp.kernelSeq(period * 4);
+		Number[] values = exp.sequence(new KernelIndex(), period * 4);
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < period; j++) {

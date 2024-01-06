@@ -57,8 +57,8 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
-		return Math.floor((double) getChildren().get(0).kernelValue(indexValues));
+	public Number value(IndexValues indexValues) {
+		return Math.floor((double) getChildren().get(0).value(indexValues));
 	}
 
 	@Override

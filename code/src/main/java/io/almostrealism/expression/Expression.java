@@ -24,6 +24,7 @@ import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
+import io.almostrealism.kernel.Sequence;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
@@ -49,7 +50,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class Expression<T> implements KernelTree<Expression<?>>, ConsoleFeatures {
+public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequence<Number>, ConsoleFeatures {
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
@@ -169,11 +170,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 				.toArray(Number[]::new);
 	}
 
-	public Number kernelValue(IndexValues indexValues) {
+	@Override
+	public Number value(IndexValues indexValues) {
 		throw new UnsupportedOperationException();
 	}
 
-	public Number[] kernelSeq(int len) {
+	@Override
+	public Number[] sequence(Index index, int len) {
 		int nodes = countNodes();
 		String exp = nodes <= maxCacheItemSize ? getExpression(lang) : null;
 
@@ -189,11 +192,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 		if (enableBatchEvaluation) {
 			seq = batchEvaluate(getChildren().stream()
-					.map(e -> e.kernelSeq(len))
+					.map(e -> e.sequence(index, len))
 					.collect(Collectors.toList()), len);
 		} else {
 			seq = IntStream.range(0, len).parallel()
-					.mapToObj(kernelIndex -> kernelValue(new IndexValues(kernelIndex))).toArray(Number[]::new);
+					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new);
 		}
 
 		cacheSeq(exp, seq);

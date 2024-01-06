@@ -14,14 +14,13 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.Sequence;
+import io.almostrealism.expression.Index;
+import io.almostrealism.expression.IndexValues;
 
-import java.util.OptionalInt;
+public interface Sequence<T> {
+	T value(IndexValues indexValues);
 
-public interface Index extends Sequence<Number> {
-	String getName();
-
-	OptionalInt getLimit();
+	T[] sequence(Index index, int len);
 }

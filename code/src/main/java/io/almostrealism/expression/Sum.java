@@ -20,7 +20,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.NoOpKernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -168,9 +167,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(indexValues))
+				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
 		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {

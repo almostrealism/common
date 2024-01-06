@@ -37,6 +37,9 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
+	public String getName() { return "kernel" + axis; }
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.kernelIndex(axis);
 	}
@@ -63,12 +66,12 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		return indexValues.getKernelIndex();
 	}
 
 	@Override
-	public Number[] kernelSeq(int len) {
+	public Number[] sequence(Index index, int len) {
 		if (kernelSeq == null || kernelSeq.length < len) {
 			updateKernelSeq(len);
 		}

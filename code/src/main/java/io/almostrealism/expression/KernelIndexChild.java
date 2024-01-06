@@ -63,6 +63,15 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
+	public Number value(IndexValues indexValues) {
+		if (indexValues.containsIndex(getName())) {
+			return indexValues.getIndex(getName());
+		}
+
+		return super.value(indexValues);
+	}
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (renderAlias) return getName();
 		return super.getExpression(lang);

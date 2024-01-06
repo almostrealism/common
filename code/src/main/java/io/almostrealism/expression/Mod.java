@@ -137,11 +137,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		if (fp) {
-			return getChildren().get(0).kernelValue(indexValues).doubleValue() % getChildren().get(1).kernelValue(indexValues).doubleValue();
+			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return getChildren().get(0).kernelValue(indexValues).intValue() % getChildren().get(1).kernelValue(indexValues).intValue();
+			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
 		}
 	}
 

@@ -36,9 +36,9 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	@Override
-	public Number[] kernelSeq(int len) {
+	public Number[] sequence(Index index, int len) {
 		if (!getLeft().isKernelValue(new IndexValues()) || !getRight().isKernelValue(new IndexValues())) {
-			return super.kernelSeq(len);
+			return super.sequence(index, len);
 		}
 
 		int seq[] = checkSingle(getLeft(), getRight(), len);
@@ -47,8 +47,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		seq = checkSingle(getRight(), getLeft(), len);
 		if (seq != null) return IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new);
 
-		Number l[] = getLeft().kernelSeq(len);
-		Number r[] = getRight().kernelSeq(len);
+		Number l[] = getLeft().sequence(index, len);
+		Number r[] = getRight().sequence(index, len);
 		return IntStream.range(0, len)
 				.mapToObj(i -> compare(l[i], r[i]) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new);

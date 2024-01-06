@@ -70,8 +70,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
-		double v = getChildren().get(0).kernelValue(indexValues).doubleValue();
+	public Number value(IndexValues indexValues) {
+		double v = getChildren().get(0).value(indexValues).doubleValue();
 
 		if (typeName.equals("int")) {
 			return Integer.valueOf((int) v);

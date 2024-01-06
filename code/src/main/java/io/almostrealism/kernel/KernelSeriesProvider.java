@@ -18,6 +18,7 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.Scope;
@@ -30,11 +31,14 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface KernelSeriesProvider {
-	boolean enableSequenceNode = false;
 	TimingMetric timing = Scope.console.timing("kernelSeries");
 
 	default Expression getSeries(Expression exp) {
-		if (exp instanceof KernelIndex || exp.doubleValue().isPresent()) return exp;
+		return getSeries(exp, new KernelIndex());
+	}
+
+	default Expression getSeries(Expression exp, Index index) {
+		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
 		OptionalInt len = getMaximumLength();
 		if (!len.isPresent()) return exp;
@@ -46,7 +50,7 @@ public interface KernelSeriesProvider {
 		try {
 			if (exp.isKernelValue(new IndexValues())) {
 				if (exp.getType() == Boolean.class) {
-					double seq[] = Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray();
+					double seq[] = Stream.of(exp.sequence(index, len.getAsInt())).mapToDouble(Number::doubleValue).toArray();
 					result = seq == null ? null : getSeries(seq, true, exp::countNodes);
 
 					if (result != null) {
@@ -59,15 +63,8 @@ public interface KernelSeriesProvider {
 					}
 				} else {
 					result = getSeries(
-							Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
+							Stream.of(exp.sequence(index, len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
 							exp.getType() == Integer.class, exp::countNodes);
-				}
-			} else if (enableSequenceNode && exp.isKernelValue(IndexValues.of(exp.getIndices()))) {
-				if (exp.getType() == Boolean.class) {
-					KernelSequenceNode sequenceNode = KernelSequenceNode.generateTree(exp, len.getAsInt());
-					System.out.println("!");
-				} else {
-					System.out.println("!");
 				}
 			}
 		} finally {

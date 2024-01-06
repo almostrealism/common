@@ -49,12 +49,12 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public Number kernelValue(IndexValues indexValues) {
+	public Number value(IndexValues indexValues) {
 		return value;
 	}
 
 	@Override
-	public Number[] kernelSeq(int len) {
+	public Number[] sequence(Index index, int len) {
 		return IntStream.range(0, len).mapToObj(i -> value).toArray(Number[]::new);
 	}
 

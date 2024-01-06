@@ -51,6 +51,16 @@ public class IndexValues {
 		return this;
 	}
 
+	public IndexValues put(Index idx, Integer value) {
+		if (idx instanceof KernelIndex) {
+			kernelIndex = value;
+		} else {
+			values.put(idx.getName(), value);
+		}
+
+		return this;
+	}
+
 	public Expression apply(Expression exp) {
 		for (Map.Entry<String, Integer> entry : values.entrySet()) {
 			exp = exp.withValue(entry.getKey(), entry.getValue());
