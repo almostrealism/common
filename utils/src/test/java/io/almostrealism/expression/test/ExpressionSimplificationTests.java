@@ -19,6 +19,7 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mod;
@@ -103,8 +104,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
-		System.out.println(Arrays.toString(result.kernelSeq(4)));
-		Assert.assertTrue(result.isKernelValue());
+		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4)));
+		Assert.assertTrue(result.isKernelValue(new IndexValues()));
 
 		String simple = result.getSimplified(new NoOpKernelStructureContext(64)).getExpression(lang);
 		System.out.println(simple);

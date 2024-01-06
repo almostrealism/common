@@ -19,12 +19,10 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

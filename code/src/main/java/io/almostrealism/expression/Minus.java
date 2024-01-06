@@ -40,13 +40,13 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue() {
-		return getChildren().get(0).isKernelValue();
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		Number v = getChildren().get(0).kernelValue(kernelIndex);
+	public Number value(IndexValues indexValues) {
+		Number v = getChildren().get(0).value(indexValues);
 		if (v instanceof Integer) return -1 * (Integer) v;
 		return -1.0 * (Double) v;
 	}

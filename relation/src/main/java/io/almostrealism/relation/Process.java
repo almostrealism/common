@@ -22,7 +22,9 @@ import java.util.function.Supplier;
 
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
 
-	default Process<P, T> optimize() {
+	default Process<P, T> optimize() { return optimize(null); }
+
+	default Process<P, T> optimize(ProcessContext context) {
 		return this;
 	}
 

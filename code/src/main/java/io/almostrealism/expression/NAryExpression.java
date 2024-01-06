@@ -50,8 +50,8 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue() {
-		return getChildren().stream().allMatch(Expression::isKernelValue);
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().stream().allMatch(expression -> expression.isKernelValue(values));
 	}
 
 	@Override

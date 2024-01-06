@@ -40,7 +40,7 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public Number[] kernelSeq(int len) {
+	public Number[] sequence(Index index, int len) {
 		return IntStream.range(0, len).mapToObj(i -> value ? 1 : 0).toArray(Number[]::new);
 	}
 

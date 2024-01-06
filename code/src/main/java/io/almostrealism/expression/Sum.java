@@ -28,20 +28,19 @@ import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
-	private static int flattenDepth;
-
-	public Sum(Stream<Expression<? extends Number>> values) {
+	protected Sum(Stream<Expression<? extends Number>> values) {
 		super("+", (Stream) values);
 	}
 
-	public Sum(List<Expression<? extends Number>> values) {
+	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
 	}
 
-	public Sum(Expression<? extends Number>... values) {
+	protected Sum(Expression<? extends Number>... values) {
 		super((Class<T>) type(List.of(values)), "+", values);
 	}
 
@@ -90,7 +89,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		return new Sum<>(children.toArray(new Expression[0]));
+		return Sum.of(children.toArray(new Expression[0]));
 	}
 
 	@Override
@@ -101,28 +100,22 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public List<Expression<?>> flatten() {
-		try {
-			flattenDepth++;
+		List<Expression<?>> flat = super.flatten();
 
-			List<Expression<?>> flat = super.flatten();
+		List<Expression<?>> terms = flat.stream()
+				.filter(e -> e instanceof Sum)
+				.flatMap(e -> e.flatten().stream())
+				.collect(Collectors.toList());
 
-			List<Expression<?>> terms = flat.stream()
-					.filter(e -> e instanceof Sum)
-					.flatMap(e -> e.flatten().stream())
-					.collect(Collectors.toList());
+		if (terms.size() == 0) return flat;
 
-			if (terms.size() == 0) return flat;
+		List<Expression<?>> children = new ArrayList<>();
+		terms.forEach(children::add);
+		children.addAll(flat.stream()
+				.filter(e -> !(e instanceof Sum))
+				.collect(Collectors.toList()));
 
-			List<Expression<?>> children = new ArrayList<>();
-			terms.forEach(children::add);
-			children.addAll(flat.stream()
-					.filter(e -> !(e instanceof Sum))
-					.collect(Collectors.toList()));
-
-			return children;
-		} finally {
-			flattenDepth--;
-		}
+		return children;
 	}
 
 	@Override
@@ -162,21 +155,21 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		if (sum == 0.0) {
 			if (children.isEmpty())
 				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-			if (children.size() == 1) return (Expression<Double>) children.get(0);
+			if (children.size() == 1) return children.get(0);
 			return generate(children).populate(this);
 		} else {
 			List<Expression<?>> newChildren = new ArrayList<>();
 			newChildren.addAll(children);
 			newChildren.add(getType() == Integer.class ? new IntegerConstant((int) sum) : new DoubleConstant(sum));
-			if (newChildren.size() == 1) return (Expression<Double>) newChildren.get(0);
+			if (newChildren.size() == 1) return newChildren.get(0);
 			return generate(newChildren).populate(this);
 		}
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number value(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(kernelIndex))
+				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
 		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
@@ -187,6 +180,36 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
-		return values.length == 1 ? values[0] : (Expression) new Sum(values);
+		List<Expression> operands =
+				Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+		i: if (operands.size() == 2) {
+			int index[] = IntStream.range(0, 2).filter(i -> operands.get(i) instanceof DefaultIndex &&
+					!(operands.get(i) instanceof KernelIndex)).toArray();
+			if (index.length != 1) break i;
+
+			DefaultIndex idx = (DefaultIndex) operands.get(index[0]);
+			Expression p = operands.get(index[0] == 0 ? 1 : 0);
+			if (!(p instanceof Product)) break i;
+
+			List<Expression> args = p.getChildren();
+			if (args.size() != 2) break i;
+
+			index = IntStream.range(0, 2).filter(i -> args.get(i) instanceof KernelIndex).toArray();
+			if (index.length != 1) break i;
+
+			Expression k = args.get(index[0] == 0 ? 1 : 0);
+			OptionalInt v = k.intValue();
+			if (!v.isPresent()) break i;
+
+			OptionalInt r = idx.getLimit();
+			if (!r.isPresent()) break i;
+
+			if (v.getAsInt() == r.getAsInt()) {
+				return (Expression) new KernelIndexChild(idx);
+			}
+		}
+
+		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
+		return operands.size() == 1 ? operands.get(0) : (Expression) new Sum(operands);
 	}
 }

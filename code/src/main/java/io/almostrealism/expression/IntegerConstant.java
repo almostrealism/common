@@ -45,16 +45,16 @@ public class IntegerConstant extends Constant<Integer> {
 	public OptionalInt upperBound(KernelStructureContext context) { return OptionalInt.of(value); }
 
 	@Override
-	public boolean isKernelValue() { return true; }
+	public boolean isKernelValue(IndexValues values) { return true; }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }
 
 	@Override
-	public Number kernelValue(int kernelIndex) { return value; }
+	public Number value(IndexValues indexValues) { return value; }
 
 	@Override
-	public Number[] kernelSeq(int len) {
+	public Number[] sequence(Index index, int len) {
 		return IntStream.range(0, len).mapToObj(i -> value).toArray(Number[]::new);
 	}
 

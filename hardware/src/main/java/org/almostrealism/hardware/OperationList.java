@@ -26,6 +26,7 @@ import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -271,11 +272,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Runnable> optimize() {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize();
+	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
-		if (!match) return ParallelProcess.super.optimize();
+		if (!match) return ParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
@@ -298,7 +299,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
 
-		return op.optimize();
+		return op.optimize(context);
 	}
 
 	public void destroy() {

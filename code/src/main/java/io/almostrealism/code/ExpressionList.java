@@ -44,14 +44,14 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> {
 		ExpressionList result = new ExpressionList<>();
 
 		for (int i = 0; i < operands.size(); i++) {
-			result.add(new Product((Expression) get(i), (Expression) operands.get(i)));
+			result.add(Product.of((Expression) get(i), (Expression) operands.get(i)));
 		}
 
 		return result;
 	}
 
 	public Expression<T> sum() {
-		return (Expression<T>) new Sum(toArray(Expression[]::new));
+		return Sum.of(toArray(Expression[]::new));
 	}
 
 	public Expression<T> max() {

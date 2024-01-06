@@ -21,10 +21,10 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 		TraversalPolicy shape = shape(a);
 
 		return new TraversableExpressionComputation<>(shape(a).replace(shape(1)),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
-					return new Sum(args[1].getValueRelative(new IntegerConstant(0)),
-							args[1].getValueRelative(new IntegerConstant(1)));
-				}, a);
+				(BiFunction<TraversableExpression[], Expression, Expression>)
+						(args, index) ->
+								Sum.of(args[1].getValueRelative(new IntegerConstant(0)),
+										args[1].getValueRelative(new IntegerConstant(1))), a);
 	}
 
 	@Test

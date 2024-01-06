@@ -17,11 +17,9 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.util.TestFeatures;

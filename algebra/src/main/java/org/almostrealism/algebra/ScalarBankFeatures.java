@@ -47,7 +47,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
-						new Sum(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
+						Sum.of(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
 		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier) input, (Supplier) value)
 				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}

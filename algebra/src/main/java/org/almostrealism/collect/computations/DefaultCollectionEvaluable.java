@@ -71,7 +71,4 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 
 		return (T) new PackedCollection<>(shape);
 	}
-
-	@Override
-	public boolean isAggregatedInput() { return true; }
 }

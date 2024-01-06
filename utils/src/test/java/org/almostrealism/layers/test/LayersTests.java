@@ -21,7 +21,6 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
@@ -29,7 +28,6 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.List;
 
 public class LayersTests implements LayerFeatures, TestFeatures {

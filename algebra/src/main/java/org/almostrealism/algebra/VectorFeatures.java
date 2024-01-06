@@ -121,10 +121,10 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	@Deprecated
 	default ExpressionComputation<Scalar> dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(
-				new Product(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				new Product(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1)),
-				new Product(args.get(1).getValueRelative(2), args.get(2).getValueRelative(2))
+		comp.add(args -> Sum.of(
+				Product.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				Product.of(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1)),
+				Product.of(args.get(1).getValueRelative(2), args.get(2).getValueRelative(2))
 				));
 		comp.add(args -> expressionForDouble(1.0));
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());

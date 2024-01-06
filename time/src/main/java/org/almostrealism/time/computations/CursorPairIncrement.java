@@ -41,9 +41,9 @@ public class CursorPairIncrement extends OperationComputationAdapter<PackedColle
 		if (prepared) return;
 
 		addVariable(getArgument(0).valueAt(0)
-				.assign(new Sum(getArgument(0).valueAt(0), getArgument(1).getValueRelative(0))));
+				.assign(Sum.of(getArgument(0).valueAt(0), getArgument(1).getValueRelative(0))));
 		addVariable(getArgument(0).valueAt(1)
-				.assign(new Sum(getArgument(0).valueAt(1), getArgument(1).getValueRelative(0))));
+				.assign(Sum.of(getArgument(0).valueAt(1), getArgument(1).getValueRelative(0))));
 
 		prepared = true;
 	}

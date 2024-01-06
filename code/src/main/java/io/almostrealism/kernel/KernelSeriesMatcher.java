@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,22 +22,11 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.io.TimingMetric;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.OptionalInt;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
-	private static List<Expression<?>> commonSeries;
-
-	static {
-		commonSeries = new ArrayList<>();
-	}
 
 	public static Expression match(double seq[], boolean isInt) {
 		long start = System.nanoTime();
@@ -93,61 +82,9 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				return r;
 			}
 
-			return match(DoubleStream.of(seq).boxed().toArray(Number[]::new));
+			return null;
 		} finally {
 			KernelSeriesProvider.timing.addEntry("match", System.nanoTime() - start);
 		}
-	}
-
-	public static Expression match(Number seq[]) {
-		for (int i = 0; i < commonSeries.size(); i++) {
-			if (kernelEquivalent(seq, commonSeries.get(i).kernelSeq(seq.length), seq.length)) {
-				return commonSeries.get(i);
-			}
-		}
-
-		return null;
-	}
-
-	public static Expression match(Expression e, int len) {
-		for (int i = 0; i < commonSeries.size(); i++) {
-			if (kernelEquivalent(e, commonSeries.get(i), len)) {
-				return commonSeries.get(i);
-			}
-		}
-
-		return null;
-	}
-
-	public static Expression simplify(Expression e, int mod) {
-		OptionalInt period = e.kernelSeries().getPeriod();
-		if (!period.isPresent()) return e;
-
-		for (int i = 0; i < commonSeries.size(); i++) {
-			if (kernelEquivalent(e, commonSeries.get(i).imod(mod), period.getAsInt())) {
-				return commonSeries.get(i).imod(mod);
-			}
-		}
-
-		return e;
-	}
-
-	public static boolean kernelEquivalent(Expression<?> l, Expression<?> r, int kernelMax) {
-		if (!l.isKernelValue()) return false;
-		if (!r.isKernelValue()) return false;
-
-		return kernelEquivalent(l.kernelSeq(kernelMax), r.kernelSeq(kernelMax), kernelMax);
-	}
-
-	public static boolean kernelEquivalent(Number l[], Number r[], int kernelMax) {
-		if (!Arrays.stream(l).allMatch(i -> i instanceof Integer)) return false;
-		if (!Arrays.stream(r).allMatch(i -> i instanceof Integer)) return false;
-
-		for (int i = 0; i < kernelMax; i++) {
-			if (!l[i].equals(r[i]))
-				return false;
-		}
-
-		return true;
 	}
 }

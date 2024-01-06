@@ -16,11 +16,9 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.Operator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
@@ -33,8 +31,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
@@ -760,7 +756,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				sum.add(filterValue.multiply(inputValue));
 			}
 
-			return new Sum(sum.toArray(Expression[]::new));
+			return Sum.of(sum.toArray(Expression[]::new));
 		};
 
 		CollectionProducerComputation<PackedCollection<?>> producer =

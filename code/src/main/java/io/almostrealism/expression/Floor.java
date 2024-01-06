@@ -52,13 +52,13 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public boolean isKernelValue() {
-		return getChildren().get(0).isKernelValue();
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		return Math.floor((double) getChildren().get(0).kernelValue(kernelIndex));
+	public Number value(IndexValues indexValues) {
+		return Math.floor((double) getChildren().get(0).value(indexValues));
 	}
 
 	@Override

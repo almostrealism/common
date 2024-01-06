@@ -16,11 +16,14 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.TraversalPolicy;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class OperationMetadata {
 	private String displayName, shortDescription, longDescription;
+	private TraversalPolicy shape;
 	private String contextName;
 
 	private List<OperationMetadata> children;
@@ -34,6 +37,7 @@ public class OperationMetadata {
 			setDisplayName(from.getDisplayName());
 			setShortDescription(from.getShortDescription());
 			setLongDescription(from.getLongDescription());
+			setShape(from.getShape());
 			setContextName(from.getContextName());
 			setChildren(from.getChildren());
 		}
@@ -63,11 +67,20 @@ public class OperationMetadata {
 	public String getLongDescription() { return longDescription; }
 	public void setLongDescription(String longDescription) { this.longDescription = longDescription; }
 
+	public TraversalPolicy getShape() { return shape; }
+	public void setShape(TraversalPolicy shape) { this.shape = shape; }
+
 	public String getContextName() { return contextName; }
 	public void setContextName(String contextName) { this.contextName = contextName; }
 
 	public List<OperationMetadata> getChildren() { return children; }
 	public void setChildren(List<OperationMetadata> children) { this.children = children; }
+
+	public OperationMetadata withShape(TraversalPolicy shape) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setShape(shape);
+		return metadata;
+	}
 
 	public OperationMetadata withContextName(String contextName) {
 		OperationMetadata metadata = new OperationMetadata(this);
