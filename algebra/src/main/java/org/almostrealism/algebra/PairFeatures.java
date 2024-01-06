@@ -117,8 +117,8 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 						Expression s = args[2].getValueAt(pos.add(1));
 
 						return conditional(index.mod(e(2), false).eq(e(0)),
-								new Sum(new Product(p, r), new Minus(new Product(q, s))),
-								new Sum(new Product(p, s), new Product(q, r)));
+								Sum.of(Product.of(p, r), new Minus(Product.of(q, s))),
+								Sum.of(Product.of(p, s), Product.of(q, r)));
 					},
 					(Supplier) a, (Supplier) b);
 		} else {
@@ -130,9 +130,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				Expression s = args.get(2).getValueRelative(1);
 
 				if (i == 0) {
-					return new Sum(new Product(p, r), new Minus(new Product(q, s)));
+					return Sum.of(Product.of(p, r), new Minus(Product.of(q, s)));
 				} else if (i == 1) {
-					return new Sum(new Product(p, s), new Product(q, r));
+					return Sum.of(Product.of(p, s), Product.of(q, r));
 				} else {
 					throw new IllegalArgumentException();
 				}

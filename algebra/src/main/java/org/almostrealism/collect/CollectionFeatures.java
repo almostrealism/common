@@ -447,7 +447,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		int len = to - from;
 
 		return new TraversableExpressionComputation<>(shape(len).traverseEach(),
-				(args, idx) -> new Sum(new DoubleConstant((double) from), idx));
+				(args, idx) -> Sum.of(new DoubleConstant((double) from), idx));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {
@@ -478,7 +478,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
 				args -> CollectionExpression.create(shape, index ->
-						new Sum(args[1].getValueAt(index), args[2].getValueAt(index))),
+						Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))),
 				(Supplier) a, (Supplier) b);
 		// exp.setShortCircuit(shortCircuit);
 		return exp;
@@ -493,7 +493,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np -> new Sum<>(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
+								np -> Sum.of(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
 						.collect(Collectors.toList());
 		return new ExpressionComputation<>(expressions, (Supplier) a, (Supplier) b);
 	}
@@ -544,7 +544,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			return (CollectionProducerComputationBase) alignTraversalAxes(List.of(a, b),
 					(shape, arguments) -> new TraversableExpressionComputation(shape,
 							(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-									new Product(args[1].getValueAt(index), args[2].getValueAt(index)),
+									Product.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 							arguments.toArray(Supplier[]::new)).setShortCircuit(shortCircuit));
 		} else {
 			TraversalPolicy shapeA = shape(a);
@@ -565,7 +565,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 			return new TraversableExpressionComputation(shape,
 					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-							new Product(args[1].getValueAt(index), args[2].getValueAt(index)),
+							Product.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 					(Supplier) a, (Supplier) b).setShortCircuit(shortCircuit);
 		}
 	}
@@ -587,7 +587,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																					  Evaluable<T> shortCircuit) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np -> new Product<>(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
+								np -> (Expression<Double>) Product.of(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
 						.collect(Collectors.toList());
 		ExpressionComputation<T> exp = new ExpressionComputation<>(shape, expressions, a, b);
 		exp.setShortCircuit(shortCircuit);
@@ -605,7 +605,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (shape(b).getCount() > shape(a).getCount()) shape = shape(b);
 
 		return new TraversableExpressionComputation<>(shape,
-				(args, index) -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				(Supplier) a, (Supplier) b);
 	}
 

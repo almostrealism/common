@@ -65,11 +65,11 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 	}
 
 	static CollectionExpression sum(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> new Sum<>(operands.stream().map(o -> o.getValueAt(idx))));
+		return create(shape, idx -> Sum.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
 	static CollectionExpression product(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> new Product<>(operands.stream().map(o -> o.getValueAt(idx))));
+		return create(shape, idx -> Product.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
 	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,

@@ -28,18 +28,19 @@ import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
-	public Product(Stream<Expression<? extends Number>> values) {
+	protected Product(Stream<Expression<? extends Number>> values) {
 		super("*", (Stream) values);
 	}
 
-	public Product(List<Expression<Double>> values) {
+	protected Product(List<Expression<Double>> values) {
 		super((Class<T>) type(values), "*", (List) values);
 	}
 
-	public Product(Expression<Double>... values) {
+	protected Product(Expression<Double>... values) {
 		super((Class<T>) type(List.of(values)), "*", values);
 	}
 
@@ -69,9 +70,9 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(kernelIndex))
+				.map(e -> e.kernelValue(indexValues))
 				.collect(Collectors.toList());
 
 		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
@@ -93,7 +94,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		return new Product<>(children.toArray(new Expression[0]));
+		return (Expression) Product.of(children.toArray(new Expression[0]));
 	}
 
 	@Override
@@ -231,5 +232,21 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		} else {
 			return new Mask(mask.getMask(), simple);
 		}
+	}
+
+	public static Expression<?> of(Expression<?>... values) {
+		if (values.length == 0) throw new IllegalArgumentException();
+		if (values.length == 1) return values[0];
+
+		if (Stream.of(values).anyMatch(e -> e.intValue().orElse(-1) == 0)) {
+			return new IntegerConstant(0);
+		}
+
+		List<Expression> operands = Stream.of(values)
+				.filter(e -> e.intValue().orElse(-1) != 1)
+				.collect(Collectors.toList());
+
+		if (operands.size() == 1) return operands.get(0);
+		return new Product(operands);
 	}
 }

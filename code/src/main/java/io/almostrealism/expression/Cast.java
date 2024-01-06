@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -61,8 +60,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue() {
-		return getChildren().get(0).isKernelValue();
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
 	}
 
 	@Override
@@ -71,8 +70,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		double v = getChildren().get(0).kernelValue(kernelIndex).doubleValue();
+	public Number kernelValue(IndexValues indexValues) {
+		double v = getChildren().get(0).kernelValue(indexValues).doubleValue();
 
 		if (typeName.equals("int")) {
 			return Integer.valueOf((int) v);

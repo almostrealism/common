@@ -19,11 +19,10 @@ package io.almostrealism.kernel;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -133,8 +132,8 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 	}
 
 	public static boolean kernelEquivalent(Expression<?> l, Expression<?> r, int kernelMax) {
-		if (!l.isKernelValue()) return false;
-		if (!r.isKernelValue()) return false;
+		if (!l.isKernelValue(new IndexValues())) return false;
+		if (!r.isKernelValue(new IndexValues())) return false;
 
 		return kernelEquivalent(l.kernelSeq(kernelMax), r.kernelSeq(kernelMax), kernelMax);
 	}

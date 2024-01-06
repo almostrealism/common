@@ -153,7 +153,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> Sum.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
 		comp.add(args -> expressionForDouble(1.0));
 		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, values).setPostprocessor(Scalar.postprocessor());
 	}
@@ -164,8 +164,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
+		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
 	}
 

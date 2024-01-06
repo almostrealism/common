@@ -28,6 +28,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -47,9 +48,13 @@ public class AggregatedCollectionProducerComputation<T extends PackedCollection<
 
 		setExpression((args, index) ->
 				expression.apply(
-						// args[0].getValueRelative(new IntegerConstant(0)),
 						getCollectionArgumentVariable(0).referenceRelative(new IntegerConstant(0)),
 						args[1].getValueRelative(index)));
+	}
+
+	@Override
+	protected OptionalInt getIndexLimit() {
+		return OptionalInt.of(count);
 	}
 
 	@Override

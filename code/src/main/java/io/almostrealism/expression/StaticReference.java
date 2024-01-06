@@ -35,6 +35,8 @@ public class StaticReference<T> extends Expression<T> {
 		this.expression = expression;
 	}
 
+	public String getName() { return expression; }
+
 	@Override
 	public Expression<T> withValue(String name, Number value) {
 		if (!Objects.equals(name, expression)) return this;

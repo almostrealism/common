@@ -756,7 +756,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				sum.add(filterValue.multiply(inputValue));
 			}
 
-			return new Sum(sum.toArray(Expression[]::new));
+			return Sum.of(sum.toArray(Expression[]::new));
 		};
 
 		CollectionProducerComputation<PackedCollection<?>> producer =

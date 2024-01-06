@@ -40,9 +40,9 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(kernelIndex))
+				.map(e -> e.kernelValue(indexValues))
 				.collect(Collectors.toList());
 
 		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {

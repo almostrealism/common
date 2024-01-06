@@ -26,6 +26,8 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
@@ -52,6 +54,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -78,6 +81,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	private final List<Method> methods;
 	private final List<Metric> metrics;
 	private final List<Scope> required;
+	private Set<KernelIndexChild> kernelChildren;
 
 	private List<Argument<?>> arguments;
 	private boolean embedded;
@@ -149,10 +153,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
+	public Set<KernelIndexChild> getKernelChildren() { return kernelChildren; }
+	public void setKernelChildren(Set<KernelIndexChild> kernelChildren) { this.kernelChildren = kernelChildren; }
+
 	public List<Metric> getMetrics() { return metrics; }
 
 	public boolean isEmbedded() { return embedded; }
-
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
 
 	@Override
@@ -426,6 +432,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	 */
 	public void write(CodePrintWriter w) {
 		w.renderMetadata(getMetadata());
+		for (KernelIndexChild c : getKernelChildren()) {
+			StaticReference ref = new StaticReference(Integer.class, c.getName());
+			w.println(new ExpressionAssignment(true, ref, c));
+		}
+
 		for (Method m : getMethods()) { w.println(m); }
 		for (Statement s : getStatements()) { w.println(s); }
 		for (ExpressionAssignment<?> v : getVariables()) { w.println(v); }
@@ -449,6 +460,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
+
+
+		List<KernelIndexChild> kernelChildren = new ArrayList<>();
+		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
+		kernelChildren.addAll(generateKernelChildren(scope.getStatements()));
+		kernelChildren.addAll(generateKernelChildren(scope.getVariables()));
+		scope.setKernelChildren(kernelChildren.stream().map(KernelIndexChild::renderAlias).collect(Collectors.toSet()));
 		return scope;
 	}
 
@@ -457,6 +475,20 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
 		scope.getChildren().addAll(children);
 		return scope;
+	}
+
+	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
+		List<KernelIndexChild> kernelChildren = new ArrayList<>();
+
+		for (T value : values) {
+			if (value instanceof ExpressionAssignment) {
+				((ExpressionAssignment) value).getExpression().children()
+						.filter(c -> c instanceof KernelIndexChild)
+						.forEach(c -> kernelChildren.add((KernelIndexChild) c));
+			}
+		}
+
+		return kernelChildren;
 	}
 
 	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {

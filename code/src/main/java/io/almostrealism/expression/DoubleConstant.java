@@ -41,7 +41,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public boolean isKernelValue() { return true; }
+	public boolean isKernelValue(IndexValues values) { return true; }
 
 	@Override
 	public KernelSeries kernelSeries() {
@@ -49,7 +49,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		return value;
 	}
 

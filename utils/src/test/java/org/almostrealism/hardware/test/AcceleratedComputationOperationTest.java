@@ -30,7 +30,7 @@ public class AcceleratedComputationOperationTest implements HardwareFeatures, Te
 	@Test
 	public void providerExpressionComputation() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
+				Sum.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		PackedCollection<?> a = new PackedCollection(1);
 		PackedCollection<?> b = new PackedCollection(1);

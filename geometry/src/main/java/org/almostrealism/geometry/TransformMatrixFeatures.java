@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 		TraversableExpressionComputation c = new TraversableExpressionComputation<>(shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
 			Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
 			Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
-			Function<Integer, Expression<Double>> p = (i) -> new Product(t.apply(i), v.apply(i));
+			Function<Integer, Expression<Double>> p = (i) -> (Expression<Double>) Product.of(t.apply(i), v.apply(i));
 
 			List<Expression<Double>> sum = new ArrayList<>();
 			sum.add(p.apply(0));
@@ -72,7 +72,7 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 				sum.add(t.apply(3));
 			}
 
-			return new Sum(sum.toArray(Expression[]::new));
+			return Sum.of(sum.toArray(Expression[]::new));
 		}, (Supplier) vector, (Supplier) matrix);
 		c.setPostprocessor(Vector.postprocessor());
 		return c;

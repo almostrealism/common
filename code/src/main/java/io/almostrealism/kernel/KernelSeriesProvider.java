@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
@@ -29,6 +30,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface KernelSeriesProvider {
+	boolean enableSequenceNode = false;
 	TimingMetric timing = Scope.console.timing("kernelSeries");
 
 	default Expression getSeries(Expression exp) {
@@ -42,22 +44,31 @@ public interface KernelSeriesProvider {
 		Expression result = null;
 
 		try {
-			if (exp.getType() == Boolean.class) {
-				int seq[] = exp.booleanSeq(len.getAsInt());
-				result = seq == null ? null : getSeries(seq, exp::countNodes);
+			if (exp.isKernelValue(new IndexValues())) {
+				if (exp.getType() == Boolean.class) {
+					double seq[] = Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray();
+					result = seq == null ? null : getSeries(seq, true, exp::countNodes);
 
-				if (result != null) {
-					OptionalDouble d = result.doubleValue();
-					if (d.isPresent()) {
-						return d.getAsDouble() == 1.0 ? new BooleanConstant(true) : new BooleanConstant(false);
-					} else {
-						result = result.eq(1.0);
+					if (result != null) {
+						OptionalDouble d = result.doubleValue();
+						if (d.isPresent()) {
+							return d.getAsDouble() == 1.0 ? new BooleanConstant(true) : new BooleanConstant(false);
+						} else {
+							result = result.eq(1.0);
+						}
 					}
+				} else {
+					result = getSeries(
+							Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
+							exp.getType() == Integer.class, exp::countNodes);
 				}
-			} else if (exp.isKernelValue()) {
-				result = getSeries(
-						Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
-						exp.getType() == Integer.class, exp::countNodes);
+			} else if (enableSequenceNode && exp.isKernelValue(IndexValues.of(exp.getIndices()))) {
+				if (exp.getType() == Boolean.class) {
+					KernelSequenceNode sequenceNode = KernelSequenceNode.generateTree(exp, len.getAsInt());
+					System.out.println("!");
+				} else {
+					System.out.println("!");
+				}
 			}
 		} finally {
 			timing.addEntry(exp.countNodes() + "-" + (result != null), System.nanoTime() - start);

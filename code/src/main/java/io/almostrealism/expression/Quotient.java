@@ -23,9 +23,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public Quotient(Expression<Double>... values) {
+	protected Quotient(List<Expression<?>> values) {
+		super((Class<T>) type(values), "/", values);
+	}
+
+	protected Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
 	}
 
@@ -59,12 +64,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
-		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
-		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
+		Number numerator = getChildren().get(0).kernelValue(indexValues);
+		Number denominator = getChildren().get(1).kernelValue(indexValues);
 
 		if (numerator instanceof Integer && denominator instanceof Integer) {
 			return ((Integer) numerator) / ((Integer) denominator);
@@ -94,7 +99,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		return new Quotient(children.toArray(new Expression[0]));
+		return (Expression) Quotient.of(children.toArray(new Expression[0]));
 	}
 
 	@Override
@@ -150,5 +155,21 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return generate(children).populate(this);
+	}
+
+	public static Expression<?> of(Expression<?>... values) {
+		if (values.length == 0) throw new IllegalArgumentException();
+		if (values.length == 1) return values[0];
+
+		List<Expression> operands = new ArrayList<>();
+		operands.add(values[0]);
+		for (int i = 1; i < values.length; i++) {
+			if (values[i].intValue().orElse(-1) != 1) {
+				operands.add(values[i]);
+			}
+		}
+
+		if (operands.size() == 1) return operands.get(0);
+		return new Quotient(operands);
 	}
 }

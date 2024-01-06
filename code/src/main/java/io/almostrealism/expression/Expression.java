@@ -33,7 +33,6 @@ import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,7 +50,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements KernelTree<Expression<?>>, ConsoleFeatures {
-	public static boolean enableSimplification = true;
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
@@ -117,7 +115,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public boolean isMasked() { return false; }
 	public boolean isSingleIndex() { return false; }
 	public boolean isSingleIndexMasked() { return isMasked() && getChildren().get(0).isSingleIndex(); }
-	public boolean isKernelValue() { return false; }
+	public boolean isKernelValue(IndexValues values) { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
@@ -137,6 +135,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return generate(getChildren().stream()
 				.map(e -> e.withKernel(index))
 				.collect(Collectors.toList()));
+	}
+
+	public Set<Index> getIndices() {
+		if (this instanceof Index) return Set.of((Index) this);
+
+		return getChildren().stream()
+				.flatMap(e -> e.getIndices().stream())
+				.collect(Collectors.toSet());
 	}
 
 	public KernelSeries kernelSeries() {
@@ -163,7 +169,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 				.toArray(Number[]::new);
 	}
 
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -187,19 +193,17 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 					.collect(Collectors.toList()), len);
 		} else {
 			seq = IntStream.range(0, len).parallel()
-					.mapToObj(this::kernelValue).toArray(Number[]::new);
+					.mapToObj(kernelIndex -> kernelValue(new IndexValues(kernelIndex))).toArray(Number[]::new);
 		}
 
 		cacheSeq(exp, seq);
 		return seq;
 	}
 
-	public int[] booleanSeq(int len) { return null; }
-
 	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
-		if (!enableSimplification || isSimple()) return this;
+		if (isSimple()) return this;
 
 		if (getClass() == Expression.class) {
 			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
@@ -270,19 +274,19 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		throw new UnsupportedOperationException();
 	}
 
-	public Minus minus() { return new Minus(this); }
+	public Expression minus() { return new Minus(this); }
 
-	public Sum add(int operand) { return new Sum((Expression) this, new IntegerConstant(operand)); }
-	public Sum add(Expression<? extends Number> operand) { return new Sum((Expression) this, operand); }
-	public Difference subtract(Expression<? extends Number> operand) { return new Difference((Expression) this, (Expression) operand); }
+	public Expression add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
+	public Expression add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
+	public Expression subtract(Expression<? extends Number> operand) { return new Difference(this, operand); }
 
-	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Product multiply(Expression<? extends Number> operand) { return new Product((Expression) this, (Expression) operand); }
+	public Expression multiply(int operand) { return operand == 1 ? this : Product.of(this, new IntegerConstant(operand)); }
+	public Expression multiply(Expression<? extends Number> operand) { return Product.of(this, operand); }
 
-	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Quotient divide(Expression<?> operand) { return new Quotient((Expression) this, (Expression) operand); }
+	public Expression divide(int operand) { return operand == 1 ? this : Quotient.of(this, new IntegerConstant(operand)); }
+	public Expression divide(Expression<?> operand) { return Quotient.of(this, operand); }
 
-	public Quotient reciprocal() { return new Quotient(new DoubleConstant(1.0), (Expression) this); }
+	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }
@@ -380,7 +384,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 				simplified[i] = children.get(i);
 				simplified[i] = simplified[i].simplify(context); // simplified[i].getSimplified(context);
 
-				if (simplified[i].isKernelValue()) {
+				if (simplified[i].isKernelValue(new IndexValues())) {
 					simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 				}

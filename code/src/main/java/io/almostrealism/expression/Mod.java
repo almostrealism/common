@@ -25,8 +25,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
-	public static boolean enableKernelWarnings = false;
-
 	private boolean fp;
 
 	public Mod(Expression<T> a, Expression<T> b) {
@@ -93,7 +91,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	@Override
 	public Expression simplify(KernelStructureContext context) {
 		Expression<?> flat = super.simplify(context);
-		if (!enableSimplification || !(flat instanceof Mod)) return flat;
+		if (!(flat instanceof Mod)) return flat;
 
 		Expression input = flat.getChildren().get(0);
 		Expression mod = flat.getChildren().get(1);
@@ -134,16 +132,16 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue() {
-		return getChildren().get(0).isKernelValue() && getChildren().get(1).isKernelValue();
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values) && getChildren().get(1).isKernelValue(values);
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number kernelValue(IndexValues indexValues) {
 		if (fp) {
-			return getChildren().get(0).kernelValue(kernelIndex).doubleValue() % getChildren().get(1).kernelValue(kernelIndex).doubleValue();
+			return getChildren().get(0).kernelValue(indexValues).doubleValue() % getChildren().get(1).kernelValue(indexValues).doubleValue();
 		} else {
-			return getChildren().get(0).kernelValue(kernelIndex).intValue() % getChildren().get(1).kernelValue(kernelIndex).intValue();
+			return getChildren().get(0).kernelValue(indexValues).intValue() % getChildren().get(1).kernelValue(indexValues).intValue();
 		}
 	}
 

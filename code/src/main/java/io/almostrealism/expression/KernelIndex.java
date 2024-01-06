@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,10 +20,9 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.Arrays;
 import java.util.OptionalInt;
 
-public class KernelIndex extends StaticReference<Integer> {
+public class KernelIndex extends DefaultIndex {
 	private static Integer[] kernelSeq;
 
 	private int axis;
@@ -33,7 +32,7 @@ public class KernelIndex extends StaticReference<Integer> {
 	}
 
 	public KernelIndex(int axis) {
-		super(Integer.class, null);
+		super(null);
 		this.axis = axis;
 	}
 
@@ -50,7 +49,7 @@ public class KernelIndex extends StaticReference<Integer> {
 	}
 
 	@Override
-	public boolean isKernelValue() { return true; }
+	public boolean isKernelValue(IndexValues values) { return true; }
 
 	@Override
 	public Expression<Integer> withKernel(int index) {
@@ -64,8 +63,8 @@ public class KernelIndex extends StaticReference<Integer> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		return Integer.valueOf(kernelIndex);
+	public Number kernelValue(IndexValues indexValues) {
+		return indexValues.getKernelIndex();
 	}
 
 	@Override

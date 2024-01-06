@@ -89,7 +89,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
-			index = new Sum(index, new Product(pos[i], s));
+			index = Sum.of(index, Product.of(pos[i], s));
 		}
 
 		return index;
@@ -114,8 +114,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		Expression remaining = index;
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
-			pos[i] = new Quotient(remaining, s);
-			remaining = new Sum(remaining, new Minus(new Product(pos[i], s)));
+			pos[i] = Quotient.of(remaining, s);
+			remaining = Sum.of(remaining, new Minus(Product.of(pos[i], s)));
 		}
 
 		return pos;
@@ -145,7 +145,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		for (int i = 0; i < loc.length; i++) {
 			Expression l = loc[i];
-			pos[i] = new Sum(pos[i], l);
+			pos[i] = Sum.of(pos[i], l);
 		}
 
 		return index(pos);
