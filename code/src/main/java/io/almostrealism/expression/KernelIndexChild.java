@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.List;
 import java.util.OptionalInt;
 
 public class KernelIndexChild extends Sum<Integer> implements Index {
@@ -51,6 +50,10 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	@Override
 	public OptionalInt getLimit() { return OptionalInt.empty(); }
 
+	public int kernelIndex(int index) {
+		return index / childIndex.getLimit().getAsInt();
+	}
+
 	@Override
 	public OptionalInt upperBound(KernelStructureContext context) {
 		OptionalInt max = context.getKernelMaximum();
@@ -60,6 +63,12 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 		if (!limit.isPresent()) return OptionalInt.empty();
 
 		return OptionalInt.of(max.getAsInt() * limit.getAsInt() - 1);
+	}
+
+	@Override
+	public boolean isKernelValue(IndexValues values) {
+		if (values.containsIndex(getName())) return true;
+		return super.isKernelValue(values);
 	}
 
 	@Override
@@ -75,11 +84,6 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	public String getExpression(LanguageOperations lang) {
 		if (renderAlias) return getName();
 		return super.getExpression(lang);
-	}
-
-	@Override
-	public Expression<Integer> generate(List<Expression<?>> children) {
-		return this;
 	}
 
 	@Override

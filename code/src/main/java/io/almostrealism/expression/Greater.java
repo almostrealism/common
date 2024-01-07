@@ -16,12 +16,9 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
 
 public class Greater extends Comparison {
 	private boolean orEqual;

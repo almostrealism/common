@@ -22,47 +22,50 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
-
-import java.util.stream.DoubleStream;
-import java.util.stream.IntStream;
+import io.almostrealism.scope.Scope;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
 
-	public static Expression match(double seq[], boolean isInt) {
+	public static Expression match(Expression index, IndexSequence seq, boolean isInt) {
 		long start = System.nanoTime();
 
 		try {
-			double distinct[] = DoubleStream.of(seq).distinct().sorted().toArray();
-			if (distinct.length == 1)
+			if (seq.isConstant()) {
+				return isInt ? new IntegerConstant(seq.intAt(0)) : new DoubleConstant(seq.doubleAt(0));
+			}
+
+			double distinct[] = seq.doubleStream().distinct().sorted().toArray();
+			if (distinct.length == 1) {
+				Scope.console.features(KernelSeriesMatcher.class).warn("Constant sequence not detected by IndexSequence");
 				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0]);
+			}
 
 			if (distinct.length == 2 && distinct[0] == 0) {
-				int first = IntStream.range(0, seq.length).filter(i -> seq[i] == distinct[1]).findFirst().orElse(-1);
+				int first = seq.matchingIndices(distinct[1]).findFirst().orElse(-1);
 				if (first < 0) throw new UnsupportedOperationException();
 
-				int tot = IntStream.range(0, seq.length).map(i -> seq[i] == distinct[1] ? 1 : 0).sum();
+				int tot = seq.doubleStream().mapToInt(v -> v == distinct[1] ? 1 : 0).sum();
 
-				long cont = IntStream.range(0, seq.length)
-						.skip(first).limit(tot).mapToDouble(i -> seq[i]).distinct().count();
+				long cont = seq.doubleStream().skip(first).limit(tot).distinct().count();
 
 				if (cont == 1) {
 					Expression<Boolean> condition =
-							new KernelIndex().greaterThanOrEqual(new IntegerConstant(first)).and(
-									new KernelIndex().lessThan(new IntegerConstant(first + tot)));
+							index.greaterThanOrEqual(new IntegerConstant(first)).and(
+									index.lessThan(new IntegerConstant(first + tot)));
 
 					if (isInt) {
-						return new Mask<>(condition, new IntegerConstant((int) distinct[1]));
+						return Mask.of(condition, new IntegerConstant((int) distinct[1]));
 					} else {
-						return new Mask<>(condition, new DoubleConstant(distinct[1]));
+						return Mask.of(condition, new DoubleConstant(distinct[1]));
 					}
 				}
 			}
 
-			double initial = seq[0];
-			double delta = seq[1] - seq[0];
+			double initial = seq.doubleAt(0);
+			double delta = seq.doubleAt(1) - seq.doubleAt(0);
 			boolean isArithmetic = true;
-			for (int i = 2; i < seq.length; i++) {
-				if (seq[i] - seq[i - 1] != delta) {
+			for (int i = 2; i < seq.length(); i++) {
+				if (seq.doubleAt(i) - seq.doubleAt(i - 1) != delta) {
 					isArithmetic = false;
 					break;
 				}

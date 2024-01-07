@@ -32,9 +32,10 @@ public class ArrayItem<T> implements Plural<T> {
 	private IntFunction<T[]> generator;
 
 	public ArrayItem(T[] values, IntFunction<T[]> generator) {
+		this.len = values.length;
+
 		if (Stream.of(values).distinct().count() == 1) {
 			this.single = values[0];
-			this.len = values.length;
 		} else {
 			this.values = values;
 		}
@@ -42,13 +43,30 @@ public class ArrayItem<T> implements Plural<T> {
 		this.generator = generator;
 	}
 
+	public ArrayItem(T value, int len, IntFunction<T[]> generator) {
+		this.len = len;
+		this.single = value;
+		this.generator = generator;
+	}
+
 	@Override
 	public T valueAt(int pos) { return values == null ? single : values[pos]; }
 
+	public int intAt(int pos) { return ((Number) valueAt(pos)).intValue(); }
+
+	public double doubleAt(int pos) { return ((Number) valueAt(pos)).doubleValue(); }
+
+	protected T single() { return single; }
+
+	public Stream<T> stream() {
+		return IntStream.range(0, length()).mapToObj(this::valueAt);
+	}
 
 	public T[] toArray() {
 		return values == null ? IntStream.range(0, len).mapToObj(i -> single).toArray(generator) : values;
 	}
+
+	public int length() { return len; }
 
 	@Override
 	public int hashCode() {

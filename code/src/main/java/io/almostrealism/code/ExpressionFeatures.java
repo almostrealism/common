@@ -81,8 +81,8 @@ public interface ExpressionFeatures {
 		return new Equals(left, right);
 	}
 
-	default Conditional conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		return Conditional.create(condition, positive, negative);
+	default Expression conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		return Conditional.of(condition, positive, negative);
 	}
 
 	static ExpressionFeatures getInstance() {

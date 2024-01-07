@@ -16,21 +16,15 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
-import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.util.ArrayItem;
 
-public class KernelSequence extends ArrayItem<Number> {
-	public KernelSequence(Number[] values) {
-		super(values, Number[]::new);
-	}
+import java.util.OptionalInt;
 
-	public static KernelSequence of(Expression<?> exp, IndexValues values, int len) {
-		return new KernelSequence(values.apply(exp).sequence(new KernelIndex(), len));
-	}
+public interface SequenceGenerator {
+	OptionalInt upperBound(KernelStructureContext context);
 
-	public static KernelSequence of(Number[] values) {
-		return new KernelSequence(values);
-	}
+	Number value(IndexValues indexValues);
+
+	IndexSequence sequence(Index index, int len);
 }

@@ -16,12 +16,17 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
+	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
+
 	boolean enableNarrowMax = true;
 	boolean enableContextualCount = false;
 	int minCount = 1 << 8;
@@ -45,6 +50,13 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		ParallelProcessContext context = ParallelProcessContext.of(ctx, this);
 		children = children.stream().map(process -> process.optimize(context)).collect(Collectors.toList());
+
+		if (!explicitIsolationTargets.isEmpty()) {
+			return generate((List) children.stream()
+					.map(c -> explicitIsolationTargets.stream().map(p -> p.test(c))
+							.reduce(false, (a, b) -> a | b) ? c.isolate() : c)
+					.collect(Collectors.toList()));
+		}
 
 		int counts[] = children.stream().mapToInt(ParallelProcess::count).filter(v -> v != 0).distinct().toArray();
 		long cn = getCount();

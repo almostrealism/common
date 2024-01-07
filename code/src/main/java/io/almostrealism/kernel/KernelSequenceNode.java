@@ -17,7 +17,6 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.DefaultIndex;
 import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.KernelIndex;
@@ -34,14 +33,14 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 	private String index;
 	private KernelSequenceNode children[];
 
-	private KernelSequence sequence;
+	private IndexSequence sequence;
 
 	protected KernelSequenceNode(String index, KernelSequenceNode[] children) {
 		this.index = index;
 		this.children = children;
 	}
 
-	protected KernelSequenceNode(KernelSequence sequence) {
+	protected KernelSequenceNode(IndexSequence sequence) {
 		this.sequence = sequence;
 	}
 
@@ -58,7 +57,7 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 
 	public static KernelSequenceNode generateTree(Expression<?> exp, IndexValues values, Set<Index> indices, int len) {
 		if (indices.isEmpty()) {
-			return new KernelSequenceNode(KernelSequence.of(exp, values, len));
+			return new KernelSequenceNode(IndexSequence.of(exp, values, len));
 		}
 
 		Index index = indices.iterator().next();

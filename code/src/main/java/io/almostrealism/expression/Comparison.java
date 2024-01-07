@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.Objects;
@@ -36,22 +37,29 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	@Override
-	public Number[] sequence(Index index, int len) {
+	public Number value(IndexValues indexValues) {
+		return compare(getLeft().value(indexValues), getRight().value(indexValues)) ? 1 : 0;
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, int len) {
 		if (!getLeft().isKernelValue(new IndexValues()) || !getRight().isKernelValue(new IndexValues())) {
 			return super.sequence(index, len);
 		}
 
-		int seq[] = checkSingle(getLeft(), getRight(), len);
-		if (seq != null) return IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new);
+		if (index instanceof KernelIndex) {
+			int seq[] = checkSingle(getLeft(), getRight(), len);
+			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
 
-		seq = checkSingle(getRight(), getLeft(), len);
-		if (seq != null) return IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new);
+			seq = checkSingle(getRight(), getLeft(), len);
+			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+		}
 
-		Number l[] = getLeft().sequence(index, len);
-		Number r[] = getRight().sequence(index, len);
-		return IntStream.range(0, len)
-				.mapToObj(i -> compare(l[i], r[i]) ? Integer.valueOf(1) : Integer.valueOf(0))
-				.toArray(Number[]::new);
+		IndexSequence l = getLeft().sequence(index, len);
+		IndexSequence r = getRight().sequence(index, len);
+		return IndexSequence.of(IntStream.range(0, len)
+				.mapToObj(i -> compare(l.valueAt(i), r.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
+				.toArray(Number[]::new));
 	}
 
 	protected int[] checkSingle(Expression left, Expression right, int len) {
