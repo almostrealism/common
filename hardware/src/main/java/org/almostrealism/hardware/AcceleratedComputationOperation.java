@@ -262,7 +262,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-		if (verbose) {
+		if (verbose || KernelSeriesProvider.timing.getTotal() > 300) {
 			KernelSeriesProvider.timing.print();
 		}
 
