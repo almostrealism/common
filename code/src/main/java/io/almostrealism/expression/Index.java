@@ -16,11 +16,11 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.Sequence;
+import io.almostrealism.kernel.SequenceGenerator;
 
 import java.util.OptionalInt;
 
-public interface Index extends Sequence<Number> {
+public interface Index extends SequenceGenerator {
 	String getName();
 
 	OptionalInt getLimit();

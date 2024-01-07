@@ -158,8 +158,7 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		validateSeries(c);
 
 		Expression e = KernelSeriesMatcher.match(
-				Arrays.stream(c.sequence(new KernelIndex(), 18))
-						.mapToDouble(v -> v.doubleValue()).toArray(), true);
+				new KernelIndex(), c.sequence(new KernelIndex(), 18), true);
 		Assert.assertEquals("(kernel0) % (18)", e.getExpression(new LanguageOperationsStub()));
 	}
 
@@ -288,7 +287,7 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		int period = series.getPeriod().orElseThrow();
 		System.out.println("Reported Period: " + period);
 
-		Number[] values = exp.sequence(new KernelIndex(), period * 4);
+		Number[] values = exp.sequence(new KernelIndex(), period * 4).toArray();
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < period; j++) {

@@ -51,6 +51,10 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	@Override
 	public OptionalInt getLimit() { return OptionalInt.empty(); }
 
+	public int kernelIndex(int index) {
+		return index / childIndex.getLimit().getAsInt();
+	}
+
 	@Override
 	public OptionalInt upperBound(KernelStructureContext context) {
 		OptionalInt max = context.getKernelMaximum();
@@ -60,6 +64,12 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 		if (!limit.isPresent()) return OptionalInt.empty();
 
 		return OptionalInt.of(max.getAsInt() * limit.getAsInt() - 1);
+	}
+
+	@Override
+	public boolean isKernelValue(IndexValues values) {
+		if (values.containsIndex(getName())) return true;
+		return super.isKernelValue(values);
 	}
 
 	@Override

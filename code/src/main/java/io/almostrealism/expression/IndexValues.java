@@ -56,6 +56,16 @@ public class IndexValues {
 			kernelIndex = value;
 		} else {
 			values.put(idx.getName(), value);
+
+			if (idx instanceof KernelIndexChild) {
+				int ki = ((KernelIndexChild) idx).kernelIndex(value.intValue());
+
+				if (kernelIndex == null) {
+					kernelIndex = ki;
+				} else if (kernelIndex != ki) {
+					throw new IllegalArgumentException("Kernel index mismatch");
+				}
+			}
 		}
 
 		return this;

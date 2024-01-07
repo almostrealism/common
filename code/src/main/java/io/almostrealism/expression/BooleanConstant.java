@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Optional;
@@ -40,8 +41,8 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public Number[] sequence(Index index, int len) {
-		return IntStream.range(0, len).mapToObj(i -> value ? 1 : 0).toArray(Number[]::new);
+	public IndexSequence sequence(Index index, int len) {
+		return IndexSequence.of(value ? 1 : 0, len);
 	}
 
 	@Override

@@ -104,7 +104,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
-		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4)));
+		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
 		Assert.assertTrue(result.isKernelValue(new IndexValues()));
 
 		String simple = result.getSimplified(new NoOpKernelStructureContext(64)).getExpression(lang);

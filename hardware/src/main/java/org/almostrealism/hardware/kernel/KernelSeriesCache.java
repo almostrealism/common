@@ -21,6 +21,8 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Index;
+import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
@@ -57,7 +59,6 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	private Map<String, Integer> cache;
 	private Map<String, Expression> expressions;
-	private Base64.Encoder encoder = Base64.getEncoder();
 
 	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
 		if (cacheManager != null && count != cacheManager.getEntrySize()) {
@@ -95,19 +96,25 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
-	public Expression getSeries(double[] seq, boolean isInt, IntSupplier nodes) {
-		Expression result = KernelSeriesMatcher.match(seq, isInt);
+	public Expression getSeries(Expression index, IndexSequence seq, boolean isInt, IntSupplier nodes) {
+		Expression result = KernelSeriesMatcher.match(index, seq, isInt);
 		if (result != null || !enableCache || cache == null || nodes.getAsInt() < minNodeCount) {
 			return result;
 		}
 
-		double init = seq[0];
+		if (seq.length() != count) {
+			if (enableVerbose)
+				warn("Cannot cache sequence of length " + seq.length() + " (length != " + count + ")");
+			return result;
+		}
+
+		double init = seq.doubleAt(0);
 		if (init != 0.0) {
-			seq = DoubleStream.of(seq).map(d -> d - init).toArray();
+			seq = seq.mapDouble(d -> d - init);
 		}
 
 		r: try {
-			String sig = signature(seq);
+			String sig = seq.signature();
 
 			if (!cache.containsKey(sig)) {
 				if (cache.size() >= cacheManager.getMaxEntries()) {
@@ -116,12 +123,12 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 					break r;
 				}
 
-				int index = cache.size();
-				cache.put(sig, index);
-				cacheManager.setValue(index, seq);
+				int idx = cache.size();
+				cache.put(sig, idx);
+				cacheManager.setValue(idx, seq.doubleStream().toArray());
 			}
 
-			result = cacheManager.reference(cache.get(sig), kernel());
+			result = cacheManager.reference(cache.get(sig), index);
 		} finally {
 			if (result != null) {
 				result = result.add(new DoubleConstant(init));
@@ -130,19 +137,6 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 
 		return result;
-	}
-
-	public String signature(double[] values) {
-		long start = System.nanoTime();
-
-		try {
-			ByteBuffer byteBuffer = ByteBuffer.allocate(Double.SIZE / Byte.SIZE * values.length);
-			DoubleBuffer doubleBuffer = byteBuffer.asDoubleBuffer();
-			doubleBuffer.put(values);
-			return encoder.encodeToString(byteBuffer.array());
-		} finally {
-			KernelSeriesProvider.timing.addEntry("signature", System.nanoTime() - start);
-		}
 	}
 
 	@Override

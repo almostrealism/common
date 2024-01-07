@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -23,7 +24,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.OptionalInt;
 
 public class KernelIndex extends DefaultIndex {
-	private static Integer[] kernelSeq;
+	private static IndexSequence kernelSeq;
 
 	private int axis;
 
@@ -66,25 +67,33 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
-		return indexValues.getKernelIndex();
+	public Number value(IndexValues values) {
+		Number idx = values.getKernelIndex();
+		if (idx != null) return idx;
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	public Number[] sequence(Index index, int len) {
-		if (kernelSeq == null || kernelSeq.length < len) {
+	public IndexSequence sequence(Index index, int len) {
+		if (!(index instanceof KernelIndex)) {
+			return super.sequence(index, len);
+		}
+
+		if (kernelSeq == null || kernelSeq.length() < len) {
 			updateKernelSeq(len);
 		}
 
-		return processSeq(kernelSeq, len);
+		return kernelSeq.subset(len);
 	}
 
 	protected synchronized static void updateKernelSeq(int len) {
-		if (kernelSeq == null || kernelSeq.length < len) {
-			kernelSeq = new Integer[len];
+		if (kernelSeq == null || kernelSeq.length() < len) {
+			Number seq[] = new Integer[len];
 			for (int i = 0; i < len; i++) {
-				kernelSeq[i] = Integer.valueOf(i);
+				seq[i] = Integer.valueOf(i);
 			}
+
+			kernelSeq = IndexSequence.of(seq);
 		}
 	}
 }
