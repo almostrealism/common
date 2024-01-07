@@ -77,7 +77,7 @@ public class IndexValues {
 		}
 
 		if (kernelIndex != null) {
-			exp = exp.withKernel(kernelIndex);
+			exp = exp.withIndex(new KernelIndex(), kernelIndex);
 		}
 
 		return exp;

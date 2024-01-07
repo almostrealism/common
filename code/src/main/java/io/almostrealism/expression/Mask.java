@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@
 
 package io.almostrealism.expression;
 
+import java.util.Optional;
+
 public class Mask<T extends Number> extends Conditional<T> {
-	public Mask(Expression<Boolean> mask, Expression<T> value) {
+	protected Mask(Expression<Boolean> mask, Expression<T> value) {
 		super(value.getType(), mask, (Expression) value, (Expression) new IntegerConstant(0));
 	}
 
@@ -26,4 +28,18 @@ public class Mask<T extends Number> extends Conditional<T> {
 
 	@Override
 	public boolean isMasked() { return true; }
+
+	public static Expression<?> of(Expression<Boolean> mask, Expression<?> value) {
+		Optional<Boolean> b = mask.booleanValue();
+
+		if (b.isPresent()) {
+			if (b.get()) {
+				return value;
+			} else {
+				return new IntegerConstant(0);
+			}
+		} else {
+			return new Mask(mask, value);
+		}
+	}
 }

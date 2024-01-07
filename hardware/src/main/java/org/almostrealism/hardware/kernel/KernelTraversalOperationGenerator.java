@@ -90,7 +90,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 
 			TraversalOperation<?> operation = new TraversalOperation<>();
 			IntStream.range(0, count)
-					.mapToObj(i -> expression.withKernel(i).getSimplified())
+					.mapToObj(i -> expression.withIndex(new KernelIndex(), i).getSimplified())
 					.forEach(operation.getExpressions()::add);
 			operations.put(e, operation);
 

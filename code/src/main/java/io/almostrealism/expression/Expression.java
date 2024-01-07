@@ -50,20 +50,17 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ConsoleFeatures {
-	public static boolean enableKernelSeqCache = false;
+	public static boolean enableKernelSeqCache = true;
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
-	public static DistributionMetric distribution = Scope.console.distribution("expressionCounts");
-
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
 	private static LanguageOperations lang;
 	private static FrequencyCache<String, IndexSequence> kernelSeqCache;
-	private static int simplifyDepth;
 
 	static {
 		lang = new LanguageOperationsStub();
@@ -131,9 +128,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				.collect(Collectors.toList()));
 	}
 
-	public Expression<T> withKernel(int index) {
+	public Expression<T> withIndex(Index index, int value) {
+		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
+			return (Expression) new IntegerConstant(value);
+		}
+
 		return generate(getChildren().stream()
-				.map(e -> e.withKernel(index))
+				.map(e -> e.withIndex(index, value))
 				.collect(Collectors.toList()));
 	}
 
@@ -149,6 +150,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return KernelSeries.infinite();
 	}
 
+	@Override
 	public OptionalInt upperBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return i;
@@ -325,9 +327,9 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Equals eq(double operand) { return new Equals(this, new DoubleConstant(operand)); };
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
-	public Conditional conditional(Expression<?> positive, Expression<?> negative) {
+	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
-		return Conditional.create((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
+		return Conditional.of((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
 	}
 	public Greater greaterThan(Expression<?> operand) { return new Greater(this, operand); };
 	public Greater greaterThanOrEqual(Expression<?> operand) { return new Greater(this, operand, true); };
@@ -371,45 +373,40 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	@Override
 	public Expression<T> simplify(KernelStructureContext context) {
-		try {
-			simplifyDepth++;
-			KernelSeriesProvider provider = context.getSeriesProvider();
+		KernelSeriesProvider provider = context.getSeriesProvider();
 
-			if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
-				return this;
-			} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
-				return generate(getChildren().stream()
-						.map((Expression<?> expression) -> expression.simplify(context))
-						.collect(Collectors.toList())).populate(this);
-			}
-
-			Expression<?> simplified[] = new Expression[children.size()];
-
-			i: for (int i = 0; i < simplified.length; i++) {
-				simplified[i] = children.get(i);
-				simplified[i] = simplified[i].simplify(context);
-				if (simplified[i] instanceof Index) continue i;
-
-				Set<Index> indices = simplified[i].getIndices();
-				Index target = null;
-
-				if (!indices.isEmpty()) {
-					target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
-							.orElse(indices.stream().findFirst().orElse(null));
-				}
-
-				if (target == null || simplified[i].isKernelValue(new IndexValues().put(target, 0))) {
-					simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
-					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
-				}
-			}
-
-			Expression simple = generate(List.of(simplified)).populate(this);
-			simple.seriesProvider = provider;
-			return simple;
-		} finally {
-			simplifyDepth--;
+		if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
+			return this;
+		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
+			return generate(getChildren().stream()
+					.map((Expression<?> expression) -> expression.simplify(context))
+					.collect(Collectors.toList())).populate(this);
 		}
+
+		Expression<?> simplified[] = new Expression[children.size()];
+
+		i: for (int i = 0; i < simplified.length; i++) {
+			simplified[i] = children.get(i);
+			simplified[i] = simplified[i].simplify(context);
+			if (simplified[i] instanceof Index) continue i;
+
+			Set<Index> indices = simplified[i].getIndices();
+			Index target = null;
+
+			if (!indices.isEmpty()) {
+				target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
+						.orElse(indices.stream().findFirst().orElse(null));
+			}
+
+			if (target == null || simplified[i].isKernelValue(new IndexValues().put(target, 0))) {
+				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
+				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+			}
+		}
+
+		Expression simple = generate(List.of(simplified)).populate(this);
+		simple.seriesProvider = provider;
+		return simple;
 	}
 
 	public boolean isSeriesSimplificationTarget() { return true; }

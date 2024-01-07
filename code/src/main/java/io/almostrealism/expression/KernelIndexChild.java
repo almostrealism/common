@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.List;
 import java.util.OptionalInt;
 
 public class KernelIndexChild extends Sum<Integer> implements Index {
@@ -85,11 +84,6 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	public String getExpression(LanguageOperations lang) {
 		if (renderAlias) return getName();
 		return super.getExpression(lang);
-	}
-
-	@Override
-	public Expression<Integer> generate(List<Expression<?>> children) {
-		return this;
 	}
 
 	@Override

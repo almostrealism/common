@@ -56,9 +56,15 @@ public class KernelIndex extends DefaultIndex {
 	public boolean isKernelValue(IndexValues values) { return true; }
 
 	@Override
-	public Expression<Integer> withKernel(int index) {
-		if (axis != 0) throw new UnsupportedOperationException();
-		return new IntegerConstant(index);
+	public Expression<Integer> withIndex(Index index, int value) {
+		if (index instanceof KernelIndexChild) {
+			KernelIndexChild child = (KernelIndexChild) index;
+			return new IntegerConstant(child.kernelIndex(value));
+		}
+
+		if (!(index instanceof KernelIndex)) return this;
+		if (((KernelIndex) index).getKernelAxis() != getKernelAxis()) return this;
+		return new IntegerConstant(value);
 	}
 
 	@Override

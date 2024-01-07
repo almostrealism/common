@@ -17,9 +17,13 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -41,6 +45,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
@@ -286,7 +291,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 96;
+		int dim = 64;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -356,7 +361,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		} finally {
 			profile.print();
 			HardwareOperator.profile.print();
-			AcceleratedComputationOperation.printTimes();
+			AcceleratedComputationOperation.printTimes(true);
+			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
 		}
 	}
 
@@ -369,5 +375,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 //		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
+	}
+
+	private Predicate<Process> operationFilter(String functionName) {
+		return p -> p instanceof OperationAdapter &&
+				((OperationAdapter) p).getFunctionName().equals(functionName);
 	}
 }

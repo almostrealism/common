@@ -54,9 +54,9 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 									index.lessThan(new IntegerConstant(first + tot)));
 
 					if (isInt) {
-						return new Mask<>(condition, new IntegerConstant((int) distinct[1]));
+						return Mask.of(condition, new IntegerConstant((int) distinct[1]));
 					} else {
-						return new Mask<>(condition, new DoubleConstant(distinct[1]));
+						return Mask.of(condition, new DoubleConstant(distinct[1]));
 					}
 				}
 			}

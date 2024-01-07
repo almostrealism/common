@@ -80,7 +80,18 @@ public class Conditional<T extends Number> extends Expression<T> {
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
 
+		boolean replaceCondition = false;
 		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
+			int len = context.getSeriesProvider().getMaximumLength().orElse(0);
+			OptionalInt max = condition.getIndices().stream()
+					.mapToInt(id -> id.upperBound(context).orElse(Integer.MAX_VALUE))
+					.findFirst();
+			if (max.isPresent()) {
+				replaceCondition = max.getAsInt() < len;
+			}
+		}
+
+		if (replaceCondition) {
 			Expression<?> exp = context.getSeriesProvider().getSeries(condition);
 			Optional<Boolean> r = exp.booleanValue();
 
@@ -103,26 +114,26 @@ public class Conditional<T extends Number> extends Expression<T> {
 			}
 		}
 
-		return Conditional.create(condition, positive, negative);
+		return Conditional.of(condition, positive, negative);
 	}
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
-		return Conditional.create((Expression<Boolean>) children.get(0),
+		return Conditional.of((Expression<Boolean>) children.get(0),
 				(Expression<Double>) children.get(1),
 				(Expression<Double>) children.get(2));
 	}
 
-	public static Conditional create(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+	public static Expression of(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		OptionalDouble rd = negative.doubleValue();
 		if (rd.isPresent() && rd.getAsDouble() == 0.0) {
-			return new Mask(condition, positive);
+			return Mask.of(condition, positive);
 		}
 
 		OptionalDouble ld = positive.doubleValue();
 		if (ld.isPresent() && ld.getAsDouble() == 0.0) {
-			return new Mask(condition.not(), negative);
+			return Mask.of(condition.not(), negative);
 		}
 
 		return new Conditional(Double.class, condition, positive, negative);

@@ -262,9 +262,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-		if (Expression.distribution.getCount() > 0)
-			Expression.distribution.print();
-
 		if (verbose) {
 			KernelSeriesProvider.timing.print();
 		}

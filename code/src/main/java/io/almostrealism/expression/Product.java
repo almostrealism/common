@@ -24,6 +24,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -229,7 +230,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (mask == null) {
 			return simple;
 		} else {
-			return new Mask(mask.getMask(), simple);
+			return Mask.of(mask.getMask(), simple);
 		}
 	}
 
@@ -239,6 +240,18 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 		if (Stream.of(values).anyMatch(e -> e.intValue().orElse(-1) == 0)) {
 			return new IntegerConstant(0);
+		}
+
+		Optional<Mask> mask = Stream.of(values)
+				.filter(e -> e instanceof Mask)
+				.map(e -> (Mask) e)
+				.findFirst();
+
+		if (mask.isPresent()) {
+			List<Expression> operands = Stream.of(values)
+					.map(e -> e == mask.get() ? mask.get().getMaskedValue() : e)
+					.collect(Collectors.toList());
+			return Mask.of(mask.get().getMask(), Product.of(operands.toArray(new Expression[0])));
 		}
 
 		List<Expression> operands = Stream.of(values)
