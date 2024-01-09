@@ -96,7 +96,7 @@ public class GradientDescentTests implements CodeFeatures {
 		SequentialBlock block = new SequentialBlock(shape(2));
 		block.add(dense);
 
-		Model model = new Model(shape(2), 1e-3);
+		Model model = new Model(shape(2), 0.1);
 		model.addBlock(block);
 
 		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
@@ -104,7 +104,7 @@ public class GradientDescentTests implements CodeFeatures {
 
 		CompiledModel runner = model.compile();
 
-		int epochs = 200;
+		int epochs = 300;
 		int steps = 100;
 
 		double updatedLoss = -1.0;
@@ -112,7 +112,7 @@ public class GradientDescentTests implements CodeFeatures {
 		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear2.csv"), steps)) {
 			for (int i = 0; i < epochs * steps; i++) {
 				PackedCollection<?> input = new PackedCollection<>(shape(2));
-				input.fill(pos -> (0.5 + 0.5 * Math.random()));
+				input.fill(pos -> (0.5 * Math.random() - 0.25));
 
 				PackedCollection<?> valid = func2.apply(input);
 				PackedCollection<?> out = runner.forward(input);
@@ -259,7 +259,7 @@ public class GradientDescentTests implements CodeFeatures {
 		block.add(dense);
 		block.add(dense(hiddenDim, outLen));
 
-		Model model = new Model(shape(inChannels), 1e-3);
+		Model model = new Model(shape(inChannels), 1e-2);
 		model.addBlock(block);
 
 		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
@@ -268,7 +268,7 @@ public class GradientDescentTests implements CodeFeatures {
 		CompiledModel runner = model.compile();
 
 		int epochs = 250;
-		int steps = 40;
+		int steps = 60;
 
 		double originalLoss = -1.0;
 		double updatedLoss = -1.0;
