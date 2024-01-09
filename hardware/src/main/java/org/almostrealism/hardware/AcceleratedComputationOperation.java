@@ -89,6 +89,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
+	public boolean isFixedCount() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).isFixedCount() : true;
+	}
+
+	@Override
 	public String getName() {
 		if (getComputation() instanceof Named) {
 			return ((Named) getComputation()).getName();

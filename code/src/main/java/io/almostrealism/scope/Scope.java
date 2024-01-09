@@ -432,9 +432,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	 */
 	public void write(CodePrintWriter w) {
 		w.renderMetadata(getMetadata());
-		for (KernelIndexChild c : getKernelChildren()) {
-			StaticReference ref = new StaticReference(Integer.class, c.getName());
-			w.println(new ExpressionAssignment(true, ref, c));
+
+		if (getKernelChildren() != null) {
+			for (KernelIndexChild c : getKernelChildren()) {
+				StaticReference ref = new StaticReference(Integer.class, c.getName());
+				w.println(new ExpressionAssignment(true, ref, c));
+			}
 		}
 
 		for (Method m : getMethods()) { w.println(m); }

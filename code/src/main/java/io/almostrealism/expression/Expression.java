@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ConsoleFeatures {
-	public static boolean enableKernelSeqCache = true;
+	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
@@ -388,7 +388,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		i: for (int i = 0; i < simplified.length; i++) {
 			simplified[i] = children.get(i);
 			simplified[i] = simplified[i].simplify(context);
-			if (simplified[i] instanceof Index) continue i;
+			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
 
 			Set<Index> indices = simplified[i].getIndices();
 			Index target = null;

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;

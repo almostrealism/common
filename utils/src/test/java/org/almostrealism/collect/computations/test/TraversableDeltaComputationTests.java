@@ -239,42 +239,32 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmul3() {
-		boolean enableArgumentKernelSize = ProcessDetailsFactory.enableArgumentKernelSize;
+		int count = 1;
+		int dim = 2;
 
-		try {
-			ProcessDetailsFactory.enableArgumentKernelSize = false;
+		PackedCollection<?> v = pack(IntStream.range(2, 2 + count * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(count, dim).traverse();
+		PackedCollection<?> w = pack(4.0, -3.0, 2.0, 1.5)
+				.reshape(shape(dim, dim));
 
-			int count = 1;
-			int dim = 2;
-
-			PackedCollection<?> v = pack(IntStream.range(2, 2 + count * dim).boxed()
-					.mapToDouble(Double::valueOf).toArray())
-					.reshape(count, dim).traverse();
-			PackedCollection<?> w = pack(4.0, -3.0, 2.0, 1.5)
-					.reshape(shape(dim, dim));
-
-			// x0 * w0 + x1 * w1,  x0 * w2 + x1 * w3
-			// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> c = matmul(p(w), x(dim));
 
 			// y = f(x)
 			Evaluable<PackedCollection<?>> y = c.get();
-			PackedCollection<?> out = y.evaluate(v);
+			PackedCollection<?> out = y.evaluate(v.traverse());
 			System.out.println(Arrays.toString(out.toArray(0, count * dim)));
 			assertEquals(8.5, out.toDouble(1));
 
-			HardwareOperator.verboseLog(() -> {
-				// dy/dw = x0, x1, 0, 0, 0, 0, x0, x1
-				Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
-				PackedCollection<?> dout = dy.evaluate(v);
-				System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
-				Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
-				assertEquals(0.0, dout.toDouble(5));
-				assertEquals(3.0, dout.toDouble(7));
-			});
-		} finally {
-			ProcessDetailsFactory.enableArgumentKernelSize = enableArgumentKernelSize;
-		}
+			// dy/dw = x0, x1, 0, 0, 0, 0, x0, x1
+			Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
+			PackedCollection<?> dout = dy.evaluate(v.traverse());
+			System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+			Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
+			assertEquals(0.0, dout.toDouble(5));
+			assertEquals(3.0, dout.toDouble(7));
+		});
 	}
 
 	@Test
@@ -384,12 +374,14 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		c.delta(p(w)).get().into(sparse.traverse()).evaluate();
 		print(outSize, weightSize, sparse);
 
-		c.delta(p(w))
-				.reshape(outSize, weightSize)
-				.traverse(1)
-				.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
-				.enumerate(1, 1)
-				.get().into(sparse.each()).evaluate();
+		HardwareOperator.verboseLog(() -> {
+					c.delta(p(w))
+							.reshape(outSize, weightSize)
+							.traverse(1)
+							.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
+							.enumerate(1, 1)
+							.get().into(sparse.each()).evaluate();
+				});
 		print(outSize, weightSize, sparse);
 
 		Supplier<Runnable> cda;
@@ -400,7 +392,9 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 			cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		}
 
-		cda.get().run();
+		HardwareOperator.verboseLog(() -> {
+					cda.get().run();
+				});
 		System.out.println(w.toArrayString());
 		assertEquals(999.8, w.toDouble(0));
 		assertEquals(999.7, w.toDouble(1));

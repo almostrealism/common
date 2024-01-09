@@ -149,7 +149,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
 		}
 
-		List<Expression<?>> children = super.simplify(context).flatten().stream().collect(Collectors.toList());
+		Expression<?> flat = super.simplify(context);
+		if (!(flat instanceof Product)) return flat;
+
+		List<Expression<?>> children = flat.flatten().stream().collect(Collectors.toList());
 
 		Mask mask = children.stream()
 				.filter(e -> e instanceof Mask)
@@ -258,6 +261,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.filter(e -> e.intValue().orElse(-1) != 1)
 				.collect(Collectors.toList());
 
+		if (operands.isEmpty()) return new IntegerConstant(1);
 		if (operands.size() == 1) return operands.get(0);
 		return new Product(operands);
 	}
