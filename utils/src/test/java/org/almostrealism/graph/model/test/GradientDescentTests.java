@@ -217,7 +217,7 @@ public class GradientDescentTests implements CodeFeatures {
 		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear4.csv"), steps)) {
 			for (int i = 0; i < epochs * steps; i++) {
 				PackedCollection<?> input = new PackedCollection<>(shape(3));
-				input.fill(pos -> 0.5 + 2 * Math.random());
+				input.fill(pos -> 0.5 + 1.5 * Math.random());
 
 				PackedCollection<?> valid = func3.apply(input);
 				PackedCollection<?> out = runner.forward(input);

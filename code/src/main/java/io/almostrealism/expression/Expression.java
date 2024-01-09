@@ -28,11 +28,9 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
