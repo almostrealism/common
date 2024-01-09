@@ -120,7 +120,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression simplify(KernelStructureContext context) {
-		List<Expression<?>> children = super.simplify(context).flatten().stream()
+		Expression<?> simple = super.simplify(context);
+		if (!(simple instanceof Sum)) return simple;
+
+		List<Expression<?>> children = simple.flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
 				.collect(Collectors.toList());
 

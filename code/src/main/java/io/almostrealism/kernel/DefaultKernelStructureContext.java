@@ -16,27 +16,27 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Expression;
-
 import java.util.OptionalInt;
 
-public interface KernelStructureContext {
-	OptionalInt getKernelMaximum();
+public class DefaultKernelStructureContext implements KernelStructureContext {
+	private int count;
 
-	KernelSeriesProvider getSeriesProvider();
-	KernelTraversalProvider getTraversalProvider();
-
-	default Expression<?> simplify(Expression<?> expression) {
-		Expression<?> e = expression.simplify(this);
-		if (getSeriesProvider() != null) {
-			e = getSeriesProvider().getSeries(e);
-		}
-		return e;
+	public DefaultKernelStructureContext(int count) {
+		this.count = count;
 	}
 
-	default NoOpKernelStructureContext asNoOp() {
-		return getKernelMaximum().stream()
-				.mapToObj(NoOpKernelStructureContext::new)
-				.findFirst().orElse(new NoOpKernelStructureContext());
+	@Override
+	public OptionalInt getKernelMaximum() {
+		return OptionalInt.of(count);
+	}
+
+	@Override
+	public KernelSeriesProvider getSeriesProvider() {
+		return KernelSeriesMatcher.defaultProvider(count);
+	}
+
+	@Override
+	public KernelTraversalProvider getTraversalProvider() {
+		return null;
 	}
 }

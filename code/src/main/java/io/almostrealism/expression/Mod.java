@@ -99,9 +99,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (input.intValue().isPresent()) {
 			if (input.intValue().getAsInt() == 0) {
 				return new IntegerConstant(0);
+			} else if (input.intValue().getAsInt() == 1 && !fp) {
+				return mod.intValue().orElse(-1) == 1 ? new IntegerConstant(0) : new IntegerConstant(1);
 			} else if (mod.intValue().isPresent() && !fp) {
 				if (mod.intValue().getAsInt() == 1) {
-					return input;
+					return new IntegerConstant(0);
 				} else if (mod.intValue().getAsInt() != 0) {
 					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -94,7 +94,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				System.out.println("TestFeatures: Running kernel evaluation...");
 				Producer<PackedCollection<?>> p = supply.get();
 				PackedCollection<?> output = p.get().evaluate();
@@ -111,7 +111,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (operation) {
 			outputRef.get().clear();
 
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 
 				System.out.println("TestFeatures: Running kernel operation...");
@@ -126,7 +126,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 

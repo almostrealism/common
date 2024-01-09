@@ -111,8 +111,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
-		if (children.isEmpty())
-			return getChildren().iterator().next(); // TODO  This is wrong
+		if (children.isEmpty()) return new IntegerConstant(1);
 		if (children.size() == 1) return children.get(0);
 
 		if (children.get(0).intValue().isPresent()) {

@@ -23,6 +23,7 @@ import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mod;
+import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.junit.Assert;
@@ -107,7 +108,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
 		Assert.assertTrue(result.isKernelValue(new IndexValues()));
 
-		String simple = result.getSimplified(new NoOpKernelStructureContext(64)).getExpression(lang);
+		String simple = new DefaultKernelStructureContext(64).simplify(result).getExpression(lang);
 		System.out.println(simple);
 		Assert.assertEquals("0", simple);
 	}

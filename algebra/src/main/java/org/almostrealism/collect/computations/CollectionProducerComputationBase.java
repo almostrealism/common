@@ -111,12 +111,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public boolean isFixedCount() {
-		if (!super.isFixedCount()) return false;
-		return getShape().getTotalSize() != 1;
-	}
-
-	@Override
 	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
 		return new CollectionProducerComputation.IsolatedProcess<>(this);
 	}

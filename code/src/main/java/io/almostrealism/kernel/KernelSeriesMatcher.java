@@ -24,6 +24,9 @@ import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 
+import java.util.OptionalInt;
+import java.util.function.IntSupplier;
+
 public class KernelSeriesMatcher implements ExpressionFeatures {
 
 	public static Expression match(Expression index, IndexSequence seq, boolean isInt) {
@@ -48,11 +51,17 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 				long cont = seq.doubleStream().skip(first).limit(tot).distinct().count();
 
-				if (cont == 1) {
-					Expression<Boolean> condition =
+				Expression<Boolean> condition = null;
+
+				if (tot == 1) {
+					condition = index.eq(new IntegerConstant(first));
+				} else if (cont == 1) {
+					condition =
 							index.greaterThanOrEqual(new IntegerConstant(first)).and(
 									index.lessThan(new IntegerConstant(first + tot)));
+				}
 
+				if (condition != null) {
 					if (isInt) {
 						return Mask.of(condition, new IntegerConstant((int) distinct[1]));
 					} else {
@@ -89,5 +98,19 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		} finally {
 			KernelSeriesProvider.timing.addEntry("match", System.nanoTime() - start);
 		}
+	}
+
+	public static KernelSeriesProvider defaultProvider(int count) {
+		return new KernelSeriesProvider() {
+			@Override
+			public Expression getSeries(Expression index, IndexSequence seq, boolean isInt, IntSupplier nodes) {
+				return match(index, seq, isInt);
+			}
+
+			@Override
+			public OptionalInt getMaximumLength() {
+				return OptionalInt.of(count);
+			}
+		};
 	}
 }
