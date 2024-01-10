@@ -36,6 +36,12 @@ public class Loop extends OperationComputationAdapter<Void> {
 	public Loop(Computation<Void> atom, int iterations) {
 		this.atom = atom;
 		this.iterations = iterations;
+		init();
+	}
+
+	@Override
+	public String getName() {
+		return "Loop x" + iterations;
 	}
 
 	@Override
@@ -61,7 +67,7 @@ public class Loop extends OperationComputationAdapter<Void> {
 		atomScope.convertArgumentsToRequiredScopes();
 
 		HybridScope<Void> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Loop x" + iterations));
+		scope.setMetadata(getMetadata());
 		scope.getRequiredScopes().add(atomScope);
 
 		String i = getVariablePrefix() + "_i";

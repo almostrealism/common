@@ -513,12 +513,16 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		};
 	}
 
-	public static <T extends Sortable> void sortArguments(List<T> arguments) {
+	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
 		if (arguments != null) {
-			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v).map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
-			// c = c.thenComparing(v -> v == null ? "" : v.getName());
+			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
+					.map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
+			c = c.thenComparing(v -> v == null ? "" : v.getName());
 			arguments.sort(c);
+			return true;
 		}
+
+		return false;
 	}
 
 	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> args) {

@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableProducerUpdate = false;
+
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -96,7 +98,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (getDelegate() != null) {
 			Expression<Double> v = getDelegate().getValueRelative(index + getDelegateOffset());
 			if (v instanceof InstanceReference) {
-				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+				if (enableProducerUpdate) ((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			}
 			return v;
 		}
@@ -118,7 +120,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public InstanceReference<T> referenceRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
 			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
-			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+			if (enableProducerUpdate) ((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
 		} else {
 			return reference(names.getArrayPosition(getLanguage(), this, pos, 0), false);
@@ -142,7 +144,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
 			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()), false);
-			ref.getReferent().setOriginalProducer(getOriginalProducer());
+			if (enableProducerUpdate) ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
 	}

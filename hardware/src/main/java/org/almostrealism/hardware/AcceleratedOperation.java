@@ -250,13 +250,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			throw new UnsupportedOperationException();
 		}
 
-		if (detailsFactory == null) {
-			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputVariable(), created,
-					getComputeContext().getDataContext().getKernelMemoryProvider(),
-					this::createAggregatedInput);
-		}
-
 		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);

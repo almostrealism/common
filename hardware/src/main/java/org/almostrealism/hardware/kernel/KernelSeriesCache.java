@@ -29,6 +29,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataCacheManager;
@@ -49,6 +50,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
 	public static int maxCount = ParallelProcess.maxCount << 6;
+	public static int defaultMaxExpressions = 16;
 	public static int defaultMaxEntries = 16;
 	public static int minNodeCount = 128;
 
@@ -58,7 +60,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	private LanguageOperations lang;
 
 	private Map<String, Integer> cache;
-	private Map<String, Expression> expressions;
+	private FrequencyCache<String, Expression> expressions;
 
 	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
 		if (cacheManager != null && count != cacheManager.getEntrySize()) {
@@ -70,7 +72,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.cacheManager = cacheManager;
 		this.lang = new LanguageOperationsStub();
 		this.cache = cacheManager == null ? null : new HashMap<>();
-		this.expressions = new HashMap<>();
+		this.expressions = new FrequencyCache<>(defaultMaxExpressions, 0.7);
 	}
 
 	public boolean isComputable() { return fixed && count <= maxCount; }
