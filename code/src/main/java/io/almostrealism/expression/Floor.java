@@ -25,7 +25,7 @@ import java.util.OptionalInt;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
-		super(Double.class, null, input);
+		super(Double.class, input);
 	}
 
 	@Override

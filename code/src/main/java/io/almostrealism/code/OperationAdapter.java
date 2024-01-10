@@ -100,8 +100,7 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 
 	public synchronized List<Argument<? extends T>> getArguments() {
 		if (!sortedArguments) {
-			Scope.sortArguments(arguments);
-			sortedArguments = true;
+			sortedArguments = Scope.sortArguments(arguments);
 		}
 
 		return arguments;

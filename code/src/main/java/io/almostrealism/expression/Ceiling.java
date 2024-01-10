@@ -25,7 +25,7 @@ import java.util.OptionalInt;
 
 public class Ceiling extends Expression<Double> {
 	public Ceiling(Expression<Double> input) {
-		super(Double.class, null, input);
+		super(Double.class, input);
 	}
 
 	@Override

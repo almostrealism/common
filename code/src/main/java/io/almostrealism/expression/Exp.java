@@ -24,7 +24,7 @@ import java.util.OptionalInt;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
-		super(Double.class, null, input);
+		super(Double.class, input);
 	}
 
 	@Override

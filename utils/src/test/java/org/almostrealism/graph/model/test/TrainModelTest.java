@@ -292,9 +292,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		if (skipLongTests) return;
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		NativeCompiler.enableInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
 
 		int dim = 32;
 		int filters = 8;

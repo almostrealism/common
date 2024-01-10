@@ -69,8 +69,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	private Class<T> type;
-	private List<Variable<?, ?>> dependencies = new ArrayList<>();
-	private List<Expression<?>> children = new ArrayList<>();
+	private List<Expression<?>> children;
+	private Variable<T, ?> referent;
 
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
@@ -87,8 +87,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		setType(type);
 		this.children = List.of(children);
-		this.dependencies = new ArrayList<>();
-		this.dependencies.addAll(dependencies(children));
 	}
 
 	public Expression(Class<T> type, Variable<T, ?> referent, Expression<?> argument) {
@@ -97,10 +95,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		}
 
 		setType(type);
+		this.referent = referent;
 		this.children = argument == null ? Collections.emptyList() : List.of(argument);
-		this.dependencies = new ArrayList<>();
-		this.dependencies.add(referent);
-		if (argument != null) this.dependencies.addAll(argument.getDependencies());
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
@@ -261,7 +257,12 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return found;
 	}
 
-	public List<Variable<?, ?>> getDependencies() { return dependencies; }
+	public List<Variable<?, ?>> getDependencies() {
+		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
+		if (referent != null) dependencies.add(referent);
+		dependencies.addAll(dependencies(getChildren().toArray(new Expression[0])));
+		return dependencies;
+	}
 
 	public int getArraySize() { return -1; }
 
@@ -350,7 +351,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	@Override
 	public List<Expression<?>> getChildren() {
-		return children;
+		return children == null ? Collections.emptyList() : children;
 	}
 
 	@Override
@@ -381,7 +382,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 					.collect(Collectors.toList())).populate(this);
 		}
 
-		Expression<?> simplified[] = new Expression[children.size()];
+		Expression<?> simplified[] = new Expression[getChildren().size()];
 
 		i: for (int i = 0; i < simplified.length; i++) {
 			simplified[i] = children.get(i);
@@ -418,7 +419,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		LanguageOperationsStub lang = new LanguageOperationsStub();
 		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
-		if (!Objects.equals(dependencies, v.getDependencies())) return false;
+		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
 
 		return true;
 	}
