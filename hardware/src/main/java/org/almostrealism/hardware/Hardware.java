@@ -41,7 +41,6 @@ import java.util.concurrent.Callable;
 
 public final class Hardware {
 	public static boolean enableVerbose = false;
-	public static boolean enableKernelOps;
 
 	public static Console console = Console.root().child();
 

@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
-	public static boolean enableRelative = !Hardware.enableKernelOps;
+	public static boolean enableRelative = false;
 
 	private final int memLength;
 

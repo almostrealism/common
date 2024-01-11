@@ -84,7 +84,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, Hardware.enableKernelOps));
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
 	}
 
 	@Override
