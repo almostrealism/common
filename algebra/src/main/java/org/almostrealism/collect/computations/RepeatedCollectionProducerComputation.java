@@ -104,7 +104,9 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 			scope.getStatements().add(out.assign(val));
 		}
 
-		Scope<T> body = new Scope<>(getFunctionName() + "_body");
+		OperationMetadata bodyMetadata = new OperationMetadata(getFunctionName() + "_body", "Repeated (Body)");
+
+		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));

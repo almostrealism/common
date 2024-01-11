@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -141,9 +141,8 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 	 * of accelerated operations (those compiling a Computation vs those that
 	 * simply execute code). There seems to be no reason to deal with this now,
 	 * as there will eventually be no need for accelerated operations which
-	 * are not Computation based (especially considering the introduction of
-	 * ExplicitScope), so when that process is over one of the two roles this
-	 * methods plays wont exist and it will be clear what it is for.
+	 * are not Computation based, so when that process is over one of the two
+	 * roles this methods plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
 
@@ -172,40 +171,15 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 
 	public void addVariable(ExpressionAssignment<?> v) {
 		variables.add(v);
-//		List<Variable<?, ?>> existing = variables.computeIfAbsent(v.getProducer(), k -> new ArrayList<>());
-//
-//		if (!variableNames.contains(v.getName())) {
-//			variableNames.add(v.getName());
-//
-//			if (!existing.contains(v)) existing.add(v);
-//			if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
-//		} else if (containsVariable(v)) {
-//			if (!existing.contains(v)) {
-//				System.out.println("Variable name was already used with a different producer");
-//			}
-//		} else {
-//			System.out.println("WARN: Variable name was reused");
-//		}
 	}
 
 	public boolean containsVariable(ExpressionAssignment<?> v) {
 		return getVariables().contains(v);
 	}
 
-	public List<ExpressionAssignment<?>> getVariables() {
-//		return variableOrder.stream()
-//				.map(variables::get)
-//				.flatMap(List::stream)
-//				.collect(Collectors.toList());
-		return variables;
-	}
+	public List<ExpressionAssignment<?>> getVariables() { return variables; }
 
-	public void purgeVariables() {
-		this.variables = new ArrayList<>();
-//		this.variables = new HashMap<>();
-//		this.variableOrder = new ArrayList<>();
-//		this.variableNames = new ArrayList<>();
-	}
+	public void purgeVariables() { this.variables = new ArrayList<>(); }
 
 	@Deprecated
 	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }

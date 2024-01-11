@@ -54,7 +54,9 @@ public final class Hardware {
 	static {
 		boolean aarch = SystemUtils.isAarch64();
 
-		enableKernelOps = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true);
+		if (!SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true)) {
+			throw new UnsupportedOperationException();
+		}
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");

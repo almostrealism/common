@@ -63,7 +63,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		setName(name);
 		setPhysicalScope(scope);
 		setExpression(expression);
-		setOriginalProducer(producer);
+		setProducer(producer);
 	}
 
 	@Override
@@ -109,11 +109,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		return new IntegerConstant(getExpression().getArraySize());
 	}
 
-	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
-		this.producer = producer;
-	}
-
-	protected void setOriginalProducer(Supplier<Evaluable<? extends T>> producer) {
+	private void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.originalProducer = producer;
 
 		w: while (producer instanceof ProducerWithRank || producer instanceof Generated) {
@@ -134,7 +130,11 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 			throw new IllegalArgumentException("Provider is Evaluable, it does not supply an Evaluable");
 		}
 
-		setProducer(producer);
+		if (producer != originalProducer) {
+			warn("Producer for " + getName() + " changed from " + originalProducer + " to " + producer);
+		}
+
+		this.producer = producer;
 	}
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
