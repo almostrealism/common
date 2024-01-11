@@ -6,13 +6,13 @@
 
 	<groupId>org.almostrealism</groupId>
 	<artifactId>ar-ml-script</artifactId>
-	<version>0.60.1</version>
+	<version>0.60</version>
 
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-ml</artifactId>
-			<version>0.60.1</version>
+			<version>0.60</version>
 		</dependency>
 
 		<dependency>

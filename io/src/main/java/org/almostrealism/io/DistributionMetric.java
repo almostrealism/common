@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,17 +21,28 @@ import java.util.Map;
 
 public class DistributionMetric extends MetricBase {
 	private double scale;
+	private double threshold;
 
 	public DistributionMetric(String name, double scale) {
 		super(name);
 		this.scale = scale;
 	}
 
+	public double getThreshold() { return threshold; }
+
+	public void setThreshold(double threshold) { this.threshold = threshold; }
+
 	public void addEntry(long value) {
 		addEntry(null, value);
 	}
 
 	public <T> void addEntry(T entry, long value) {
+		double v = value / scale;
+
+		if (threshold > 0 && v > threshold) {
+			throw new RuntimeException();
+		}
+
 		addEntry(entry, value / scale);
 	}
 
@@ -51,15 +62,12 @@ public class DistributionMetric extends MetricBase {
 
 		builder.append(":\n");
 
-//		String form = "\t%s: %d [%s tot | %s avg] %d%%\n";
 		String form = "\t%s: %d | %d%%\n";
 
 		getEntries().entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
 					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
-//									entry.getValue().longValue(),
-//									entry.getValue() / getCounts().get(entry.getKey())),
 							(int) (100 * entry.getValue() / all)));
 				});
 
