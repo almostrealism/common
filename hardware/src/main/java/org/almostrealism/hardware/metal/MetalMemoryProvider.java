@@ -18,9 +18,12 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
@@ -30,7 +33,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MetalMemoryProvider implements MemoryProvider<RAM> {
+public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
@@ -62,8 +65,8 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public MetalMemory allocate(int size) {
-		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
-			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
+		if (enableLargeAllocationLogging && size > (20 * 1024 * 1024 + 2)) {
+			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
 		MetalMemory mem = new MetalMemory(this, buffer(size), numberSize * (long) size);
@@ -223,4 +226,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 		// available.forEach(mem -> deallocate(0, mem));
 		allocated = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

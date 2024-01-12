@@ -35,6 +35,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataCacheManager;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
@@ -47,7 +48,7 @@ import java.util.function.IntSupplier;
 import java.util.stream.DoubleStream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
-	public static boolean enableCache = true;
+	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
 	public static boolean enableVerbose = false;
 	public static int maxCount = ParallelProcess.maxCount << 6;
 	public static int defaultMaxExpressions = 16;
