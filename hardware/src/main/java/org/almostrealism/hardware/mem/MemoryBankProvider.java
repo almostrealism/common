@@ -21,14 +21,19 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
 public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>> {
-	private IntFunction<MemoryBank<T>> supplier;
+	private BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier;
 	private MemoryBank<T> last;
 	private int lastSize;
 
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
+		this((v, i) -> supplier.apply(i));
+	}
+
+	public MemoryBankProvider(BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier) {
 		this.supplier = supplier;
 	}
 
@@ -40,7 +45,7 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		if (Hardware.enableVerbose)
 			System.out.println("MemoryBankProvider: Creating a new MemoryBank with size " + size);
 
-		last = supplier.apply(size);
+		last = supplier.apply(last, size);
 		lastSize = size;
 		return last;
 	}

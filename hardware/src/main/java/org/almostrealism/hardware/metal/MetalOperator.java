@@ -44,9 +44,6 @@ public class MetalOperator extends HardwareOperator {
 	private final int argCount;
 
 	private MTLComputePipelineState kernel;
-	private MTLBuffer offset;
-	private MTLBuffer size;
-	private MTLBuffer dim0;
 
 	public MetalOperator(MetalComputeContext context, MetalProgram program, String name, int argCount) {
 		this.context = context;
@@ -112,9 +109,6 @@ public class MetalOperator extends HardwareOperator {
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
 			kernel = prog.newComputePipelineState();
-			offset = prog.getDevice().newIntBuffer32(argCount);
-			size = prog.getDevice().newIntBuffer32(argCount);
-			dim0 = prog.getDevice().newIntBuffer32(argCount);
 		}
 
 		long id = totalInvocations++;
@@ -126,9 +120,13 @@ public class MetalOperator extends HardwareOperator {
 		if (dependsOn != null) dependsOn.waitFor();
 
 		MemoryData data[] = prepareArguments(argCount, args);
+		if (data.length > MetalCommandRunner.MAX_ARGS) {
+			throw new UnsupportedOperationException();
+		}
+
 		int dimMasks[] = computeDimensionMasks(data);
 
-		Future<?> run = context.getCommandRunner().submit((queue) -> {
+		Future<?> run = context.getCommandRunner().submit((offset, size, dim0, queue) -> {
 			recordDuration(() -> {
 				int index = 0;
 				long totalSize = 0;

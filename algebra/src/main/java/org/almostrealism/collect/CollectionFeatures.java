@@ -139,7 +139,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(double... values) {
-		PackedCollection<T> c = new PackedCollection<>(values.length);
+		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
 		c.setMem(0, values);
 		return (CollectionProducerComputation<T>) c(c);
 	}

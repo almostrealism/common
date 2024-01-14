@@ -178,7 +178,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
-		MemoryProvider<? extends Memory> provider = null;
+		DataContext<MemoryData> sharedMemoryCtx = null;
 
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
@@ -217,16 +217,21 @@ public final class Hardware {
 			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
-			if (KernelPreferences.enableSharedMemory && provider == null) {
-				if (ctx instanceof MetalDataContext) {
-					provider = ((MetalDataContext) ctx).getMemoryProvider();
-				} else if (ctx instanceof CLDataContext) {
-					provider = ((CLDataContext) ctx).getMemoryProvider();
-				}
+			if (KernelPreferences.enableSharedMemory && sharedMemoryCtx == null) {
+				sharedMemoryCtx = ctx;
 			}
 
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
+		}
+
+		MemoryProvider<? extends Memory> provider = null;
+		if (sharedMemoryCtx != null) {
+			if (sharedMemoryCtx instanceof MetalDataContext) {
+				provider = ((MetalDataContext) sharedMemoryCtx).getMemoryProvider();
+			} else if (sharedMemoryCtx instanceof CLDataContext) {
+				provider = ((CLDataContext) sharedMemoryCtx).getMemoryProvider();
+			}
 		}
 
 		if (provider == null && nioMemory != null) {
@@ -237,6 +242,7 @@ public final class Hardware {
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof NativeDataContext) {
 					System.out.println("Hardware[" + c.getName() + "]: Enabling shared memory via " + provider);
+					((NativeDataContext) c).setDelegate(sharedMemoryCtx);
 					((NativeDataContext) c).setMemoryProvider(provider);
 				}
 			}
@@ -330,7 +336,7 @@ public final class Hardware {
 		try {
 			if (type == ComputeRequirement.MTL) {
 				// TODO  This workaround should not be required
-				return 0;
+				// return 0;
 			}
 
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));

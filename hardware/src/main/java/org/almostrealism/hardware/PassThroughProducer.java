@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,15 +35,13 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PassThroughProducer<T extends MemoryData>
-		extends ProducerComputationBase<T, T>
-		implements ProducerArgumentReference,
-		MemoryDataComputation<T>,
-		TraversableExpression<Double>,
-		Shape<PassThroughProducer<T>>,
-		ComputerFeatures  {
+public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
+		implements ProducerArgumentReference, MemoryDataComputation<T>,
+					TraversableExpression<Double>, Shape<PassThroughProducer<T>>,
+					ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
 
@@ -60,7 +58,7 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	private PassThroughProducer() {
-		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null)));
+		this.setInputs(Arrays.asList(new MemoryDataDestination(this, (IntFunction<MemoryBank>) null)));
 		init();
 	}
 

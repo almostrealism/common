@@ -36,7 +36,7 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLCommandQueue newCommandQueue() {
-		return new MTLCommandQueue(MTL.createCommandQueue(getNativePointer()));
+		return new MTLCommandQueue(this, MTL.createCommandQueue(getNativePointer()));
 	}
 
 	public MTLComputePipelineState newComputePipelineState(MTLFunction function) {

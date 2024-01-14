@@ -59,7 +59,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		this.shape = outputShape;
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createDestination), arguments));
+		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
 	}
 
@@ -67,7 +67,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		this.shape = shape;
 	}
 
-	protected MemoryBank<?> createDestination(int len) {
+	protected TraversalPolicy shapeForLength(int len) {
 		TraversalPolicy shape;
 
 		if (isFixedCount()) {
@@ -87,12 +87,31 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			}
 
 			if (enableDestinationLogging) {
-				log("createDestination(" + len +
+				log("shapeForLength(" + len +
 						"): " + shape + "[" + shape.getTraversalAxis() + "]");
 			}
 		}
 
-		return new PackedCollection<>(shape);
+		return shape;
+	}
+
+	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+		if (len == null) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy shape = shapeForLength(len);
+
+		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
+				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
+			return new PackedCollection<>(shape);
+		}
+
+		return ((PackedCollection) existing).range(shape);
+	}
+
+	protected MemoryBank<?> createDestination(int len) {
+		return new PackedCollection<>(shapeForLength(len));
 	}
 
 	@Override

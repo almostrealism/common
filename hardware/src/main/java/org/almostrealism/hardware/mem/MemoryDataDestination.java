@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
 public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<Countable> {
@@ -34,8 +35,21 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	private final Countable process;
 	private ThreadLocalContextSpecific<MemoryBankProvider<T>> provider;
 
+	public MemoryDataDestination(Countable process) {
+		this(process, (IntFunction<MemoryBank<T>>) null);
+	}
+
 	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination) {
 		super(args -> { throw new UnsupportedOperationException(); }, destination);
+		this.process = process;
+		if (enableThreadLocalProvider) {
+			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
+			this.provider.init();
+		}
+	}
+
+	public MemoryDataDestination(Countable process, BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> destination) {
+		super(args -> { throw new UnsupportedOperationException(); }, i -> destination.apply(null, i));
 		this.process = process;
 		if (enableThreadLocalProvider) {
 			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);

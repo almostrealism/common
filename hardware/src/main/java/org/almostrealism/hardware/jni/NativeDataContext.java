@@ -39,6 +39,7 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	private final long maxReservation;
 
 	private NativeCompiler compiler;
+	private DataContext<MemoryData> delegate;
 	private MemoryProvider<? extends Memory> ram;
 	private boolean providedRam = false;
 
@@ -78,6 +79,10 @@ public class NativeDataContext implements DataContext<MemoryData> {
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
+	public void setDelegate(DataContext<MemoryData> ctx) {
+		this.delegate = ctx;
+	}
+
 	public void setMemoryProvider(MemoryProvider<? extends Memory> ram) {
 		if (getPrecision().bytes() != ram.getNumberSize()) {
 			throw new UnsupportedOperationException();
@@ -95,7 +100,9 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
 	@Override
-	public MemoryProvider<? extends Memory> getMemoryProvider(int size) { return getMemoryProvider(); }
+	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
+		return delegate == null ? getMemoryProvider() : delegate.getMemoryProvider(size);
+	}
 
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
