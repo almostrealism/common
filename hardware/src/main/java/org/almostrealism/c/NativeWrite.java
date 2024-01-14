@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -66,6 +66,10 @@ public class NativeWrite extends BaseNative {
 	}
 
 	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
+		if (mem.getSize() < (offset + length) * getNativeCompiler().getPrecision().bytes()) {
+			throw new IllegalArgumentException("Attempt to write memory beyond the size of " + mem);
+		}
+
 		apply(mem.getContentPointer(), offset, target, toffset, length);
 	}
 

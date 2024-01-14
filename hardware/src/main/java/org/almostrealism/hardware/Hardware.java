@@ -218,7 +218,9 @@ public final class Hardware {
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
 			if (KernelPreferences.enableSharedMemory && sharedMemoryCtx == null) {
-				sharedMemoryCtx = ctx;
+				if (!(ctx instanceof NativeDataContext)) {
+					sharedMemoryCtx = ctx;
+				}
 			}
 
 			contexts.add(ctx);
