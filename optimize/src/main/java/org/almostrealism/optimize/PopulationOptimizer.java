@@ -244,8 +244,8 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 					if (enableVerbose) {
 						console().println();
 						console().println("Health of Network " + fi + " is " + percent(h.getScore()));
-						HardwareOperator.profile.print();
-						MemoryDataArgumentMap.profile.print();
+						if (HardwareOperator.profile != null)
+							HardwareOperator.profile.print();
 					} else {
 						console().print(".");
 					}

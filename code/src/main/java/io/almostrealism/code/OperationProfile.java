@@ -91,15 +91,15 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	public static String defaultKey(OperationMetadata metadata) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
-		if (metadata.getShape() != null) key += " | " + metadata.getShape().toString();
-		if (metadata.getContextName() != null) key += " [" + metadata.getContextName() + "]";
+		if (metadata.getShape() != null) key += " " + metadata.getShape().toStringDetail();
+		if (metadata.getContextName() != null) key += " | [" + metadata.getContextName() + "]";
 		return key;
 	}
 
 	public static Function<OperationMetadata, String> appendShape(Function<OperationMetadata, String> key) {
 		return metadata -> {
 			String result = key.apply(metadata);
-			if (metadata.getShape() != null) result += " | " + metadata.getShape().toString();
+			if (metadata.getShape() != null) result += " " + metadata.getShape().toStringDetail();
 			return result;
 		};
 	}
@@ -107,7 +107,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	public static Function<OperationMetadata, String> appendContext(Function<OperationMetadata, String> key) {
 		return metadata -> {
 			String result = key.apply(metadata);
-			if (metadata.getContextName() != null) result += " [" + metadata.getContextName() + "]";
+			if (metadata.getContextName() != null) result += " | [" + metadata.getContextName() + "]";
 			return result;
 		};
 	}

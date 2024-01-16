@@ -105,7 +105,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 
 	@Override
 	public void setDelegate(MemoryData m, int offset) {
-		if (m != null && offset >= m.getMemLength()) {
+		if (m != null && (offset + getMemLength()) > m.getMemLength()) {
 			throw new HardwareException("Delegate offset is out of bounds");
 		}
 

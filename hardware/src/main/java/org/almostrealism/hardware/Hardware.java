@@ -336,11 +336,6 @@ public final class Hardware {
 
 	public int getOffHeapSize(ComputeRequirement type) {
 		try {
-			if (type == ComputeRequirement.MTL) {
-				// TODO  This workaround should not be required
-				// return 0;
-			}
-
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
 			return 1024;

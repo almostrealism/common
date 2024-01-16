@@ -139,6 +139,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
+	@Deprecated
 	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
 
 	public Class<T> getType() {
