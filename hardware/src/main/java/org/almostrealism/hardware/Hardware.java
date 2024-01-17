@@ -87,7 +87,7 @@ public final class Hardware {
 
 		for (String driver : drivers) {
 			if ("cl".equalsIgnoreCase(driver)) {
-				KernelPreferences.requireUniformPrecision = true;
+				KernelPreferences.requireUniformPrecision();
 				requirements.add(ComputeRequirement.CL);
 			} else if ("mtl".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.MTL);
@@ -109,7 +109,7 @@ public final class Hardware {
 				}
 
 				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
-					KernelPreferences.enableSharedMemory = true;
+					KernelPreferences.enableSharedMemory();
 				}
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
@@ -160,7 +160,7 @@ public final class Hardware {
 	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.FP64;
 
-		if (KernelPreferences.enableSharedMemory || KernelPreferences.requireUniformPrecision) {
+		if (KernelPreferences.isEnableSharedMemory() || KernelPreferences.isRequireUniformPrecision()) {
 			for (ComputeRequirement r : requirements) {
 				if (r.getMaximumPrecision().bytes() < precision.bytes()) {
 					precision = r.getMaximumPrecision();
@@ -178,6 +178,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
+		boolean kernelFriendly = false;
 		DataContext<MemoryData> sharedMemoryCtx = null;
 
 		r: for (ComputeRequirement type : requirements) {
@@ -196,8 +197,10 @@ public final class Hardware {
 				ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
 				((CLDataContext) ctx).setDelegateMemoryProvider(nioMemory);
 				locationUsed = true;
+				kernelFriendly = true;
 			} else if (type == ComputeRequirement.MTL) {
 				ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
+				kernelFriendly = true;
 			} else {
 				ctx = new NativeDataContext("JNI", precision, this.maxReservation);
 			}
@@ -217,7 +220,7 @@ public final class Hardware {
 			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
-			if (KernelPreferences.enableSharedMemory && sharedMemoryCtx == null) {
+			if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
 				if (!(ctx instanceof NativeDataContext)) {
 					sharedMemoryCtx = ctx;
 				}
@@ -248,6 +251,11 @@ public final class Hardware {
 					((NativeDataContext) c).setMemoryProvider(provider);
 				}
 			}
+		}
+
+		if (!kernelFriendly) {
+			System.out.println("Hardware[" + getName() + "]: Kernels will be avoided");
+			KernelPreferences.setPreferKernels(false);
 		}
 
 		return done.size();

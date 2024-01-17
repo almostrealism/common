@@ -42,17 +42,6 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
-	}
-
-	@Override
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
 
@@ -68,5 +57,13 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public RepeatedProducerComputationAdapter<O> toRepeated() {
+		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+		result.addDependentLifecycle(this);
+		return result;
 	}
 }

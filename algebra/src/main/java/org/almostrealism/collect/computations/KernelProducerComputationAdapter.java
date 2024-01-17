@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
@@ -34,17 +33,6 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 
 	public KernelProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
 	}
 
 	@Override
@@ -65,5 +53,13 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public RepeatedProducerComputationAdapter<O> toRepeated() {
+		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+		result.addDependentLifecycle(this);
+		return result;
 	}
 }

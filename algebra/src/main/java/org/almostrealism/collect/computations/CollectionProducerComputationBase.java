@@ -16,9 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
@@ -38,6 +41,8 @@ import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -50,10 +55,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private TraversalPolicy shape;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private Evaluable<O> shortCircuit;
+	private List<ScopeLifecycle> dependentLifecycles;
 
-	protected CollectionProducerComputationBase() { }
+	protected CollectionProducerComputationBase() {
+		this.dependentLifecycles = new ArrayList<>();
+	}
 
 	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+		this();
+
 		if (outputShape.getTotalSize() <= 0) {
 			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
 		}
@@ -61,6 +71,38 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		this.shape = outputShape;
 		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
+	}
+
+	public void addDependentLifecycle(ScopeLifecycle lifecycle) {
+		dependentLifecycles.add(lifecycle);
+	}
+
+	public List<ScopeLifecycle> getDependentLifecycles() {
+		return dependentLifecycles;
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
+
+		// Result should always be first
+		// TODO  This causes cascading issues, as the output variable is reused by the referring
+		// TODO  producer and then multiple arguments are sorted to be "first"
+		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -191,6 +233,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public O postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
+	}
+
+	public RepeatedProducerComputationAdapter<O> toRepeated() {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

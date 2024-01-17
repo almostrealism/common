@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
@@ -33,6 +33,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plural<MemoryBank<T>> {
+	public static boolean enableKernels = true; // KernelPreferences.isPreferKernels();
+
 	private ProducerComputation<T> computation;
 	private BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computationProvider;
 
@@ -71,7 +73,6 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 
 		TraversalPolicy shape = ((Shape) input).getShape();
 		TraversalPolicy parameterShape = ((Shape) parameters).getShape();
-//		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
 		this.computation = computationProvider.apply(new PassThroughProducer<>(parameterShape, 1), new PassThroughProducer<>(shape, 0));
 	}
 
@@ -85,17 +86,19 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 
 	@Override
 	public Runnable get() {
-		KernelizedEvaluable<T> ev = (KernelizedEvaluable<T>) computation.get();
+		Evaluable<T> ev = computation.get();
 
 		OperationList op = new OperationList("KernelList Parameter Assignments and Kernel Evaluations");
 		IntStream.range(0, size).forEach(i -> {
 			if (parameterValues.containsKey(i)) op.add(assignParameters(parameterValues.get(i)));
 			op.add(() -> () -> {
-				if (AcceleratedComputationOperation.enableKernelLog) {
-					System.out.println("KernelList: Evaluating kernel " + i + " against " + input.getCount() + " values...");
+				if (enableKernels) {
+					ev.into(data.get(i)).evaluate(input, ((Shape) this.parameters).traverse(0));
+				} else {
+					ev.into(((Shape) data.get(i)).traverse(0))
+							.evaluate(((Shape) input).traverse(0),
+									((Shape) this.parameters).traverse(0));
 				}
-
-				ev.into(data.get(i)).evaluate(input, ((Shape) this.parameters).traverse(0));
 			});
 		});
 

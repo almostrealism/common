@@ -36,7 +36,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
-	public static boolean enableRepeatedScope = true;
 
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
@@ -63,6 +62,14 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		this.condition = condition;
 		this.expression = expression;
 		this.memLength = size;
+	}
+
+	protected void setInitial(BiFunction<TraversableExpression[], Expression, Expression> initial) {
+		this.initial = initial;
+	}
+
+	protected void setCondition(BiFunction<TraversableExpression[], Expression, Expression> condition) {
+		this.condition = condition;
 	}
 
 	protected void setExpression(BiFunction<TraversableExpression[], Expression, Expression> expression) {
@@ -99,22 +106,28 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
 		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+			Expression<?> out = getDestination(e(0), e(j));
 			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
 			scope.getStatements().add(out.assign(val));
 		}
 
-		OperationMetadata bodyMetadata = new OperationMetadata(getFunctionName() + "_body", "Repeated (Body)");
+		OperationMetadata bodyMetadata = new OperationMetadata
+				(getFunctionName() + "_body",
+				"Repeated (Body)");
 
 		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+			Expression<?> out = getDestination(ref, e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
 			body.getStatements().add(out.assign(val));
 		}
 
 		scope.add(body);
 		return scope;
+	}
+
+	protected Expression<?> getDestination(Expression<?> index, Expression<?> offset)	{
+		return ((ArrayVariable) getOutputVariable()).referenceRelative(offset);
 	}
 
 	@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.InstanceReference;
@@ -35,7 +32,6 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -49,7 +45,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	public static boolean enableTraverseEach = false;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
-	private List<ScopeLifecycle> dependentLifecycles;
 
 	@SafeVarargs
 	public TraversableDeltaComputation(TraversalPolicy shape,
@@ -57,33 +52,10 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = expression;
-		this.dependentLifecycles = new ArrayList<>();
-	}
-
-	public void addDependentLifecycle(ScopeLifecycle lifecycle) {
-		dependentLifecycles.add(lifecycle);
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index));
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
-	}
-
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
-	}
-
-	@Override
-	public void resetArguments() {
-		super.resetArguments();
-		ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 	}
 
 	@Override
@@ -92,7 +64,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
-		dependentLifecycles.forEach(result::addDependentLifecycle);
+		getDependentLifecycles().forEach(result::addDependentLifecycle);
 		return result;
 	}
 

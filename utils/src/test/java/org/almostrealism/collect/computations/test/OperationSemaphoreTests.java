@@ -38,7 +38,7 @@ public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sumPowers() {
 		for (int i = 1; i < 9; i++) {
-			sum(12, 100, 1 << i, false);
+			sum(12, 80, 1 << i, false);
 		}
 	}
 

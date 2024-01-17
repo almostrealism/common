@@ -119,12 +119,6 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable out = getArgumentForInput(getInputs().get(0));
-		if (out != null) out.setSortHint(-1);
-
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
 			throw new IllegalArgumentException("Map input must be a collection");
