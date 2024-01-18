@@ -54,6 +54,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
+		target.setParallelism(NativeExecution.PARALLELISM);
 
 		JNIMemoryAccessor accessor;
 
@@ -64,7 +65,9 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 		}
 
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName(), getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw ->
+				new CJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+						getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
 
 		if (enableLargeScopeMonitoring) {
 			if (buf.length() > 240000) {

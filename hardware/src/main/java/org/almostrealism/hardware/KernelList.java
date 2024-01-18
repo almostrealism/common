@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plural<MemoryBank<T>> {
-	public static boolean enableKernels = KernelPreferences.isPreferKernels();
+	public static boolean enableKernels = true;
 
 	private ProducerComputation<T> computation;
 	private BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computationProvider;

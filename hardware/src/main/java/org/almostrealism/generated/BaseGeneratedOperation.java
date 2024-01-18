@@ -25,8 +25,11 @@ import org.almostrealism.hardware.jni.NativeInstructionSet;
 public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {
 	private ComputeContext<MemoryData> context;
 	private OperationMetadata metadata;
+	private int parallelism;
 
-	public BaseGeneratedOperation(Computation<T> computation) { }
+	public BaseGeneratedOperation(Computation<T> computation) {
+		parallelism = 1;
+	}
 
 	@Override
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
@@ -43,4 +46,10 @@ public abstract class BaseGeneratedOperation<T extends MemoryData> implements Na
 	public void setMetadata(OperationMetadata metadata) {
 		this.metadata = metadata;
 	}
+
+	@Override
+	public int getParallelism() { return parallelism; }
+
+	@Override
+	public void setParallelism(int parallelism) { this.parallelism = parallelism; }
 }

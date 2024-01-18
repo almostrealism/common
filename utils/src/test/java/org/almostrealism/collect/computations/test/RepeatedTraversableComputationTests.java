@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -26,7 +25,6 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.KernelProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.io.TimingMetric;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -46,9 +44,11 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> ev = add(v(shape(1), 0), v(shape(1), 1)).get();
 
-		for (int i = 0; i < 100; i++) {
-			ev.into(out.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
-		}
+		HardwareOperator.verboseLog(() -> {
+			for (int i = 0; i < 100; i++) {
+				ev.into(out.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
+			}
+		});
 
 		IntStream.range(0, len).forEach(i -> {
 			double expected = a.toDouble(i) + b.toDouble(i);
@@ -60,9 +60,11 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> rev = ((KernelProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
 
-		for (int i = 0; i < 100; i++) {
-			rev.into(out).evaluate(a, b);
-		}
+		HardwareOperator.verboseLog(() -> {
+			for (int i = 0; i < 100; i++) {
+				rev.into(out).evaluate(a, b);
+			}
+		});
 
 		IntStream.range(0, len).forEach(i -> {
 			double expected = a.toDouble(i) + b.toDouble(i);

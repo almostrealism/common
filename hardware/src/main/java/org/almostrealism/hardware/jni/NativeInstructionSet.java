@@ -29,7 +29,6 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.cl_command_queue;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -49,6 +48,10 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 
 	void setMetadata(OperationMetadata metadata);
 
+	int getParallelism();
+
+	void setParallelism(int parallelism);
+
 	@Override
 	default Execution get(String function, int argCount) {
 		return new NativeExecution(this, argCount);
@@ -62,7 +65,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	@Override
 	default void destroy() { }
 
-	default void apply(long idx, int dim0[], MemoryData... args) {
+	default void apply(long idx, long kernelSize, int[] dim0, MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
@@ -78,10 +81,10 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
 					Stream.of(args).mapToInt(MemoryData::getAtomicMemLength).toArray(),
-					dim0, i);
+					dim0, i, kernelSize);
 	}
 
-	default void apply(RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
+	default void apply(RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
 		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
 
 		for (int i = 0; i < args.length; i++) {
@@ -103,16 +106,16 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 					.map(CLComputeContext.class::cast)
 					.map(CLComputeContext::getClQueue)
 					.map(cl_command_queue::getNativePointer).findFirst().orElse(-1L),
-				args, offsets, sizes, dim0, globalId);
+				args, offsets, sizes, dim0, globalId, kernelSize);
 	}
 
-	default void apply(long commandQueue, RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
+	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
 		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
-				offsets, sizes, dim0, args.length, globalId);
+				offsets, sizes, dim0, args.length, globalId, kernelSize);
 	}
 
-	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId);
+	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId, long kernelSize);
 
 	@Override
 	default Console console() { return Hardware.console; }

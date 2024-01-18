@@ -82,6 +82,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		this.enableArgumentValueWrites = enableArgumentValueWrites;
 	}
 
+	protected boolean isExternalScope() {
+		return accessStack.peek() == Accessibility.EXTERNAL;
+	}
+
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (arguments.size() > 150) {

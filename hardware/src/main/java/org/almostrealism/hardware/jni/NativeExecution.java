@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,8 +35,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class NativeExecution extends HardwareOperator {
+	public static int PARALLELISM = 20;
 	public static boolean enableExecutor = true;
-	private static ExecutorService executor = Executors.newFixedThreadPool(20);
+	private static ExecutorService executor = Executors.newFixedThreadPool(PARALLELISM);
 
 	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
 
@@ -92,17 +93,19 @@ public class NativeExecution extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		int size = (int) getGlobalWorkSize();
+		if (inst.getParallelism() != 1 && getGlobalWorkOffset() != 0) {
+			throw new UnsupportedOperationException();
+		}
 
-		CountDownLatch latch = new CountDownLatch(size);
+		CountDownLatch latch = new CountDownLatch(inst.getParallelism());
 
 		if (enableExecutor) {
 			recordDuration(() -> {
-				IntStream.range(0, size).parallel()
+				IntStream.range(0, inst.getParallelism()).parallel()
 						.mapToObj(id ->
 								executor.submit(() -> {
 									try {
-										inst.apply(getGlobalWorkOffset() + id, dim0, data);
+										inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
 									} finally {
 										latch.countDown();
 									}
@@ -120,8 +123,8 @@ public class NativeExecution extends HardwareOperator {
 			return null;
 		} else {
 			recordDuration(() -> {
-				for (int i = 0; i < size; i++) {
-					inst.apply(getGlobalWorkOffset() + i, dim0, data);
+				for (int i = 0; i < inst.getParallelism(); i++) {
+					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), dim0, data);
 				}
 			});
 

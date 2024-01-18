@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -28,18 +30,42 @@ import java.util.List;
 
 public class CJNIPrintWriter extends CPrintWriter {
 	private JNIMemoryAccessor accessor;
+	private int parallel;
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang, JNIMemoryAccessor memAccess) {
-		this(p, topLevelMethodName, lang, memAccess, false);
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism,
+						   LanguageOperations lang, JNIMemoryAccessor memAccess) {
+		this(p, topLevelMethodName, parallelism, lang, memAccess, false);
 	}
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang, JNIMemoryAccessor memAccess, boolean verbose) {
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism,
+						   LanguageOperations lang, JNIMemoryAccessor memAccess, boolean verbose) {
 		super(p, topLevelMethodName, lang.getPrecision(), verbose);
+		parallel = parallelism;
 		language = lang;
 		accessor = memAccess;
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArgumentValueReads(true);
 		setEnableArgumentValueWrites(true);
+	}
+
+	@Override
+	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
+		super.beginScope(name, metadata, arguments, access);
+
+		if (access == Accessibility.EXTERNAL) {
+			if (parallel > 1) {
+				println("for (int global_id = global_index ; global_id < global_total; global_id += " + parallel + ") {");
+			}
+		}
+	}
+
+	@Override
+	public void endScope() {
+		if (isExternalScope() && parallel > 1) {
+			println("}");
+		}
+
+		super.endScope();
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
@@ -72,10 +98,5 @@ public class CJNIPrintWriter extends CPrintWriter {
 		println("(*env)->ReleaseIntArrayElements(env, offset, offsetArr, 0);");
 		println("(*env)->ReleaseIntArrayElements(env, size, sizeArr, 0);");
 		println("(*env)->ReleaseIntArrayElements(env, dim0, dim0Arr, 0);");
-
-//		println("free(argArr);");
-//		println("free(offsetArr);");
-//		println("free(sizeArr);");
-//		println("free(dim0Arr);");
 	}
 }
