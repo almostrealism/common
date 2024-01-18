@@ -247,8 +247,4 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		return -1;
 	}
-
-	private double sec(long nanos) {
-		return nanos / 1e9;
-	}
 }

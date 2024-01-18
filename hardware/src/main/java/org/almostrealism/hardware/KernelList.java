@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -33,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plural<MemoryBank<T>> {
-	public static boolean enableKernels = true; // KernelPreferences.isPreferKernels();
+	public static boolean enableKernels = KernelPreferences.isPreferKernels();
 
 	private ProducerComputation<T> computation;
 	private BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computationProvider;
