@@ -21,7 +21,6 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Index;
-import io.almostrealism.expression.KernelIndexChild;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
@@ -29,6 +28,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -37,15 +37,16 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.util.Base64;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
-import java.util.stream.DoubleStream;
+import java.util.function.Supplier;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
@@ -53,15 +54,16 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	public static int maxCount = ParallelProcess.maxCount << 6;
 	public static int defaultMaxExpressions = 16;
 	public static int defaultMaxEntries = 16;
-	public static int minNodeCount = 128;
+	public static int minNodeCountMatch = 6;
+	public static int minNodeCountCache = 128;
 
 	private int count;
 	private boolean fixed;
 	private MemoryDataCacheManager cacheManager;
-	private LanguageOperations lang;
 
 	private Map<String, Integer> cache;
 	private FrequencyCache<String, Expression> expressions;
+	private Set<String> matchFailures;
 
 	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
 		if (cacheManager != null && count != cacheManager.getEntrySize()) {
@@ -71,9 +73,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.count = count;
 		this.fixed = fixed;
 		this.cacheManager = cacheManager;
-		this.lang = new LanguageOperationsStub();
 		this.cache = cacheManager == null ? null : new HashMap<>();
 		this.expressions = new FrequencyCache<>(defaultMaxExpressions, 0.7);
+		this.matchFailures = new TreeSet<>();
 	}
 
 	public boolean isComputable() { return fixed && count <= maxCount; }
@@ -90,22 +92,41 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 
 		String e = exp.getExpression(lang);
+		if (matchFailures.contains(e)) return exp;
+
 		Expression result = expressions.get(e);
 		if (result != null) return result;
 
 		result = KernelSeriesProvider.super.getSeries(exp, index);
-		expressions.put(e, result);
+		if (result == exp) {
+//			if (exp.countNodes() >= minNodeCountMatch)
+//				throw new RuntimeException();
+		} else {
+			expressions.put(e, result);
+		}
+
 		return result;
 	}
 
 	@Override
-	public Expression getSeries(Expression index, IndexSequence seq, boolean isInt, IntSupplier nodes) {
+	public Expression getSeries(Expression index, Supplier<String> exp,
+								Supplier<IndexSequence> sequence,
+								boolean isInt, IntSupplier nodes) {
+		int n = nodes.getAsInt();
+		if (n < minNodeCountMatch) return null;
+
+		IndexSequence seq = sequence.get();
+
 		Expression result = KernelSeriesMatcher.match(index, seq, isInt);
-		if (result != null || !enableCache || cache == null || nodes.getAsInt() < minNodeCount) {
+		if (result != null) return result;
+
+		if (!enableCache || cache == null || n < minNodeCountCache) {
+			matchFailures.add(exp.get());
 			return result;
 		}
 
 		if (seq.length() != count) {
+			matchFailures.add(exp.get());
 			if (enableVerbose)
 				warn("Cannot cache sequence of length " + seq.length() + " (length != " + count + ")");
 			return result;
@@ -133,7 +154,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 			result = cacheManager.reference(cache.get(sig), index);
 		} finally {
-			if (result != null) {
+			if (result == null) {
+				matchFailures.add(exp.get());
+			} else {
 				result = result.add(new DoubleConstant(init));
 				if (isInt) result = result.toInt();
 			}
