@@ -25,12 +25,13 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
+	boolean enableExplicitIsolation = false;
 	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
 
 	boolean enableNarrowMax = true;
 	boolean enableContextualCount = false;
 	int minCount = 1 << 8;
-	int targetCount = 1 << 12; // 1 << 17;
+	int targetCount = 1 << 17;
 	int maxCount = 1 << 20;
 
 	@Override

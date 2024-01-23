@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
@@ -36,6 +37,9 @@ import java.util.List;
 public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
+	public static DistributionMetric allocationSizes = Hardware.console.distribution("mtlAllocationSizes", 1024 * 1024);
+	public static DistributionMetric deallocationSizes = Hardware.console.distribution("mtlDeallocationSizes", 1024 * 1024);
 
 	private final MetalDataContext context;
 	private final int numberSize;
@@ -71,6 +75,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 
 		MetalMemory mem = new MetalMemory(this, buffer(size), numberSize * (long) size);
 		allocated.add(mem);
+		allocationSizes.addEntry(numberSize * (long) size);
 		return mem;
 	}
 
@@ -95,6 +100,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 			}
 		} finally {
 			deallocating.remove(ram);
+			deallocationSizes.addEntry(numberSize * (long) size);
 		}
 	}
 

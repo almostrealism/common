@@ -195,6 +195,12 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	default void setMem(int offset, MemoryData src, int srcOffset, int length) {
+		if (src.getMemLength() < srcOffset + length) {
+			throw new IllegalArgumentException("Source MemoryData is not long enough to provide the requested data");
+		} else if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("MemoryData region extends beyond the length of this MemoryData");
+		}
+
 		if (getDelegate() == null) {
 			setMem(getMem(), getOffset() + offset, src, srcOffset, length);
 		} else {
