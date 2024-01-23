@@ -16,12 +16,15 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.code.CachedValue;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
@@ -30,11 +33,13 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.IntSupplier;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
+import java.util.function.Supplier;
 
 public interface KernelSeriesProvider {
-	TimingMetric timing = Scope.console.timing("kernelSeries");
+	TimingMetric timingPos = Scope.console.timing("kernelSeriesPos");
+	TimingMetric timingNeg = Scope.console.timing("kernelSeriesNeg");
+
+	LanguageOperations lang = new LanguageOperationsStub();
 
 	default Expression getSeries(Expression exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
@@ -53,8 +58,8 @@ public interface KernelSeriesProvider {
 		OptionalInt len = index.getLimit();
 
 		if (!len.isPresent()) {
-			len = ((Expression) index)
-					.upperBound(new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
+			len = index.upperBound(
+						new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
 					.stream().map(i -> i + 1).findFirst();
 		}
 
@@ -66,8 +71,14 @@ public interface KernelSeriesProvider {
 
 		try {
 			if (exp.isKernelValue(new IndexValues().put(index, 0))) {
+				CachedValue<IndexSequence> seq = new CachedValue<>(args -> exp.sequence(index, ((Integer) args[0]).intValue()));
+				int l = len.getAsInt();
+
 				if (exp.getType() == Boolean.class) {
-					result = getSeries((Expression) index, exp.sequence(index, len.getAsInt()), true, exp::countNodes);
+					result = getSeries((Expression) index,
+									() -> exp.getExpression(lang),
+									() -> seq.evaluate(Integer.valueOf(l)),
+								true, exp::countNodes);
 
 					if (result != null) {
 						OptionalDouble d = result.doubleValue();
@@ -78,18 +89,21 @@ public interface KernelSeriesProvider {
 						}
 					}
 				} else {
-					result = getSeries((Expression) index, exp.sequence(index, len.getAsInt()),
+					result = getSeries((Expression) index,
+								() -> exp.getExpression(lang),
+								() -> seq.evaluate(Integer.valueOf(l)),
 								exp.getType() == Integer.class, exp::countNodes);
 				}
 			}
 		} finally {
-			timing.addEntry(exp.countNodes() + "-" + (result != null), System.nanoTime() - start);
+			boolean isPos = result != null;
+			(isPos ? timingPos : timingNeg).addEntry(exp.countNodes() + "-" + isPos, System.nanoTime() - start);
 		}
 
 		return result == null ? exp : result;
 	}
 
-	Expression getSeries(Expression index, IndexSequence seq, boolean isInt, IntSupplier nodes);
+	Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes);
 
 	OptionalInt getMaximumLength();
 }

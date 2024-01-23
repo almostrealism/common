@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
@@ -29,6 +30,10 @@ import java.util.List;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	public static TimingMetric ioTime = Hardware.console.timing("nativeIO");
+
+	public static DistributionMetric allocationSizes = Hardware.console.distribution("nativeAllocationSizes", 1024 * 1024);
+	public static DistributionMetric deallocationSizes = Hardware.console.distribution("nativeDeallocationSizes", 1024 * 1024);
+
 
 	private NativeCompiler compiler;
 
@@ -66,6 +71,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 			memoryUsed += (long) getNumberSize() * size;
 			NativeMemory mem = new NativeMemory(this, malloc.apply(getNumberSize() * size), getNumberSize() * (long) size);
 			allocated.add(mem);
+			allocationSizes.addEntry((long) getNumberSize() * size);
 			return mem;
 		}
 	}
@@ -79,6 +85,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		free.apply(mem.getContentPointer());
 		memoryUsed -= (long) size * getNumberSize();
 		allocated.remove(mem);
+		deallocationSizes.addEntry((long) getNumberSize() * size);
 	}
 
 	@Override

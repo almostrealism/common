@@ -23,11 +23,14 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.OptionalInt;
 import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
+	public static TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
 
 	public static Expression match(Expression index, IndexSequence seq, boolean isInt) {
 		long start = System.nanoTime();
@@ -96,15 +99,15 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 			return null;
 		} finally {
-			KernelSeriesProvider.timing.addEntry("match", System.nanoTime() - start);
+			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
 	}
 
 	public static KernelSeriesProvider defaultProvider(int count) {
 		return new KernelSeriesProvider() {
 			@Override
-			public Expression getSeries(Expression index, IndexSequence seq, boolean isInt, IntSupplier nodes) {
-				return match(index, seq, isInt);
+			public Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes) {
+				return match(index, seq.get(), isInt);
 			}
 
 			@Override

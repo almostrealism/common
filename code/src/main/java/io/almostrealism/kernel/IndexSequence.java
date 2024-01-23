@@ -27,7 +27,6 @@ import java.nio.DoubleBuffer;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.UnaryOperator;
@@ -119,7 +118,7 @@ public class IndexSequence extends ArrayItem<Number> {
 				return encoder.encodeToString(byteBuffer.array());
 			}
 		} finally {
-			KernelSeriesProvider.timing.addEntry("signature", System.nanoTime() - start);
+			KernelSeriesProvider.timingPos.addEntry("signature", System.nanoTime() - start);
 		}
 	}
 

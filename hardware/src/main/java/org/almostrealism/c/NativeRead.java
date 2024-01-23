@@ -69,10 +69,8 @@ public class NativeRead extends BaseNative {
 	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
 		if (mem.getSize() < (offset + length) * getNativeCompiler().getPrecision().bytes()) {
 			throw new IllegalArgumentException("Attempt to read memory beyond the size of " + mem);
-		}
-
-		if (target.length < toffset + length) {
-			throw new IllegalArgumentException("Not enough space in array to read memory from " + mem);
+		} else if (target.length < toffset + length) {
+			throw new IllegalArgumentException("Attempt to read memory into a destination array beyond the array size");
 		}
 
 		double out[] = apply(mem.getContentPointer(), offset, length);

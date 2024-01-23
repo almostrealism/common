@@ -27,8 +27,6 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
@@ -267,12 +265,24 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-		if (verbose || KernelSeriesProvider.timing.getTotal() > 300) {
-			KernelSeriesProvider.timing.print();
+		if (verbose || KernelSeriesProvider.timingPos.getTotal() > 90) {
+			KernelSeriesProvider.timingPos.print();
 		}
 
-		KernelTraversalProvider.timing.print();
-		Scope.timing.print();
-		compileTime.print();
+		if (verbose || KernelSeriesProvider.timingNeg.getTotal() > 90) {
+			KernelSeriesProvider.timingNeg.print();
+		}
+
+		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
+			KernelTraversalProvider.timing.print();
+		}
+
+		if (verbose || Scope.timing.getTotal() > 60) {
+			Scope.timing.print();
+		}
+
+		if (verbose || compileTime.getTotal() > 60) {
+			compileTime.print();
+		}
 	}
 }

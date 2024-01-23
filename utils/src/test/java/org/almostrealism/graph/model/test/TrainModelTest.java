@@ -34,6 +34,7 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
@@ -294,7 +295,25 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_11"));
+
 		int dim = 16;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, filters, 10));
+	}
+
+	@Test
+	public void trainMedium() {
+		if (skipLongTests) return;
+
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_11"));
+
+		int dim = 32;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -307,6 +326,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
+
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_15"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_20"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_48"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_50"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_57"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_59"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_62"));
 
 		int dim = 64;
 		int filters = 8;
@@ -367,18 +394,35 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 						start = System.currentTimeMillis();
 					}
 
-					String remaining = epochMinutes > 0 ?
-							(int) (epochMinutes * (count - i) / epochSize) +
-									" minutes remaining" : "";
+					int remaining = 0;
+					String remainingText = "";
+					boolean first = false;
+
+					if (epochMinutes > 0) {
+						remaining = (int) (epochMinutes * (count - i) / epochSize);
+						remainingText = remaining + " minutes remaining";
+					} else {
+						first = true;
+					}
 
 					log("\t\tbackprop\t\t\t" +
-							" | epoch = " + i / epochSize + "\t|\t" + remaining);
+							" | epoch = " + i / epochSize + "\t|\t" + remainingText);
+
+					if (first && Scope.timing.getTotal() > 180) {
+						AcceleratedComputationOperation.printTimes();
+					} else if (remaining > 900) {
+						return;
+					}
 				}
 			}
 		} finally {
 			profile.print();
 			HardwareOperator.profile.print();
 			AcceleratedComputationOperation.printTimes();
+			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
+							" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
+			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
+					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
 			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
 		}
 	}
@@ -387,9 +431,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
 		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
+//		model.addBlock(flatten());
+//		model.addLayer(dense(denseSize));
+//		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}

@@ -218,7 +218,8 @@ public final class Hardware {
 			ctx.init();
 
 			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
-					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
+					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
+					ctx.getPrecision().name() + ")");
 
 			if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null) {
 				if (!(ctx instanceof NativeDataContext)) {

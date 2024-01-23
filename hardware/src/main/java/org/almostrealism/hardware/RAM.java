@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,4 +28,9 @@ public abstract class RAM implements Memory {
 	}
 
 	public long getSize() { throw new UnsupportedOperationException(); }
+
+	@Override
+	public String toString() {
+		return String.format("%s[%d]", getClass().getSimpleName(), getSize());
+	}
 }
