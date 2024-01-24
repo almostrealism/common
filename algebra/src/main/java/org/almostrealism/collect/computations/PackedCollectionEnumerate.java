@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -46,7 +46,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		super(computeShape(shape, stride, collection), (Supplier) collection);
+		super(computeShape(shape, stride, collection), collection, null);
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}
@@ -54,10 +54,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	@Override
 	public int getMemLength() { return 1; }
 
-	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
-
+	@Override
+	protected Expression<?> projectIndex(Expression<?> index) {
 		TraversalPolicy blockShape = getShape();
 
 		Expression block;
@@ -101,9 +99,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		Expression blockOffset = var.getShape().subset(subsetShape, offset, p);
+		Expression blockOffset = getCollectionArgumentVariable(1).getShape().subset(subsetShape, offset, p);
 
-		return var.getValueAt(block.multiply(e(blockShape.getTotalSize())).add(blockOffset));
+		return block.multiply(e(blockShape.getTotalSize())).add(blockOffset);
 	}
 
 	@Override

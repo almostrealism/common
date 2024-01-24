@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import java.util.OptionalDouble;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
 	public static boolean enableTraverseEach = false;
 
 	private TraversalPolicy subsetShape;
@@ -45,14 +45,14 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		super(enableTraverseEach ?
 					shape(collection).replace(shape.prependDimension(repeat)).traverseEach() :
 					shape(collection).replace(shape.prependDimension(repeat)).traverse(),
-				(Supplier) collection);
+				collection, null);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
 	}
 
-	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape, TraversalPolicy sliceShape,
-								   Producer<?> collection) {
-		super(shape, (Supplier) collection);
+	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
+								   TraversalPolicy sliceShape, Producer<?> collection) {
+		super(shape, collection, null);
 		this.subsetShape = subsetShape;
 		this.sliceShape = sliceShape;
 	}
@@ -65,7 +65,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		return getShape().traverseEach().getCount();
 	}
 
-	protected Expression offsetForIndex(Expression index) {
+	@Override
+	protected Expression projectIndex(Expression index) {
 		// Identify the slice
 		Expression slice;
 
@@ -79,7 +80,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		}
 
 		// Find the index in that slice
-//		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
 		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
 
 		// Position the offset relative to the slice
@@ -89,22 +89,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		Expression offset = offsetForIndex(index);
-
-		// Otherwise the value will only be available if the
-		// argument is a Shape implementation represented by
-		// a CollectionVariable which supports TraversableExpression
-		// operations like getValueAt
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
-
-		return var.getValueAt(offset);
-	}
-
-	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		Expression offset = offsetForIndex(index);
+		Expression offset = projectIndex(index);
 		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
 		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 
