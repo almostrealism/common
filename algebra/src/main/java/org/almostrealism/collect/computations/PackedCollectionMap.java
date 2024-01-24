@@ -92,10 +92,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			// long start = System.currentTimeMillis();
-			// System.out.println("PackedCollectionMap: Obtaining value...");
 			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;
-			// System.out.println("PackedCollectionMap: Retrieved value in " + (System.currentTimeMillis() - start) / 1000 + "s");
 
 			if (value == null && mapped instanceof OperationAdapter) {
 				OperationAdapter<?> op = (OperationAdapter) mapped;
@@ -106,10 +103,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			// start = System.currentTimeMillis();
-			// System.out.println("PackedCollectionMap: Obtaining simplified value...");
 			scope.getVariables().add(output.ref(i).assign(value));
-			// System.out.println("PackedCollectionMap: Retrieved simplified value in " + (System.currentTimeMillis() - start) / 1000 + "s");
 		}
 
 		return scope;
@@ -174,11 +168,18 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-				args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
-		delta.addDependentLifecycle(this);
-		return delta;
+		if (TraversableDeltaComputation.enableDirect) {
+			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					getInputs().stream().skip(1).toArray(Supplier[]::new));
+			delta.addDependentLifecycle(this);
+			return delta;
+		} else {
+			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+					(Supplier) this);
+			return delta;
+		}
 	}
 
 	@Override

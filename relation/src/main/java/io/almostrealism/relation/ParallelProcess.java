@@ -25,8 +25,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
-	boolean enableExplicitIsolation = false;
 	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
+	List<Predicate<Process>> isolationFlags = new ArrayList<>();
 
 	boolean enableNarrowMax = true;
 	boolean enableContextualCount = false;
@@ -51,6 +51,16 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		ParallelProcessContext context = ParallelProcessContext.of(ctx, this);
 		children = children.stream().map(process -> process.optimize(context)).collect(Collectors.toList());
+
+		if (!isolationFlags.isEmpty()) {
+			if (children.stream()
+					.map(c ->
+							isolationFlags.stream().map(p -> p.test(c))
+									.reduce(false, (a, b) -> a | b))
+					.anyMatch(v -> v)) {
+				System.out.println("ParallelProcess: Flagged for isolation");
+			}
+		}
 
 		if (!explicitIsolationTargets.isEmpty()) {
 			return generate((List) children.stream()

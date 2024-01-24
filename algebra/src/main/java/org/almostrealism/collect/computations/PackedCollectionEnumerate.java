@@ -72,7 +72,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			block = index.divide(e((double) blockShape.getTotalSize())).floor();
 		}
 
-		index = index.toInt().mod(e(blockShape.getTotalSize()), false);
+		index = index.toInt().imod(blockShape.getTotalSize());
 
 		// Determine which slice to extract
 		// Starting over from the beginning for each new block
@@ -88,8 +88,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		}
 
 		// Find the index in that slice
-		// Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
-		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
+		Expression offset = index.toInt().imod(subsetShape.getTotalSize());
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
