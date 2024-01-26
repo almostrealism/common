@@ -146,6 +146,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
+			if (existing != null) existing.destroy();
 			return new PackedCollection<>(shape);
 		}
 

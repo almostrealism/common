@@ -74,7 +74,7 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 
 	@Override
 	public KernelizedEvaluable<T> get() {
-		KernelizedEvaluable<T> e = super.get();
+		Evaluable<T> e = super.get();
 
 		return new KernelizedEvaluable<T>() {
 			@Override

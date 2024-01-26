@@ -65,7 +65,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
 		return new KernelizedEvaluable<T>() {

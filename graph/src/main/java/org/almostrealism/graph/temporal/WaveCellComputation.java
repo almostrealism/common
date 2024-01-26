@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,8 +33,11 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	protected HybridScope scope;
 
 	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
-		super(() -> new Provider<>(output),
-				() -> new Provider<>(wave),
+		this(data, () -> new Provider<>(wave), frame, output);
+	}
+
+	public WaveCellComputation(WaveCellData data, Producer<PackedCollection<?>> wave, Producer<Scalar> frame, Scalar output) {
+		super(() -> new Provider<>(output), wave,
 				(Supplier) Objects.requireNonNull(frame),
 				(Supplier) data.getWaveLength(),
 				(Supplier) data.getWaveIndex(),

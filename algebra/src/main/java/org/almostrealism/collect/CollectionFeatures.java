@@ -326,6 +326,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
+		return new DynamicCollectionProducer(shape, function, kernel);
+	}
 	@Deprecated
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
 																	  KernelExpression kernel,
