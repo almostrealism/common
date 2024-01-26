@@ -85,6 +85,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
+		// TODO  This may not be necessary, as the parent class implementation is probably fine
 		return TraversableDeltaComputation.create(getShape(), shape(target), expression, target,
 				getInputs().stream().skip(1).toArray(Supplier[]::new));
 	}

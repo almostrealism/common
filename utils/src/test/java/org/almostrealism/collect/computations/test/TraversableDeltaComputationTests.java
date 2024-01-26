@@ -17,20 +17,31 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.ProcessDetailsFactory;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
+	static {
+		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+	}
+
 	@Test
 	public void polynomial0() {
 		// x + 1
@@ -269,6 +280,187 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void enumerate() {
+		int count = 1;
+		int dim = 2;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+				.reshape(count, 1, dim, dim).traverse();
+
+		CollectionProducer cdy = cp(v)
+				.reshape(count, dim * dim)
+				.enumerate(1, 1)
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		print(4, 4, dout);
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				if (i == j) {
+					assertEquals(1.0, dout.toDouble(i * 4 + j));
+				} else {
+					assertEquals(0.0, dout.toDouble(i * 4 + j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void multiplyEnumerate() {
+		int dim = 2;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+				.reshape(dim, dim);
+		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+				.reshape(shape(dim, dim));
+
+		CollectionProducer cdy = cp(v).multiply(p(f))
+				.enumerate(1, 1)
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		print(4, 4, dout);
+
+		for (int n = 0; n < 4; n++) {
+			int i = (2 * n) % 4 + n / 2;
+
+			for (int j = 0; j < 4; j++) {
+				if (n == j) {
+					assertEquals(f.toDouble(j), dout.toDouble(i * 4 + j));
+				} else {
+					assertEquals(0.0, dout.toDouble(i * 4 + j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerateIndex() {
+		int dim = 2;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+				.reshape(dim, dim);
+		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+				.reshape(shape(dim, dim));
+
+		CollectionProducer cdy = cp(v).multiply(p(f)).enumerate(1, 1);
+		// cdy = ((IndexProjectionProducerComputation) cdy).getIndex();
+		cdy = cdy.delta(p(v));
+
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		print(4, 4, dout);
+
+		for (int n = 0; n < 4; n++) {
+			int i = (2 * n) % 4 + n / 2;
+
+			for (int j = 0; j < 4; j++) {
+				if (n == j) {
+					assertEquals(f.toDouble(j), dout.toDouble(i * 4 + j));
+				} else {
+					assertEquals(0.0, dout.toDouble(i * 4 + j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerateMultiply() {
+		boolean enableSum = true;
+		int count = 1;
+		int dim = 2;
+
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+				.reshape(count, 1, dim, dim).traverse();
+		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+				.reshape(shape(dim, dim));
+
+		CollectionProducer cdy = cp(v)
+				.reshape(count, dim * dim)
+				.enumerate(1, 1)
+				.delta(p(v))
+				.reshape(dim * dim, dim * dim)
+				.traverse(1)
+				.multiply(cp(f).reshape(dim * dim).traverse(1).expand(dim * dim));
+		if (enableSum) cdy = cdy.sum(1);
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		print(1, 4, dout);
+
+		if (enableSum) {
+			for (int i = 0; i < 4; i++) {
+				assertEquals(f.toDouble(i), dout.toDouble(i));
+			}
+		} else {
+			for (int i = 0; i < 4; i++) {
+				for (int j = 0; j < 4; j++) {
+					if (i == j) {
+						assertEquals(f.toDouble(i), dout.toDouble(i * 4 + j));
+					} else {
+						assertEquals(0.0, dout.toDouble(i * 4 + j));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerateMap() {
+		boolean enableOptimize = true;
+		boolean enableSum = true;
+		int count = 1;
+		int dim = 2;
+
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("Enumerate"));
+
+		try {
+			PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
+					.reshape(count, 1, dim, dim).traverse();
+			PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+					.reshape(shape(dim, dim));
+
+			CollectionProducer cdy = cp(v)
+					.reshape(count, dim * dim)
+					.enumerate(1, 1)
+					.map(x -> x.multiply(2.0))
+					.delta(p(v))
+					.reshape(dim * dim, dim * dim)
+					.traverse(1)
+					.multiply(cp(f).reshape(dim * dim).traverse(1).expand(dim * dim));
+			if (enableSum) cdy = cdy.sum(1);
+			if (enableOptimize) cdy = (CollectionProducer) Process.optimized(cdy);
+			Evaluable<PackedCollection<?>> dy = cdy.get();
+			PackedCollection<?> dout = dy.evaluate();
+			print(1, 4, dout);
+
+			if (enableSum) {
+				for (int i = 0; i < 4; i++) {
+					assertEquals(2 * f.toDouble(i), dout.toDouble(i));
+				}
+			} else {
+				for (int i = 0; i < 4; i++) {
+					for (int j = 0; j < 4; j++) {
+						if (i == j) {
+							assertEquals(2 * f.toDouble(i), dout.toDouble(i * 4 + j));
+						} else {
+							assertEquals(0.0, dout.toDouble(i * 4 + j));
+						}
+					}
+				}
+			}
+		} finally {
+			ParallelProcess.explicitIsolationTargets.clear();
+		}
+	}
+
+	@Test
+	public void enumerateSum() {
 		int count = 2;
 		int dim = 3;
 
@@ -494,5 +686,9 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 			Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 			cda.get().run();
 		// });
+	}
+
+	private Predicate<Process> operationFilter(String classSubstring) {
+		return p -> p.getClass().getSimpleName().contains(classSubstring);
 	}
 }

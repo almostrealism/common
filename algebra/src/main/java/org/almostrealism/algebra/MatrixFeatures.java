@@ -36,4 +36,8 @@ public interface MatrixFeatures extends CollectionFeatures {
 		int d = shape.length(0);
 		return multiply(traverseEach(matrix), traverseEach(repeat(d, vector))).traverse(1).sum();
 	}
+
+	static MatrixFeatures getInstance() {
+		return new MatrixFeatures() {};
+	}
 }

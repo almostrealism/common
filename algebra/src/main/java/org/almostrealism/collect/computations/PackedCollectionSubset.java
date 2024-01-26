@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionSubset<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
 	private Expression pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
@@ -42,7 +42,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super(shape, (Supplier) collection);
+		super(shape, collection, null);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
@@ -53,7 +53,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super(shape, (Supplier) collection, (Supplier) pos);
+		super(shape, collection, null);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
@@ -83,7 +83,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
+	protected Expression projectIndex(Expression index) {
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 
 		Expression<?> p;
@@ -98,7 +98,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			p = inputShape.subset(getShape(), index, pos);
 		}
 
-		return getCollectionArgumentVariable(1).getValueAt(p);
+		return p;
 	}
 
 	@Override

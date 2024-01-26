@@ -16,12 +16,15 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
@@ -53,6 +56,22 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public CollectionProducer<O> delta(Producer<?> target) {
+		if (TraversableDeltaComputation.enableDirect) {
+			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					getInputs().stream().skip(1).toArray(Supplier[]::new));
+			delta.addDependentLifecycle(this);
+			return delta;
+		} else {
+			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+					(Supplier) this);
+			return delta;
+		}
 	}
 
 	@Override

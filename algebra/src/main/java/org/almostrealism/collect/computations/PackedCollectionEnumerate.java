@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,25 +18,18 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Mod;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -46,7 +39,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		super(computeShape(shape, stride, collection), (Supplier) collection);
+		super(computeShape(shape, stride, collection), collection, null);
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}
@@ -54,10 +47,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	@Override
 	public int getMemLength() { return 1; }
 
-	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
-
+	@Override
+	protected Expression<?> projectIndex(Expression<?> index) {
 		TraversalPolicy blockShape = getShape();
 
 		Expression block;
@@ -72,7 +63,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			block = index.divide(e((double) blockShape.getTotalSize())).floor();
 		}
 
-		index = index.toInt().mod(e(blockShape.getTotalSize()), false);
+		index = index.toInt().imod(blockShape.getTotalSize());
 
 		// Determine which slice to extract
 		// Starting over from the beginning for each new block
@@ -88,8 +79,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		}
 
 		// Find the index in that slice
-		// Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
-		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
+		Expression offset = index.toInt().imod(subsetShape.getTotalSize());
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
@@ -102,9 +92,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		Expression blockOffset = var.getShape().subset(subsetShape, offset, p);
+		Expression blockOffset = getCollectionArgumentVariable(1).getShape().subset(subsetShape, offset, p);
 
-		return var.getValueAt(block.multiply(e(blockShape.getTotalSize())).add(blockOffset));
+		return block.multiply(e(blockShape.getTotalSize())).add(blockOffset);
 	}
 
 	@Override

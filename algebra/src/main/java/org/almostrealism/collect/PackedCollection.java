@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -150,6 +150,18 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
 		setMem(0, data);
 		return this;
+	}
+
+	public PackedCollection<?> identityFill() {
+		return fill(pos -> {
+			for (int i = 0; i < pos.length; i++) {
+				if (pos[i] != pos[0]) {
+					return 0.0;
+				}
+			}
+
+			return 1.0;
+		});
 	}
 
 	public PackedCollection<T> randFill() {

@@ -24,6 +24,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.TraversableDeltaComputation;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -183,6 +184,15 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 	}
 
 	default CollectionProducer<T> delta(Producer<?> target) {
+		if (TraversableDeltaComputation.match(this, target)) {
+			TraversalPolicy shape = getShape();
+			TraversalPolicy targetShape = shape(target);
+			PackedCollection<?> identity =
+					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+						.identityFill().reshape(shape.append(targetShape));
+			return (CollectionProducer) c(identity);
+		}
+
 		throw new UnsupportedOperationException();
 	}
 
