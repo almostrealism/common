@@ -73,8 +73,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		init();
 	}
 
-	public void addDependentLifecycle(ScopeLifecycle lifecycle) {
+	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
 		dependentLifecycles.add(lifecycle);
+		return this;
 	}
 
 	public List<ScopeLifecycle> getDependentLifecycles() {

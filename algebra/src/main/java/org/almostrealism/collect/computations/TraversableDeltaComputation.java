@@ -139,7 +139,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		};
 	}
 
-	private static boolean match(Supplier<?> p, Supplier<?> q) {
+	public static boolean match(Supplier<?> p, Supplier<?> q) {
 		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestination) {
 			if (p instanceof ReshapeProducer) {
 				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();

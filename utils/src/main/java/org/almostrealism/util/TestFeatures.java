@@ -20,10 +20,13 @@ import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
