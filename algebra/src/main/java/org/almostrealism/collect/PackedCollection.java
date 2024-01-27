@@ -37,6 +37,7 @@ import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -132,6 +133,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
+
+	public DoubleStream doubleStream() { return DoubleStream.of(toArray()); }
 
 	public PackedCollection<T> fill(double... value) {
 		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();

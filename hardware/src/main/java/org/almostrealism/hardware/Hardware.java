@@ -41,6 +41,7 @@ import java.util.concurrent.Callable;
 
 public final class Hardware {
 	public static boolean enableVerbose = false;
+	public static boolean defaultKernelFriendly = true;
 
 	public static Console console = Console.root().child();
 
@@ -178,7 +179,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
-		boolean kernelFriendly = false;
+		boolean kernelFriendly = defaultKernelFriendly;
 		DataContext<MemoryData> sharedMemoryCtx = null;
 
 		r: for (ComputeRequirement type : requirements) {
