@@ -260,7 +260,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainSmallest() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		GradientPropagation.enableDiagnosticGrad = true;
 		NativeCompiler.enableInstructionSetMonitoring = true;
@@ -274,14 +274,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainVerySmall() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
 
 		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -292,7 +292,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainSmall() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
@@ -308,7 +308,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainMedium() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
@@ -324,7 +324,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainLarge() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
@@ -346,7 +346,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainProgressive() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		double size = 10;
 

@@ -44,7 +44,7 @@ import java.util.function.Supplier;
 public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 	boolean enableLegacyConvLayer = false;
-	boolean enableLegacyPoolLayer = true;
+	boolean enableLegacyPoolLayer = false;
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
@@ -125,50 +125,27 @@ public interface LayerFeatures extends MatrixFeatures {
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
 
 		if (enableLegacyConvLayer) {
-			Supplier<Runnable> init = new KernelOperation<>(
-					divide(randn(filterShape).traverseEach(), c(size * size).traverse(0)), filters.traverseEach());
-
+			Factor<PackedCollection<?>> operator = input ->
+					c(input).enumerate(1, size, 1)
+							.enumerate(1, size, 1)
+							.traverse(2)
+							.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+							.traverse()
+							.reduce(v -> v.sum());
 			return layer("convolution2d", inputShape, outputShape,
-					Cell.of((input, next) -> {
-						PackedCollection<?> output = new PackedCollection<>(outputShape);
-
-						OperationList ops = new OperationList();
-						Producer<PackedCollection<?>> conv =
-								c(input).enumerate(1, size, 1)
-										.enumerate(1, size, 1)
-										.traverse(2)
-										.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
-										.traverse()
-										.reduce(v -> v.sum());
-
-						ops.add(1, conv, p(output.traverseEach()));
-
-						if (next != null) ops.add(next.push(p(output)));
-						return ops;
-					}),
-					(lr, gradient, input, next) -> {
-						CollectionOperationList ops = new CollectionOperationList();
-						PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
-
-						ops.kernel((_gradient, _input, f, fx, fy) ->
-								shape(outputShape.length(0), outputShape.length(1)).stream()
-										.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
-										.collect(ExpressionList.collector())
-										.sum(), filterGrad.traverseEach(), gradient, input);
-						ops.kernel((_filters, _gradient, _lr, x, y, z) ->
-										_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
-								filters.traverseEach(), p(filters), p(filterGrad), lr);
-						if (next != null) {
-							System.out.println("WARN: convolution2d does not support backpropagation");
-						}
-						return ops;
-					}, List.of(filters), init);
+					operator, List.of(filters),
+					a(p(filters.each()), divide(randn(filterShape).traverseEach(), c(size * size).traverse(0))),
+					requirements);
 		} else {
 			Factor<PackedCollection<?>> operator = input ->
 					c(input).enumerate(1, size, 1)
 					.enumerate(1, size, 1)
 					.traverse(2)
-					.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+					.repeat(filterCount)
+					.traverse(2)
+					.multiply(cp(filters)
+							.repeat(outputShape.length(1)).traverse(0)
+							.repeat(outputShape.length(0)).traverse(2))
 					.traverse()
 					.reduce(v -> v.sum());
 			return layer("convolution2d", inputShape, outputShape,

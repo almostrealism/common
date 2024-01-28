@@ -40,7 +40,7 @@ public class DistributionMetric extends MetricBase {
 		double v = value / scale;
 
 		if (threshold > 0 && v > threshold) {
-			throw new RuntimeException();
+			throw new RuntimeException(String.valueOf(v));
 		}
 
 		addEntry(entry, value / scale);

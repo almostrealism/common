@@ -22,6 +22,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
@@ -137,6 +138,20 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 			return true;
 		};
+	}
+
+	public static boolean deepMatch(Supplier<?> p, Supplier<?> target) {
+		if (match(p, target)) {
+			return true;
+		} if (p instanceof Parent) {
+			for (Supplier<?> child : ((Parent<Supplier>) p).getChildren()) {
+				if (deepMatch(child, target)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	public static boolean match(Supplier<?> p, Supplier<?> q) {

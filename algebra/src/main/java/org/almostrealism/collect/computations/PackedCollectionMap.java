@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.CollectionVariable;
@@ -38,6 +39,7 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -46,8 +48,8 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
-	public static boolean enableAbsoluteValueAt = true;
 	public static boolean enableAtomicKernel = false;
+	public static boolean enableChainDelta = false;
 
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
@@ -92,7 +94,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;
+			Expression<Double> value = getValueAt(index);
 
 			if (value == null && mapped instanceof OperationAdapter) {
 				OperationAdapter<?> op = (OperationAdapter) mapped;
@@ -168,18 +170,32 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (TraversableDeltaComputation.enableDirect) {
-			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-					getInputs().stream().skip(1).toArray(Supplier[]::new));
-			delta.addDependentLifecycle(this);
-			return delta;
-		} else {
-			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+		if (!enableChainDelta || !(TraversableDeltaComputation.deepMatch(getInputs().get(1), target))) {
+			return TraversableDeltaComputation.create(getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-					(Supplier) this);
-			return delta;
+					(Supplier) this).addDependentLifecycle(this);
 		}
+
+		TraversalPolicy outShape = getShape();
+		TraversalPolicy inShape = shape(getInputs().get(1));
+		TraversalPolicy targetShape = shape(target);
+
+		int outSize = outShape.getTotalSize();
+		int inSize = inShape.getTotalSize();
+		int targetSize = targetShape.getTotalSize();
+
+		TraversalPolicy deltaShape = shape(inSize, targetSize);
+		TraversalPolicy overallShape = shape(outSize, targetSize);
+
+		Producer<?> stub = func(inShape, args -> null);
+
+		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create(shape(outSize), shape(inSize),
+				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
+				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
+		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
+							.delta(target).reshape(shape(inSize, targetSize));
+		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
+		return MatrixFeatures.getInstance().mproduct(deltaOut, deltaIn);
 	}
 
 	@Override

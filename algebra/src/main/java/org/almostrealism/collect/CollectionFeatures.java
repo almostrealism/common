@@ -425,19 +425,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionMap<>(collection, (Function) mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return new PackedCollectionMap<>(shape(collection).replace(itemShape), collection, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
+		return new PackedCollectionMap<>(shape(collection).replace(itemShape), collection, (Function) mapper);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return map(shape(1), collection, mapper);
+		return map(shape(1), collection, (Function) mapper);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection) {
 		return expand(repeat, collection, v -> v.repeat(repeat));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return map(shape(collection).item().prependDimension(repeat), collection, mapper);
 	}
 

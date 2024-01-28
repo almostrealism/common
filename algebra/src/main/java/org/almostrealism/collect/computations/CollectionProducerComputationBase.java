@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
@@ -64,7 +65,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this();
 
-		if (outputShape.getTotalSize() <= 0) {
+		if (outputShape.getTotalSizeLong() <= 0) {
 			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
 		}
 
@@ -75,6 +76,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
 		dependentLifecycles.add(lifecycle);
+		return this;
+	}
+
+	public CollectionProducerComputationBase<I, O> addAllDependentLifecycles(Iterable<ScopeLifecycle> lifecycles) {
+		lifecycles.forEach(this::addDependentLifecycle);
 		return this;
 	}
 
@@ -175,6 +181,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+		if (getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
+			warn("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
+			return this;
+		}
+
 		return new CollectionProducerComputation.IsolatedProcess<>(this);
 	}
 

@@ -55,6 +55,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
 		this.shape = shape;
 		this.producer = producer;
+
+		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -144,6 +148,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	public boolean isRelative() {
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isRelative();
 		return true;
+	}
+
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		if (producer instanceof CollectionProducer) {
+			if (shape == null) {
+				return new ReshapeProducer<>(traversalAxis, ((CollectionProducer) producer).delta(target));
+			} else {
+				TraversalPolicy newShape = shape.append(shape(target));
+				return new ReshapeProducer<>(newShape, ((CollectionProducer) producer).delta(target));
+			}
+		}
+
+		return CollectionProducer.super.delta(target);
 	}
 
 	public CollectionProducer<T> traverse(int axis) {

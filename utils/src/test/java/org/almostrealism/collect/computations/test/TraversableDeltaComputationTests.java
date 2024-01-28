@@ -603,7 +603,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> c = cp(g).each()
 				.map(shape(3), v -> v.repeat(3).mul(cp(w)));
 
-		print(2 * 3, 1, c.get().evaluate());
+		print(2, 3, c.get().evaluate());
 
 		PackedCollection<?> result = new PackedCollection<>(shape(2, 3, 3));
 		c.delta(p(w)).into(result.traverse(1)).evaluate();
@@ -615,6 +615,59 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				assertEquals(i == j ? 5 : 0, result.valueAt(1, i, j));
 			}
 		}
+	}
+
+	@Test
+	public void map1d() {
+		int count = 1;
+		int dim = 2;
+
+		PackedCollection<?> v = pack(2.0)
+				.reshape(count, 1).traverse();
+		PackedCollection<?> f = pack(4.0, -3.0)
+				.reshape(shape(dim));
+
+		Producer cdy = cp(v)
+				.multiply(c(3))
+				.map(shape(2), x -> x.repeat(2).multiply(cp(f)))
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		System.out.println(dout.getShape());
+		System.out.println(dout.toArrayString());
+
+		assertEquals(12, dout.toDouble(0));
+		assertEquals(-9, dout.toDouble(1));
+	}
+
+	@Test
+	public void map2d() {
+		int count = 2;
+		int dim = 2;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 4.0, 5.0
+									, 7.0, 9.0, 8.0, 6.0
+									)
+				.reshape(count, dim, dim).traverse();
+		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
+				.reshape(shape(dim, dim));
+
+		CollectionProducer cdy = cp(v)
+				.map(x -> x.multiply(cp(f)))
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		print(4, 4, dout);
+
+//		for (int i = 0; i < 4; i++) {
+//			for (int j = 0; j < 4; j++) {
+//				if (i == j) {
+//					assertEquals(1.0, dout.toDouble(i * 4 + j));
+//				} else {
+//					assertEquals(0.0, dout.toDouble(i * 4 + j));
+//				}
+//			}
+//		}
 	}
 
 	@Test

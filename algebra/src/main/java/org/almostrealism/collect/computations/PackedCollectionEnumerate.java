@@ -99,7 +99,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionEnumerate<>(subsetShape, strideShape, (Producer) children.get(1));
+		return (PackedCollectionEnumerate)
+				new PackedCollectionEnumerate<>(subsetShape, strideShape, (Producer) children.get(1))
+						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

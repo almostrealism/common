@@ -22,11 +22,17 @@ import org.almostrealism.io.SystemUtils;
 
 public class TestUtils implements TestSettings {
 	static {
-		CLMemoryProvider.enableWarnings = !skipLongTests;
-		MetalMemoryProvider.enableWarnings = !skipLongTests;
+		if (CLMemoryProvider.enableWarnings)
+			CLMemoryProvider.enableWarnings = !skipLongTests;
+		if (MetalMemoryProvider.enableWarnings)
+			MetalMemoryProvider.enableWarnings = !skipLongTests;
 	}
 
 	public static boolean getSkipLongTests() {
 		return !SystemUtils.isEnabled("AR_LONG_TESTS").orElse(true);
+	}
+
+	public static boolean getTrainTests() {
+		return SystemUtils.isEnabled("AR_TRAIN_TESTS").orElse(false);
 	}
 }

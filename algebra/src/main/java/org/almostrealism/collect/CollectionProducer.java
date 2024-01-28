@@ -55,7 +55,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return map(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
@@ -67,7 +67,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return expand(repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}
 
