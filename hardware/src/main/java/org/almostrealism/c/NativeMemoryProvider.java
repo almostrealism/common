@@ -22,13 +22,17 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class NativeMemoryProvider implements MemoryProvider<RAM> {
+public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+	public static boolean enableLargeAllocationLogging = true;
+
 	public static TimingMetric ioTime = Hardware.console.timing("nativeIO");
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("nativeAllocationSizes", 1024 * 1024);
@@ -63,6 +67,10 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public synchronized NativeMemory allocate(int size) {
+		if (enableLargeAllocationLogging && size > (20 * 1024 * 1024)) {
+			log("Allocating " + (getNumberSize() * (long) size) / 1024 / 1024 + "mb");
+		}
+
 		if (malloc == null) malloc = new Malloc(getNativeCompiler());
 
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
@@ -71,7 +79,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 			memoryUsed += (long) getNumberSize() * size;
 			NativeMemory mem = new NativeMemory(this, malloc.apply(getNumberSize() * size), getNumberSize() * (long) size);
 			allocated.add(mem);
-			allocationSizes.addEntry((long) getNumberSize() * size);
+			allocationSizes.addEntry(getNumberSize() * (long) size);
 			return mem;
 		}
 	}
@@ -133,4 +141,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		allocated.clear();
 		memoryUsed = 0;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

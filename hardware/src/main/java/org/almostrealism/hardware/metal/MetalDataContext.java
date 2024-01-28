@@ -35,7 +35,7 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class MetalDataContext implements DataContext<MemoryData> {
-	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "32").equals("16");
+	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
 	private final String name;
 	private final long maxReservation;

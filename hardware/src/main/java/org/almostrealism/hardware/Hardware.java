@@ -159,7 +159,7 @@ public final class Hardware {
 	}
 
 	private int processRequirements(List<ComputeRequirement> requirements) {
-		Precision precision = Precision.FP64;
+		Precision precision = Precision.valueOf(SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP64"));
 
 		if (KernelPreferences.isEnableSharedMemory() || KernelPreferences.isRequireUniformPrecision()) {
 			for (ComputeRequirement r : requirements) {
