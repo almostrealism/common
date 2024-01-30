@@ -71,4 +71,8 @@ public abstract class ContextSpecific<T> implements ContextListener {
 		// TODO  This is disposing only the value on the current thread, not for *all* threads
 		if (disposal != null && v.isAvailable()) disposal.accept(v.getValue());
 	}
+
+	public void destroy() {
+		Hardware.getLocalHardware().removeContextListener(this);
+	}
 }

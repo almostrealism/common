@@ -47,7 +47,6 @@ import java.util.function.Supplier;
 
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
 	public static final boolean enableDestinationDetection = true;
-	public static final boolean enableGlobalArgumentMap = false;
 	public static boolean enableWarnings = false;
 
 	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
@@ -55,9 +54,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1 * 1024 * 1024);
 
 	public static OperationProfile profile;
-
-	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
-	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
 
 	private final ComputeContext<MemoryData> context;
 	private final OperationMetadata metadata;
@@ -318,35 +314,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	}
 
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
-		if (!enableGlobalArgumentMap) {
-			MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
-			map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
-			return map;
-		}
-
-		return kernel ? getGlobalMapsKernel().getValue() : getGlobalMaps().getValue();
-	}
-
-	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
-		if (globalMaps == null) {
-			globalMaps = new DefaultContextSpecific<>(() ->
-					new MemoryDataArgumentMap<>(Hardware.getLocalHardware().getDataContext().getComputeContext(), null, null, false),
-					MemoryDataArgumentMap::destroy);
-			globalMaps.init();
-		}
-
-		return globalMaps;
-	}
-
-	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMapsKernel() {
-		if (globalMapsKernel == null) {
-			globalMapsKernel = new DefaultContextSpecific<>(() ->
-						new MemoryDataArgumentMap<>(Hardware.getLocalHardware().getDataContext().getComputeContext(), null),
-					MemoryDataArgumentMap::destroy);
-			globalMapsKernel.init();
-		}
-
-		return globalMapsKernel;
+		MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
+		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
+		return map;
 	}
 
 	private static class MemoryDataRef {

@@ -58,7 +58,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	private PassThroughProducer() {
-		this.setInputs(Arrays.asList(new MemoryDataDestination(this, (IntFunction<MemoryBank>) null)));
+		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null, false)));
 		init();
 	}
 
@@ -105,12 +105,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
-
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
 		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));

@@ -40,9 +40,13 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	}
 
 	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination) {
+		this(process, destination, true);
+	}
+
+	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination, boolean provider) {
 		super(args -> { throw new UnsupportedOperationException(); }, destination);
 		this.process = process;
-		if (enableThreadLocalProvider) {
+		if (enableThreadLocalProvider && provider) {
 			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
 			this.provider.init();
 		}
@@ -96,5 +100,14 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 				return createDestination(1).get(0);
 			}
 		};
+	}
+
+	public void destroy() {
+		if (provider != null) provider.destroy();
+	}
+
+	@Override
+	protected void finalize() {
+		destroy();
 	}
 }

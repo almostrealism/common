@@ -255,6 +255,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void destroy() {
 		super.destroy();
+		((MemoryDataDestination) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
 	}
 

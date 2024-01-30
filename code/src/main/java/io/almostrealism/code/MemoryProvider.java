@@ -41,13 +41,9 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	}
 
 	default double[] toArray(T mem, int offset, int length) {
-		int attempt = 1; //5;
-
-		return IntStream.range(0, attempt).mapToObj(i -> {
-			double d[] = new double[length];
-			getMem(mem, offset, d, 0, length);
-			return d;
-		}).collect(Collectors.toList()).get(attempt - 1);
+		double d[] = new double[length];
+		getMem(mem, offset, d, 0, length);
+		return d;
 	}
 
 	void setMem(T mem, int offset, Memory source, int srcOffset, int length);
