@@ -243,7 +243,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public TraversalPolicy flatten() {
-		return new TraversalPolicy(getTotalSize());
+		return flatten(false);
+	}
+
+	public TraversalPolicy flatten(boolean preserveCount) {
+		if (preserveCount) {
+			return new TraversalPolicy(getCount(), getSize()).traverse();
+		} else {
+			return new TraversalPolicy(getTotalSize());
+		}
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }

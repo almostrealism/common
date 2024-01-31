@@ -29,6 +29,7 @@ import io.almostrealism.relation.Producer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@Deprecated
 public class PackedCollectionMax extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	private Function<Expression, Expression> expression;
 

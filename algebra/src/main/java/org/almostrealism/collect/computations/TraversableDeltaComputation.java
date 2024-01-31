@@ -45,7 +45,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<T, T>
+		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	public static boolean enableTraverseEach = false;
 	public static boolean enableDirect = false;
@@ -95,11 +95,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		throw new UnsupportedOperationException();
-	}
-
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
 	}
 
 	public static <T extends PackedCollection<?>> TraversableDeltaComputation<T> create(

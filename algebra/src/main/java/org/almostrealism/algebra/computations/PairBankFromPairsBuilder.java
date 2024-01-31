@@ -28,13 +28,13 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
+import org.almostrealism.collect.computations.RelativeTraversableProducerComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PairBankFromPairsBuilder extends TraversableProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
+public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputation<Pair<?>, PackedCollection<Pair<?>>>
 									implements Factory<Producer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 

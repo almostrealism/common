@@ -44,8 +44,11 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
@@ -72,6 +75,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		this.shape = outputShape;
 		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
+	}
+
+	protected List<ArrayVariable<Double>> getInputArguments() {
+		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
 	}
 
 	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
@@ -257,6 +264,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		super.destroy();
 		((MemoryDataDestination) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		Stream.of(args).forEach(Objects::requireNonNull);
+		return args;
 	}
 
 	public static void destinationLog(Runnable r) {

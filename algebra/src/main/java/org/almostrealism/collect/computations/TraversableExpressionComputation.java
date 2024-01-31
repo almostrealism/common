@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<T, T>
+		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
@@ -67,7 +67,9 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
 		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
+				.setPostprocessor(getPostprocessor())
+				.setShortCircuit(getShortCircuit())
+				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override
@@ -88,11 +90,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		// TODO  This may not be necessary, as the parent class implementation is probably fine
 		return TraversableDeltaComputation.create(getShape(), shape(target), expression, target,
 				getInputs().stream().skip(1).toArray(Supplier[]::new));
-	}
-
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {

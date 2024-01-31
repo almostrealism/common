@@ -22,7 +22,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.collect.CollectionOperationList;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.KernelExpression;
@@ -164,41 +163,6 @@ public interface LayerFeatures extends MatrixFeatures {
 		int d = outputShape.length(2);
 
 		if (enableLegacyPoolLayer) {
-			KernelExpression backward = (i, p) -> {
-				Expression x = p.l(0).divide(size);
-				Expression y = p.l(1).divide(size);
-				Expression max = i.v(0).get(shape(size, size, 1), x.multiply(2), y.multiply(2), p.l(2)).max();
-				return conditional(max.eq(i.v(0).getValue(p)), i.v(1).get(x, y, p.l(2)), e(0));
-			};
-
-			Propagation propagation = (lr, gradient, input, next) -> {
-				PackedCollection<?> out = new PackedCollection<>(inputShape);
-
-				OperationList ops = new OperationList();
-				ops.add(kernel(inputShape, backward, input, gradient), out.traverseEach());
-				if (next != null) ops.add(next.push(p(out)));
-				return ops;
-			};
-
-			return layer("pool2d", inputShape, outputShape,
-					Cell.of((input, next) -> {
-						PackedCollection<?> output = new PackedCollection<>(outputShape);
-
-						OperationList ops = new OperationList();
-						Producer<PackedCollection<?>> pool = c(input).enumerate(1, size)
-								.enumerate(1, size)
-								.traverse(2)
-								.map(shape(d, 1), v ->
-										enumerate(shape(1, 1, size, size, 1), v)
-												.traverse(1).reduce(slice -> max(slice)));
-
-						ops.add(output.traverse(2).getShape().getSize(),
-								pool, p(output.traverse(2)));
-
-						if (next != null) ops.add(next.push(p(output)));
-						return ops;
-					}), propagation);
-		} else {
 			Factor<PackedCollection<?>> operator = input ->
 					c(input).enumerate(1, size)
 							.enumerate(1, size)
@@ -206,6 +170,15 @@ public interface LayerFeatures extends MatrixFeatures {
 							.map(shape(d, 1), v ->
 									enumerate(shape(1, 1, size, size, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
+			return layer("pool2d", inputShape, outputShape, operator, requirements);
+		} else {
+			Factor<PackedCollection<?>> operator = input ->
+					c(input)
+						.enumerate(2, 1)
+						.enumerate(2, size)
+						.enumerate(2, size)
+						.traverse(3)
+						.max();
 			return layer("pool2d", inputShape, outputShape, operator, requirements);
 		}
 	}

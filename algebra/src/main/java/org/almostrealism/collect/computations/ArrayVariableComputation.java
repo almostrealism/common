@@ -35,7 +35,7 @@ import java.util.stream.Stream;
 // Use ExpressionComputation or TraversableExpressionComputation instead
 @Deprecated
 public class ArrayVariableComputation<T extends PackedCollection<?>>
-		extends TraversableProducerComputationAdapter<T, T> {
+		extends RelativeTraversableProducerComputation<T, T> {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
 	@SafeVarargs
@@ -63,10 +63,5 @@ public class ArrayVariableComputation<T extends PackedCollection<?>>
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> expression.get(pos).apply((List) getArgumentVariables());
-	}
-
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
 	}
 }

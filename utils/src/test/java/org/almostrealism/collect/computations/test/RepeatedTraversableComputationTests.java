@@ -22,7 +22,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.KernelProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
@@ -58,7 +58,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		out.clear();
 
-		Evaluable<PackedCollection<?>> rev = ((KernelProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
+		Evaluable<PackedCollection<?>> rev = ((CollectionProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
 
 		HardwareOperator.verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
