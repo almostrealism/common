@@ -41,7 +41,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class ExpressionComputation<T extends PackedCollection<?>>
-		extends TraversableProducerComputationAdapter<T, T> {
+		extends RelativeTraversableProducerComputation<T, T> {
 
 	public static boolean enableTraversableFixed = false;
 	public static boolean enableInferShape = false;
@@ -108,11 +108,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	public ExpressionComputation<T> generate(List<Process<?, ?>> children) {
 		return new ExpressionComputation<>(getShape(), expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
-	}
-
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
 	}
 
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value) {

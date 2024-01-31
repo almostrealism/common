@@ -37,9 +37,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	Console console = Console.root.child();
 
 	default void print(int rows, int colWidth, PackedCollection<?> value) {
-		for (int i = 0; i < rows; i++) {
-			System.out.println(value.toArrayString(i * colWidth, colWidth));
-		}
+		value.reshape(shape(rows, colWidth).traverse()).print();
 		System.out.println("--");
 	}
 

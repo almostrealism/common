@@ -240,6 +240,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void maxReduce() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int size = 4;
 		int count = 3;
 
@@ -836,6 +840,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void enumerateReduceEnumerate() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int r = 12;
 		int c = 16;
 		int d = 1;

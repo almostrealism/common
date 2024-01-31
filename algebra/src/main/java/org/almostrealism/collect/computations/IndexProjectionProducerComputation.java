@@ -17,22 +17,23 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
-import java.util.stream.IntStream;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
 	public static boolean enableChainDelta = true;
 
 	private UnaryOperator<Expression<?>> indexProjection;
@@ -48,7 +49,11 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		CollectionVariable var = getCollectionArgumentVariable(1);
 		if (var == null) return null;
 
-		return var.getValueAt(projectIndex(index));
+		return var.getValueAt(projectIndex(var, index));
+	}
+
+	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {
+		return projectIndex(index);
 	}
 
 	protected Expression<?> projectIndex(Expression<?> index) {
@@ -65,6 +70,11 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 						return conditional(pos[0].eq(projectIndex(pos[1])), e(1), e(0));
 					})
 				.addDependentLifecycle(this);
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+		return new IndexProjectionProducerComputation<>(getShape(), (Producer<?>) children.get(1), indexProjection);
 	}
 
 	@Override

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
@@ -28,6 +29,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.hardware.Hardware;
@@ -43,6 +45,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
@@ -355,6 +358,16 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void max2d() {
+		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
+
+		PackedCollection<?> m = cp(value).max().get().evaluate();
+		print(2, 1, m);
+		assertEquals(3.0, m.toDouble(0));
+		assertEquals(7.0, m.toDouble(1));
+	}
+
+	@Test
 	public void collectionMaxTwoSeries() {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
@@ -419,6 +432,37 @@ public class CollectionComputationTests implements TestFeatures {
 		Scalar output = scalar.get().evaluate();
 		assertEquals(2.0, output);
 		assertEquals(1.0, output.toDouble(1));
+	}
+
+	@Test
+	public void dynamicProjection() {
+		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
+
+		TraversalPolicy shape = shape(in).flatten(true);
+
+		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), p(in),
+				(args, idx) -> {
+					Expression<?> result = null;
+
+					for (int i = 0; i < shape.getSize(); i++) {
+						Expression<?> index = shape.index(idx, e(i));
+
+						if (result == null) {
+							result = index;
+						} else {
+							result = conditional(args[1].getValueAt(index)
+										.greaterThan(args[1].getValueAt(result)),
+									index, result);
+						}
+					}
+
+					return result;
+				});
+
+		PackedCollection<?> out = c.get().evaluate();
+		print(2, 1, out);
+		assertEquals(6.0, out.toDouble(0));
+		assertEquals(3.0, out.toDouble(1));
 	}
 
 	@Test

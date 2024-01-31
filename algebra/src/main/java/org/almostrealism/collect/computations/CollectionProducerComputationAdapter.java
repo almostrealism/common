@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,39 +16,38 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
-public abstract class TraversableProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
+public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	protected TraversableProducerComputationBase() { }
-
-	public TraversableProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
 	}
 
 	@Override
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
-
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(output.ref(i).assign(getValueRelative(e(i))));
+			Expression index = new KernelIndex();
+			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
+
+			scope.getVariables().add(output.ref(i).assign(getValueAt(index)));
 		}
 
 		return scope;
@@ -57,6 +56,22 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public CollectionProducer<O> delta(Producer<?> target) {
+		if (TraversableDeltaComputation.enableDirect) {
+			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					getInputs().stream().skip(1).toArray(Supplier[]::new));
+			delta.addDependentLifecycle(this);
+			return delta;
+		} else {
+			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+					(Supplier) this);
+			return delta;
+		}
 	}
 
 	@Override

@@ -85,6 +85,10 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void reduceMax() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int c = 16;
 		int d = 1;
 		int w = 2;
@@ -116,6 +120,10 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerateReduceMax() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int c = 16;
 		int d = 1;
 		int w = 2;

@@ -136,6 +136,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public DoubleStream doubleStream() { return DoubleStream.of(toArray()); }
 
+	public Stream<String> stringStream() {
+		int colWidth = getShape().getSize();
+		return IntStream.range(0, getCount()).mapToObj(r -> toArrayString(r * colWidth, colWidth));
+	}
+
+	public void print(Consumer<String> out) {
+		stringStream().forEach(out);
+	}
+
+	public void print() {
+		print(System.out::println);
+	}
+
 	public PackedCollection<T> fill(double... value) {
 		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(0, data);
