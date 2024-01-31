@@ -43,6 +43,7 @@ import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -59,7 +60,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private List<ScopeLifecycle> dependentLifecycles;
 
 	protected CollectionProducerComputationBase() {
-		this.dependentLifecycles = new ArrayList<>();
 	}
 
 	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
@@ -75,6 +75,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
+		if (dependentLifecycles == null) {
+			dependentLifecycles = new ArrayList<>();
+		}
+
 		dependentLifecycles.add(lifecycle);
 		return this;
 	}
@@ -85,13 +89,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	public List<ScopeLifecycle> getDependentLifecycles() {
-		return dependentLifecycles;
+		return dependentLifecycles == null ? Collections.emptyList() : dependentLifecycles;
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
+		if (dependentLifecycles != null) ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
 
 		// Result should always be first
 		// TODO  This causes cascading issues, as the output variable is reused by the referring
@@ -103,13 +107,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
-		ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+		if (dependentLifecycles != null) ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
 	}
 
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+		if (dependentLifecycles != null) ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 	}
 
 	protected void setShape(TraversalPolicy shape) {

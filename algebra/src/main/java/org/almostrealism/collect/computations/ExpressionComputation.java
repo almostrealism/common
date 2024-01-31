@@ -24,7 +24,9 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +45,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 
 	public static boolean enableTraversableFixed = false;
 	public static boolean enableInferShape = false;
+	public static boolean enableWarnings = false;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
@@ -59,10 +62,31 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		if (shape.getSize() != expression.size())
 			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
 		this.expression = expression;
+
+		if (enableWarnings && expression instanceof ArrayList) {
+			warn("Modifiable list used as argument to ExpressionComputation constructor");
+		}
 	}
 
 	public List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression() {
 		return expression;
+	}
+
+	@Override
+	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+		if (len == null) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy shape = shapeForLength(len);
+
+		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
+				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
+			if (existing != null) existing.destroy();
+			return PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
+		}
+
+		return ((PackedCollection) existing).range(shape);
 	}
 
 	@Override
@@ -96,13 +120,13 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-//		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
-//				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
-				comp.add(args -> value.getValueAt(new IntegerConstant(i))));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] =
+			IntStream.range(0, value.getShape().getTotalSize())
+					.mapToObj(i ->
+						(Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> value.getValueAt(new IntegerConstant(i)))
+					.toArray(Function[]::new);
 
-		return (ExpressionComputation<T>) new ExpressionComputation(comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+		return (ExpressionComputation<T>) new ExpressionComputation(List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? v : postprocessor.apply(v, 0);

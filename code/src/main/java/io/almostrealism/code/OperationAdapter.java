@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
@@ -29,6 +30,7 @@ import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +39,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements NameProvider, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T> implements NameProvider, Destroyable, OperationInfo, NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -170,6 +172,10 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 	}
 
 	public void addVariable(ExpressionAssignment<?> v) {
+		if (variables == null) {
+			variables = new ArrayList<>();
+		}
+
 		variables.add(v);
 	}
 
@@ -177,9 +183,9 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 		return getVariables().contains(v);
 	}
 
-	public List<ExpressionAssignment<?>> getVariables() { return variables; }
+	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
 
-	public void purgeVariables() { this.variables = new ArrayList<>(); }
+	public void purgeVariables() { this.variables = null; }
 
 	@Deprecated
 	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
@@ -189,6 +195,7 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 		semaphore.waitFor();
 	}
 
+	@Override
 	public void destroy() {
 		if (getInputs() != null) {
 			getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)

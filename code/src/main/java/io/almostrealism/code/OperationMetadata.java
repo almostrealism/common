@@ -28,7 +28,7 @@ public class OperationMetadata {
 
 	private List<OperationMetadata> children;
 
-	private OperationMetadata() { children = new ArrayList<>(); }
+	private OperationMetadata() { }
 
 	public OperationMetadata(OperationMetadata from) {
 		this();

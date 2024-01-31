@@ -111,16 +111,16 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ExpressionComputation<Scalar> toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		if (value == null) return null;
 
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> args.get(1).getValueRelative(0));
-		comp.add(args -> expressionForDouble(1.0));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, value).setPostprocessor(Scalar.postprocessor());
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		comp[0] = args -> args.get(1).getValueRelative(0);
+		comp[1] = args -> expressionForDouble(1.0);
+		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> value(Scalar value) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
+		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp)).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {

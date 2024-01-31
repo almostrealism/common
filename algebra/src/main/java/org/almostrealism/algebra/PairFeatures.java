@@ -51,9 +51,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
 	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.toDouble(i))));
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp)
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		IntStream.range(0, 2).forEach(i -> comp[i] = args -> ExpressionFeatures.getInstance().e(value.toDouble(i)));
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(List.of(comp))
 				.setPostprocessor(Pair.postprocessor());
 	}
 

@@ -105,9 +105,4 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	public void destroy() {
 		if (provider != null) provider.destroy();
 	}
-
-	@Override
-	protected void finalize() {
-		destroy();
-	}
 }

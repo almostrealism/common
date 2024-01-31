@@ -117,7 +117,9 @@ public interface CodePrintWriter {
 				comment(indentStr + "     " + metadata.getLongDescription());
 			}
 
-			metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
+			if (metadata.getChildren() != null) {
+				metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
+			}
 		}
 	}
 

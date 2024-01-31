@@ -34,6 +34,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.nio.NativeBufferMemoryProvider;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -130,7 +131,7 @@ public final class Hardware {
 	private List<DataContext<MemoryData>> contexts;
 	private ThreadLocal<DataContext<MemoryData>> explicitDataCtx = new ThreadLocal<>();
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
-	private List<ContextListener> contextListeners;
+	private List<WeakReference<ContextListener>> contextListeners;
 
 	private Hardware(List<ComputeRequirement> type, Location location, boolean nioMemory) {
 		this("local", type, location, nioMemory);
@@ -229,7 +230,10 @@ public final class Hardware {
 			}
 
 			contexts.add(ctx);
-			contextListeners.forEach(l -> l.contextStarted(ctx));
+			contextListeners.forEach(l -> Optional.ofNullable(l.get()).map(v -> {
+				v.contextStarted(getDataContext()); return true;
+			}).orElse(false));
+
 		}
 
 		MemoryProvider<? extends Memory> provider = null;
@@ -283,8 +287,8 @@ public final class Hardware {
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
-	public void addContextListener(ContextListener l) { contextListeners.add(l); }
-	public void removeContextListener(ContextListener l) { contextListeners.remove(l); }
+	public void addContextListener(ContextListener l) { contextListeners.add(new WeakReference<>(l)); }
+	public void removeContextListener(ContextListener l) { contextListeners.removeIf(c -> c.get() == null || c.get() == l); }
 
 	public <T> T dataContext(Callable<T> exec) {
 		DataContext<MemoryData> next, current = explicitDataCtx.get();
@@ -310,14 +314,18 @@ public final class Hardware {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Start " + dcName);
 			next.init();
 			explicitDataCtx.set(next);
-			contextListeners.forEach(l -> l.contextStarted(getDataContext()));
+			contextListeners.forEach(l -> Optional.ofNullable(l.get()).map(v -> {
+				v.contextStarted(getDataContext()); return true;
+			}).orElse(false));
 			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
-			contextListeners.forEach(l -> l.contextDestroyed(next));
+			contextListeners.forEach(l -> Optional.ofNullable(l.get()).map(v -> {
+				v.contextDestroyed(next); return true;
+			}).orElse(false));
 			explicitDataCtx.set(current);
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: End " + dcName);
 			next.destroy();

@@ -30,6 +30,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -255,8 +256,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		scope = null;
 		setInputs((List) null);
 		outputVariable = null;
-		if (getComputation() instanceof OperationAdapter) {
-			((OperationAdapter) getComputation()).destroy();
+		if (getComputation() instanceof Destroyable) {
+			((Destroyable) getComputation()).destroy();
 		}
 	}
 

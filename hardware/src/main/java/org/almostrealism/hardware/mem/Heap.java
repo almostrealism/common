@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.ProducerCache;
 
 import java.util.ArrayList;
@@ -111,6 +112,10 @@ public class Heap {
 
 		if (dependentOperations != null) {
 			dependentOperations.forEach(ProducerCache::purgeEvaluableCache);
+			dependentOperations.forEach(o -> {
+				if (o instanceof Destroyable)
+					((Destroyable) o).destroy();
+			});
 			dependentOperations = null;
 		}
 

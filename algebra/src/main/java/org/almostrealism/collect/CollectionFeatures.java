@@ -219,13 +219,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] = IntStream.range(0, producers.length)
 				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
-				.collect(Collectors.toList());
+				.toArray(Function[]::new);
 		if (axis != 0) {
-			return new ExpressionComputation(shape(producers.length, 1), expressions, producers).traverse(axis);
+			return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers).traverse(axis);
 		} else {
-			return new ExpressionComputation(shape(producers.length, 1), expressions, producers);
+			return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers);
 		}
 	}
 
@@ -499,11 +499,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			shape = shape(a);
 		}
 
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 								np -> Sum.of(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
-						.collect(Collectors.toList());
-		return new ExpressionComputation<>(expressions, (Supplier) a, (Supplier) b);
+						.toArray(Function[]::new);
+		return new ExpressionComputation<>(List.of(expressions), (Supplier) a, (Supplier) b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> a, Producer<T> b) {
@@ -593,11 +593,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMultiply(TraversalPolicy shape,
 																					  Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
 																					  Evaluable<T> shortCircuit) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 								np -> (Expression<Double>) Product.of(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
-						.collect(Collectors.toList());
-		ExpressionComputation<T> exp = new ExpressionComputation<>(shape, expressions, a, b);
+						.toArray(Function[]::new);
+		ExpressionComputation<T> exp = new ExpressionComputation<>(shape, List.of(expressions), a, b);
 		exp.setShortCircuit(shortCircuit);
 		return exp;
 	}
