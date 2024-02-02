@@ -441,7 +441,7 @@ public class CollectionComputationTests implements TestFeatures {
 		TraversalPolicy shape = shape(in).flatten(true);
 
 		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), p(in),
-				(args, idx) -> {
+				(input, idx) -> {
 					Expression<?> result = null;
 
 					for (int i = 0; i < shape.getSize(); i++) {
@@ -450,8 +450,8 @@ public class CollectionComputationTests implements TestFeatures {
 						if (result == null) {
 							result = index;
 						} else {
-							result = conditional(args[1].getValueAt(index)
-										.greaterThan(args[1].getValueAt(result)),
+							result = conditional(in.getValueAt(index)
+										.greaterThan(in.getValueAt(result)),
 									index, result);
 						}
 					}

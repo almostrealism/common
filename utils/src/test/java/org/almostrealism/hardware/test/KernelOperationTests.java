@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -40,19 +40,11 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
-
-		try {
-			Assignment.enableRelative = false;
-
-			CLOperator.verboseLog(() -> {
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
-				op.get().run();
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
-		}
+		HardwareOperator.verboseLog(() -> {
+			OperationList op = new OperationList();
+			op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+			op.get().run();
+		});
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
