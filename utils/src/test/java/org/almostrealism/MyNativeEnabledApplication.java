@@ -182,4 +182,27 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// Shape = (2)[axis=0|1x2]
 		// --> And that's just one item from the original shape (which contained 40 of them).
 	}
+
+	@Test
+	public void repeat() {
+		PackedCollection<?> a = pack(2, 3).reshape(2, 1);
+		PackedCollection<?> b = pack(4, 5).reshape(2);
+		c(a).traverse(1).repeat(2).multiply(c(b)).evaluate().print();
+	}
+
+	@Test
+	public void enumerate() {
+		PackedCollection<?> a =
+					pack(2, 3, 4, 5, 6, 7, 8, 9)
+						.reshape(2, 4);
+		PackedCollection<?> r = c(a).enumerate(1, 2, 2).evaluate();
+		System.out.println(r.getShape().toStringDetail());
+		// Shape = (2, 2, 2)[axis=3|8x1]
+
+		r.consolidate().print();
+		// [2.0, 3.0]
+		// [6.0, 7.0]
+		// [4.0, 5.0]
+		// [8.0, 9.0]
+	}
 }

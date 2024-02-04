@@ -401,7 +401,57 @@ covered briefly here.
 
 #### Repeat
 
+The repeat operation is used to repeat the item (see TraversalPolicy::item, described above)
+of a collection some finite number of times. This is useful for broadcasting operations in
+different ways.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+    // ....
+
+	public void repeat() {
+		PackedCollection<?> a = pack(2, 3).reshape(2, 1);
+		PackedCollection<?> b = pack(4, 5).reshape(2);
+		c(a).traverse(1).repeat(2).multiply(c(b)).evaluate().print();
+	}
+}
+```
+
+This example will produces [8, 10, 12, 15]. Notice how the broadcast behavior here is different
+because of the repeat operation - because the 2x1 collection has each item (size 1) repeated twice,
+producing [2, 2, 3, 3] which is then multiplied by the other value to produce a result. Notice
+how the broadcast behavior here is different because of the repeat operation.
+
 #### Enumerate
+
+The enumerate operation is used to move over a collection some finite number of times, along some
+axis of that collection. This is useful for performing a lot of common tensor operations, like
+transpose or convolution. The enumerate() method accepts an axis, a length, and a stride.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+    // ....
+
+	public void enumerate() {
+		PackedCollection<?> a =
+				pack(2, 3, 4, 5, 6, 7, 8, 9)
+						.reshape(2, 4);
+		PackedCollection<?> r = c(a).enumerate(1, 2, 2).evaluate();
+		System.out.println(r.getShape().toStringDetail());
+		// Shape = (2, 2, 2)[axis=3|8x1]
+
+		r.consolidate().print();
+		// [2.0, 3.0]
+		// [6.0, 7.0]
+		// [4.0, 5.0]
+		// [8.0, 9.0]
+	}
+}
+```
+
+Here the enumerate operation iterates over axis 1, collecting 2 numbers at a time, and then
+advancing by 2 along the axis. The result is a pair of 2x2 collections, a 2x2x2 tensor. The
+stride can also be omitted if it is the same as the length, as it is in the example.
 
 #### Subset
 
