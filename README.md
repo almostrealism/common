@@ -45,12 +45,12 @@ up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-writ
 
 #### Support Accelerators
     1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
-    2. External Native Operations via a generated executable (x86/Aarch64)
-    3. OpenCL (JNI with JOCL) on CPU (x86/Aarch64)
-    4. OpenCL (JNI with JOCL) on GPU (x86/Aarch64)
-    5. Metal (JNI with dylib) on GPU (Aarch64)
+    2. OpenCL on CPU (x86/Aarch64)
+    3. OpenCL on GPU (x86/Aarch64)
+    4. Metal (JNI with dylib) on GPU (Aarch64)
+    5. External Native Operations via a generated executable (x86/Aarch64)
 
-*For more information about Java bindings for OpenCL, visit jocl.org*
+*For more information about the Java bindings for OpenCL used here, visit jocl.org*
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Why would you want this?
@@ -71,9 +71,7 @@ etc.
 ### What does it depend on?
 The dependency footprint is unbelievably small. The only dependency that is brought with
 this library results from your choice of accelerator. To use JOCL you will need the native
-bindings for CL. They are available from jocl.org. To use TensorFlow you will need native
-bindings for TensorFlow. They are available from tensorflow.org. (Tensorflow support will
-not be available until 2024).
+bindings for CL. They are available from jocl.org.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### To use the libraries
@@ -95,7 +93,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.59</version>
+            <version>0.60</version>
         </dependency>
 
 ### Enabling Your Application
@@ -104,9 +102,9 @@ All of the library functionality is provided as default methods of an interface 
 **CodeFeatures**
 
 ```Java
-    public class MyNativeEnableApplication implements CodeFeatures {
+    public class MyNativeEnabledApplication implements CodeFeatures {
 	    public static void main(String args[]) {
-			new MyNativeEnableApplication().performMath();
+			new MyNativeEnabledApplication().performMath();
 		}
 		
 		public void performMath() {
@@ -115,35 +113,49 @@ All of the library functionality is provided as default methods of an interface 
     }
 ```
 
-Simple mathematical operations on constant values are compact to express:
+Simple mathematical operations on constant values are compact to express, using
+the c() method to create a constant value, and the multiply() method to create a
+multiplication operation. The get() method is used to compile the operation, and
+the evaluate() method is used to execute it. The result is a PackedCollection, a
+generic datastructure for storing numbers in a fixed arrangement in memory.
+(When you are not using a fixed arrangement, you can use the Tensor class discussed
+below instead).
+
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void performMath() {
 		// Compose the expression
-		Supplier<Evaluable<Scalar>> constantOperation = v(1.0).multiply(v(2.0));
-		
+		Producer<PackedCollection<?>> constantOperation = c(3.0).multiply(c(2.0));
+
 		// Compile the expression
-		Evaluable<Scalar> compiledOperation = constantOperation.get();
-		
+		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+
 		// Evaluate the expression
-		System.out.println("1 * 2 = " + constantOperation.evaluate());
+		StringBuffer displayResult = new StringBuffer();
+		displayResult.append("3 * 2 = ");
+		compiledOperation.evaluate().print(displayResult::append);
+
+		// Display the result
+		System.out.println(displayResult);
 	}
 }
 ```
 
 When the expression is compiled it will be converted to the target accelerator. This might
-be an OpenCL kernel program, an entirely separate native process or library, or a TensorFlow
-graph. You can write your entire application this way without having to decide which one to
-use, or you can use different ones in different places - leveraging Metal on MacOS, while
-using a native lib on windows and a TensorFlow graph in the cloud. All with the same language
-for defining your expressions.
+be an OpenCL kernel program, an entirely separate native process or library, or something else.
+You can write your entire application this way without having to decide which backend to use,
+or you can use different backends in different places - leveraging Metal on MacOS, while
+using a native lib on windows and an external native process in the cloud - all with the same
+language for defining your expressions.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Tutorial
 
-### Using Tensor
+*All of these examples are found in the test directory of the utils module in this repository*
+
+#### Using Tensor
 
 Tensor is a data structure that is used to represent multi-dimensional arrays of data. Before
 a tensor can be used in computations, it has to be packed (at which point it's shape becomes
@@ -158,47 +170,56 @@ public class MyNativeEnableApplication implements CodeFeatures {
 		Tensor<Double> t = new Tensor<>();
 		t.insert(1.0, 0, 0);
 		t.insert(2.0, 0, 1);
-		t.insert(3.0, 0, 2);
-		t.insert(4.0, 1, 0);
-		t.insert(5.0, 1, 1);
-		t.insert(6.0, 1, 2);
-		
+		t.insert(5.0, 0, 2);
+
 		Tensor<Double> p = new Tensor<>();
-		p.insert(3.0, 0, 0);
-		p.insert(4.0, 0, 1);
-		
+		p.insert(3.0, 0);
+		p.insert(4.0, 1);
+		p.insert(5.0, 2);
+
 		// Prepare the computation
-        CollectionProducer<PackedCollection<?>> product = t.pack().multiply(p.pack());
-		
+		CollectionProducer<PackedCollection<?>> product = multiply(c(t.pack()), c(p.pack()));
+
 		// Compile the computation and evaluate it
-		PackedCollection<?> out = product.get().evaluate();
+		product.get().evaluate().print();
+		
+		// Note that you can also combine compilation and evaluation into
+		// one step, if you are not planning to reuse the compiled expression
+		// for multiple evaluations.
+		product.evaluate().print();
 	}
 }
 ```
 
 #### Using Variables
 Mathematical operations can use both constant values and variable values:
+
 ```Java
 public class MyNativeEnableApplication implements CodeFeatures {
 	// ....
 
-	public void performMath() {
+	public void variableMath() {
 		// Define argument 0
-        Producer<Scalar> arg = v(Scalar.class, 0);
-		
+		Producer<PackedCollection<?>> arg = v(shape(2), 0);
+
 		// Compose the expression
-		Supplier<Evaluable<Scalar>> constantOperation = v(7.0).multiply(arg);
-		
+		Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
+
 		// Compile the expression
-		Evaluable<Scalar> compiledOperation = constantOperation.get();
-		
+		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+
 		// Evaluate the expression repeatedly
-		System.out.println("7 * 3 = " + constantOperation.evaluate(new Scalar(3)));
-		System.out.println("7 * 4 = " + constantOperation.evaluate(new Scalar(4)));
-		System.out.println("7 * 5 = " + constantOperation.evaluate(new Scalar(5)));
+		System.out.println("7 * 3 | 7 * 2 = ");
+		compiledOperation.evaluate(pack(3, 2)).print();
+		System.out.println("7 * 4 | 7 * 3 = ");
+		compiledOperation.evaluate(pack(4, 3)).print();
+		System.out.println("7 * 5 | 7 * 4 = ");
+		compiledOperation.evaluate(pack(5, 4)).print();
 	}
 }
 ```
+This also shows some other features, including the pack() method for reserving memory,
+and that operations can broadcast over different shapes.
 
 #### Controlling Execution
 
@@ -222,18 +243,21 @@ public class MyNativeEnableApplication implements CodeFeatures {
 		for (int i = 0; i < 3; i++) {
 			dc(() -> {
 				// Define argument 0
-				Producer<Scalar> arg = v(Scalar.class, 0);
+				Producer<PackedCollection<?>> arg = v(shape(2), 0);
 
 				// Compose the expression
-				Supplier<Evaluable<Scalar>> constantOperation = v(7.0).multiply(arg);
+				Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
 
 				// Compile the expression
-				Evaluable<Scalar> compiledOperation = constantOperation.get();
+				Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
 
 				// Evaluate the expression repeatedly
-				System.out.println("7 * 3 = " + constantOperation.evaluate(new Scalar(3)));
-				System.out.println("7 * 4 = " + constantOperation.evaluate(new Scalar(4)));
-				System.out.println("7 * 5 = " + constantOperation.evaluate(new Scalar(5)));
+				System.out.println("7 * 3 | 7 * 2 = ");
+				compiledOperation.evaluate(pack(3, 2)).print();
+				System.out.println("7 * 4 | 7 * 3 = ");
+				compiledOperation.evaluate(pack(4, 3)).print();
+				System.out.println("7 * 5 | 7 * 4 = ");
+				compiledOperation.evaluate(pack(5, 4)).print();
 			});
 		}
 	}
@@ -247,83 +271,146 @@ OpenCL, or wiping local storage if you are using an external executable, etc.
 
 The other **Context** concept, **ComputeContext**, exists within a particular **DataContext**.
 A **ComputeContext** tracks only the compiled **InstructionSet**s, and memory can be shared
-across different **ComputeContext**s (though obviously not every kind of **ComputeContext**
-can be used with every kind of memory: if you are using **CLDataContext** and memory is stored
-on a GPU device, there is no way to use it with a **ExternalNativeComputeContext**, for
-example).
+across different **ComputeContext**s. Obviously not every kind of **ComputeContext** can be
+used with every kind of memory: if you are using **CLDataContext** and memory is stored
+on a GPU device, there is no way to use it with, for example, a **ExternalComputeContext** without
+incurring a lot of costly memory copying, so be careful with these choies.
 
 **ComputeContexts** are global to the **Thread**, a JVM can have multiple **ComputeContexts**
 at once, if multiple **Thread**s were used to create them.
 
 When creating a **ComputeContext**, you can instruct the **DataContext** of your expectations,
-and it will make a best effort to fulfill them. It will not fail when your expectations cannot
-be met, it will just provide something other than what you expected.
+and it will make a best effort to fulfill them.
+
+*Note: It will not fail when your expectations cannot be met, it will
+just provide computing resources other than what you expected.*
 
 ```Java
 public class MyNativeEnableApplication implements CodeFeatures {
 	// ....
 
-	public void useJniCLandJniC() {
-		dc(() -> {
-			Scalar result = new Scalar();
+	public void useCpuAndGpu() {
+		PackedCollection<?> result = new PackedCollection(shape(1));
 
-			Producer<Scalar> sum = scalarAdd(v(1.0), v(2.0));
-			Producer<Scalar> product = scalarsMultiply(v(3.0), v(2.0));
+		Producer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
+		Producer<PackedCollection<?>> product = multiply(c(3.0), c(2.0));
 
-			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
-			System.out.println("Result = " + result.getValue());
+		cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CPU);
+		System.out.println("Result = " + result.toArrayString());
 
-			cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.C);
-			System.out.println("Result = " + result.getValue());
-		});
+		cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.GPU);
+		System.out.println("Result = " + result.toArrayString());
 	}
 }
 ```
 
-In this example, we will perform addition using OpenCL, but we will perform multiplication
-using a regular JNI method in a runtime-generated .so or .dylib.
+In this example, we will perform addition using some available context that supports the CPU,
+but we will perform multiplication using a (potentially separate) context that supports the GPU.
+The example also shows some other features, including the a() method for assignment. Assignment
+produces a **Runnable** rather than an **Evaluable**, and the run() method is used to execute it.
+Be aware that, the **ComputeContext** which is used for a given **Evaluable** or **Runnable** is
+always the one that was in effect when the **Evaluable** or **Runnable** was compiled via the 
+get() method.
+
+*Note: The contexts available on a given machine will depend on the hardware.*
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 #### Parallelization via Accelerator
 Although you can use the tool with multiple threads (compiled operations are threadsafe),
 you may want to leverage parallelization that cannot be accomplished with Java's Thread
-concept. If you are targeting a GPU with OpenCL, for example, you'll want to express a
-collection of operations with a single operation. This works the same way.
+concept. If you are targeting a GPU with OpenCL or Metal, for example, you'll want to
+express a collection of operations with a single operation. This works the same way.
 
 ```Java
 public class MyNativeEnableApplication implements CodeFeatures {
 	// ....
 
-	public void performMath() {
+	public void kernelEvaluation() {
 		// Define argument 0
-        Producer<Scalar> arg = v(Scalar.class, 0);
-		
+		Producer<PackedCollection<?>> arg = v(shape(1), 0);
+
 		// Compose the expression
-		Supplier<Evaluable<Scalar>> constantOperation = v(7.0).multiply(arg);
-		
+		Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);
+
 		// Compile the expression
-		Evaluable<Scalar> compiledOperation = constantOperation.get();
-		
-		ScalarBank bank = new ScalarBank(3);
+		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+
+		PackedCollection<?> bank = new PackedCollection<>(shape(3)).traverse();
 		bank.set(0, 3.0);
 		bank.set(1, 4.0);
 		bank.set(2, 5.0);
-		
-		ScalarBank results = new ScalarBank(3);
-		
+
+		PackedCollection<?> results = new PackedCollection<>(shape(3)).traverse();
+
 		// Evaluate the expression with the accelerator deciding how to parallelize it
-        compiledOperation.into(results).evaluate(bank);
-		
-		System.out.println("7 * 3 = " + results.get(0));
-		System.out.println("7 * 4 = " + results.get(1));
-		System.out.println("7 * 5 = " + results.get(2));
+		compiledOperation.into(results).evaluate(bank);
+
+		System.out.println("7 * 3, 7 * 4, 7 * 5 = ");
+		results.print();
 	}
+}
+```
+
+There are a few nuances here, besides the improved performance of parallelization via SIMD
+or other kernel features of your available hardware. One is the Evaluable::into method, which
+allows you to specify the destination of the results. This is useful when you are using (or
+reusing) a pre-existing data structure. The other is the traverse() method, which is used to
+adjust the traversal axis of the PackedCollection. More on this in the next section.
+
+### TraversalPolicy
+
+Every data structure that deals with one or more collections of numbers has a **TraversalPolicy**
+that tells other components how it is expected to be traversed during a computation. Some useful
+properties of the **TraversalPolicy** (often called the shape) are shown in the example below.
+
+```Java
+	public void shapes() {
+	// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
+	// However, it will be treated for the purpose of GPU parallelism as one
+	// value with 80 elements. In this case, 1 is referred to as the count and
+	// 80 is referred to as the size.
+	TraversalPolicy shape = shape(10, 4, 2);
+	System.out.println("Shape = " + shape.toStringDetail());
+	// Shape = (10, 4, 2)[axis=0|1x80]
+	//           <dims> [Count x Size]
+
+	// What if we want to operate on groups of elements at once, via SIMD or
+	// some other method? We can simply adjust the traversal axis
+	shape = shape.traverse();
+	System.out.println("Shape = " + shape.toStringDetail());
+	// Shape = (10, 4, 2)[axis=1|10x8]
+	//           <dims> [Count x Size]
+	// --> Now we have 10 groups of 8 elements each, and 10 operations can work on
+	// 8 elements each - at the same time.
+
+	shape = shape.traverseEach(); // Move the traversal axis to the innermost dimension
+	shape = shape.consolidate(); // Move the traversal axis back by 1 position
+	shape = shape.item(); // Pull off just the shape of one item in the parallel group
+	System.out.println("Shape = " + shape.toStringDetail());
+	// Shape = (2)[axis=0|1x2]
+	// --> And that's just one item from the original shape (which contained 40 of them).
 }
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-### Machine Learning (Alpha)
+### More Collection Operations
+
+There are plenty of other operations besides the ones described in the tutorial. They are
+covered briefly here.
+
+#### Repeat
+
+#### Enumerate
+
+#### Subset
+
+### Automatic Differentiation
+
+#### Delta
+
+
+### Machine Learning
 
 The system is gradually becoming fully-featured enough to support machine learning tasks. A convenient
 method for defining ML models is to use Groovy. An example of a CNN is shown below.
@@ -351,13 +438,13 @@ def gradient = computeGradient(input, output)
 model.backward(gradient)
 ```
 
-This functionality will be substantially improved during the remainder of 2023 prior to the release of
+This functionality will be substantially improved during the remainder of 2024 prior to the release of
 version 1.0.0.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### What are the terms of the LICENSE?
 
-Copyright 2023  Michael Murray
+Copyright 2024  Michael Murray
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

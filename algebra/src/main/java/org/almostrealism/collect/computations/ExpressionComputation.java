@@ -59,7 +59,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	public ExpressionComputation(TraversalPolicy shape, List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
-		if (shape.getSize() != expression.size())
+		if (shape.getTotalSize() != expression.size())
 			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
 		this.expression = expression;
 
@@ -121,7 +121,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 						(Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> value.getValueAt(new IntegerConstant(i)))
 					.toArray(Function[]::new);
 
-		return (ExpressionComputation<T>) new ExpressionComputation(List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
+		return (ExpressionComputation<T>) new ExpressionComputation(value.getShape(), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? v : postprocessor.apply(v, 0);
