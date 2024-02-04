@@ -455,37 +455,169 @@ stride can also be omitted if it is the same as the length, as it is in the exam
 
 #### Subset
 
+To take just a slice of a collection, the subset operation can be used. It accepts shape and
+position information for the slice.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+    // ....
+
+	public void subset3d() {
+		int w = 2;
+		int h = 4;
+		int d = 3;
+
+		int x0 = 4;
+		int y0 = 3;
+		int z0 = 2;
+
+		PackedCollection<?> a = new PackedCollection<>(shape(10, 10, 10));
+		a.fill(Math::random);
+
+		CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), c(a), x0, y0, z0);
+		Evaluable<PackedCollection<?>> ev = producer.get();
+		PackedCollection<?> subset = ev.evaluate();
+
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) {
+				for (int k = 0; k < d; k++) {
+					double expected = a.valueAt(x0 + i, y0 + j, z0 + k);
+					double actual = subset.valueAt(i, j, k);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+}
+```
+
+#### More Complex Operations
+
+All these atomic operations (together with the standard mathematical operations) can be combined to achieve
+basically any kind of tensor algebra you may need. If you find otherwise, please 
+[open an issue][issues-url]
+
 ### Automatic Differentiation
 
+Most **Producer** implementations, mainly those that implement **ProducerComputation**, support automatic
+differentiation. This is a powerful feature that allows you to compute the gradient of a function with
+respect to any of its inputs. This is especially useful for machine learning implementations, but that is
+far from the only use case.
+
 #### Delta
+
+The delta() method is used to form a new **Producer** that is the gradient of the original **Producer** with
+respect to a particular input. The shape of the result will be the shape of the target input appended to the
+output shape - resulting in a derivative for each combination of input and output. Some examples follow.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+    // ....
+
+	@Test
+	public void polynomialDelta() {
+		// x^2 + 3x + 1
+		CollectionProducer<PackedCollection<?>> c = x().sq().add(x().mul(3)).add(1);
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		out.consolidate().print();
+
+		// dy = f'(x) = 2x + 3
+		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		out.consolidate().print();
+	}
+
+	@Test
+	public void vectorDelta() {
+		int dim = 3;
+		int count = 2;
+
+		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(count, dim).traverse();
+		PackedCollection<?> w = pack(4, -3, 2);
+		CollectionProducer<PackedCollection<?>> x = x(dim);
+
+		// w * x
+		CollectionProducer<PackedCollection<?>> c = x.mul(p(w));
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(v);
+		out.print();
+
+		// dy = f'(x)
+		//    = w
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
+	}
+}
+```
 
 
 ### Machine Learning
 
-The system is gradually becoming fully-featured enough to support machine learning tasks. A convenient
-method for defining ML models is to use Groovy. An example of a CNN is shown below.
+The system is gradually becoming fully-featured enough to support machine learning tasks.
+An example of CNN training is shown below. In the example below the input and loss
+computation are both random, so there isn't really anything useful being learned, but it
+is a good example of how to use the framework for these kinds of workloads.
 
-```Groovy
-import org.almostrealism.Ops;
-import org.almostrealism.model.Model;
-import org.almostrealism.collect.PackedCollection;
+```Java
+public class MyNativeEnabledApplication implements CodeFeatures {
+	public static void main(String args[]) {
+		new MyNativeEnabledApplication().trainCnn();
+	}
+	
+	public void trainCnn() {
+		int s = 10;
 
-def ml = Ops.ops()
+		Tensor<Double> t = new Tensor<>();
+		shape(s, s).stream().forEach(pos -> t.insert(0.5 + 0.5 * Math.random(), pos));
 
-def shape = ml.shape(100, 100)
-def model = new Model(shape)
-model.addLayer(ml.convolution2d(3, 8))
-model.addLayer(ml.pool2d(2))
-model.addBlock(ml.flatten())
-model.addLayer(ml.dense(10))
-model.addLayer(ml.softmax())
+		PackedCollection<?> input = t.pack();
+		train(input, model(s, s, 3, 8, 10));
+	}
 
-def input = new PackedCollection(shape)
-model.setup().get().run()
-output = model.forward(input)
+	protected void train(PackedCollection<?> input, Model model) {
+		CompiledModel compiled = model.compile();
+		log("Model compiled");
 
-def gradient = computeGradient(input, output)
-model.backward(gradient)
+		int epochSize = 1000;
+		int count = 100 * epochSize;
+
+		for (int i = 0; i < count; i++) {
+			input.fill(pos -> 0.5 + 0.5 * Math.random());
+
+			compiled.forward(input);
+
+			if (i % 1000 == 0) {
+				log("Input Size = " + input.getShape() +
+						"\t | epoch = " + i / epochSize);
+			}
+
+			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+
+			if (i % 1000 == 0) {
+				log("\t\tbackprop\t\t\t | epoch = " + i / epochSize);
+			}
+		}
+	}
+
+	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
+		Model model = new Model(shape(r, c));
+		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
+		log("Created model (" + model.getBlocks().size() + " blocks)");
+		return model;
+	}
+}
 ```
 
 This functionality will be substantially improved during the remainder of 2024 prior to the release of

@@ -17,13 +17,27 @@
 package org.almostrealism;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSettings;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class MyNativeEnabledApplication implements CodeFeatures {
 	public static void main(String args[]) {
@@ -204,5 +218,124 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		// [6.0, 7.0]
 		// [4.0, 5.0]
 		// [8.0, 9.0]
+	}
+
+	@Test
+	public void subset3d() {
+		int w = 2;
+		int h = 4;
+		int d = 3;
+
+		int x0 = 4;
+		int y0 = 3;
+		int z0 = 2;
+
+		PackedCollection<?> a = new PackedCollection<>(shape(10, 10, 10));
+		a.fill(Math::random);
+
+		CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), c(a), x0, y0, z0);
+		Evaluable<PackedCollection<?>> ev = producer.get();
+		PackedCollection<?> subset = ev.evaluate();
+
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) {
+				for (int k = 0; k < d; k++) {
+					double expected = a.valueAt(x0 + i, y0 + j, z0 + k);
+					double actual = subset.valueAt(i, j, k);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void polynomialDelta() {
+		// x^2 + 3x + 1
+		CollectionProducer<PackedCollection<?>> c = x().sq().add(x().mul(3)).add(1);
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		out.consolidate().print();
+
+		// dy = f'(x) = 2x + 3
+		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		out.consolidate().print();
+	}
+
+	@Test
+	public void vectorDelta() {
+		int dim = 3;
+		int count = 2;
+
+		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(count, dim).traverse();
+		PackedCollection<?> w = pack(4, -3, 2);
+		CollectionProducer<PackedCollection<?>> x = x(dim);
+
+		// w * x
+		CollectionProducer<PackedCollection<?>> c = x.mul(p(w));
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(v);
+		out.print();
+
+		// dy = f'(x)
+		//    = w
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
+	}
+
+	@Test
+	public void trainCnn() {
+		if (!TestSettings.trainingTests) return;
+
+		int s = 10;
+
+		Tensor<Double> t = new Tensor<>();
+		shape(s, s).stream().forEach(pos -> t.insert(0.5 + 0.5 * Math.random(), pos));
+
+		PackedCollection<?> input = t.pack();
+		train(input, model(s, s, 3, 8, 10));
+	}
+
+	protected void train(PackedCollection<?> input, Model model) {
+		CompiledModel compiled = model.compile();
+		log("Model compiled");
+
+		int epochSize = 1000;
+		int count = 100 * epochSize;
+
+		for (int i = 0; i < count; i++) {
+			input.fill(pos -> 0.5 + 0.5 * Math.random());
+
+			compiled.forward(input);
+
+			if (i % 1000 == 0) {
+				log("Input Size = " + input.getShape() +
+						"\t | epoch = " + i / epochSize);
+			}
+
+			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+
+			if (i % 1000 == 0) {
+				log("\t\tbackprop\t\t\t | epoch = " + i / epochSize);
+			}
+		}
+	}
+
+	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
+		Model model = new Model(shape(r, c));
+		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
+		log("Created model (" + model.getBlocks().size() + " blocks)");
+		return model;
 	}
 }

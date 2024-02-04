@@ -73,7 +73,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
