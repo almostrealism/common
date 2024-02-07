@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.code.AdaptEvaluable;
-import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -28,18 +27,14 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -89,7 +84,7 @@ public class TriangleTest implements TestFeatures {
 
 	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
+		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((ExpressionComputation) noRank).getInputs().get(1);
 
 		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
 	}

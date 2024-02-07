@@ -21,6 +21,7 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
@@ -35,7 +36,7 @@ import java.util.stream.IntStream;
 public interface ScalarBankFeatures extends ScalarFeatures {
 	boolean enableDeprecated = !SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
 
-	default ExpressionComputation<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
+	default CollectionProducer<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
 		return ExpressionComputation.fixed(value, Scalar.scalarBankPostprocessor());
 	}
 

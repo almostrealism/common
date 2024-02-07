@@ -31,6 +31,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -57,7 +58,7 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
+	default CollectionProducer<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -73,9 +74,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> v(Pair value) { return value(value); }
+	default CollectionProducer<Pair<?>> v(Pair value) { return value(value); }
 
-	default ExpressionComputation<Pair<?>> value(Pair value) {
+	default CollectionProducer<Pair<?>> value(Pair value) {
 		return ExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 

@@ -178,7 +178,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		});
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(T value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(T value) {
 		if (ExpressionComputation.enableTraversableFixed) {
 			return TraversableExpressionComputation.fixed(value);
 		} else {

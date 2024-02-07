@@ -134,7 +134,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		} else if (v instanceof TransformMatrix) {
 			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
 		} else if (enableFixedCollections && v instanceof PackedCollection) {
-			return (ProducerComputation) c((PackedCollection) v);
+			return (Producer) c((PackedCollection) v);
 		} else if (v == null) {
 			return null;
 		} else {

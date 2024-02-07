@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
@@ -35,9 +36,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface TransformMatrixFeatures extends CollectionFeatures {
-	default ExpressionComputation<TransformMatrix> v(TransformMatrix v) { return value(v); }
+	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
-	default ExpressionComputation<TransformMatrix> value(TransformMatrix v) {
+	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
 		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
 	}
 

@@ -42,17 +42,17 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
-	default ExpressionComputation<Vector> v(Vector value) { return value(value); }
+	default CollectionProducer<Vector> v(Vector value) { return value(value); }
 
-	default ExpressionComputation<Vector> value(Vector value) {
+	default CollectionProducer<Vector> value(Vector value) {
 		return ExpressionComputation.fixed(value, Vector.postprocessor());
 	}
 
-	default ExpressionComputation<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
+	default CollectionProducer<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
-	default ExpressionComputation<Vector> vector(double v[]) { return vector(v[0], v[1], v[2]); }
+	default CollectionProducer<Vector> vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
-	default ExpressionComputation<Vector> vector(IntFunction<Double> values) {
+	default CollectionProducer<Vector> vector(IntFunction<Double> values) {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 

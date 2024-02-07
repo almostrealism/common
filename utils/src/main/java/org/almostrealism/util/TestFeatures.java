@@ -37,6 +37,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	Console console = Console.root.child();
 
 	default void print(int rows, int colWidth, PackedCollection<?> value) {
+		if (value.getShape().getTotalSize() > (rows * colWidth)) {
+			value = value.range(shape(rows * colWidth), 0);
+		}
+
 		value.reshape(shape(rows, colWidth).traverse()).print();
 		System.out.println("--");
 	}

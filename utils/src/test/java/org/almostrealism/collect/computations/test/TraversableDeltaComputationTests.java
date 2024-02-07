@@ -735,10 +735,8 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				.into(sparse.each()).evaluate();
 		print(h, filterCount, sparse);
 
-		// HardwareOperator.verboseLog(() -> {
-			Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
-			cda.get().run();
-		// });
+		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
+		cda.get().run();
 	}
 
 	private Predicate<Process> operationFilter(String classSubstring) {

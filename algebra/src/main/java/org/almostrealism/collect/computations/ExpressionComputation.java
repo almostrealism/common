@@ -21,6 +21,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -59,8 +60,8 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	public ExpressionComputation(TraversalPolicy shape, List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
-		if (shape.getTotalSize() != expression.size())
-			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
+		if (shape.getSize() != expression.size())
+			throw new IllegalArgumentException("Expected " + shape.getSize() + " expressions");
 		this.expression = expression;
 
 		if (enableWarnings && expression instanceof ArrayList) {
@@ -110,22 +111,32 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
-	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value) {
+	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value) {
 		return fixed(value, null);
 	}
 
-	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
+	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
+		int traversalAxis = value.getShape().getTraversalAxis();
+
 		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] =
 			IntStream.range(0, value.getShape().getTotalSize())
 					.mapToObj(i ->
 						(Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> value.getValueAt(new IntegerConstant(i)))
 					.toArray(Function[]::new);
 
-		return (ExpressionComputation<T>) new ExpressionComputation(value.getShape(), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
-			PackedCollection v = new PackedCollection(value.getShape());
-			v.setMem(value.toArray(0, value.getMemLength()));
-			return postprocessor == null ? v : postprocessor.apply(v, 0);
-		});
+		if (traversalAxis == 0) {
+			return (ExpressionComputation<T>) new ExpressionComputation(value.getShape(), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
+				PackedCollection v = new PackedCollection(value.getShape());
+				v.setMem(value.toArray(0, value.getMemLength()));
+				return postprocessor == null ? v : postprocessor.apply(v, 0);
+			});
+		} else {
+			return new ExpressionComputation(value.getShape().traverse(0), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
+				PackedCollection v = new PackedCollection(value.getShape());
+				v.setMem(value.toArray(0, value.getMemLength()));
+				return postprocessor == null ? v : postprocessor.apply(v, 0);
+			}).traverse(traversalAxis);
+		}
 	}
 
 	private static TraversalPolicy shape(int size, Supplier... args) {

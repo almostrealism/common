@@ -21,10 +21,10 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
@@ -221,7 +221,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel2() {
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
-		RayExpressionComputation ray = ray(origin2, direction2);
+		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		assertEquals(1.0, distances.get(0));
