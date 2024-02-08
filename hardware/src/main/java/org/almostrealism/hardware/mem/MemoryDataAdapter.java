@@ -35,9 +35,6 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	private int delegateMemOffset;
 
 	protected void init() {
-		if (enableMemVersions)
-			memVersions = new HashMap<>();
-
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
 
@@ -82,6 +79,9 @@ public abstract class MemoryDataAdapter implements MemoryData {
 		if (delegateMem != null || mem == null) {
 			throw new HardwareException("Only root memory can be reassigned");
 		}
+
+		if (enableMemVersions && memVersions == null)
+			memVersions = new HashMap<>();
 
 		if (memVersions == null) {
 			this.mem.getProvider().deallocate(getMemLength(), this.mem);
