@@ -25,7 +25,7 @@ public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<
 	@SafeVarargs
 	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<Scalar>... conjuncts) {
-		super(2, Scalar::new, Scalar::scalarBank, trueValue, falseValue, conjuncts);
+		super(2, Scalar::scalarBank, trueValue, falseValue, conjuncts);
 		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 }

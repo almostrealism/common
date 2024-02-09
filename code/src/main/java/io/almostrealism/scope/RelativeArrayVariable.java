@@ -25,7 +25,7 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 	private Expression offset;
 
 	public RelativeArrayVariable(ArrayVariable<Double> ref, Expression offset) {
-		super(null, null, (Expression<Integer>) null);
+		super(ref.getLanguage(), null, null, (Expression<Integer>) null);
 		this.ref = ref;
 		this.offset = offset;
 	}
@@ -37,8 +37,7 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 		TraversableExpression exp = TraversableExpression.traverse(ref.getProducer());
 
 		if (exp != null && exp.isRelative()) {
-			Expression alt = exp.getValueAt(offset.add(new IntegerConstant(index)));
-
+			// Expression alt = exp.getValueAt(offset.add(new IntegerConstant(index)));
 			return ref.getValueRelative(index);
 		}
 
@@ -46,6 +45,6 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 			return exp.getValueAt(offset.add(new IntegerConstant(index)));
 		}
 
-		return ref.reference(offset.add(new IntegerConstant(index)));
+		return ref.reference(offset.add(new IntegerConstant(index)), false);
 	}
 }

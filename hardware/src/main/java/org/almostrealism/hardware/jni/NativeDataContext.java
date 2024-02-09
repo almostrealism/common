@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,56 +21,111 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 
+import java.util.List;
 import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext<MemoryData> {
-	private final String name;
-	private final boolean isDoublePrecision, isNativeMem;
-	private final long memoryMax;
+	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
 
+	private final boolean isExternal, isClMemory;
+	private final long maxReservation;
+
+	private NativeCompiler compiler;
+	private DataContext<MemoryData> delegate;
 	private MemoryProvider<? extends Memory> ram;
+	private boolean providedRam = false;
 
-	private Hardware hardware;
-	private ComputeContext context;
+	private String name;
+	private Precision precision;
+	private ComputeContext<MemoryData> context;
 
-	public NativeDataContext(Hardware hardware, String name, boolean isDoublePrecision, boolean isNativeMem, boolean external, long memoryMax) {
-		this.hardware = hardware;
+	public NativeDataContext(String name, Precision precision, long maxReservation) {
+		this(name, precision, maxReservation, false);
+	}
+
+	public NativeDataContext(String name, Precision precision, long maxReservation, boolean clMemory) {
 		this.name = name;
-		this.isDoublePrecision = isDoublePrecision;
-		this.isNativeMem = isNativeMem;
-		this.memoryMax = memoryMax;
-		this.context = external ? new ExternalComputeContext(hardware) : new NativeComputeContext(hardware);
+		this.precision = precision;
+		this.isExternal = external;
+		this.maxReservation = maxReservation;
+		this.isClMemory = clMemory;
 	}
 
+	@Override
 	public void init() {
-		if (ram != null) return;
-		ram = isNativeMem ? new NativeMemoryProvider(memoryMax) : new JVMMemoryProvider();
+		if (context != null) return;
+		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
+
+		if (ram == null) {
+			ram = new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes());
+		}
+
+		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
 	}
 
+	@Override
 	public String getName() { return name; }
+
+	@Override
+	public Precision getPrecision() { return precision; }
+
+	public NativeCompiler getNativeCompiler() { return compiler; }
+
+	public void setDelegate(DataContext<MemoryData> ctx) {
+		this.delegate = ctx;
+	}
+
+	public void setMemoryProvider(MemoryProvider<? extends Memory> ram) {
+		if (getPrecision().bytes() != ram.getNumberSize()) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.ram = ram;
+		providedRam = true;
+	}
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+		return List.of(ram);
+	}
 
 	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
 	@Override
-	public MemoryProvider<? extends Memory> getMemoryProvider(int size) { return getMemoryProvider(); }
+	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
+		return delegate == null ? getMemoryProvider() : delegate.getMemoryProvider(size);
+	}
 
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
 
-	public ComputeContext getComputeContext() {
+	@Override
+	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			context = new NativeComputeContext(hardware);
+			context = new NativeComputeContext(this, getNativeCompiler());
 		}
 
-		return context;
+		return List.of(context);
+	}
+
+	@Override
+	public <T> T deviceMemory(Callable<T> exec) {
+		try {
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
@@ -86,6 +141,6 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	@Override
 	public void destroy() {
 		// TODO  Destroy all compute contexts
-		ram.destroy();
+		if (!providedRam) ram.destroy();
 	}
 }

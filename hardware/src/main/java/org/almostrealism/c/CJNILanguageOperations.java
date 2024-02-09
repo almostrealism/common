@@ -17,14 +17,41 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.Precision;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 public class CJNILanguageOperations extends CLanguageOperations {
-	public CJNILanguageOperations() {
-		super(true, true);
+	private List<String> libraryMethods;
+
+	public CJNILanguageOperations(Precision precision) {
+		super(precision, true, true);
+		this.libraryMethods = new ArrayList<>();
+	}
+
+	protected List<String> getLibraryMethods() { return libraryMethods; }
+
+	@Override
+	public String pow(String a, String b) {
+		if (getPrecision() != Precision.FP64) {
+			return "powf(" + a + ", " + b + ")";
+		}
+
+		return super.pow(a, b);
+	}
+
+	@Override
+	public String min(String a, String b) {
+		return "f" + super.min(a, b);
+	}
+
+	@Override
+	public String max(String a, String b) {
+		return "f" + super.max(a, b);
 	}
 
 	@Override
@@ -39,11 +66,23 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
-		} else {
-			super.renderArguments(arguments, out, access);
+			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jintArray dim0, jint count, jint global_index, jlong global_total");
+			return;
 		}
+
+		super.renderArguments(arguments, out, access);
+
+		if (!arguments.isEmpty()) {
+			out.accept(", ");
+			out.accept("jint global_id");
+		}
+	}
+
+	@Override
+	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
+		super.renderParameters(methodName, parameters, out);
+		if (!getLibraryMethods().contains(methodName)) out.accept(", global_id");
 	}
 }

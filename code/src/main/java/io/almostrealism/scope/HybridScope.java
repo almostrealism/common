@@ -18,6 +18,8 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.relation.Parent;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,29 +30,55 @@ import java.util.stream.Collectors;
 
 public class HybridScope<T> extends Scope<T> {
 	private final ExplicitScope<T> explicit;
+	private CodeGenerator codeGenerator;
 
 	public HybridScope(OperationAdapter operation) {
 		super(operation.getFunctionName(), operation.getMetadata());
 		this.explicit = new ExplicitScope<T>(operation);
 	}
 
-	public HybridScope(ExplicitScope<T> explicit) {
+	public HybridScope(ExplicitScope<T> explicit, CodeGenerator generator) {
 		this.explicit = explicit;
+		this.codeGenerator = generator;
 	}
 
 	public void setArguments(List<Argument<?>> arguments) { explicit.setArguments(arguments); }
 
-	public void setDependencies(Collection<Variable<?, ?>> dependencies) { explicit.setArguments(Scope.extractArgumentDependencies(dependencies)); }
+	public void setDependencies(Collection<Variable<?, ?>> dependencies) {
+		explicit.setArguments(Scope.extractArgumentDependencies(dependencies));
+	}
+
+	public ExplicitScope<T> getExplicit() {
+		return explicit;
+	}
+
+	public void setSource(CodeGenerator source) {
+		this.codeGenerator = source;
+	}
 
 	@Override
 	public void write(CodePrintWriter w) {
 		super.write(w);
-		explicit.write(w);
+
+		if (codeGenerator == null) {
+			explicit.write(w);
+		} else {
+			w.println(codeGenerator.generate(this, w.getLanguage()));
+		}
 	}
 
 	public Consumer<String> code() { return explicit.code(); }
 
 	public boolean isInlineable() { return explicit.isInlineable(); }
+
+	@Override
+	public Parent<Scope<T>> generate(List<Scope<T>> children) {
+		Scope<T> scope = new HybridScope<>(explicit, codeGenerator);
+		scope.setName(getName());
+		scope.setMetadata(getMetadata());
+		scope.getChildren().addAll(children);
+		return scope;
+	}
 
 	@Override
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {

@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="GradientDescentTests.linear2" type="JUnit" factoryName="JUnit" folderName="ML">
+    <module name="ar-ml" />
+    <option name="PACKAGE_NAME" value="org.almostrealism.ml" />
+    <option name="MAIN_CLASS_NAME" value="org.almostrealism.ml.GradientDescentTests" />
+    <option name="METHOD_NAME" value="linear2" />
+    <option name="TEST_OBJECT" value="method" />
+    <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

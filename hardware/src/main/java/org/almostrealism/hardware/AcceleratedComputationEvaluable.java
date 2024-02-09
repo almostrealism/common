@@ -16,18 +16,44 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
-	public AcceleratedComputationEvaluable(Computation<T> c) {
-		this(c, true);
+import java.util.function.IntFunction;
+
+public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements KernelizedEvaluable<T> {
+	private IntFunction<Multiple<T>> destinationFactory;
+
+	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
+		super(context, c, true);
 	}
 
-	public AcceleratedComputationEvaluable(Computation<T> c, boolean kernel) {
-		super(c, kernel);
+	@Override
+	public ProducerComputation<T> getComputation() {
+		return (ProducerComputation<T>) super.getComputation();
+	}
+
+	public IntFunction<Multiple<T>> getDestinationFactory() {
+		return destinationFactory;
+	}
+
+	public void setDestinationFactory(IntFunction<Multiple<T>> destinationFactory) {
+		this.destinationFactory = destinationFactory;
+	}
+
+	@Override
+	public Multiple<T> createDestination(int size) {
+		if (getDestinationFactory() == null) {
+			return KernelizedEvaluable.super.createDestination(size);
+		}
+
+		return getDestinationFactory().apply(size);
 	}
 
 	@Override
@@ -53,9 +79,13 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		AcceleratedProcessDetails process = apply(null, args);
-		waitFor(process.getSemaphore());
-		return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+		try {
+			AcceleratedProcessDetails process = apply(null, args);
+			waitFor(process.getSemaphore());
+			return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+		} catch (HardwareException e) {
+			throw new HardwareException("Failed to evaluate " + getName(), e);
+		}
 	}
 
 	/**
@@ -66,15 +96,5 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	 */
 	protected T postProcessOutput(MemoryData output, int offset) {
 		return (T) output;
-	}
-
-	@Override
-	public ProducerComputation<T> getComputation() {
-		return (ProducerComputation<T>) super.getComputation();
-	}
-
-	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
 	}
 }

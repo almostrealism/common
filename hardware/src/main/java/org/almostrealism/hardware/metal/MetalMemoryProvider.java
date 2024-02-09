@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,15 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
@@ -29,9 +34,12 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MetalMemoryProvider implements MemoryProvider<RAM> {
+public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
+	public static DistributionMetric allocationSizes = Hardware.console.distribution("mtlAllocationSizes", 1024 * 1024);
+	public static DistributionMetric deallocationSizes = Hardware.console.distribution("mtlDeallocationSizes", 1024 * 1024);
 
 	private final MetalDataContext context;
 	private final int numberSize;
@@ -49,6 +57,10 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 		this.deallocating = new ArrayList<>();
 	}
 
+	@Override
+	public String getName() { return context.getName(); }
+
+	@Override
 	public int getNumberSize() { return numberSize; }
 
 	public long getAllocatedMemory() { return memoryUsed; }
@@ -57,12 +69,13 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public MetalMemory allocate(int size) {
-		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
-			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
+		if (enableLargeAllocationLogging && size > (20 * 1024 * 1024 + 2)) {
+			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
 		MetalMemory mem = new MetalMemory(this, buffer(size), numberSize * (long) size);
 		allocated.add(mem);
+		allocationSizes.addEntry(numberSize * (long) size);
 		return mem;
 	}
 
@@ -87,6 +100,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 			}
 		} finally {
 			deallocating.remove(ram);
+			deallocationSizes.addEntry(numberSize * (long) size);
 		}
 	}
 
@@ -143,9 +157,13 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
-	public void setMem(RAM ram, int offset, RAM srcRam, int srcOffset, int length) {
+	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
 		if (!(ram instanceof MetalMemory)) throw new IllegalArgumentException();
-		if (!(srcRam instanceof MetalMemory)) throw new IllegalArgumentException();
+		if (!(srcRam instanceof MetalMemory)) {
+			// TODO  Native code can be used here, for some types of srcRam
+			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
+			return;
+		}
 
 		MetalMemory mem = (MetalMemory) ram;
 		MetalMemory src = (MetalMemory) srcRam;
@@ -214,4 +232,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 		// available.forEach(mem -> deallocate(0, mem));
 		allocated = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

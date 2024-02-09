@@ -19,8 +19,12 @@ package io.almostrealism.code;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-public interface Computation<T> extends ScopeLifecycle, OutputSupport {
+public interface Computation<T> extends ScopeLifecycle, OutputSupport, ConsoleFeatures {
+	Console console = Scope.console.child();
+
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
 	 * and {@link Method}s necessary to compute the output of
@@ -31,4 +35,6 @@ public interface Computation<T> extends ScopeLifecycle, OutputSupport {
 	default void setOutputVariable(Variable out) {
 
 	}
+
+	default Console console() { return console; }
 }

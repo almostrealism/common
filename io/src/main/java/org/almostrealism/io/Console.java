@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,45 +16,175 @@
 
 package org.almostrealism.io;
 
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+
 public class Console {
+	public static Console root = new Console();
 	public static boolean systemOutEnabled = true;
-	
+
+	private Console parent;
+	private List<Consumer<String>> listeners = new ArrayList<>();
+	private boolean flag;
+
+	private DateTimeFormatter format;
 	private StringBuffer data = new StringBuffer();
-	private StringBuffer lastLine = new StringBuffer();
-	private boolean resetLastLine = false;
+	private StringBuffer lastLine;
+	private boolean resetLastLine;
+
+	private Map<String, MetricBase> metrics = Collections.synchronizedMap(new HashMap<>());
+
+	protected Console() { this(null); }
+
+	protected Console(Console parent) {
+		this.parent = parent;
+		this.format = DateTimeFormatter.ofPattern("HH:mm.ss");
+		this.resetLastLine = true;
+	}
 	
 	public void print(String s) {
-		if (resetLastLine) lastLine = new StringBuffer();
+		String orig = s;
+		s = prep(s);
 		
-		data.append(s);
+		append(s);
 		lastLine.append(s);
 		
-		if (systemOutEnabled)
-			System.out.print(s);
+		if (parent == null) {
+			if (systemOutEnabled) System.out.print(s);
+		} else {
+			parent.print(orig);
+		}
 	}
 	
 	public void println(String s) {
-		if (resetLastLine) lastLine = new StringBuffer();
-		
-		data.append(s);
-		data.append("\n");
+		String orig = s;
+		s = prep(s);
+
+		append(s);
+		append("\n");
 		
 		lastLine.append(s);
 		resetLastLine = true;
 		
-		if (systemOutEnabled)
-			System.out.println(s);
+		if (parent == null) {
+			if (systemOutEnabled) System.out.println(s);
+		} else {
+			parent.println(orig);
+		}
 	}
 	
 	public void println() {
-		if (resetLastLine) lastLine = new StringBuffer();
+		if (resetLastLine) {
+			lastLine = new StringBuffer();
+		}
 		
-		data.append("\n");
+		append("\n");
 		resetLastLine = true;
 		
-		if (systemOutEnabled)
-			System.out.println();
+		if (parent == null) {
+			if (systemOutEnabled) System.out.println();
+		} else {
+			parent.println();
+		}
 	}
 	
 	public String lastLine() { return lastLine.toString(); }
+
+	protected void append(String s) {
+		data.append(s);
+
+		for (Consumer<String> listener : listeners) {
+			try {
+				listener.accept(s);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	protected String pre() {
+		return "[" + format.format(java.time.LocalTime.now()) + "] ";
+	}
+
+	protected String prep(String s) {
+		if (resetLastLine) {
+			lastLine = new StringBuffer();
+			s = pre() + s;
+			resetLastLine = false;
+		}
+
+		return s;
+	}
+
+	public void addListener(Consumer<String> listener) {
+		listeners.add(listener);
+	}
+
+	public void warn(String message) { warn(message, null); }
+
+	public void warn(String message, Throwable ex) {
+		println("WARN: " + message);
+		if (ex != null) ex.printStackTrace();
+	}
+
+	public DistributionMetric distribution(String name) {
+		return distribution(name, 1.0);
+	}
+
+	public DistributionMetric distribution(String name, double scale) {
+		if (metrics.containsKey(name)) {
+			return (DistributionMetric) metrics.get(name);
+		}
+
+		DistributionMetric metric = new DistributionMetric(name, scale);
+		metric.setConsole(this);
+		metrics.put(name, metric);
+		return metric;
+	}
+
+	public TimingMetric timing(String name) {
+		if (metrics.containsKey(name)) {
+			return (TimingMetric) metrics.get(name);
+		}
+
+		TimingMetric metric = new TimingMetric(name);
+		metric.setConsole(this);
+		metrics.put(name, metric);
+		return metric;
+	}
+
+	public void flag() { this.flag = true; }
+	public boolean clearFlag() { boolean f = this.flag; this.flag = false; return f; }
+	public boolean checkFlag() { return this.flag; }
+
+	public Console child() {
+		return new Console(this);
+	}
+
+	public <T> ConsoleFeatures features(T type) {
+		return type instanceof Class ? features((Class) type) : features(type.getClass());
+	}
+
+	public ConsoleFeatures features(Class cls) {
+		return new ConsoleFeatures() {
+			@Override
+			public Class getLogClass() {
+				return cls;
+			}
+
+			@Override
+			public Console console() {
+				return Console.this;
+			}
+		};
+	}
+
+	public static Console root() {
+		return root;
+	}
 }

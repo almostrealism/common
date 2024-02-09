@@ -16,7 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Sine extends Expression<Double> {
 	public Sine(Expression<Double> input) {
@@ -25,8 +29,18 @@ public class Sine extends Expression<Double> {
 
 
 	@Override
-	public String getExpression() {
-		return "sin(" + getChildren().get(0).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "sin(" + getChildren().get(0).getExpression(lang) + ")";
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return OptionalInt.of(1);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.sin(children[0].doubleValue());
 	}
 
 	@Override

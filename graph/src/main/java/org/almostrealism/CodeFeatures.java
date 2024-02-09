@@ -30,8 +30,7 @@ import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
-import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.KernelExpression;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -50,13 +49,10 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducerBase;
 import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
@@ -74,10 +70,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 								TemporalFeatures, HardwareFeatures {
 	boolean enableFixedCollections = true;
 
-	default Producer<CursorPair> v(CursorPair p) {
-		throw new UnsupportedOperationException();
-	}
-
 	default <T> Producer<T> v(T v) {
 		return value(v);
 	}
@@ -86,13 +78,24 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(memLength, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(int memLength, int argIndex, int kernelDimension) {
-		return value(memLength, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
+	}
+
+	default CollectionProducer<PackedCollection<?>> x(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 0));
+	}
+
+	default CollectionProducer<PackedCollection<?>> y(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 1));
+	}
+
+	default CollectionProducer<PackedCollection<?>> z(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 2));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
+		return c(value(shape, argIndex));
 	}
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
@@ -131,7 +134,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		} else if (v instanceof TransformMatrix) {
 			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
 		} else if (enableFixedCollections && v instanceof PackedCollection) {
-			return (ProducerComputation) c((PackedCollection) v);
+			return (Producer) c((PackedCollection) v);
 		} else if (v == null) {
 			return null;
 		} else {
@@ -145,11 +148,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
-	}
-
-	@Deprecated
-	default <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
-		return Input.value(memLength, argIndex, kernelDimension);
 	}
 
 	@Override
@@ -166,12 +164,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
-																	  KernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernelIndex(), shape, kernel, arguments);
 	}
 
 	default DataContext dc() {
@@ -191,12 +183,12 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	}
 
 	default void cc(Runnable r, ComputeRequirement... expectations) {
-		cc(() -> { r.run(); return null; }, expectations);
+		cc(() -> { r.run(); return new Void[0]; }, expectations);
 	}
 
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
-		return Hardware.getLocalHardware().getDataContext().computeContext(exec, expectations);
+		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
-	default Ops o() { return Ops.ops(); }
+	default Ops ops() { return Ops.o(); }
 }

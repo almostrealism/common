@@ -31,19 +31,20 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class MetalOperatorMap implements InstructionSet {
-	private Supplier<MetalCommandRunner> runner;
+	private MetalComputeContext context;
 	private MetalProgram prog;
 
 	private ThreadLocal<Map<String, MetalOperator>> operators;
 	private List<MetalOperator> allOperators;
 
 	public MetalOperatorMap(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
+		this.context = ctx;
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
-		init(ctx, metadata, func, src);
+		init(metadata, func, src);
 	}
 
-	protected void init(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
+	protected void init(OperationMetadata metadata, String func, String src) {
 		if (MetalOperator.enableLog) {
 			System.out.println("MetalOperatorMap: init " + metadata.getDisplayName());
 		}
@@ -53,7 +54,7 @@ public class MetalOperatorMap implements InstructionSet {
 			System.out.println(src);
 		}
 
-		prog = MetalProgram.create(ctx, metadata, func, src);
+		prog = MetalProgram.create(context, metadata, func, src);
 
 		RuntimeException ex = null;
 
@@ -70,8 +71,6 @@ public class MetalOperatorMap implements InstructionSet {
 
 			throw ex;
 		}
-
-		runner = ctx::getCommandRunner;
 	}
 
 	public MetalOperator get(String key, int argCount) {
@@ -83,7 +82,7 @@ public class MetalOperatorMap implements InstructionSet {
 		}
 
 		if (!ops.containsKey(key)) {
-			MetalOperator op = new MetalOperator(runner, prog, key, argCount);
+			MetalOperator op = new MetalOperator(context, prog, key, argCount);
 			ops.put(key, op);
 			allOperators.add(op);
 		}

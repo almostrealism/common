@@ -20,12 +20,13 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
@@ -36,6 +37,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
+	public static boolean enableFlatten = true;
+	public static boolean enableOptimization = false;
+	public static boolean enableIsolation = false;
+
 	private Supplier<Runnable> setup, run;
 	private Runnable s, r;
 
@@ -44,7 +49,19 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		this.run = loop((Computation<Void>) tick, iter);
+		if (enableFlatten && tick instanceof OperationList) {
+			tick = ((OperationList) tick).flatten();
+		}
+
+		if (enableOptimization) {
+			tick = Process.optimized(tick);
+		}
+
+		if (enableIsolation) {
+			tick = Process.isolated(tick);
+		}
+
+		this.run = loop(tick, iter);
 		this.setup = setup;
 	}
 
@@ -103,14 +120,6 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
 				.filter(Objects::nonNull)
 				.collect(Collectors.toList());
-	}
-
-	@Override
-	public void compact() {
-		Stream.of(setup).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
-		Stream.of(run).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
 	}
 
 	public void destroy() {

@@ -16,6 +16,7 @@
 
 package org.almostrealism.primitives;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -207,9 +208,10 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 			@Override
 			public Scope<Scalar> getScope() {
+				Scope<Scalar> s = new Scope();
+
 				// TODO  This is not correct
-				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", get().evaluate(new Object[0])));
+				// s.getVariables().add(assign("scalar", get().evaluate()));
 				return s;
 			}
 

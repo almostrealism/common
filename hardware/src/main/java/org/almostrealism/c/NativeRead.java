@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,25 +16,42 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.jni.NativeCompiler;
 
 public class NativeRead extends BaseNative {
-	public NativeRead() {
+	public NativeRead(NativeCompiler compiler) {
+		super(compiler);
 		initNative();
 	}
 
 	@Override
 	public String getFunctionDefinition() {
-		return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
-				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
-				(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
-				"\tdouble* input = (double *) arg;\n" +
-				"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
-				"\tfor (int i = 0; i < len; i++) {\n" +
-				"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, (const jdouble*)&input[offset + i]);\n" +
-				"\t}\n" +
-				"return output;\n" +
-				"}\n";
+		if (getNativeCompiler().getPrecision() == Precision.FP64) {
+			return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
+					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
+					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
+					"\tdouble* input = (double *) arg;\n" +
+					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
+					"\tfor (int i = 0; i < len; i++) {\n" +
+					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, (const jdouble*)&input[offset + i]);\n" +
+					"\t}\n" +
+					"return output;\n" +
+					"}\n";
+		} else {
+			return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
+					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
+					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
+					"\tfloat* input = (float *) arg;\n" +
+					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
+					"\tfor (int i = 0; i < len; i++) {\n" +
+					"\t\tjdouble value = (jdouble) input[offset + i];\n" +
+					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, &value);\n" +
+					"\t}" +
+					"return output;\n" +
+					"}\n";
+		}
 	}
 
 	public double[] apply(MemoryData mem) {
@@ -50,7 +67,13 @@ public class NativeRead extends BaseNative {
 	}
 
 	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
-		double out[] = apply(mem.getNativePointer(), offset, length);
+		if (mem.getSize() < (offset + length) * getNativeCompiler().getPrecision().bytes()) {
+			throw new IllegalArgumentException("Attempt to read memory beyond the size of " + mem);
+		} else if (target.length < toffset + length) {
+			throw new IllegalArgumentException("Attempt to read memory into a destination array beyond the array size");
+		}
+
+		double out[] = apply(mem.getContentPointer(), offset, length);
 		if (length >= 0) System.arraycopy(out, 0, target, toffset, length);
 	}
 

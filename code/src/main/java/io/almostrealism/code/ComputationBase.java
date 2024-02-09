@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,14 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -31,7 +33,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T>, Compactable {
+public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T> {
+	private LanguageOperations lang;
 
 	public ComputationBase() {
 		super(new Supplier[0]);
@@ -49,6 +52,11 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	}
 
 	@Override
+	public boolean isFixedCount() {
+		return getInputs().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+	}
+
+	@Override
 	public Scope compile() {
 		System.out.println("WARN: Attempting to compile a Computation, " +
 							"rather than an Evaluable container for one");
@@ -57,6 +65,8 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 	@Override
 	public boolean isCompiled() { return false; }
+
+	protected LanguageOperations getLanguage() { return lang; }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -68,6 +78,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		if (getArgumentVariables() != null) return;
+		this.lang = manager.getLanguage();
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 		assignArguments(manager);
 	}
@@ -76,6 +87,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	public void resetArguments() {
 		super.resetArguments();
 		ScopeLifecycle.resetArguments(getInputs().stream());
+		this.lang = null;
 	}
 
 	/**
@@ -94,8 +106,16 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 				.collect(Collectors.toList()));
 	}
 
+	public ArrayVariable getArgument(int index) {
+		return getArgument(null, index, null);
+	}
+
+	public ArrayVariable getArgument(int index, int size) {
+		return getArgument(null, index, new IntegerConstant(size));
+	}
+
 	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}

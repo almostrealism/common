@@ -16,7 +16,13 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.OptionalInt;
+import java.util.stream.IntStream;
 
 public class IntegerConstant extends Constant<Integer> {
 	private int value;
@@ -27,17 +33,34 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
+	public String getExpression(LanguageOperations lang) {
+		return String.valueOf(value);
+	}
+
+	@Override
 	public OptionalInt intValue() {
 		return OptionalInt.of(value);
 	}
 
 	@Override
-	public String getExpression() {
-		return String.valueOf(value);
+	public OptionalInt upperBound(KernelStructureContext context) { return OptionalInt.of(value); }
+
+	@Override
+	public boolean isKernelValue(IndexValues values) { return true; }
+
+	@Override
+	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }
+
+	@Override
+	public Number value(IndexValues indexValues) { return value; }
+
+	@Override
+	public IndexSequence sequence(Index index, int len) {
+		return IndexSequence.of(value, len);
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public Number evaluate(Number... children) {
 		return value;
 	}
 }

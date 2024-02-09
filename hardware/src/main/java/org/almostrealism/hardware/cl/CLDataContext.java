@@ -21,11 +21,13 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
@@ -33,20 +35,26 @@ import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext<MemoryData> {
-	private final Hardware hardware;
+	public static boolean enableClNative = SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
+
 	private final String name;
-	private final long memoryMax;
+	private final long maxReservation;
 	private final int offHeapSize;
 	private final CLMemoryProvider.Location location;
 
+	private Precision precision;
+
 	private cl_platform_id platform;
 
+	private long deviceType;
 	private cl_device_id mainDevice;
 	private DeviceInfo mainDeviceInfo;
 
@@ -57,33 +65,34 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
+	private MemoryProvider<? extends RAM> delegateMemory;
 
-	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
+	private ThreadLocal<List<ComputeContext<MemoryData>>> computeContexts;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
 	private Runnable start;
 
-	public CLDataContext(Hardware hardware, String name, long memoryMax, int offHeapSize, CLMemoryProvider.Location location) {
-		this.hardware = hardware;
+	public CLDataContext(String name, long maxReservation, int offHeapSize, CLMemoryProvider.Location location) {
 		this.name = name;
-		this.memoryMax = memoryMax;
+		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
 		this.location = location;
-		this.computeContext = new ThreadLocal<>();
+		this.computeContexts = ThreadLocal.withInitial(ArrayList::new);
 		this.memoryProvider = new ThreadLocal<>();
 	}
 
-	public void init(boolean gpu, boolean kernelQueue) {
+	@Override
+	public void init() {
 		altRam = new JVMMemoryProvider();
-		start = () -> start(gpu, kernelQueue);
+		start = () -> start(!SystemUtils.isMacOS() || SystemUtils.isAarch64());
 	}
 
-	protected void identifyDevices(boolean gpu, boolean kernelQueue) {
+	protected void identifyDevices(boolean kernelQueue) {
 		if (platform != null && mainDevice != null) return;
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
-		final long deviceType = gpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+		deviceType = CL.CL_DEVICE_TYPE_CPU;
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -106,29 +115,25 @@ public class CLDataContext implements DataContext<MemoryData> {
 		try {
 			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 			numDevices = numDevicesArray[0];
-		} catch (Exception e) {
-			if (Hardware.enableVerbose)
-				e.printStackTrace();
-		}
+		} catch (Exception e) { }
 
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
-		if (numDevices == 0) {
-			throw new HardwareException("No " + deviceName(deviceType) + "s available");
+		if (numDevices > 0) {
+			cl_device_id devices[] = new cl_device_id[numDevices];
+			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+			mainDevice = devices[deviceIndex];
+
+			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 		}
-
-		cl_device_id devices[] = new cl_device_id[numDevices];
-		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-		mainDevice = devices[deviceIndex];
-
-		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 
 		/* Kernel Device Selection */
 
 		if (kernelQueue) {
 			CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, 0, null, numDevicesArray);
 			numDevices = numDevicesArray[0];
+			cl_device_id devices[] = new cl_device_id[numDevices];
 
 			if (Hardware.enableVerbose)
 				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
@@ -140,14 +145,16 @@ public class CLDataContext implements DataContext<MemoryData> {
 				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
 			}
 		}
+
+		precision = kernelDevice == null ? Precision.FP64 : Precision.FP32;
 	}
 
-	private void start(boolean gpu, boolean kernelQueue) {
+	private void start(boolean kernelQueue) {
 		if (ctx != null) return;
 
 		CL.setExceptionsEnabled(true);
 
-		identifyDevices(gpu, kernelQueue);
+		identifyDevices(kernelQueue);
 
 		this.mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
 		this.kernelDeviceInfo = kernelDevice == null ? null : deviceInfo(kernelDevice);
@@ -158,6 +165,10 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (kernelDevice == null) {
 			ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{mainDevice},
 					null, null, null);
+		} else if (mainDevice == null) {
+			ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{kernelDevice},
+					null, null, null);
+			mainDevice = kernelDevice;
 		} else {
 			ctx = CL.clCreateContext(contextProperties, 2, new cl_device_id[]{mainDevice, kernelDevice},
 					null, null, null);
@@ -169,7 +180,8 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
 
-		mainRam = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
+		mainRam = new CLMemoryProvider(this, queue, getPrecision().bytes(),
+						maxReservation * getPrecision().bytes(), location);
 
 		start = null;
 	}
@@ -181,10 +193,10 @@ public class CLDataContext implements DataContext<MemoryData> {
 		ComputeContext cc;
 
 		if (cReq.isPresent()) {
-			cc = new CLNativeComputeContext(hardware);
+			cc = new CLNativeComputeContext(this, NativeCompiler.factory(getPrecision(), true).construct());
 		} else {
 			if (start != null) start.run();
-			cc = new CLComputeContext(hardware, ctx);
+			cc = new CLComputeContext(this, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
 
@@ -193,13 +205,26 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	public String getName() { return name; }
 
+	@Override
+	public Precision getPrecision() {
+		if (start != null) start.run();
+		return precision;
+	}
+
 	public cl_context getClContext() {
 		if (start != null) start.run();
 		return ctx;
 	}
 
+	protected boolean isCPU() { return kernelDevice == null; }
+
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+		return List.of(mainRam);
+	}
 
 	public MemoryProvider<RAM> getMemoryProvider() {
 		if (start != null) start.run();
@@ -221,22 +246,31 @@ public class CLDataContext implements DataContext<MemoryData> {
 		}
 	}
 
-	public ComputeContext getComputeContext() {
-		if (computeContext.get() == null) {
-			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(createContext());
-		}
-
-		return computeContext.get();
+	public void setDelegateMemoryProvider(MemoryProvider<? extends RAM> delegate) {
+		this.delegateMemory = delegate;
 	}
 
-	public CLComputeContext getClComputeContext() {
-		return (CLComputeContext) getComputeContext();
+	public MemoryProvider<? extends RAM> getDelegateMemoryProvider() {
+		return delegateMemory;
+	}
+
+	@Override
+	public List<ComputeContext<MemoryData>> getComputeContexts() {
+		if (computeContexts.get().isEmpty()) {
+			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			computeContexts.get().add(createContext());
+
+			if (enableClNative) {
+				computeContexts.get().add(createContext(ComputeRequirement.C));
+			}
+		}
+
+		return computeContexts.get();
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		ComputeContext current = computeContext.get();
-		ComputeContext next = createContext(expectations);
+		List<ComputeContext<MemoryData>> current = computeContexts.get();
+		List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
 
 		String ccName = next.toString();
 		if (ccName.contains(".")) {
@@ -245,7 +279,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 		try {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
-			computeContext.set(next);
+			computeContexts.set(next);
 			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
@@ -253,12 +287,13 @@ public class CLDataContext implements DataContext<MemoryData> {
 			throw new RuntimeException(e);
 		} finally {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
-			next.destroy();
+			next.get(0).destroy();
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContext.set(current);
+			computeContexts.set(current);
 		}
 	}
 
+	@Override
 	public <T> T deviceMemory(Callable<T> exec) {
 		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
 		IntFunction<MemoryProvider<?>> next = s -> mainRam;
@@ -278,9 +313,9 @@ public class CLDataContext implements DataContext<MemoryData> {
 	@Override
 	public void destroy() {
 		// TODO  Destroy any other compute contexts
-		if (computeContext.get() != null) {
-			computeContext.get().destroy();
-			computeContext.remove();
+		if (computeContexts.get() != null) {
+			computeContexts.get().forEach(cc -> cc.destroy());
+			computeContexts.remove();
 		}
 
 		if (mainRam != null) mainRam.destroy();

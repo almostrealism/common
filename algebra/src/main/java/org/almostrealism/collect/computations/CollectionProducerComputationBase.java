@@ -16,9 +16,13 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
@@ -31,70 +35,144 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														DestinationSupport<O>,
 														ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
 	private TraversalPolicy shape;
-	private Supplier<? extends PackedCollection> destination;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private Evaluable<O> shortCircuit;
+	private List<ScopeLifecycle> dependentLifecycles;
 
-	protected CollectionProducerComputationBase() { }
+	protected CollectionProducerComputationBase() {
+	}
 
 	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
-		if (outputShape.getTotalSize() <= 0) {
+		this();
+
+		if (outputShape.getTotalSizeLong() <= 0) {
 			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
 		}
 
 		this.shape = outputShape;
-		this.destination = () -> PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
+		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
+	}
+
+	protected List<ArrayVariable<Double>> getInputArguments() {
+		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
+	}
+
+	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
+		if (dependentLifecycles == null) {
+			dependentLifecycles = new ArrayList<>();
+		}
+
+		dependentLifecycles.add(lifecycle);
+		return this;
+	}
+
+	public CollectionProducerComputationBase<I, O> addAllDependentLifecycles(Iterable<ScopeLifecycle> lifecycles) {
+		lifecycles.forEach(this::addDependentLifecycle);
+		return this;
+	}
+
+	public List<ScopeLifecycle> getDependentLifecycles() {
+		return dependentLifecycles == null ? Collections.emptyList() : dependentLifecycles;
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		if (dependentLifecycles != null) ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
+
+		// Result should always be first
+		// TODO  This causes cascading issues, as the output variable is reused by the referring
+		// TODO  producer and then multiple arguments are sorted to be "first"
+		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		if (dependentLifecycles != null) ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		if (dependentLifecycles != null) ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 	}
 
 	protected void setShape(TraversalPolicy shape) {
 		this.shape = shape;
 	}
 
-	protected MemoryBank<?> createKernelDestination(int len) {
-		int count = len / getShape().getCount();
-
+	protected TraversalPolicy shapeForLength(int len) {
 		TraversalPolicy shape;
 
-		// When kernel length is less than, or identical to the output count, an
-		// assumption is made that the intended shape is the original shape.
-		// This is a bit of a hack, but it's by far the simplest solution
-		// available
-		if (count == 0 || len == getShape().getCount()) {
-			// It is not necessary to prepend a (usually) unnecessary dimension
+		if (isFixedCount()) {
 			shape = getShape();
 		} else {
-			shape = getShape().prependDimension(count);
+			int count = len / getShape().getCount();
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == getShape().getCount()) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = getShape();
+			} else {
+				shape = getShape().prependDimension(count);
+			}
+
+			if (enableDestinationLogging) {
+				log("shapeForLength(" + len +
+						"): " + shape + "[" + shape.getTraversalAxis() + "]");
+			}
 		}
 
-		if (enableDestinationLogging) {
-			System.out.println("CollectionProducerComputationBase: createKernelDestination(" + len +
-								"): " + shape + "[" + shape.getTraversalAxis() + "]");
+		return shape;
+	}
+
+	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+		if (len == null) {
+			throw new IllegalArgumentException();
 		}
 
-		return new PackedCollection<>(shape);
+		TraversalPolicy shape = shapeForLength(len);
+
+		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
+				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
+			if (existing != null) existing.destroy();
+			return new PackedCollection<>(shape);
+		}
+
+		return ((PackedCollection) existing).range(shape);
+	}
+
+	protected MemoryBank<?> createDestination(int len) {
+		return new PackedCollection<>(shapeForLength(len));
 	}
 
 	@Override
@@ -108,19 +186,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
-
-
-	@Override
-	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
-		return new CollectionProducerComputation.IsolatedProcess<>(this);
+	public int getCount() {
+		return getShape().getCount();
 	}
 
 	@Override
-	public void setDestination(Supplier<O> destination) { this.destination = destination; }
+	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+		if (getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
+			warn("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
+			return this;
+		}
 
-	@Override
-	public Supplier<O> getDestination() { return (Supplier) destination; }
+		return new CollectionProducerComputation.IsolatedProcess<>(this);
+	}
 
 	public BiFunction<MemoryData, Integer, O> getPostprocessor() {
 		return postprocessor;
@@ -164,46 +242,16 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public KernelizedEvaluable<O> get() {
-		Supplier<KernelizedEvaluable<O>> get = () -> CollectionProducerComputation.super.get();
-
-		return new KernelizedEvaluable<O>() {
-			KernelizedEvaluable<O> kernel;
-
-			private KernelizedEvaluable<O> getKernel() {
-				if (kernel == null) {
-					kernel = get.get();
+	public Evaluable<O> get() {
+		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
+		ev.setDestinationValidation(destination -> {
+			if (destination instanceof Shape) {
+				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+					throw new IllegalArgumentException();
 				}
-
-				return kernel;
 			}
-
-			@Override
-			public MemoryBank<O> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
-			}
-
-			@Override
-			public O evaluate(Object... args) {
-				return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<O> withDestination(MemoryBank<O> destination) {
-				if (destination instanceof Shape) {
-					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
-						throw new IllegalArgumentException();
-					}
-				}
-
-				return new DestinationEvaluable<>(getKernel(), destination);
-			}
-
-			@Override
-			public int getArgsCount() {
-				return getKernel().getArgsCount();
-			}
-		};
+		});
+		return ev;
 	}
 
 	@Override
@@ -211,13 +259,20 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 
+	public RepeatedProducerComputationAdapter<O> toRepeated() {
+		throw new UnsupportedOperationException();
+	}
+
 	@Override
 	public void destroy() {
 		super.destroy();
+		((MemoryDataDestination) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
-		}
+	}
+
+	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		Stream.of(args).forEach(Objects::requireNonNull);
+		return args;
 	}
 
 	public static void destinationLog(Runnable r) {

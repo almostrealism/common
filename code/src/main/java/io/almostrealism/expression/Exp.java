@@ -16,20 +16,38 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
-		super(Double.class, null, input);
+		super(Double.class, input);
 	}
 
 	@Override
-	public String getExpression() {
-		return "exp(" + getChildren().get(0).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt v = getChildren().get(0).upperBound(context);
+		if (v.isPresent()) {
+			return OptionalInt.of((int) Math.ceil(Math.exp(v.getAsInt())));
+		}
+
+		return OptionalInt.empty();
+	}
+
+	public Number evaluate(Number... children) {
+		return Math.exp(children[0].doubleValue());
+	}
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {

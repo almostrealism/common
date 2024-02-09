@@ -34,7 +34,7 @@ public class AdaptProducerRGB extends AdaptProducer<RGB> {
 
 		return new KernelizedEvaluable<>() {
 			@Override
-			public MemoryBank<RGB> createKernelDestination(int size) { return RGB.bank(size); }
+			public MemoryBank<RGB> createDestination(int size) { return RGB.bank(size); }
 
 			@Override
 			public RGB evaluate(Object... arguments) {

@@ -35,22 +35,22 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 
-	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default ExpressionComputation sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValueRelative(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
-																							  Producer<PackedCollection<?>> wavelength,
-																							  Producer<PackedCollection<?>> amp) {
-		return _sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
+	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+																							 Producer<PackedCollection<?>> wavelength,
+																							 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
-	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
-																							  Producer<PackedCollection<?>> wavelength,
-																							  Producer<PackedCollection<?>> phase,
-																							  Producer<PackedCollection<?>> amp) {
-		return _sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
+	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+																							 Producer<PackedCollection<?>> wavelength,
+																							 Producer<PackedCollection<?>> phase,
+																							 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
 	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {

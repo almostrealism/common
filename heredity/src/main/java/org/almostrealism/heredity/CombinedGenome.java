@@ -16,12 +16,12 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 

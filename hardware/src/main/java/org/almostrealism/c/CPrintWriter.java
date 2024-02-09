@@ -17,30 +17,26 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.InstanceReference;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
-import org.jocl.cl_event;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Stack;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
@@ -55,20 +51,20 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	private boolean log;
 	private int logCount;
 
-	public CPrintWriter(OutputStream out, String topLevelMethodName) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName);
+	public CPrintWriter(OutputStream out, String topLevelMethodName, Precision precision) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, precision);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
-		this(p, topLevelMethodName, false);
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		this(p, topLevelMethodName, precision, false);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative) {
-		this(p, topLevelMethodName, isNative, false);
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean isNative) {
+		this(p, topLevelMethodName, precision, isNative, false);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative, boolean verbose) {
-		super(p, new CLanguageOperations(isNative, false));
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean isNative, boolean verbose) {
+		super(p, new CLanguageOperations(precision, isNative, false));
 		this.topLevelMethodName = topLevelMethodName;
 		this.accessStack = new Stack<>();
 		this.argumentStack = new Stack<>();
@@ -86,12 +82,13 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		this.enableArgumentValueWrites = enableArgumentValueWrites;
 	}
 
+	protected boolean isExternalScope() {
+		return accessStack.peek() == Accessibility.EXTERNAL;
+	}
+
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (arguments.size() > 150) {
-			System.out.println("NOTE: Identifying " + arguments.size() + " argument Producers...");
-			List producers = arguments.stream().map(Variable::getProducer).collect(Collectors.toList());
-
 			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
 		}
 
@@ -135,15 +132,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		if (((CLanguageOperations) language).isEnableArgumentDetailReads()) {
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Offset"),
 							new StaticReference<>(Integer.class, "(int) offsetArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
 							new StaticReference<>(Integer.class, "(int) sizeArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
 							new StaticReference<>(Integer.class, "(int) dim0Arr[" + i + "]")))
 					.forEach(this::println);
 		}
@@ -160,48 +157,27 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
-		String o = "((double *) argArr[" + index + "])";
-		String v = new InstanceReference<>(variable).getSimpleExpression();
+		String o = "((" + getLanguage().getPrecision().typeName() + " *) argArr[" + index + "])";
+		String v = new InstanceReference<>(variable).getSimpleExpression(getLanguage());
 
-		if (!write) println("double *" + v + " = " + o + ";");
+		if (!write) println(getLanguage().getPrecision().typeName() + " *" + v + " = " + o + ";");
 	}
 
 	@Override
-	public void println(Variable<?, ?> variable) {
+	public void println(ExpressionAssignment<?> variable) {
 		if (variable.isDeclaration()) {
-			if (variable.getProducer() == null) {
-				if (variable.getExpression() == null || variable.getExpression().isNull()) {
-					if (variable.getArraySize() == null) {
-						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-										variable.getName() + ";");
-					} else {
-						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-								variable.getName() + "[" + variable.getArraySize().getSimpleExpression() + "];");
-					}
-				} else {
-					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-									" = " + variable.getExpression().getSimpleExpression() + ";");
-				}
-			} else {
-				println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-								" = " + encode(variable.getExpression()) + ";");
-			}
+			println(annotationForAssignment(variable) + variable.getStatement(getLanguage()) + ";");
 		} else {
-			if (variable.getExpression() == null) {
-				// println(variable.getName() + " = null;");
-			} else {
-				println(variable.getName() + " = " +
-								encode(variable.getExpression()) + ";");
-			}
+			println(variable.getStatement(getLanguage()) + ";");
 		}
 	}
 
 	@Override
 	public void println(Metric m) {
-		String ctr = m.getCounter().getExpression();
+		String ctr = m.getCounter().getExpression(getLanguage());
 		println(ctr + " = fmod(" + ctr + " + 1, " + m.getLogFrequency() + ");");
 		println("if (" + ctr + " == 0) {");
-		m.getVariables().forEach((msg, var) -> printf(msg + ": %f", var.getExpression()));
+		m.getVariables().forEach((msg, var) -> printf(msg + ": %f", var.getExpression(getLanguage())));
 		println("}");
 	}
 
@@ -221,11 +197,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		}
 	}
 
-	protected void log() {
+	protected void printLog() {
 		if (verbose) {
 			println("if (commandQueue > 0)", false);
 			printf("Reached %i", String.valueOf(logCount++));
 		}
+	}
+
+	protected void printLog(String message) {
+		println("printf(\"" + message + "\\n\");", false);
 	}
 
 	protected void printf(String format, String arg) { printf(format, arg, true); }
@@ -234,17 +214,18 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");", false);
 	}
 
-	protected String annotationForVariable(Variable<?, ?> var) {
-		if (language.annotationForPhysicalScope(var.getPhysicalScope()) != null) {
-			return language.annotationForPhysicalScope(var.getPhysicalScope()) + " ";
+	protected String annotationForAssignment(ExpressionAssignment<?> assignment) {
+		PhysicalScope scope = assignment.getPhysicalScope();
+		if (language.annotationForPhysicalScope(scope) != null) {
+			return language.annotationForPhysicalScope(scope) + " ";
 		}
 
 		return "";
 	}
 
-	protected static String encode(Object data) {
+	protected String encode(Object data) {
 		if (data instanceof Expression) {
-			return ((Expression) data).getSimpleExpression();
+			return ((Expression) data).getSimpleExpression(language);
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + data);
 		}

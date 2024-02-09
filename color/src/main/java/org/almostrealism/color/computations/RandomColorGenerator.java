@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -47,7 +48,7 @@ public class RandomColorGenerator implements ProducerComputation<RGB> {
 	public Producer<RGB> getOffsetRGB() { return this.offsetRGB; }
 
 	@Override
-	public KernelizedEvaluable<RGB> get() {
+	public Evaluable<RGB> get() {
 		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
 			RGB base = this.baseRGB.get().evaluate(args);
 			RGB off = this.offsetRGB.get().evaluate(args);
@@ -63,15 +64,5 @@ public class RandomColorGenerator implements ProducerComputation<RGB> {
 	@Override
 	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
-	}
-
-	/**
-	 * Delegates to {@link RGBProducer#compact()}
-	 * on the base color and offset color.
-	 */
-	@Override
-	public void compact() {
-		baseRGB.compact();
-		offsetRGB.compact();
 	}
 }

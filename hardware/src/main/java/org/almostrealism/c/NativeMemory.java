@@ -34,7 +34,7 @@ public class NativeMemory extends RAM {
 	public MemoryProvider getProvider() { return provider; }
 
 	@Override
-	public long getNativePointer() {
+	public long getContentPointer() {
 		return nativePointer;
 	}
 

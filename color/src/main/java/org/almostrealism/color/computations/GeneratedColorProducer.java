@@ -22,16 +22,12 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.TripleFunction;
 import io.almostrealism.relation.Generated;
-import org.almostrealism.algebra.Triple;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.color.RGB;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.Collection;
@@ -94,15 +90,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
 
 	@Override
-	public void compact() { p.compact(); }
-
-	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
-
-	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
-		return new GeneratedColorProducer(generator, new DynamicProducerForMemoryData<>(args ->
-				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
-	}
 
 	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);

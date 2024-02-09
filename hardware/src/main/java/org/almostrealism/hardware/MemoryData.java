@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -27,11 +28,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
-	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();
+
+	default void reallocate(MemoryProvider<?> provider) {
+		reassign(provider.reallocate(getMem(), getOffset(), getMemLength()));
+	}
 
 	void reassign(Memory mem);
 
@@ -106,7 +111,23 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	default double[] toArray(int offset, int length) {
+		if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
 		return getMem().toArray(getOffset() + offset, length);
+	}
+
+	default double[] toArray() {
+		return toArray(0, getMemLength());
+	}
+
+	default String toArrayString(int offset, int length) {
+		return Arrays.toString(toArray(offset, length));
+	}
+
+	default String toArrayString() {
+		return Arrays.toString(toArray());
 	}
 
 	@Override
@@ -122,9 +143,15 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException(i + " is out of bounds for MemoryData of length " + getMemLength());
 		}
 
-		double out[] = new double[1];
-		getMem(i, out, 0, 1);
-		return new DoubleConstant(out[0]);
+		if (getMem().getProvider().getNumberSize() == 8) {
+			double out[] = new double[1];
+			getMem(i, out, 0, 1);
+			return new DoubleConstant(out[0]);
+		} else {
+			float out[] = new float[1];
+			getMem(i, out, 0, 1);
+			return new DoubleConstant((double) out[0]);
+		}
 	}
 
 	default void setMem(int offset, double... values) {
@@ -155,6 +182,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
 		if (getDelegate() == null) {
+			if (offset + length > getMemLength()) {
+				throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+			}
+
 			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
@@ -164,6 +195,12 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	default void setMem(int offset, MemoryData src, int srcOffset, int length) {
+		if (src.getMemLength() < srcOffset + length) {
+			throw new IllegalArgumentException("Source MemoryData is not long enough to provide the requested data");
+		} else if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("MemoryData region extends beyond the length of this MemoryData");
+		}
+
 		if (getDelegate() == null) {
 			setMem(getMem(), getOffset() + offset, src, srcOffset, length);
 		} else {
@@ -196,10 +233,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	static void setMem(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
-		if (mem.getProvider() != src.getMem().getProvider()) {
-			throw new IllegalArgumentException("Memory cannot be moved across different MemoryProviders");
-		}
-
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
 	}
 

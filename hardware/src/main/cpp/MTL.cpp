@@ -119,9 +119,10 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createFunction
 
     MTL::Device* dev = (MTL::Device*) device;
     MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc();
+    compileOptions->setFastMathEnabled(true);
 
     NS::Error* error;
-    MTL::Library* library = dev->newLibrary(funcSourceStr, nullptr, &error);
+    MTL::Library* library = dev->newLibrary(funcSourceStr, compileOptions, &error);
 
     if (error != nullptr) {
         printf("Error: %s\n", error->localizedDescription()->utf8String());
@@ -212,6 +213,18 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createBuffer32
 }
 
 extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_getContentPointer(JNIEnv* env, jclass, jlong buffer) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+
+    if (contents != nullptr) {
+        return (jlong) contents;
+    }
+
+    return -1;
+}
+
+extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents16(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();
@@ -250,7 +263,22 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferConten
 }
 
 extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setIntBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+    memcpy(contents + (4 * offset), env->GetDirectBufferAddress(data), (size_t) (4 * length));
+    buf->didModifyRange(NS::Range(4 * offset, 4 * length));
+}
+
+extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_getBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+    memcpy(env->GetDirectBufferAddress(data), contents + (4 * offset), (size_t) (4 * length));
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_getIntBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();
     memcpy(env->GetDirectBufferAddress(data), contents + (4 * offset), (size_t) (4 * length));

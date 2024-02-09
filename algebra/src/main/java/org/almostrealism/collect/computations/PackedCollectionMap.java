@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
+import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
@@ -38,6 +39,7 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -46,8 +48,8 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
-	public static boolean enableAbsoluteValueAt = true;
 	public static boolean enableAtomicKernel = false;
+	public static boolean enableChainDelta = false;
 
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
@@ -89,10 +91,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = new KernelIndex(0);
+			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;
+			Expression<Double> value = getValueAt(index);
 
 			if (value == null && mapped instanceof OperationAdapter) {
 				OperationAdapter<?> op = (OperationAdapter) mapped;
@@ -103,10 +105,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-//			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
-//					false, value.getSimplified(), output.getRootDelegate());
-//			scope.getVariables().add(v);
-			scope.getVariables().add(output.ref(i).assign(value.getSimplified()));
+			scope.getVariables().add(output.ref(i).assign(value));
 		}
 
 		return scope;
@@ -115,12 +114,6 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
-
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable out = getArgumentForInput(getInputs().get(0));
-		if (out != null) out.setSortHint(-1);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
@@ -176,6 +169,36 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		if (!enableChainDelta || !(TraversableDeltaComputation.deepMatch(getInputs().get(1), target))) {
+			return TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+					(Supplier) this).addDependentLifecycle(this);
+		}
+
+		TraversalPolicy outShape = getShape();
+		TraversalPolicy inShape = shape(getInputs().get(1));
+		TraversalPolicy targetShape = shape(target);
+
+		int outSize = outShape.getTotalSize();
+		int inSize = inShape.getTotalSize();
+		int targetSize = targetShape.getTotalSize();
+
+		TraversalPolicy deltaShape = shape(inSize, targetSize);
+		TraversalPolicy overallShape = shape(outSize, targetSize);
+
+		Producer<?> stub = func(inShape, args -> null);
+
+		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create(shape(outSize), shape(inSize),
+				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
+				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
+		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
+							.delta(target).reshape(shape(inSize, targetSize));
+		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
+		return MatrixFeatures.getInstance().mproduct(deltaOut, deltaIn);
+	}
+
+	@Override
 	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
 		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
 	}
@@ -196,7 +219,6 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 					}
 
 					// Find the index in that slice
-//					Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
 					Expression offset = index.toInt().mod(e(sliceShape.getTotalSize()), false);
 					offset = slice.multiply(e(sliceShape.getTotalSize())).add(offset);
 					return input.getValueAt(offset);

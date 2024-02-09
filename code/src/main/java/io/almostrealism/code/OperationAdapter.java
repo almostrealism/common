@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Compactable;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
+import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Argument;
@@ -29,6 +30,7 @@ import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +39,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements Compactable, NameProvider, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T> implements NameProvider, Destroyable, OperationInfo, NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -46,10 +48,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
+	private boolean sortedArguments;
 
-	private Map<Supplier<Evaluable>, List<Variable<?, ?>>> variables;
-	private List<Supplier<Evaluable>> variableOrder;
-	private List<String> variableNames;
+	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
 
 	@SafeVarargs
@@ -100,7 +101,10 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public synchronized List<Argument<? extends T>> getArguments() {
-		Scope.sortArguments(arguments);
+		if (!sortedArguments) {
+			sortedArguments = Scope.sortArguments(arguments);
+		}
+
 		return arguments;
 	}
 
@@ -139,9 +143,8 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	 * of accelerated operations (those compiling a Computation vs those that
 	 * simply execute code). There seems to be no reason to deal with this now,
 	 * as there will eventually be no need for accelerated operations which
-	 * are not Computation based (especially considering the introduction of
-	 * ExplicitScope), so when that process is over one of the two roles this
-	 * methods plays wont exist and it will be clear what it is for.
+	 * are not Computation based, so when that process is over one of the two
+	 * roles this methods plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
 
@@ -164,72 +167,35 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 				.forEach(OperationAdapter::postCompile);
 	}
 
-	public void addVariable(Variable v) {
-		if (v instanceof ArrayVariable && v.getDelegate() != null) {
-			throw new IllegalArgumentException("Provided variable delegates to another variable");
-		}
-
-		List<Variable<?, ?>> existing = variables.computeIfAbsent(v.getProducer(), k -> new ArrayList<>());
-
-		if (!variableNames.contains(v.getName())) {
-			variableNames.add(v.getName());
-
-			if (!existing.contains(v)) existing.add(v);
-			if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
-		} else if (containsVariable(v)) {
-			if (!existing.contains(v)) {
-				System.out.println("Variable name was already used with a different producer");
-			}
-		} else {
-			System.out.println("WARN: Variable name was reused");
-		}
+	public void addVariable(Variable<?, ?> v) {
+		addVariable(new InstanceReference<>(v).assign(null));
 	}
 
-	public boolean containsVariable(Variable v) {
+	public void addVariable(ExpressionAssignment<?> v) {
+		if (variables == null) {
+			variables = new ArrayList<>();
+		}
+
+		variables.add(v);
+	}
+
+	public boolean containsVariable(ExpressionAssignment<?> v) {
 		return getVariables().contains(v);
 	}
 
-	public List<Variable<?, ?>> getVariables() {
-		return variableOrder.stream()
-				.map(variables::get)
-				.flatMap(List::stream)
-				.collect(Collectors.toList());
-	}
+	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
 
-	public void absorbVariables(Supplier peer) {
-		if (peer instanceof OperationAdapter) {
-			absorbVariables((OperationAdapter) peer);
-		} else if (peer.get() instanceof Provider) {
-			// Providers do not have variables to absorb
-		} else if (peer instanceof Delegated) {
-			absorbVariables((Supplier) ((Delegated) peer).getDelegate());
-		} else {
-			throw new IllegalArgumentException(peer + " is not a OperationAdapter");
-		}
-	}
+	public void purgeVariables() { this.variables = null; }
 
-	public void absorbVariables(OperationAdapter peer) {
-		if (peer != null) peer.getVariables().forEach(v -> addVariable((Variable) v));
-	}
-
-	public void purgeVariables() {
-		this.variables = new HashMap<>();
-		this.variableOrder = new ArrayList<>();
-		this.variableNames = new ArrayList<>();
-	}
-
+	@Deprecated
 	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
-
-	@Override
-	public synchronized void compact() {
-		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
-	}
 
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
 		semaphore.waitFor();
 	}
 
+	@Override
 	public void destroy() {
 		if (getInputs() != null) {
 			getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)

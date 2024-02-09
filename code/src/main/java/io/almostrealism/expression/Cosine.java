@@ -16,15 +16,29 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
 		super(Double.class, input);
 	}
 
-	public String getExpression() {
-		return "cos(" + getChildren().get(0).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return OptionalInt.of(1);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.cos(children[0].doubleValue());
 	}
 
 	@Override

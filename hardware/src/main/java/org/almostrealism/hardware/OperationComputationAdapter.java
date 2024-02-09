@@ -21,9 +21,6 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.Method;
-import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
-import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
 
@@ -40,10 +37,6 @@ public abstract class OperationComputationAdapter<T> extends ComputationBase<T, 
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
-	protected String renderMethod(Method method) {
-		return Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(method);
-	}
-
 	@Override
 	public Runnable get() {
 		Runnable r = compileRunnable(this);
@@ -55,7 +48,7 @@ public abstract class OperationComputationAdapter<T> extends ComputationBase<T, 
 
 	@Deprecated
 	public Runnable getKernel() {
-		Runnable r = Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(this, true);
+		Runnable r = Hardware.getLocalHardware().getComputer().compileRunnable(this, true);
 		if (r instanceof OperationAdapter) {
 			((OperationAdapter) r).compile();
 		}

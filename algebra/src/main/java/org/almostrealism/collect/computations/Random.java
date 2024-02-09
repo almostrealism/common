@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -45,7 +46,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	public KernelizedEvaluable<PackedCollection<?>> get() {
 		return new KernelizedEvaluable<>() {
 			@Override
-			public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
+			public Multiple<PackedCollection<?>> createDestination(int size) {
 				return new PackedCollection<>(getShape().prependDimension(size));
 			}
 
@@ -57,7 +58,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
+			public Evaluable<PackedCollection<?>> withDestination(MemoryBank destination) {
 				return args -> {
 					destination.setMem(IntStream.range(0, getShape().getTotalSize())
 							.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())

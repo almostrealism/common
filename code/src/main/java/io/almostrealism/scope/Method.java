@@ -16,9 +16,12 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,7 +32,7 @@ import java.util.List;
  * 
  * T is the type of the return value of the method.
  */
-public class Method<T> extends Expression<T> implements Statement, Nameable {
+public class Method<T> extends Expression<T> implements Statement<Expression<?>>, Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
 
@@ -69,13 +72,16 @@ public class Method<T> extends Expression<T> implements Statement, Nameable {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		if (getMember() == null) {
-			return getName() + "(" + toString(getArguments()) + ")";
+			return getName() + "(" + toString(lang, getArguments()) + ")";
 		} else {
-			return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
+			return getMember() + "." + getName() + "(" + toString(lang, getArguments()) + ")";
 		}
 	}
+
+	@Override
+	public String getStatement(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public void setName(String n) { this.name = n; }
@@ -88,16 +94,21 @@ public class Method<T> extends Expression<T> implements Statement, Nameable {
 	public List<Expression<?>> getArguments() { return arguments; }
 
 	@Override
+	public Method<T> simplify(KernelStructureContext context) {
+		return (Method<T>) super.simplify(context);
+	}
+
+	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Method<>(getType(), getMember(), getName(), children);
 	}
 
-	protected static String toString(List<Expression<?>> arguments) {
+	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < arguments.size(); i++) {
 			Expression<?> v = arguments.get(i);
-			buf.append(v.getExpression());
+			buf.append(v.getExpression(lang));
 
 			if (i < (arguments.size() - 1)) {
 				buf.append(", ");

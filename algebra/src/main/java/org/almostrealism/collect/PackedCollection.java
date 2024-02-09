@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,8 +33,11 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -131,9 +134,50 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	public PackedCollection<T> fill(Function<int[], Double> f) {
-		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
+	public DoubleStream doubleStream() { return DoubleStream.of(toArray()); }
+
+	public Stream<String> stringStream() {
+		int colWidth = getShape().getSize();
+		return IntStream.range(0, getCount()).mapToObj(r -> toArrayString(r * colWidth, colWidth));
+	}
+
+	public void print(Consumer<String> out) {
+		stringStream().forEach(out);
+	}
+
+	public void print() {
+		print(System.out::println);
+	}
+
+	public PackedCollection<T> fill(double... value) {
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		setMem(0, data);
 		return this;
+	}
+
+	public PackedCollection<T> fill(DoubleSupplier values) {
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<T> fill(Function<int[], Double> f) {
+		double data[] = new double[getMemLength()];
+		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<?> identityFill() {
+		return fill(pos -> {
+			for (int i = 0; i < pos.length; i++) {
+				if (pos[i] != pos[0]) {
+					return 0.0;
+				}
+			}
+
+			return 1.0;
+		});
 	}
 
 	public PackedCollection<T> randFill() {
@@ -245,6 +289,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static PackedCollection<?> of(double... values) {
+		PackedCollection<?> collection = new PackedCollection<>(values.length);
+		collection.setMem(0, values, 0, values.length);
+		return collection;
 	}
 
 	public static IntFunction<PackedCollection<?>> factory() {

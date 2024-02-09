@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
@@ -25,13 +26,13 @@ import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
 
@@ -49,7 +50,7 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, OperationInfo, HardwareFeatures {
-	public static boolean enableOptimization = false;
+	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
@@ -66,8 +67,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	private boolean enableCompilation;
 	private String functionName;
+	private Integer count;
 
 	private OperationMetadata metadata;
+	private OperationProfile profile;
+	private List<ComputeRequirement> requirements;
 
 	public OperationList() { this(null); }
 
@@ -88,6 +92,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
+	public OperationProfile getProfile() { return profile; }
+	public void setProfile(OperationProfile profile) { this.profile = profile; }
+
+	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
+
+	@Override
+	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
+
 	public void addCompiled(Supplier<Runnable> op) {
 		add(() -> op.get());
 	}
@@ -105,38 +117,52 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public int getCount() {
-		if (isEmpty()) return 0;
-
-		if (isUniform() && get(0) instanceof Countable) {
-			return ((Countable) get(0)).getCount();
+		if (count == null) {
+			if (isEmpty()) {
+				count = 0;
+			} else if (isUniform() && get(0) instanceof Countable) {
+				count = ((Countable) get(0)).getCount();
+			} else {
+				count = 1;
+			}
 		}
 
-		return 1;
+		return count;
 	}
 
 	@Override
 	public Runnable get() {
-		return get(null);
+		return get(getProfile());
 	}
 
 	public Runnable get(OperationProfile profiles) {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (enableOptimization && !isUniform()) {
-			return optimize().get();
-		} else if (isComputation()) {
-			OperationAdapter op = (OperationAdapter) compileRunnable(this);
-			op.setFunctionName(functionName);
-			op.compile();
-			return (Runnable) op;
-		} else {
-			List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
-			run.stream()
-					.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
-					.filter(Objects::nonNull)
-					.filter(Predicate.not(OperationAdapter::isCompiled))
-					.forEach(OperationAdapter::compile);
-			return new Runner(getMetadata(), run, profiles);
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			if (enableAutomaticOptimization && !isUniform()) {
+				return optimize().get();
+			} else if (isComputation()) {
+				OperationAdapter op = (OperationAdapter) compileRunnable(this);
+				op.setFunctionName(functionName);
+				op.compile();
+				return (Runnable) op;
+			} else {
+				List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
+				run.stream()
+						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
+						.filter(Objects::nonNull)
+						.filter(Predicate.not(OperationAdapter::isCompiled))
+						.forEach(OperationAdapter::compile);
+				return new Runner(getMetadata(), run, getComputeRequirements(), profiles);
+			}
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
 		}
 	}
 
@@ -182,6 +208,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 
 		Scope scope = new Scope(functionName, getMetadata());
+		scope.setComputeRequirements(getComputeRequirements());
 
 		if (getDepth() > abortableDepth) {
 			stream().flatMap(c -> Stream.of(c, abort))
@@ -198,6 +225,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		OperationList list = new OperationList();
 		list.metadata = metadata;
 		list.enableCompilation = enableCompilation;
+		list.setComputeRequirements(getComputeRequirements());
 		children.forEach(c -> list.add((Supplier) c));
 		return list;
 	}
@@ -222,17 +250,33 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	public OperationList flatten() {
-		return stream()
-				.flatMap(o -> o instanceof OperationList ? ((OperationList) o).flatten().stream() : Stream.of(o))
+		OperationList flat = stream()
+				.flatMap(o -> {
+					if (o instanceof OperationList) {
+						OperationList op = ((OperationList) o).flatten();
+
+						if (op.getComputeRequirements() == null) {
+							return op.stream();
+						} else {
+							return Stream.of(op);
+						}
+					} else {
+						return Stream.of(o);
+					}
+				})
 				.collect(OperationList.collector());
+		flat.metadata = metadata;
+		flat.enableCompilation = enableCompilation;
+		flat.setComputeRequirements(getComputeRequirements());
+		return flat;
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Runnable> optimize() {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize();
+	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
-		if (!match) return ParallelProcess.super.optimize();
+		if (!match) return ParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
@@ -255,13 +299,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
 
-		return op.optimize();
-	}
-
-	@Override
-	public void compact() {
-		stream().map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
+		return op.optimize(context);
 	}
 
 	public void destroy() {
@@ -271,6 +309,80 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
 				.filter(Objects::nonNull)
 				.forEach(OperationList::destroy);
+	}
+
+	@Override
+	public Supplier<Runnable> set(int index, Supplier<Runnable> element) {
+		count = null;
+		return super.set(index, element);
+	}
+
+	@Override
+	public boolean add(Supplier<Runnable> runnableSupplier) {
+		count = null;
+		return super.add(runnableSupplier);
+	}
+
+	@Override
+	public void add(int index, Supplier<Runnable> element) {
+		count = null;
+		super.add(index, element);
+	}
+
+	@Override
+	public Supplier<Runnable> remove(int index) {
+		count = null;
+		return super.remove(index);
+	}
+
+	@Override
+	public boolean remove(Object o) {
+		count = null;
+		return super.remove(o);
+	}
+
+	@Override
+	public void clear() {
+		count = null;
+		super.clear();
+	}
+
+	@Override
+	public boolean addAll(Collection<? extends Supplier<Runnable>> c) {
+		count = null;
+		return super.addAll(c);
+	}
+
+	@Override
+	public boolean addAll(int index, Collection<? extends Supplier<Runnable>> c) {
+		count = null;
+		return super.addAll(index, c);
+	}
+
+	@Override
+	protected void removeRange(int fromIndex, int toIndex) {
+		count = null;
+		super.removeRange(fromIndex, toIndex);
+	}
+
+	@Override
+	public boolean removeAll(Collection<?> c) {
+		if (super.removeAll(c)) {
+			count = null;
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public boolean retainAll(Collection<?> c) {
+		if (super.retainAll(c)) {
+			count = null;
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {
@@ -290,12 +402,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public static class Runner implements Runnable, OperationInfo {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
-
+		private List<ComputeRequirement> requirements;
 		private OperationProfile profiles;
 
-		public Runner(OperationMetadata metadata, List<Runnable> run, OperationProfile profiles) {
+		public Runner(OperationMetadata metadata, List<Runnable> run,
+					  List<ComputeRequirement> requirements, OperationProfile profiles) {
 			this.metadata = metadata;
 			this.run = run;
+			this.requirements = requirements;
 			this.profiles = profiles;
 		}
 
@@ -306,13 +420,23 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		@Override
 		public void run() {
-			if (profiles == null) {
-				for (int i = 0; i < run.size(); i++) {
-					run.get(i).run();
+			try {
+				if (requirements != null) {
+					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 				}
-			} else {
-				for (int i = 0; i < run.size(); i++) {
-					profiles.recordDuration(run.get(i));
+
+				if (profiles == null) {
+					for (int i = 0; i < run.size(); i++) {
+						run.get(i).run();
+					}
+				} else {
+					for (int i = 0; i < run.size(); i++) {
+						profiles.recordDuration(run.get(i));
+					}
+				}
+			} finally {
+				if (requirements != null) {
+					Hardware.getLocalHardware().getComputer().popRequirements();
 				}
 			}
 		}

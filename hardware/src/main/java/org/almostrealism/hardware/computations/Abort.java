@@ -46,7 +46,7 @@ public class Abort extends OperationComputationAdapter<MemoryData> implements Ex
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).referenceRelative(e(0.0)).getSimpleExpression());
+		scope.code().accept(getArgument(0).referenceRelative(e(0.0)).getSimpleExpression(getLanguage()));
 		scope.code().accept(" > 0) { return; }");
 		return scope;
 	}

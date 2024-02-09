@@ -20,6 +20,7 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.uml.Multiple;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -29,27 +30,29 @@ import java.util.function.Supplier;
 
 public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 
-	private final IntFunction<MemoryBank<T>> kernelDestination;
+	private final IntFunction<MemoryBank<T>> destination;
 
 	public DynamicProducerForMemoryData(Supplier<T> supplier) {
 		this(args -> supplier.get());
 	}
 
-	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> kernelDestination) {
-		this(args -> supplier.get(), kernelDestination);
+	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> destination) {
+		this(args -> supplier.get(), destination);
 	}
 
 	public DynamicProducerForMemoryData(Function<Object[], T> function) {
 		this(function, null);
 	}
 
-	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> kernelDestination) {
+	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> destination) {
 		super(function);
-		this.kernelDestination = kernelDestination;
+		this.destination = destination;
 	}
 
 	@Override
 	public int getCount() { return 1; }
+
+	public IntFunction<MemoryBank<T>> getDestinationFactory() { return destination; }
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
@@ -62,21 +65,21 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
 		return new KernelizedEvaluable<T>() {
 			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
-				if (kernelDestination == null) {
+			public Multiple<T> createDestination(int size) {
+				if (destination == null) {
 					throw new UnsupportedOperationException();
 				} else {
-					return kernelDestination.apply(size);
+					return destination.apply(size);
 				}
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+			public Evaluable<T> withDestination(MemoryBank destination) {
 				return new DestinationEvaluable(e, destination);
 			}
 

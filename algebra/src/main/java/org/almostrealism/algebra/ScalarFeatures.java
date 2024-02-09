@@ -17,7 +17,13 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.*;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Exponent;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Min;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.ScalarChoice;
@@ -105,16 +111,16 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ExpressionComputation<Scalar> toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		if (value == null) return null;
 
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> args.get(1).getValueRelative(0));
-		comp.add(args -> expressionForDouble(1.0));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, value).setPostprocessor(Scalar.postprocessor());
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		comp[0] = args -> args.get(1).getValueRelative(0);
+		comp[1] = args -> expressionForDouble(1.0);
+		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> value(Scalar value) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
+		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp)).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
@@ -147,7 +153,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> Sum.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
 		comp.add(args -> expressionForDouble(1.0));
 		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, values).setPostprocessor(Scalar.postprocessor());
 	}
@@ -158,13 +164,9 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
+		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
-	}
-
-	default ExpressionComputation<Scalar> scalarsDivide(Producer<Scalar> a, Producer<Scalar> b) {
-		return scalarsMultiply(a, scalarPow(b, v(-1.0)));
 	}
 
 	default ExpressionComputation<Scalar> scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
@@ -182,10 +184,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Scalar exp) {
 		return scalarPow(base, of(exp));
-	}
-
-	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar>  base, double value) {
-		return scalarPow(base, new Scalar(value));
 	}
 
 	default ExpressionComputation<Scalar> scalarMin(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -237,13 +235,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar> left,
 															Producer<Scalar>  right) {
 		return new LessThanVector(left, right, null, null);
-	}
-
-	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar>  left,
-															Producer<Scalar> right,
-															Producer<Vector> trueValue,
-															Producer<Vector> falseValue) {
-		return new LessThanVector(left, right, (Supplier) trueValue, (Supplier) falseValue);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

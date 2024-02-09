@@ -16,81 +16,35 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.scope.Variable;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
-	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
-
-	default boolean isContextKernelEnabled() {
-		return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
-	}
-
-//	@Override
-//	default Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	default String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, enableKernel ? kernelIndex : -1);
-	}
-
-	default String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		String name;
-
-		if (v instanceof ArrayVariable) {
-			if (isContextKernelEnabled() && v.getProducer() instanceof ParallelProcess
-					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
-				String kernelOffset = ((KernelSupport) v.getProducer()).getKernelIndex(v.getName(), kernelIndex);
-
-				if (pos.equals("0") || pos.equals("(0)")) {
-					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
-				} else {
-					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + (int) (" + pos + ")]";
-				}
-			} else {
-				if (pos.equals("0")) {
-					name = v.getName() + "[" + v.getName() + "Offset]";
-				} else {
-					name = v.getName() + "[" + v.getName() + "Offset + (int) (" + pos + ")]";
-				}
-			}
-		} else {
-			name = v.getName() + "[(int) (" + pos + ")]";
-		}
-
-		if (isCastEnabled() && !assignment) {
-			return "(float)" + name;
-		} else {
-			return name;
-		}
-	}
 
 	@Override
 	default String getVariableDimName(ArrayVariable v, int dim) {
-		return KernelSupport.getValueDimName(v.getName(), dim);
+		return v.getName() + "Dim" + dim;
 	}
 
 	@Override
 	default String getVariableSizeName(ArrayVariable v) {
-		return KernelSupport.getValueSizeName(v.getName());
+		return v.getName() + "Size";
 	}
 
 	@Override
-	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+	default Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression pos, int kernelIndex) {
 		Expression offset = new IntegerConstant(0);
 
-		if (isContextKernelEnabled() &&
-				(v.getProducer() instanceof Countable ||
-				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled()))) {
+		if (v.getProducer() instanceof Countable ||
+				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled())) {
 			KernelIndex idx = new KernelIndex(kernelIndex);
-			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
+			Expression dim = new StaticReference(Integer.class, getVariableDimName(v, kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);
 

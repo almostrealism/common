@@ -16,18 +16,19 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
 public class MetalPrintWriter extends CPrintWriter {
 
 	public MetalPrintWriter(PrintWriter p) {
-		this(p, null);
+		this(p, null, Precision.FP32);
 	}
 
-	public MetalPrintWriter(PrintWriter p, String topLevelMethodName) {
-		super(p, topLevelMethodName, false);
-		language = new MetalLanguageOperations();
+	public MetalPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		super(p, topLevelMethodName, precision, false);
+		language = new MetalLanguageOperations(precision);
 		setExternalScopePrefix("[[kernel]] void");
 		setInternalScopePrefix("void");
 	}

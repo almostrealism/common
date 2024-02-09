@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
@@ -30,23 +31,19 @@ public interface NameProvider {
 	default PhysicalScope getDefaultPhysicalScope() { return null; }
 
 	/**
-	 * Specifying the size is preferred, see {@link #getArgument(int, int)}.
+	 * Specifying the size is preferred, see {@link #getArgument(LanguageOperations, int, int)}.
 	 */
 	@Deprecated
-	default ArrayVariable getArgument(int index) {
-		return getArgument(index, null);
+	default ArrayVariable getArgument(LanguageOperations lang, int index) {
+		return getArgument(lang, index, null);
 	}
 
-	default Variable getVariable(int index) {
-		return new Variable<>(getVariableName(index), getDefaultPhysicalScope(), Double.class, null);
+	default ArrayVariable getArgument(LanguageOperations lang, int index, int size) {
+		return getArgument(lang, index, new IntegerConstant(size));
 	}
 
-	default ArrayVariable getArgument(int index, int size) {
-		return getArgument(index, new IntegerConstant(size));
-	}
-
-	default ArrayVariable getArgument(int index, Expression<Integer> size) {
-		ArrayVariable v = new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
+	default ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
+		ArrayVariable v = new ArrayVariable(lang, this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
 		v.setArraySize(size);
 		return v;
 	}
@@ -62,39 +59,9 @@ public interface NameProvider {
 		return getVariablePrefix() + "_l" + index;
 	}
 
-	default String getArgumentValueName(int index, int pos, boolean assignment) {
-		return getArgumentValueName(index, pos, assignment, 0);
-	}
-
-	default String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, int pos) {
-		return getVariableValueName(v, pos, 0);
-	}
-
-	default String getVariableValueName(Variable v, int pos, boolean assignment) {
-		return getVariableValueName(v, pos, assignment, 0);
-	}
-
-	default String getVariableValueName(Variable v, int pos, int kernelIndex) {
-		return getVariableValueName(v, pos, false, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, String pos, int kernelIndex) {
-		return getVariableValueName(v, pos, false, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(v, String.valueOf(pos), assignment, kernelIndex);
-	}
-
-	String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex);
-
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);
 
-	Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex);
+	Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression<?> pos, int kernelIndex);
 }

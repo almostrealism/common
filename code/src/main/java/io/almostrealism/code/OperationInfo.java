@@ -16,6 +16,28 @@
 
 package io.almostrealism.code;
 
+import java.util.List;
+
 public interface OperationInfo {
 	OperationMetadata getMetadata();
+
+	default List<ComputeRequirement> getComputeRequirements() {
+		return null;
+	}
+
+	static <T> String name(T value) {
+		if (value instanceof OperationInfo) {
+			return ((OperationInfo) value).getMetadata().getDisplayName();
+		} else {
+			return String.valueOf(value);
+		}
+	}
+
+	static <T> String display(T value) {
+		if (value instanceof OperationInfo) {
+			return ((OperationInfo) value).getMetadata().getShortDescription();
+		} else {
+			return String.valueOf(value);
+		}
+	}
 }

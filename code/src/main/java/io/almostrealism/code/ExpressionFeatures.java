@@ -19,14 +19,15 @@ package io.almostrealism.code;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.NAryExpression;
-import io.almostrealism.scope.Variable;
-
-import java.util.Collections;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.expression.MinimumValue;
+import io.almostrealism.expression.StaticReference;
 
 public interface ExpressionFeatures {
 
@@ -50,16 +51,38 @@ public interface ExpressionFeatures {
 		return new Exp(expression);
 	}
 
-	default NAryExpression<Boolean> greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
-		return new NAryExpression<>(Boolean.class, includeEqual ? ">=" : ">", left, right);
+	default Epsilon epsilon() { return new Epsilon(); }
+
+	default MinimumValue minValue() { return new MinimumValue(); }
+
+	default KernelIndex kernel() { return new KernelIndex(); }
+
+	default <T> ExpressionAssignment<T> declare(String name, Expression<T> expression) {
+		return declare(new StaticReference<>(expression.getType(), name), expression);
+	}
+
+	default <T> ExpressionAssignment<T> assign(String name, Expression<T> expression) {
+		return assign(new StaticReference<>(expression.getType(), name), expression);
+	}
+
+	default <T> ExpressionAssignment<T> declare(Expression<T> destination, Expression<T> expression) {
+		return new ExpressionAssignment<>(true, destination, expression);
+	}
+
+	default <T> ExpressionAssignment<T> assign(Expression<T> destination, Expression<T> expression) {
+		return new ExpressionAssignment<>(destination, expression);
+	}
+
+	default Greater greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
+		return new Greater(left, right, includeEqual);
 	}
 
 	default Equals equals(Expression<?> left, Expression<?> right) {
 		return new Equals(left, right);
 	}
 
-	default Conditional conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		return new Conditional(condition, positive, negative);
+	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
+		return Conditional.of(condition, (Expression) positive, (Expression) negative);
 	}
 
 	static ExpressionFeatures getInstance() {

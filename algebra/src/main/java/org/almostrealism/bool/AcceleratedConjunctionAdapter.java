@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -26,7 +27,6 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NAryExpression;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -50,12 +50,11 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 
 	@SafeVarargs
 	public AcceleratedConjunctionAdapter(int memLength,
-										 Supplier<T> blankValue,
 										 IntFunction<MemoryBank<T>> kernelDestination,
 										 Supplier<Evaluable<?>> trueValue,
 										 Supplier<Evaluable<?>> falseValue,
 										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
-		super(memLength, blankValue, kernelDestination);
+		super(memLength, kernelDestination);
 		this.trueValue = trueValue;
 		this.falseValue = falseValue;
 		this.conjuncts = Arrays.asList(conjuncts);
@@ -138,8 +137,8 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public List<Variable<?, ?>> getVariables() {
-		List<Variable<?, ?>> all = new ArrayList<>();
+	public List<ExpressionAssignment<?>> getVariables() {
+		List<ExpressionAssignment<?>> all = new ArrayList<>();
 		all.addAll(super.getVariables());
 		conjuncts.stream()
 				.map(AcceleratedConditionalStatement::getVariables)
@@ -169,14 +168,5 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	@Override
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
 		return i -> (Expression) falseVar.getValueRelative(i);
-	}
-
-	@Override
-	public void compact() {
-		conjuncts.stream()
-				.map(c -> c instanceof Compactable ? (Compactable) c : null)
-				.filter(Objects::nonNull)
-				.forEach(Compactable::compact);
-		super.compact();
 	}
 }

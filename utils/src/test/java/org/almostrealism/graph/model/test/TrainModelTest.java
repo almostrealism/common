@@ -16,18 +16,38 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
+import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.layers.GradientPropagation;
+import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
@@ -37,8 +57,17 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
+	public CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
+		if (skipLongTests && !LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
+			throw new UnsupportedOperationException();
+
+		return TestFeatures.super.convolution2d(inputShape, size, filterCount, requirements);
+	}
+
 	@Test
 	public void dense() {
+		if (skipLongTests) return;
+
 		int size = 30;
 		int nodes = 10;
 
@@ -54,8 +83,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
@@ -102,6 +130,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void conv() {
+		if (skipLongTests) return;
+
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 
@@ -110,8 +140,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -140,6 +169,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool() {
+		if (skipLongTests) return;
+
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
@@ -151,8 +182,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
 
@@ -161,6 +191,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void convPool() {
+		if (skipLongTests) return;
+
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -171,10 +203,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-
 		PackedCollection<?> in = input;
-		CLOperator.verboseLog(() -> model.forward(in));
+		HardwareOperator.verboseLog(() -> model.compile().forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -229,24 +259,94 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainSmall() {
-		Tensor<Double> t = tensor(shape(10, 10));
+	public void trainSmallest() {
+		if (!trainingTests) return;
+
+		GradientPropagation.enableDiagnosticGrad = true;
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		int dim = 3;
+		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(10, 10, 3, 8, 10));
+		train(input, model(dim, dim, 2, 2, 10));
+	}
+
+	@Test
+	public void trainVerySmall() {
+		if (!trainingTests) return;
+
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
+		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
+
+		int dim = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, 4, 10));
+	}
+
+
+	@Test
+	public void trainSmall() {
+		if (!trainingTests) return;
+
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
+
+		int dim = 16;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, filters, 10));
+	}
+
+	@Test
+	public void trainMedium() {
+		if (!trainingTests) return;
+
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
+
+		int dim = 32;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, filters, 10));
 	}
 
 	@Test
 	public void trainLarge() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
-		Tensor<Double> t = tensor(shape(60, 60));
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
+
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
+		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
+
+		int dim = 64;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(60, 60, 3, 8, 10));
+		train(input, model(dim, dim, 3, filters, 10));
 	}
 
 	@Test
 	public void trainProgressive() {
-		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		double size = 10;
 
@@ -262,20 +362,86 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		long start = System.currentTimeMillis();
-		model.setup().get().run();
-		model.forward(input);
-		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
-				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+		HardwareOperator.profile = new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		OperationProfile profile = new OperationProfile("Model");
+		CompiledModel compiled = model.compile(profile);
+		log("Model compiled");
+
+		double epochMinutes = 0.0;
+
+		int epochSize = 1000;
+
+		try {
+			int count = 100 * epochSize;
+
+			long start = 0;
+
+			for (int i = 0; i < count; i++) {
+				input.fill(pos -> 0.5 + 0.5 * Math.random());
+
+				compiled.forward(input);
+
+				if (i % 1000 == 0) {
+					log("Input Size = " + input.getShape() +
+							"\t | epoch = " + i / epochSize);
+				}
+
+				compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+
+				if (i % 1000 == 0) {
+					if (i > 0) {
+						epochMinutes = (System.currentTimeMillis() - start) * epochSize / (60000.0 * i);
+					} else {
+						start = System.currentTimeMillis();
+					}
+
+					int remaining = 0;
+					String remainingText = "";
+					boolean first = false;
+
+					if (epochMinutes > 0) {
+						remaining = (int) (epochMinutes * (count - i) / epochSize);
+						remainingText = remaining + " minutes remaining";
+					} else {
+						first = true;
+					}
+
+					log("\t\tbackprop\t\t\t" +
+							" | epoch = " + i / epochSize + "\t|\t" + remainingText);
+
+					if (first && Scope.timing.getTotal() > 180) {
+						AcceleratedComputationOperation.printTimes();
+					} else if (remaining > 900) {
+						return;
+					}
+				}
+			}
+		} finally {
+			profile.print();
+			HardwareOperator.profile.print();
+			AcceleratedComputationOperation.printTimes();
+			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
+							" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
+			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
+					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
+			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		}
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
 		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
+//		model.addBlock(flatten());
+//		model.addLayer(dense(denseSize));
+//		model.addLayer(softmax());
+		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
+	}
+
+	private Predicate<Process> operationFilter(String functionName) {
+		return p -> p instanceof OperationAdapter &&
+				((OperationAdapter) p).getFunctionName().equals(functionName);
 	}
 }

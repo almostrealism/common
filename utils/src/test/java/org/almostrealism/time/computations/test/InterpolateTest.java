@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -42,11 +43,11 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, 0),
-				new PassThroughProducer<>(1, 1, 0),
-				new PassThroughProducer<>(1, 2, 0),
-				v -> new Sum(v, e(1.0)),
-				v -> new Sum(v, e(-1.0)));
+				new PassThroughProducer<>(10, 0),
+				new PassThroughProducer<>(1, 1),
+				new PassThroughProducer<>(1, 2),
+				v -> Sum.of(v, e(1.0)),
+				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series.traverse(1), cursors.traverse(1), rate.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -68,7 +69,7 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, -1),
+				new PassThroughProducer<>(10, 0),
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(1, 2));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
@@ -92,11 +93,11 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, 0),
-				new PassThroughProducer<>(1, 1, 0),
-				new PassThroughProducer<>(1, 2, 0),
-				v -> new Sum(v, e(1.0)),
-				v -> new Sum(v, e(-1.0)));
+				new PassThroughProducer<>(10, 0),
+				new PassThroughProducer<>(1, 1),
+				new PassThroughProducer<>(1, 2),
+				v -> Sum.of(v, e(1.0)),
+				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series, cursor, rate);
 
 		System.out.println(Arrays.toString(dest.toArray(0, 1)));
@@ -121,11 +122,11 @@ public class InterpolateTest implements TestFeatures {
 				new PassThroughProducer<>(1, 0),
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(2, 2),
-				v -> new Sum(v, e(1.0)),
-				v -> new Sum(v, e(-1.0)));
+				v -> Sum.of(v, e(1.0)),
+				v -> Sum.of(v, e(-1.0)));
 		PackedCollection<?> dest = new PackedCollection(shape(4, 1));
 
-		KernelizedEvaluable<?> eval = interpolate.get();
+		Evaluable<?> eval = interpolate.get();
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 4)));
@@ -144,5 +145,5 @@ public class InterpolateTest implements TestFeatures {
 	//						new PassThroughProducer<>(1, 0, -1),
 	//						new PassThroughProducer<>(1, 1),
 	//						new PassThroughProducer<>(2, 2, -1),
-	//						v -> new Product(v, HardwareFeatures.ops().expressionForDouble(1.0 / OutputLine.sampleRate)))
+	//						v -> Product.of(v, HardwareFeatures.ops().expressionForDouble(1.0 / OutputLine.sampleRate)))
 }

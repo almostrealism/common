@@ -5,6 +5,7 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
@@ -29,7 +30,7 @@ public class TimeCellTest implements TestFeatures {
 	@Test
 	public void fmod() {
 		Scalar time = new Scalar();
-		Producer<Scalar> loopDuration = v(0.0);
+		Producer<Scalar> loopDuration = v(2.0);
 
 		Producer<Scalar> left = l(() -> new Provider<>(time));
 		left = greaterThan(loopDuration, v(0.0),
@@ -41,10 +42,12 @@ public class TimeCellTest implements TestFeatures {
 
 		Runnable r = new Assignment<>(2, () -> new Provider<>(time), pair(left, right)).get();
 
-		for (int i = 0; i < 4; i++) {
-			r.run();
-		}
+		HardwareOperator.verboseLog(() -> {
+			for (int i = 0; i < 5; i++) {
+				r.run();
+			}
+		});
 
-		assertEquals(4.0, time);
+		assertEquals(1.0, time);
 	}
 }

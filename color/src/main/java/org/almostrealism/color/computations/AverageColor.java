@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
@@ -53,7 +54,7 @@ public class AverageColor implements ProducerComputation<RGB> {
 	public void setInvert(boolean invert) { this.invert = invert; }
 
 	@Override
-	public KernelizedEvaluable<RGB> get() {
+	public Evaluable<RGB> get() {
 		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
 			RGB c = new RGB(0.0, 0.0, 0.0);
 			Iterator itr = this.colors.iterator();
@@ -72,11 +73,5 @@ public class AverageColor implements ProducerComputation<RGB> {
 	@Override
 	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
-	}
-
-	@Override
-	public void compact() {
-		// TODO  AverageColor should be modified to accept ColorProducers instead
-		//       of RGB values and this method should delegate to them
 	}
 }

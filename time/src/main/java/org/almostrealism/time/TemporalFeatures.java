@@ -16,19 +16,17 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.computations.Interpolate;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface TemporalFeatures {
 	default Frequency bpm(double bpm) {
@@ -40,29 +38,25 @@ public interface TemporalFeatures {
 	}
 
 	default Supplier<Runnable> iter(Temporal t, int iter, boolean resetAfter) {
-		Supplier<Runnable> tick = loop(t, iter);
+		return iter(t, v -> loop(v, iter), resetAfter);
+	}
+
+	default Supplier<Runnable> iter(Temporal t, Function<Temporal, Supplier<Runnable>> tick, boolean resetAfter) {
+		Supplier<Runnable> tk = tick.apply(t);
 
 		if (t instanceof Lifecycle || t instanceof Setup) {
 			OperationList o = new OperationList("TemporalFeature Iteration");
 			if (t instanceof Setup) o.add(((Setup) t).setup());
-			o.add(tick);
+			o.add(tk);
 			if (resetAfter && t instanceof Lifecycle) o.add(() -> ((Lifecycle) t)::reset);
 			return o;
 		} else {
-			return tick;
+			return tk;
 		}
 	}
 
 	default Supplier<Runnable> loop(Temporal t, int iter) {
-		Supplier<Runnable> tick = t.tick();
-
-		if ((tick instanceof OperationList && !((OperationList) tick).isComputation())
-				|| !(tick instanceof Computation)) {
-			Runnable r = tick.get();
-			return () -> () -> IntStream.range(0, iter).forEach(i -> r.run());
-		} else {
-			return new Loop((Computation<Void>) tick, iter);
-		}
+		return HardwareFeatures.getInstance().loop(t.tick(), iter);
 	}
 	
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,

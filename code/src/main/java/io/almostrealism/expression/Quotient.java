@@ -16,38 +16,105 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public static boolean enableIntegerSimplification = true;
-	public static boolean enableFpSimplification = true;
+	protected Quotient(List<Expression<?>> values) {
+		super((Class<T>) type(values), "/", values);
+	}
 
-	public Quotient(Expression<Double>... values) {
+	protected Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
-		return new Quotient(children.toArray(new Expression[0]));
+	public KernelSeries kernelSeries() {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		KernelSeries numerator = getChildren().get(0).kernelSeries();
+		OptionalInt denominator = getChildren().get(1).intValue();
+
+		if (denominator.isPresent()) {
+			return numerator.scale(denominator.getAsInt());
+		}
+
+		return  KernelSeries.infinite();
 	}
 
 	@Override
-	public Expression simplify() {
-		Expression<?> flat = super.simplify();
-		if (!enableSimplification) return flat;
-		if (!(flat instanceof Quotient)) return flat;
+	public OptionalInt upperBound(KernelStructureContext context) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of((int) Math.ceil(l.getAsInt() / (double) r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Number numerator = getChildren().get(0).value(indexValues);
+		Number denominator = getChildren().get(1).value(indexValues);
+
+		if (numerator instanceof Integer && denominator instanceof Integer) {
+			return ((Integer) numerator) / ((Integer) denominator);
+		} else {
+			return numerator.doubleValue() / denominator.doubleValue();
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		if (getType() == Integer.class) {
+			int value = children[0].intValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].intValue();
+			}
+
+			return value;
+		} else {
+			double value = children[0].doubleValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].doubleValue();
+			}
+
+			return value;
+		}
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		return (Expression) Quotient.of(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
+		if (!enableSimplification || !(flat instanceof Quotient)) return flat;
 
 		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
-		if (children.isEmpty()) return (Expression) getChildren().iterator().next();
-		if (children.size() == 1) return (Expression<Double>) children.get(0);
+		if (children.isEmpty()) return new IntegerConstant(1);
+		if (children.size() == 1) return children.get(0);
 
-		if (enableIntegerSimplification && children.get(0).intValue().isPresent()) {
+		if (children.get(0).intValue().isPresent()) {
 			int numerator = children.get(0).intValue().getAsInt();
 			if (numerator == 0) return new IntegerConstant(0).toInt();
 
@@ -65,7 +132,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			newChildren.add(new IntegerConstant(numerator).toInt());
 			newChildren.addAll(children.subList(i, children.size()));
 			children = newChildren;
-		} else if (enableFpSimplification && children.get(0).doubleValue().isPresent()) {
+		} else if (children.get(0).doubleValue().isPresent()) {
 			double numerator = children.get(0).doubleValue().getAsDouble();
 			if (numerator == 0) return new DoubleConstant(0.0);
 
@@ -85,21 +152,22 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			children = newChildren;
 		}
 
-		return generate(children);
+		return generate(children).populate(this);
 	}
 
-	@Override
-	public Number kernelValue(int kernelIndex) {
-		if (getChildren().size() > 2)
-			throw new UnsupportedOperationException();
+	public static Expression<?> of(Expression<?>... values) {
+		if (values.length == 0) throw new IllegalArgumentException();
+		if (values.length == 1) return values[0];
 
-		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
-		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
-
-		if (numerator instanceof Integer && denominator instanceof Integer) {
-			return ((Integer) numerator) / ((Integer) denominator);
-		} else {
-			return numerator.doubleValue() / denominator.doubleValue();
+		List<Expression> operands = new ArrayList<>();
+		operands.add(values[0]);
+		for (int i = 1; i < values.length; i++) {
+			if (values[i].intValue().orElse(-1) != 1) {
+				operands.add(values[i]);
+			}
 		}
+
+		if (operands.size() == 1) return operands.get(0);
+		return new Quotient(operands);
 	}
 }

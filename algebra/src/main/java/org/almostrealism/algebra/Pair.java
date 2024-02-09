@@ -16,16 +16,13 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
@@ -139,16 +136,6 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	public static PackedCollection<Pair<?>> bank(int count) {
 		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
-	}
-
-	@Deprecated
-	public static PackedCollection<Pair<?>> bank(int count, Evaluable<Pair<?>> source) {
-		PackedCollection<Pair<?>> bank = Pair.bank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, source.evaluate());
-		}
-
-		return bank;
 	}
 
 	public static PackedCollection<Pair<?>> bank(int count, MemoryData delegate, int delegateOffset) {

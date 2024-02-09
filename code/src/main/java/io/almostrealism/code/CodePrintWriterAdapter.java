@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.DefaultLanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
@@ -42,6 +44,11 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		this.p = p;
 		this.language = language;
 		this.scopeName = new Stack<>();
+	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return language;
 	}
 
 	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }

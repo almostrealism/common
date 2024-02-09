@@ -21,7 +21,10 @@ import java.util.Collections;
 import java.util.function.Supplier;
 
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
-	default Process<P, T> optimize() {
+
+	default Process<P, T> optimize() { return optimize(null); }
+
+	default Process<P, T> optimize(ProcessContext context) {
 		return this;
 	}
 
@@ -42,5 +45,21 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 				return supplier.get();
 			}
 		};
+	}
+
+	static <T, P extends Supplier<T>> Supplier<T> optimized(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, T>) process).optimize();
+		} else {
+			return process;
+		}
+	}
+
+	static <T, P extends Supplier<T>> Supplier<T> isolated(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, T>) process).isolate();
+		} else {
+			return Process.of(process);
+		}
 	}
 }

@@ -17,7 +17,6 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -26,14 +25,13 @@ import java.util.function.Supplier;
 
 public abstract class GreaterThan<T extends PackedCollection<?>> extends AcceleratedBinaryConditionAdapter<T> {
 	public GreaterThan(int memLength,
-					   Supplier<T> blankValue,
 					   IntFunction<MemoryBank<T>> kernelDestination,
 					   Supplier<Evaluable> leftOperand,
 					   Supplier<Evaluable> rightOperand,
 					   Supplier<Evaluable<? extends T>> trueValue,
 					   Supplier<Evaluable<? extends T>> falseValue,
 					   boolean includeEqual) {
-		super(includeEqual ? ">=" : ">", memLength, blankValue, kernelDestination,
+		super(includeEqual ? ">=" : ">", memLength, kernelDestination,
 				leftOperand, rightOperand, trueValue, falseValue);
 	}
 }

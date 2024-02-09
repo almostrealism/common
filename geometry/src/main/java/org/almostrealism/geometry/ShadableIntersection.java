@@ -61,10 +61,6 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
 		return scalarMultiply(normalize(incident), -1.0);
 	}
-	
-	/** Delegates to {@link #getNormalAt(Producer)}. */
-	@Override
-	public Vector operate(Vector t) { return getNormalAt(v(t)).get().evaluate(); }
 
 	@Override
 	public Producer<Ray> get(int index) { return normal; }

@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Minus;
@@ -23,24 +24,48 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
+import org.almostrealism.io.Console;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.TreeSet;
+import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
+	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
+
 	private int dims[];
 	private int traversalAxis;
 
 	public TraversalPolicy(int... dims) {
 		this.dims = dims;
+
+		if (dims.length > 0) {
+			long total = dims[0];
+
+			for (int i = 1; i < dims.length; i++) {
+				total *= dims[i];
+
+				if (total > MAX_SIZE || total < 0) {
+					throw new IllegalArgumentException();
+				}
+			}
+		}
 	}
 
 	public int size(int depth) {
+		return Math.toIntExact(sizeLong(depth));
+	}
+
+	public long sizeLong(int depth) {
 		if (dims.length == 0) return 0;
 		if (depth == dims.length) return 1;
 		if (depth > dims.length) throw new IllegalArgumentException("Depth is greater than the number of dimensions");
-		return IntStream.range(depth, dims.length).map(i -> dims[i]).reduce((x, y) -> x * y).getAsInt();
+		return IntStream.range(depth, dims.length).mapToLong(i -> dims[i]).reduce((x, y) -> x * y).getAsLong();
 	}
 
 	public int length(int axis) {
@@ -64,7 +89,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
-			index = new Sum(index, new Product(pos[i], s));
+			index = Sum.of(index, Product.of(pos[i], s));
 		}
 
 		return index;
@@ -89,8 +114,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		Expression remaining = index;
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
-			pos[i] = new Quotient(remaining, s);
-			remaining = new Sum(remaining, new Minus(new Product(pos[i], s)));
+			pos[i] = Quotient.of(remaining, s);
+			remaining = Sum.of(remaining, new Minus(Product.of(pos[i], s)));
 		}
 
 		return pos;
@@ -120,7 +145,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		for (int i = 0; i < loc.length; i++) {
 			Expression l = loc[i];
-			pos[i] = new Sum(pos[i], l);
+			pos[i] = Sum.of(pos[i], l);
 		}
 
 		return index(pos);
@@ -148,6 +173,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		TraversalPolicy p = new TraversalPolicy(newDims);
 		p.traversalAxis = traversalAxis + 1;
+		return p;
+	}
+
+	public TraversalPolicy append(TraversalPolicy shape) {
+		int newDims[] = new int[getDimensions() + shape.getDimensions()];
+		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);
+		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
 		return p;
 	}
 
@@ -208,17 +243,29 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public TraversalPolicy flatten() {
-		return new TraversalPolicy(getTotalSize());
+		return flatten(false);
+	}
+
+	public TraversalPolicy flatten(boolean preserveCount) {
+		if (preserveCount) {
+			return new TraversalPolicy(getCount(), getSize()).traverse();
+		} else {
+			return new TraversalPolicy(getTotalSize());
+		}
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }
 
 	public int getSize() { return size(traversalAxis); }
 
+	public long getSizeLong() { return sizeLong(traversalAxis); }
+
 	public int getTotalSize() { return size(0); }
 
+	public long getTotalSizeLong() { return sizeLong(0); }
+
 	@Override
-	public int getCount() { return getTotalSize() / getSize(); }
+	public int getCount() { return Math.toIntExact(getTotalSizeLong() / getSizeLong()); }
 
 	public int getDimensions() { return dims.length; }
 
@@ -245,6 +292,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return false;
 	}
 
+	public String toStringDetail() {
+		return this + "[axis=" + getTraversalAxis() + "|" + getCount() + "x" + getSize() + "]";
+	}
+
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
@@ -255,5 +306,39 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		}
 		sb.append(")");
 		return sb.toString();
+	}
+
+	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
+											  BiFunction<Integer, V, V> traversalFunction,
+											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
+		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
+		sortedShapes.addAll(shapes);
+
+		s: for (TraversalPolicy shape : sortedShapes) {
+			int[] compatibleAxes =
+					IntStream.range(0, values.size())
+							.map(i -> compatibleAxis(shape, shapes.get(i)))
+							.filter(i -> i >= 0).toArray();
+			if (compatibleAxes.length != values.size()) continue s;
+
+			List<V> vals = new ArrayList<>();
+			for (int i = 0; i < values.size(); i++) {
+				vals.add(traversalFunction.apply(compatibleAxes[i], values.get(i)));
+			}
+
+			return resultProcessor.apply(shape, vals);
+		}
+
+		throw new IllegalArgumentException("No compatible traversal axes");
+	}
+
+	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
+		for (int i = 0; i < shape.getDimensions() + 1; i++) {
+			if (shape.size(i) == target.getSize()) {
+				return i;
+			}
+		}
+
+		return -1;
 	}
 }

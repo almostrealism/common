@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 
@@ -25,8 +26,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Deprecated
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;
+	private Consumer<CodePrintWriter> writer;
 	private List<Argument<?>> arguments;
 
 	public ExplicitScope(OperationAdapter op) {
@@ -42,6 +45,10 @@ public class ExplicitScope<T> extends Scope<T> {
 		super(name, metadata);
 		this.code = new StringBuffer();
 		if (code != null) this.code.append(code);
+	}
+
+	public void setWriter(Consumer<CodePrintWriter> writer) {
+		this.writer = writer;
 	}
 
 	public void setArguments(List<Argument<?>> arguments) { this.arguments = arguments; }
@@ -73,6 +80,12 @@ public class ExplicitScope<T> extends Scope<T> {
 	@Override
 	public void write(CodePrintWriter w) {
 		super.write(w);
+
+		if (writer != null) {
+			writer.accept(w);
+			return;
+		}
+
 		w.println(code.toString());
 	}
 }

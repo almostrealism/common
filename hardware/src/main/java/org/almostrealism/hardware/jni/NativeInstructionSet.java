@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,37 +16,45 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Semaphore;
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLComputeContext;
-import org.almostrealism.hardware.cl.CLDataContext;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.cl_command_queue;
 
+import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-public interface NativeInstructionSet extends InstructionSet, KernelSupport {
+public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	default String getFunctionName() {
 		return "Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
 				"_apply";
 	}
 
-	@Override
-	default boolean isKernelEnabled() { return false; }
+	ComputeContext<MemoryData> getComputeContext();
+
+	void setComputeContext(ComputeContext<MemoryData> context);
+
+	OperationMetadata getMetadata();
+
+	void setMetadata(OperationMetadata metadata);
+
+	int getParallelism();
+
+	void setParallelism(int parallelism);
 
 	@Override
 	default Execution get(String function, int argCount) {
-		return (args, dependsOn) -> {
-			if (dependsOn != null) dependsOn.waitFor();
-			return apply(Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
-		};
+		return new NativeExecution(this, argCount);
 	}
 
 	@Override
@@ -57,31 +65,58 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	@Override
 	default void destroy() { }
 
-
-	default Semaphore apply(MemoryData... args) {
+	default void apply(long idx, long kernelSize, int[] dim0, MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
 			System.out.println("NativeInstructionSet: " + id);
 		}
 
-		return apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
+		if (idx > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		int i = (int) idx;
+
+		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
-					Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
+					Stream.of(args).mapToInt(MemoryData::getAtomicMemLength).toArray(),
+					dim0, i, kernelSize);
 	}
 
-	default Semaphore apply(RAM args[], int offsets[], int sizes[]) {
-		return apply(Optional.ofNullable(Hardware.getLocalHardware().getClComputeContext())
-				.map(CLComputeContext::getClQueue)
-				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
+	default void apply(RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
+		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
+
+		for (int i = 0; i < args.length; i++) {
+			if (args[i] == null) {
+				throw new NullPointerException("Argument " + i + " is null");
+			}
+
+			if (bytes * (globalId * dim0[i] + offsets[i]) > args[i].getSize()) {
+				throw new IllegalArgumentException("Positions in argument " + i + " will run beyond its size");
+			}
+		}
+
+		apply(Optional.ofNullable(getComputeContext())
+					.map(ComputeContext::getDataContext)
+					.map(DataContext::getComputeContexts)
+					.stream()
+					.flatMap(List::stream)
+					.filter(CLComputeContext.class::isInstance)
+					.map(CLComputeContext.class::cast)
+					.map(CLComputeContext::getClQueue)
+					.map(cl_command_queue::getNativePointer).findFirst().orElse(-1L),
+				args, offsets, sizes, dim0, globalId, kernelSize);
 	}
 
-	default Semaphore apply(long commandQueue, RAM args[], int offsets[], int sizes[]) {
+	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
 		apply(commandQueue,
-				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
-				offsets, sizes, args.length);
-		return null;
+				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
+				offsets, sizes, dim0, args.length, globalId, kernelSize);
 	}
 
-	void apply(long commandQueue, long arg[], int offset[], int size[], int count);
+	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId, long kernelSize);
+
+	@Override
+	default Console console() { return Hardware.console; }
 }

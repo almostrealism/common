@@ -25,8 +25,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-import java.util.function.Supplier;
-
 public class RotationTests implements TestFeatures {
 	@Test
 	public void ropeRotation() {

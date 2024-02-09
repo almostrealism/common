@@ -21,13 +21,11 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -36,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionSubset<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
 	private Expression pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
@@ -44,19 +42,18 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super(shape, (Supplier) collection);
+		super(shape, collection, null);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		this.pos = pos;
 		setShape(shape);
-		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection);
 		init();
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super(shape, (Supplier) collection, (Supplier) pos);
+		super(shape, collection, null);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
@@ -65,16 +62,20 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 
 		setShape(shape);
-		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
 		init();
 	}
 
 	public int getMemLength() { return 1; }
 
+	@Override
+	public int getCount() {
+		return getShape().traverseEach().getCount();
+	}
+
 	// TODO  This custom destination creation should not be necessary
 	@Override
-	protected MemoryBank<?> createKernelDestination(int len) {
+	protected MemoryBank<?> createDestination(int len) {
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 
@@ -82,7 +83,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
+	protected Expression projectIndex(Expression index) {
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 
 		Expression<?> p;
@@ -97,7 +98,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			p = inputShape.subset(getShape(), index, pos);
 		}
 
-		return getCollectionArgumentVariable(1).getValueAt(p);
+		return p;
 	}
 
 	@Override
@@ -111,14 +112,14 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 	}
 
-	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, Countable, KernelSupport {
+	private class Destination implements Producer<PackedCollection<?>>, Delegated<Countable>, Countable, KernelSupport {
 		@Override
 		public Evaluable<PackedCollection<?>> get() {
 			return args -> new PackedCollection<>(getShape().traverseEach());
 		}
 
 		@Override
-		public DestinationSupport<T> getDelegate() {
+		public Countable getDelegate() {
 			return PackedCollectionSubset.this;
 		}
 

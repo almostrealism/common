@@ -20,10 +20,12 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OutputVariablePreservationArgumentMap;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.Supplier;
 
-public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> {
+public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> implements ConsoleFeatures {
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		ArrayVariable<A> arg = super.get(key, p);
@@ -40,4 +42,7 @@ public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationAr
 			return ((Provider) v).get() == value;
 		}, p).orElse(null);
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

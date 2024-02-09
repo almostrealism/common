@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
@@ -39,19 +40,11 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
-
-		try {
-			Assignment.enableRelative = false;
-
-			CLOperator.verboseLog(() -> {
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
-				op.get().run();
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
-		}
+		HardwareOperator.verboseLog(() -> {
+			OperationList op = new OperationList();
+			op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+			op.get().run();
+		});
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
@@ -100,7 +93,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
@@ -166,7 +159,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10));
 
-		KernelizedEvaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
+		Evaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(20, 10)));
 	}
@@ -196,7 +189,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
-						.expand(n, v -> v.repeat(n).multiply(p(filter)))
+						.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
 						.traverse()
 						.reduce(v -> v.sum());
 				System.out.println(conv.getShape());

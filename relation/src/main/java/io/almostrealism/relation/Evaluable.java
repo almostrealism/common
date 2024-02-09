@@ -17,6 +17,7 @@
 package io.almostrealism.relation;
 
 import io.almostrealism.uml.Function;
+import io.almostrealism.uml.Multiple;
 
 /**
  * The {@link Evaluable} interface is implemented by classes that represent a
@@ -25,7 +26,12 @@ import io.almostrealism.uml.Function;
  * @author  Michael Murray
  */
 @Function
+@FunctionalInterface
 public interface Evaluable<T> {
+	default Multiple<T> createDestination(int size) {
+		throw new UnsupportedOperationException();
+	}
+
 	default T evaluate() {
 		return evaluate(new Object[0]);
 	}

@@ -37,7 +37,7 @@ public class CLMemory extends RAM {
 	}
 
 	@Override
-	public long getNativePointer() { return mem.getNativePointer(); }
+	public long getContentPointer() { return mem.getNativePointer(); }
 
 	@Override
 	public CLMemoryProvider getProvider() { return provider; }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -23,22 +24,28 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class DefaultScopeInputManager implements ScopeInputManager {
-	private static final DefaultScopeInputManager instance = new DefaultScopeInputManager();
+	protected static int counter = 0;
 
-	protected int counter;
+	private LanguageOperations lang;
 	private BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
-	public DefaultScopeInputManager() {
-		variableFactory = (p, input) -> new ArrayVariable(p, p.getArgumentName(counter++), input);
+	protected DefaultScopeInputManager(LanguageOperations lang) {
+		variableFactory = (p, input) -> new ArrayVariable(getLanguage(), p, p.getArgumentName(counter++), input);
+		this.lang = lang;
 	}
 
-	public DefaultScopeInputManager(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+	public DefaultScopeInputManager(LanguageOperations lang,
+									BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+		this.lang = lang;
 		this.variableFactory = variableFactory;
 	}
 
 	protected void setVariableFactory(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
 		this.variableFactory = variableFactory;
 	}
+
+	@Override
+	public LanguageOperations getLanguage() { return lang; }
 
 	@Override
 	public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
@@ -55,5 +62,11 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		return arg;
 	}
 
-	public static DefaultScopeInputManager getInstance() { return instance; }
+	public static DefaultScopeInputManager getInstance(LanguageOperations lang) {
+		if (lang == null) {
+			throw new UnsupportedOperationException("LanguageOperations must be provided");
+		}
+
+		return new DefaultScopeInputManager(lang);
+	}
 }

@@ -17,11 +17,16 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.util.TestFeatures;
+import org.junit.Test;
 
-public class AltComputeContextsTest implements CodeFeatures {
+public class AltComputeContextsTest implements TestFeatures {
 	// TODO  @Test
 	public void clAndNative() {
 		dc(() -> {
@@ -36,5 +41,51 @@ public class AltComputeContextsTest implements CodeFeatures {
 			cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.C);
 			System.out.println("Result = " + result.getValue());
 		});
+	}
+
+	@Test
+	public void matmul() {
+		boolean enableOptimization = true;
+		boolean validate = true;
+		int dim = 128;
+		int width = 64;
+//		int width = 2048;
+
+		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
+		PackedCollection<?> vector = new PackedCollection<>(width);
+		PackedCollection<?> result = new PackedCollection<>(dim);
+
+		matrix.fill(pos -> Math.random());
+		vector.fill(pos -> Math.random());
+
+		OperationProfile profiles = new OperationProfile();
+
+		OperationList op = new OperationList("Matrix Test", false);
+		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
+		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
+
+		HardwareOperator.verboseLog(() -> r.run());
+
+		if (!skipLongTests) {
+			profiles.clear();
+
+			for (int i = 0; i < 5000; i++) {
+				r.run();
+			}
+		}
+
+		profiles.print();
+
+		if (validate) {
+			for (int i = 0; i < dim; i++) {
+				double v = 0.0;
+
+				for (int j = 0; j < width; j++) {
+					v += matrix.valueAt(i, j) * vector.valueAt(j);
+				}
+
+				assertEquals(v, result.valueAt(i));
+			}
+		}
 	}
 }

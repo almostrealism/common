@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
@@ -33,21 +34,21 @@ import java.util.function.Supplier;
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		ExpressionComputation<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
+		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 	}
 
 	@Test
 	public void pointAtTest2() {
-		ExpressionComputation<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 
 	@Test
 	public void dynamicPointAt() {
 		Supplier<Evaluable<? extends Scalar>> d = () -> new AdaptEvaluable<>(scalar(-20).get());
-		ExpressionComputation<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 

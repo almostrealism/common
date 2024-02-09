@@ -16,6 +16,9 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -30,28 +33,6 @@ public class Cast<T> extends UnaryExpression<T> {
 
 	public String getTypeName() {
 		return typeName;
-	}
-
-	@Override
-	public Expression<T> simplify() {
-		Expression<T> flat = super.simplify();
-		if (!(flat instanceof Cast)) return flat;
-
-		OptionalDouble d = flat.getChildren().get(0).doubleValue();
-		if (d.isPresent() && typeName.equals("int"))
-			return (Expression) new IntegerConstant((int) d.getAsDouble());
-
-		if (flat.getChildren().get(0) instanceof Cast) {
-			return new Cast(getType(), typeName, flat.getChildren().get(0).getChildren().get(0));
-		}
-
-		return flat;
-	}
-
-	@Override
-	public Expression<T> generate(List children) {
-		if (children.size() != 1) throw new UnsupportedOperationException();
-		return new Cast<>(getType(), typeName, (Expression) children.get(0));
 	}
 
 //	@Override
@@ -79,8 +60,18 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		double v = getChildren().get(0).kernelValue(kernelIndex).doubleValue();
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
+	}
+
+	@Override
+	public KernelSeries kernelSeries() {
+		return getChildren().get(0).kernelSeries();
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		double v = getChildren().get(0).value(indexValues).doubleValue();
 
 		if (typeName.equals("int")) {
 			return Integer.valueOf((int) v);
@@ -90,7 +81,33 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public String toString() {
-		return getExpression();
+	public Number evaluate(Number... children) {
+		if (typeName.equals("int")) {
+			return Integer.valueOf(children[0].intValue());
+		} else {
+			return Double.valueOf(children[0].doubleValue());
+		}
+	}
+
+	@Override
+	public Expression<T> simplify(KernelStructureContext context) {
+		Expression<T> flat = super.simplify(context);
+		if (!(flat instanceof Cast)) return flat;
+
+		OptionalDouble d = flat.getChildren().get(0).doubleValue();
+		if (d.isPresent() && typeName.equals("int"))
+			return (Expression) new IntegerConstant((int) d.getAsDouble());
+
+		if (flat.getChildren().get(0) instanceof Cast) {
+			return new Cast(getType(), typeName, flat.getChildren().get(0).getChildren().get(0));
+		}
+
+		return flat;
+	}
+
+	@Override
+	public Expression<T> generate(List children) {
+		if (children.size() != 1) throw new UnsupportedOperationException();
+		return new Cast<>(getType(), typeName, (Expression) children.get(0));
 	}
 }

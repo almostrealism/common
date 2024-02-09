@@ -31,12 +31,14 @@ public class MetalMemory extends RAM {
 
 	protected MTLBuffer getMem() { return mem; }
 
-	public long getSize() {
-		return size;
-	}
+	@Override
+	public long getSize() { return size; }
 
 	@Override
-	public long getNativePointer() { return mem.getNativePointer(); }
+	public long getContainerPointer() { return mem.getNativePointer(); }
+
+	@Override
+	public long getContentPointer() { return mem.getContentPointer(); }
 
 	@Override
 	public MetalMemoryProvider getProvider() { return provider; }

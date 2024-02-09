@@ -18,4 +18,8 @@ package io.almostrealism.relation;
 
 public interface Countable {
 	int getCount();
+
+	default boolean isFixedCount() {
+		return true;
+	}
 }

@@ -75,10 +75,4 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 			return ev.evaluate(values);
 		};
 	}
-
-	@Override
-	public void compact() {
-		this.p.compact();
-		for (Producer arg : args) arg.compact();
-	}
 }

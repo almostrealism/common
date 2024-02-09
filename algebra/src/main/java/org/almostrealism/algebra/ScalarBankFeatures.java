@@ -21,11 +21,11 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,62 +34,23 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface ScalarBankFeatures extends ScalarFeatures {
-	default ExpressionComputation<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
+	boolean enableDeprecated = !SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
+
+	default CollectionProducer<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
 		return ExpressionComputation.fixed(value, Scalar.scalarBankPostprocessor());
 	}
 
 	@Deprecated
-	default void addMatVec(PackedCollection<Scalar> bank, ScalarTable matrix, PackedCollection<Scalar> vector) {
-		int m = matrix.getCount();
-		int n = matrix.getWidth();
-		assert n == vector.getCount();
-
-		for (int i = 0; i < m; i++) {
-			double v = 0;
-
-			for (int j = 0; j < n; j++) {
-				v += matrix.get(i, j).getValue() * vector.get(j).getValue();
-			}
-
-			bank.set(i, v, 1.0);
-		}
-	}
-
-	@Deprecated
-	default void mulElements(PackedCollection<Scalar> bank, PackedCollection<Scalar> vals) {
-		int size = bank.getCount();
-		assert size == vals.getCount();
-
-		IntStream.range(0, size)
-				.forEach(i ->
-						bank.set(i,
-								bank.get(i).getValue() * vals.get(i).getValue(),
-								bank.get(i).getCertainty() * vals.get(i).getCertainty()));
-	}
-
-	@Deprecated
-	default void applyFloor(PackedCollection<Scalar> bank, double floor) {
-		for (int i = 0; i < bank.getCount(); i++) {
-			double v = bank.get(i).getValue();
-			if (v < floor) bank.set(i, floor);
-		}
-	}
-
-	@Deprecated
-	default void applyLog(PackedCollection<Scalar> bank) {
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, Math.log(bank.get(i).getValue()));
-		}
-	}
-
-	@Deprecated
-	default ScalarBankProducerBase scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
+	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
+		if (!enableDeprecated) throw new UnsupportedOperationException();
+
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
-						new Sum(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
-		return new ScalarBankExpressionComputation(expression, (Supplier) input, (Supplier) value);
+						Sum.of(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier) input, (Supplier) value)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	@Deprecated
@@ -101,7 +62,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 
 			Evaluable<? extends PackedCollection<Scalar>> x = a.get();
 			Evaluable<? extends PackedCollection<Scalar>> y = b.get();
-			KernelizedEvaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
+			Evaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
 
 			return args -> {
 				PackedCollection<Scalar> d1 = x.evaluate(args);
@@ -113,17 +74,17 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		};
 	}
 
-	default ScalarBankProducerBase dither(int count,
+	default ExpressionComputation<PackedCollection<Scalar>> dither(int count,
 										  Producer<PackedCollection<Scalar>> input,
 				   						  Supplier<Evaluable<? extends Scalar>> ditherValue) {
 		ditherValue = scalarsMultiply(ditherValue, scalar(shape(1), randn(shape(1)), 0));
 		return scalarBankAdd(count, input, ditherValue);
 	}
 
-	default ScalarBankProducerBase ditherAndRemoveDcOffset(int count,
+	default ExpressionComputation<PackedCollection<Scalar>> ditherAndRemoveDcOffset(int count,
 														   Producer<PackedCollection<Scalar>> input,
 														   Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		ScalarBankProducerBase dither = dither(count, input, ditherValue);
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(count, input, ditherValue);
 		return scalarBankAdd(count, dither, scalar(subset(shape(count, 1), dither, 0).sum().divide(c(count)).multiply(c(-1))));
 	}
 
@@ -134,8 +95,8 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 
 			Evaluable<? extends Scalar> coeff = coefficient.get();
 			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
-			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2, -1));
-			KernelizedEvaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
+			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2));
+			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
 
 			return args -> {
 				Scalar c = coeff.evaluate(args);
@@ -153,10 +114,11 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		};
 	}
 
-	default ScalarBankProducerBase scalars(Supplier<Evaluable<? extends Scalar>>... values) {
+	default ExpressionComputation<PackedCollection<Scalar>> scalars(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueRelative(i % 2)));
-		return new ScalarBankExpressionComputation(expression, (Supplier[]) values);
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier[]) values)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	static ScalarBankFeatures getInstance() {

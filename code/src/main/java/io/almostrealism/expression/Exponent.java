@@ -16,7 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
@@ -24,12 +28,30 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
-		return "pow(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return lang.pow(
+				getChildren().get(0).getExpression(lang),
+				getChildren().get(1).getExpression(lang));
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of((int) Math.pow(l.getAsInt(), r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.pow(children[0].doubleValue(), children[1].doubleValue());
+	}
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
@@ -41,8 +63,8 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify() {
-		Expression<?> flat = super.simplify();
+	public Expression<Double> simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
 		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
 
 		Expression base = flat.getChildren().get(0);

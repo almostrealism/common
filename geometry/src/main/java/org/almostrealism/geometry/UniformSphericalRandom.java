@@ -17,12 +17,10 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.VectorFeatures;
 
-public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures, TripleFunction<Triple, Vector> {
+public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures {
 	private static UniformSphericalRandom local = new UniformSphericalRandom();
 
 	@Override
@@ -38,9 +36,6 @@ public class UniformSphericalRandom implements Evaluable<Vector>, VectorFeatures
 
 		return new Vector(r);
 	}
-
-	@Override
-	public Vector operate(Triple in) { return evaluate(); }
 
 	public static UniformSphericalRandom getInstance() { return local; }
 }

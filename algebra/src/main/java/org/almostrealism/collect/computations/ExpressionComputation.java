@@ -16,20 +16,18 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.io.SystemUtils;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,17 +42,18 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class ExpressionComputation<T extends PackedCollection<?>>
-		extends TraversableProducerComputationAdapter<T, T> {
+		extends RelativeTraversableProducerComputation<T, T> {
 
 	public static boolean enableTraversableFixed = false;
+	public static boolean enableInferShape = false;
+	public static boolean enableWarnings = false;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		// this(shape(expression.size(), args), expression, args);
-		this(new TraversalPolicy(expression.size()), expression, args);
+		this(shape(expression.size(), args), expression, args);
 	}
 
 	@SafeVarargs
@@ -62,12 +61,33 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		if (shape.getSize() != expression.size())
-			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
+			throw new IllegalArgumentException("Expected " + shape.getSize() + " expressions");
 		this.expression = expression;
+
+		if (enableWarnings && expression instanceof ArrayList) {
+			warn("Modifiable list used as argument to ExpressionComputation constructor");
+		}
 	}
 
 	public List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression() {
 		return expression;
+	}
+
+	@Override
+	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+		if (len == null) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy shape = shapeForLength(len);
+
+		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
+				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
+			if (existing != null) existing.destroy();
+			return PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
+		}
+
+		return ((PackedCollection) existing).range(shape);
 	}
 
 	@Override
@@ -91,29 +111,38 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
-	}
-
-	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value) {
+	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value) {
 		return fixed(value, null);
 	}
 
-	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
-				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
+	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
+		int traversalAxis = value.getShape().getTraversalAxis();
 
-		return (ExpressionComputation<T>) new ExpressionComputation(comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
-			PackedCollection v = new PackedCollection(value.getShape());
-			v.setMem(value.toArray(0, value.getMemLength()));
-			return postprocessor == null ? v : postprocessor.apply(v, 0);
-		});
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] =
+			IntStream.range(0, value.getShape().getTotalSize())
+					.mapToObj(i ->
+						(Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> value.getValueAt(new IntegerConstant(i)))
+					.toArray(Function[]::new);
+
+		if (traversalAxis == 0) {
+			return (ExpressionComputation<T>) new ExpressionComputation(value.getShape(), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
+				PackedCollection v = new PackedCollection(value.getShape());
+				v.setMem(value.toArray(0, value.getMemLength()));
+				return postprocessor == null ? v : postprocessor.apply(v, 0);
+			});
+		} else {
+			return new ExpressionComputation(value.getShape().traverse(0), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
+				PackedCollection v = new PackedCollection(value.getShape());
+				v.setMem(value.toArray(0, value.getMemLength()));
+				return postprocessor == null ? v : postprocessor.apply(v, 0);
+			}).traverse(traversalAxis);
+		}
 	}
 
 	private static TraversalPolicy shape(int size, Supplier... args) {
 		TraversalPolicy shape = new TraversalPolicy(size);
+		if (!enableInferShape) return shape;
+
 		Set<Integer> count = Stream.of(args)
 				.map(CollectionFeatures.getInstance()::shape)
 				.map(TraversalPolicy::getCount)

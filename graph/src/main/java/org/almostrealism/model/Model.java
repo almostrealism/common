@@ -16,6 +16,7 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.CodeFeatures;
@@ -34,8 +35,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Model implements Setup, CodeFeatures {
-	public static boolean enableOptimization = true;
-
 	private List<Block> blocks;
 	private TraversalPolicy shape;
 
@@ -46,7 +45,7 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model(TraversalPolicy shape) {
-		this(shape, 1e-4);
+		this(shape, 1e-5);
 	}
 
 	public Model(TraversalPolicy shape, double learningRate) {
@@ -86,6 +85,10 @@ public class Model implements Setup, CodeFeatures {
 			b.getBackward().setReceptor(blocks.get(blocks.size() - 1).getBackward());
 		}
 
+		if (b instanceof Learning) {
+			((Learning) b).setLearningRate(p(learningRate));
+		}
+
 		blocks.add(b);
 		shape = b.getOutputShape();
 	}
@@ -110,9 +113,9 @@ public class Model implements Setup, CodeFeatures {
 		return addLayer(layer.apply(shape));
 	}
 
-	public Block lastBlock() {
-		return blocks.get(blocks.size() - 1);
-	}
+	public Block firstBlock() { return blocks.get(0); }
+
+	public Block lastBlock() { return blocks.get(blocks.size() - 1); }
 
 	public TraversalPolicy getShape() { return shape; }
 
@@ -122,20 +125,14 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Cell<PackedCollection<?>> forward() { return blocks.get(0).getForward(); }
-	public PackedCollection<?> forward(PackedCollection<?> input) {
-		if (!Objects.equals(input.getShape(), blocks.get(0).getInputShape())) {
-			throw new IllegalArgumentException();
-		}
-
-		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
-		lastBlock().getForward().setReceptor(out ->
-				copy("Model Output", out, p(output), output.getMemLength()));
-		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
-		if (enableOptimization) p = p.optimize();
-		p.get().run();
-		return output;
-	}
 
 	public Cell<PackedCollection<?>> backward() { return lastBlock().getBackward(); }
-	public void backward(PackedCollection<?> gradient) { backward().push(p(gradient)).get().run(); }
+
+	public CompiledModel compile() {
+		return CompiledModel.compile(this);
+	}
+
+	public CompiledModel compile(OperationProfile profile) {
+		return CompiledModel.compile(this, profile);
+	}
 }

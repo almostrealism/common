@@ -16,43 +16,42 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelSeriesMatcher;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
-import io.almostrealism.scope.Variable;
-import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.collect.Shape;
-import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
-import org.almostrealism.io.SystemUtils;
+import org.almostrealism.hardware.metal.MTLBuffer;
+import org.almostrealism.hardware.metal.MetalProgram;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.TimingMetric;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -60,41 +59,54 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
-														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
+														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
-	public static final boolean enableCompaction = true;
-	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
+	public static Console console = Computation.console.child();
 
-	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
+	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
+	public static TimingMetric processArgumentsMetric =  console.timing("processArguments");
+	public static TimingMetric acceptMetric = console.timing("accept");
+	public static TimingMetric evaluateKernelMetric = console.timing("evaluateKernel");
+	public static TimingMetric evaluateMetric = console.timing("evaluate");
+	public static TimingMetric kernelCreateMetric = console.timing("kernelCreate");
+	public static TimingMetric nonKernelEvalMetric = console.timing("nonKernelEval");
+	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
+
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
 	private boolean argumentMapping;
+	private ComputeContext<MemoryData> context;
 	private Class cls;
 
+	private ProcessDetailsFactory detailsFactory;
 	protected List<ArgumentMap> argumentMaps;
 	private OperationList preOp;
 	private OperationList postOp;
 
 	@SafeVarargs
-	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel,
+								   Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		setArgumentMapping(true);
+		this.context = context;
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
 
 	@SafeVarargs
-	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
-		this(kernel, args);
+	public AcceleratedOperation(ComputeContext<MemoryData> context, String function, boolean kernel,
+								Supplier<Evaluable<? extends T>>... args) {
+		this(context, kernel, args);
 		setFunctionName(function);
 	}
 
 	@SafeVarargs
-	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, ArrayVariable<T>... args) {
 		super(Arrays.stream(args).map(var -> new Argument(var, Expectation.EVALUATE_AHEAD)).toArray(Argument[]::new));
 		setArgumentMapping(true);
+		this.context = context;
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
@@ -104,28 +116,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return getClass();
 	}
 
-	public Execution getOperator() {
-		// TODO  This needs to be by class in addition to function, as function names may collide
-		synchronized (AcceleratedOperation.class) {
-			if (operators.get(getFunctionName()) == null) {
-				operators.put(getFunctionName(), new ThreadLocal<>());
-			}
+	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
-			if (operators.get(getFunctionName()).get() == null) {
-				operators.get(getFunctionName()).set(Hardware.getLocalHardware()
-						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
-			}
-		}
-
-		return operators.get(getFunctionName()).get();
-	}
+	public abstract Execution getOperator();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
 	}
 
 	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
@@ -135,11 +135,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
-	public boolean isAggregatedInput() { return false; }
+	@Override
+	public int getCount() { return -1; }
 
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
-		return Hardware.getLocalHardware().getClDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
+		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
 	}
+
+	public boolean isAggregatedInput() { return false; }
 
 	protected void prepareScope() {
 		resetArguments();
@@ -147,14 +150,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		SupplierArgumentMap argumentMap = null;
 
 		if (argumentMapping) {
-			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
-				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
-			} else if (enableArgumentMapping) {
+			if (enableArgumentMapping) {
 				if (preOp != null || postOp != null) {
 					throw new UnsupportedOperationException("Redundant call to prepareScope");
 				}
 
-				argumentMap = MemoryDataArgumentMap.create(isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
+				argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
 				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
 				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 			}
@@ -167,13 +168,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		prepareScope(argumentMap == null ?
-				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
+				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
 	}
 
 	@Override
 	public Scope<?> compile() {
 		prepareScope();
-		if (enableCompaction) compact();
 		return null;
 	}
 
@@ -206,27 +206,62 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void run() {
-		AcceleratedProcessDetails process = apply(null, new Object[0]);
-		if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			AcceleratedProcessDetails process = apply(null, new Object[0]);
+			if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
+	}
+
+	protected ProcessDetailsFactory getDetailsFactory() {
+		if (detailsFactory == null) {
+			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
+					getArgumentVariables(), getOutputVariable(), created,
+					getComputeContext().getDataContext().getKernelMemoryProvider(),
+					this::createAggregatedInput);
+		}
+
+		return detailsFactory;
+	}
+
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
+		return getDetailsFactory().init(output, args).construct();
 	}
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			warn(getName() + " was not compiled ahead of time");
 			compile();
 		}
 
-		Execution operator = getOperator();
+		long start = System.nanoTime();
 
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		AcceleratedProcessDetails process = processKernelArgs(output, args);
+		Execution operator = getOperator();
+		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
+
+		if (operator instanceof KernelWork == false) {
+			throw new UnsupportedOperationException();
+		}
+
+		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
+		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
+		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+		if (enableKernelLog) log("Evaluating " + getName() + " kernel...");
 
-		boolean processing = (!process.isEmpty() || !preOp.isEmpty() || !postOp.isEmpty());
+		boolean processing = !process.isEmpty();
+		if (preOp != null && !preOp.isEmpty()) processing = true;
+		if (postOp != null && !postOp.isEmpty()) processing = true;
 
 		if (processing) {
 			preApply();
@@ -234,6 +269,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		Semaphore semaphore = operator.accept(input, semaphores.get());
+		acceptMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 
@@ -246,48 +282,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return process;
 	}
 
-	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
-		if (arg.getProducer() instanceof ProducerArgumentReference) {
-			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
-		}
-
-		if (arg.getProducer() instanceof Delegated && ((Delegated) arg.getProducer()).getDelegate() instanceof ProducerArgumentReference) {
-			return ((ProducerArgumentReference) ((Delegated) arg.getProducer()).getDelegate()).getReferencedArgumentIndex();
-		}
-
-		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;
-
-		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
-		if (c instanceof ProducerArgumentReference) {
-			return ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-		}
-
-		return -1;
-	}
-
-	private static int getProducerArgumentKernelIndex(Variable<?, ?> arg) {
-		if (arg.getProducer() instanceof KernelIndex) {
-			return ((KernelIndex) arg.getProducer()).getKernelIndex();
-		}
-
-		if (arg.getProducer() instanceof Delegated && ((Delegated) arg.getProducer()).getDelegate() instanceof KernelIndex) {
-			return ((KernelIndex) ((Delegated) arg.getProducer()).getDelegate()).getKernelIndex();
-		}
-
-		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;
-
-		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
-		if (c instanceof KernelIndex) {
-			return ((KernelIndex) c).getKernelIndex();
-		}
-
-		return -1;
-	}
-
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		try {
-			if (isKernel() && enableKernel) {
+			if (isKernel()) {
 				apply(output, args);
 			} else {
 				throw new HardwareException("Kernel not supported");
@@ -297,170 +295,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected AcceleratedProcessDetails processKernelArgs(MemoryBank output, Object args[]) {
-		int kernelSize;
-
-		if (!isKernel() || !enableKernel) {
-			kernelSize = 1;
-		} else if (output != null) {
-			kernelSize = output.getCount();
-		} else if (args.length > 0 && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
-			kernelSize = ((MemoryBank) args[0]).getCount();
-		} else {
-			kernelSize = -1;
-		}
-
-		List<ArrayVariable<? extends T>> arguments = getArgumentVariables();
-		Map<ArrayVariable<? extends T>, MemoryData> mappings = output == null ? Collections.emptyMap() :
-				Collections.singletonMap((ArrayVariable<? extends T>) getOutputVariable(), output);
-
-		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
-
-		/*
-		 * In the first pass, kernel size is inferred from Producer arguments that
-		 * reference an Evaluable argument.
-		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (arguments.get(i) == null) continue i;
-
-			if (mappings.containsKey(arguments.get(i))) {
-				kernelArgs[i] = mappings.get(arguments.get(i));
-				continue i;
-			} else {
-				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
-
-				if (refIndex >= 0) {
-					kernelArgs[i] = (MemoryData) args[refIndex];
-				}
-			}
-
-			if (kernelSize > 0) continue i;
-
-			// If the kernel size can be inferred from this operation argument
-			// capture it from the argument to the evaluation
-			int kernelIdx = getProducerArgumentKernelIndex(arguments.get(i));
-			if (kernelIdx >= 0 && kernelArgs[i] instanceof MemoryBank) {
-				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
-			}
-		}
-
-		List<Integer> sizes = new ArrayList<>();
-
-		if (this instanceof Countable)
-			sizes.add(((Countable) this).getCount());
-
-		/*
-		 * In the second pass, kernel size is inferred from Producer arguments
-		 * that actually implement Shape. If an input to the operation declares
-		 * the kernel dimension for what it will produce, it is known ahead of
-		 * time what the expected kernel size is.
-		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (kernelArgs[i] != null) continue i;
-
-			Supplier p = arguments.get(i).getProducer();
-
-			if (p instanceof MemoryDataDestination && ((MemoryDataDestination) p).getDelegate() instanceof Shape) {
-				sizes.add(((Shape) ((MemoryDataDestination) p).getDelegate()).getShape().getCount());
-			}
-		}
-
-		/*
-		 * In the third pass, kernel size is inferred from Producer arguments
-		 * that do not support kernel evaluation. Given that there is no way
-		 * to specify kernel parameters for these arguments, it is safe to
-		 * assume that the desired kernel parameters must be compatible with
-		 * their output.
-		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (kernelArgs[i] != null) continue i;
-
-			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
-			if (c == null) {
-				throw new UnsupportedOperationException();
-			}
-
-			if (!(c instanceof KernelizedEvaluable)) {
-				Object o = c.evaluate((Object[]) args);
-				if (!(o instanceof MemoryData))
-					throw new IllegalArgumentException();
-
-				kernelArgs[i] = (MemoryData) o;
-
-				if (kernelArgs[i] instanceof MemoryBank) {
-					sizes.add(((MemoryBank<?>) kernelArgs[i]).getCount());
-				}
-			}
-		}
-
-		/*
-		 * If there is only one size, it can be used as the kernel size.
-		 */
-		if (kernelSize < 0 && sizes.size() == 1) {
-			kernelSize = sizes.get(0);
-		}
-
-		/*
-		 * If there are multiple sizes, but they are all the same,
-		 * that can be used as the kernel size.
-		 */
-		k: if (kernelSize < 0 && sizes.size() > 1) {
-			int sharedSize = sizes.get(0);
-			for (int i = 1; i < sizes.size(); i++) {
-				if (sharedSize != sizes.get(i)) {
-					break k;
-				}
-			}
-
-			kernelSize = sharedSize;
-		}
-
-		/*
-		 * Otherwise, a kernel size compatible with all sizes may be inferred.
-		 */
-		if (kernelSize < 0 && sizes.size() > 0) {
-			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
-		}
-
-		/*
-		 * If the kernel size is still not known, the kernel size will be 1.
-		 */
-		if (kernelSize < 0) {
-			if (enableKernelSizeWarnings)
-				System.out.println("WARN: Could not infer kernel size, it will be set to 1");
-			kernelSize = 1;
-		}
-
-		/*
-		 * In the final pass, kernel arguments are evaluated in a way that ensures the
-		 * result is compatible with the kernel size inferred in the first and second
-		 * passes.
-		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (kernelArgs[i] != null) continue i;
-
-			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
-
-			if (c instanceof ProducerArgumentReference) {
-				// TODO  This should not be necessary
-				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
-				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-				kernelArgs[i] = (MemoryData) args[argIndex];
-			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
-				KernelizedEvaluable kp = (KernelizedEvaluable) c;
-				kernelArgs[i] = kp.createKernelDestination(kernelSize);
-				if (created.get() != null)
-					created.get().add(kernelArgs[i]);
-
-				kp.into(kernelArgs[i]).evaluate(Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
-			} else {
-				kernelArgs[i] = c.evaluate(args);
-			}
-		}
-
-		return new AcceleratedProcessDetails(kernelArgs,
-				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
-				this::createAggregatedInput, kernelSize);
+	private double sec(long nanos) {
+		return nanos / 1e9;
 	}
 
 	public boolean isKernel() { return kernel; }
@@ -477,6 +313,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		preOp = null;
 		postOp = null;
 	}
+
+	@Override
+	public Console console() { return console; }
 
 	public static Semaphore getSemaphore() { return semaphores.get(); }
 
@@ -512,6 +351,50 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			return process.apply(in);
 		} finally {
 			data.destroy();
+		}
+	}
+
+	public static void printTimes() {
+		printTimes(false);
+	}
+
+	public static void printTimes(boolean verbose) {
+		if (verbose) {
+			// Memory access
+			if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
+				NativeMemoryProvider.ioTime.print();
+			}
+
+			if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
+				MTLBuffer.ioTime.print();
+			}
+
+			// Compilation
+			console.println("AcceleratedOperation: Retrieve operator total - " +
+					((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
+			console.println("AcceleratedOperation: JNI Compile - " +
+					((long) NativeCompiler.compileTime.getTotal()) + "sec");
+			console.println("AcceleratedOperation: MTL Compile - " +
+					((long) MetalProgram.compileTime.getTotal()) + "sec");
+		}
+
+		// Runtime
+		console.println("AcceleratedOperation: " +
+				((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
+				((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
+		console.println("AcceleratedOperation Process Body: " +
+				((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
+				((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
+				((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
+
+		if (verbose) {
+			HardwareOperator.prepareArgumentsMetric.print();
+			HardwareOperator.computeDimMasksMetric.print();
+			NativeExecution.dimMaskMetric.print();
+
+			AcceleratedOperation.kernelCreateMetric.print();
+			AcceleratedOperation.nonKernelEvalMetric.print();
+			AcceleratedOperation.wrappedEvalMetric.print();
 		}
 	}
 }

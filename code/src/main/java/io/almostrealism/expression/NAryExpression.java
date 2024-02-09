@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -26,8 +28,20 @@ public class NAryExpression<T> extends Expression<T> {
 
 	private String operator;
 
+	public NAryExpression(String operator, Stream<Expression<?>> values) {
+		this(operator, values.toArray(Expression[]::new));
+	}
+
+	public NAryExpression(String operator, List<Expression<?>> values) {
+		this((Class) type(values), operator, values.toArray(new Expression[0]));
+	}
+
 	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
 		this(type, operator, values.toArray(new Expression[0]));
+	}
+
+	public NAryExpression(String operator, Expression<?>... values) {
+		this((Class) type(values), operator, validateExpressions(values));
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
@@ -35,10 +49,14 @@ public class NAryExpression<T> extends Expression<T> {
 		this.operator = operator;
 	}
 
+	@Override
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().stream().allMatch(expression -> expression.isKernelValue(values));
+	}
 
 	@Override
-	public String getExpression() {
-		return concat(operator, getChildren().stream().map(Expression::getWrappedExpression));
+	public String getExpression(LanguageOperations lang) {
+		return concat(operator, getChildren().stream().map(expression -> expression.getWrappedExpression(lang)));
 	}
 
 	@Override
@@ -64,8 +82,17 @@ public class NAryExpression<T> extends Expression<T> {
 		return values;
 	}
 
-	protected static Class<? extends Number> type(Expression... values) {
-		for (Expression e : values) {
+	protected static Class<? extends Number> type(Object... values) {
+		return type(List.of(values));
+	}
+
+	protected static Class<? extends Number> type(Iterable values) {
+		for (Object o : values) {
+			if (!(o instanceof Expression)) {
+				throw new UnsupportedOperationException();
+			}
+
+			Expression<?> e = (Expression<?>) o;
 			if (!Number.class.isAssignableFrom(e.getType())) {
 				throw new UnsupportedOperationException();
 			} else if (!Objects.equals(e.getType(), Integer.class)) {

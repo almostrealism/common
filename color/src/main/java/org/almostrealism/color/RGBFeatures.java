@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.ArrayList;
@@ -32,42 +33,42 @@ import java.util.stream.IntStream;
 
 public interface RGBFeatures extends ScalarFeatures {
 
-	default ExpressionComputation<RGB> v(RGB value) { return value(value); }
+	default CollectionProducer<RGB> v(RGB value) { return value(value); }
 
-	default ExpressionComputation<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
+	default CollectionProducer<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
-	default ExpressionComputation<RGB> rgb(Producer<RGB> rgb) {
+	default CollectionProducer<RGB> rgb(Producer<RGB> rgb) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
 		return (ExpressionComputation<RGB>) new ExpressionComputation<>(comp, (Supplier) rgb).setPostprocessor(RGB.postprocessor());
 	}
 
-	default ExpressionComputation<RGB> rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
+	default CollectionProducer<RGB> rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
 		return (ExpressionComputation<RGB>) new ExpressionComputation<>(comp, (Supplier) r, (Supplier) g, (Supplier) b).setPostprocessor(RGB.postprocessor());
 	}
 
-	default ExpressionComputation<RGB> rgb(Scalar v) { return cfromScalar(v); }
+	default CollectionProducer<RGB> rgb(Scalar v) { return cfromScalar(v); }
 
-	default ExpressionComputation<RGB> rgb(double v) { return cfromScalar(v); }
+	default CollectionProducer<RGB> rgb(double v) { return cfromScalar(v); }
 
-	default ExpressionComputation<RGB> white() { return rgb(1.0, 1.0, 1.0); }
-	default ExpressionComputation<RGB> black() { return rgb(0.0, 0.0, 0.0); }
+	default CollectionProducer<RGB> white() { return rgb(1.0, 1.0, 1.0); }
+	default CollectionProducer<RGB> black() { return rgb(0.0, 0.0, 0.0); }
 
-	default ExpressionComputation<RGB> value(RGB value) {
+	default CollectionProducer<RGB> value(RGB value) {
 		return ExpressionComputation.fixed(value, RGB.postprocessor());
 	}
 
-	default ExpressionComputation<RGB> cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
+	default CollectionProducer<RGB> cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
 		return rgb(value, value, value);
 	}
 
-	default ExpressionComputation<RGB> cfromScalar(Scalar value) {
+	default CollectionProducer<RGB> cfromScalar(Scalar value) {
 		return cfromScalar(ScalarFeatures.of(value));
 	}
 
-	default ExpressionComputation<RGB> cfromScalar(double value) {
+	default CollectionProducer<RGB> cfromScalar(double value) {
 		return cfromScalar(new Scalar(value));
 	}
 

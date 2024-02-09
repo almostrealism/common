@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
+import io.almostrealism.uml.Named;
 import org.jocl.CLException;
 
 import java.util.stream.Stream;
@@ -68,8 +68,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 	}
 
 	public T replaceNull(Object[] o) {
-		if (operation instanceof KernelizedEvaluable) {
-			return (T) ((KernelizedEvaluable) operation).replaceNull(o);
+		if (operation instanceof NullProcessor) {
+			return (T) ((NullProcessor) operation).replaceNull(o);
 		} else {
 			throw new NullPointerException();
 		}

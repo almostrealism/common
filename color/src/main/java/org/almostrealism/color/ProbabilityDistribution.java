@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 
 /**
  * @author Mike Murray and Sam Tepper

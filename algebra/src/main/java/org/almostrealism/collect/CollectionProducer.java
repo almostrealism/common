@@ -24,7 +24,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.TraversableDeltaComputation;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -55,7 +55,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return map(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
@@ -63,12 +63,20 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return reduce(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat) {
+		return expand(repeat, this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> value) {
 		return add((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(double value) {
+		return add((Producer) this, c(value));
 	}
 
 	@Deprecated
@@ -89,6 +97,18 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return relativeSubtract((Producer) this, value);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(double value) {
+		return multiply(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(double value) {
+		return multiply((Producer) this, c(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(Producer<T> value) {
+		return multiply(value);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
@@ -98,8 +118,20 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return relativeMultiply((Supplier) this, (Supplier) value, null);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> div(double value) {
+		return divide(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(double value) {
+		return divide((Producer) this, c(value));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {
 		return divide((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sqrt() {
+		return sqrt((Producer) this);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(double value) {
@@ -122,8 +154,25 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return expIgnoreZero((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq() {
+		return sq((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
 		return max((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
+		return mod((Producer) this, (Producer) mod);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMod(Producer<T> mod) {
+		return relativeMod((Producer) this, (Producer) mod);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
+		return sum(traverse(axis, (Producer) this));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
@@ -132,6 +181,19 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sigmoid() {
 		return sigmoid((Producer) this);
+	}
+
+	default CollectionProducer<T> delta(Producer<?> target) {
+		if (TraversableDeltaComputation.match(this, target)) {
+			TraversalPolicy shape = getShape();
+			TraversalPolicy targetShape = shape(target);
+			PackedCollection<?> identity =
+					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+						.identityFill().reshape(shape.append(targetShape));
+			return (CollectionProducer) c(identity);
+		}
+
+		throw new UnsupportedOperationException();
 	}
 
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {

@@ -16,20 +16,25 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
-public class CLProgram {
+public class CLProgram implements OperationInfo {
+	private CLComputeContext ctx;
 	private cl_program prog;
 	private final OperationMetadata metadata;
 	private final String src;
 
-	private CLProgram(cl_program prog, OperationMetadata metadata, String src) {
+	private CLProgram(CLComputeContext ctx, cl_program prog, OperationMetadata metadata, String src) {
+		this.ctx = ctx;
 		this.prog = prog;
-		this.metadata = metadata;
+		this.metadata = (metadata == null ?
+				new OperationMetadata(null, null) : metadata)
+					.withContextName(ctx.getDataContext().getName());
 		this.src = src;
 	}
 
@@ -37,6 +42,7 @@ public class CLProgram {
 		return prog;
 	}
 
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	public String getSource() {
@@ -44,12 +50,11 @@ public class CLProgram {
 	}
 
 	public void compile() {
-		// TODO  CLExceptionProcessor
 		try {
 			int r = CL.clBuildProgram(getProgram(), 0, null, null, null, null);
-			if (r != 0) throw new RuntimeException("Error building CLProgram:" + r);
+			if (r != 0) throw new HardwareException("Error building CLProgram: " + r);
 		} catch (CLException e) {
-			throw new HardwareException("Error building CLProgram", e, src);
+			throw CLExceptionProcessor.process(e, ctx, "Error building CLProgram", src);
 		}
 	}
 
@@ -58,11 +63,11 @@ public class CLProgram {
 		prog = null;
 	}
 
-	public static CLProgram create(CLComputeContext h, OperationMetadata metadata, String src) {
+	public static CLProgram create(CLComputeContext ctx, OperationMetadata metadata, String src) {
 		int[] result = new int[1];
-		cl_program prog = CL.clCreateProgramWithSource(h.getCLContext(), 1, new String[] { src }, null, result);
-		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
+		cl_program prog = CL.clCreateProgramWithSource(ctx.getCLContext(), 1, new String[] { src }, null, result);
+		if (result[0] != 0) throw new HardwareException("Error creating HardwareOperatorMap: " + result[0]);
 
-		return new CLProgram(prog, metadata, src);
+		return new CLProgram(ctx, prog, metadata, src);
 	}
 }

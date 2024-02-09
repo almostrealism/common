@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,33 +18,51 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Named;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
+import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.OptionalInt;
+import java.util.function.Supplier;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
-	public static boolean enableOperationInputAggregation = true;
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
+	public static TimingMetric compileTime = console.timing("computationCompile");
 
 	private Computation<T> computation;
+	private KernelSeriesCache kernelSeriesCache;
+	private KernelTraversalOperationGenerator traversalGenerator;
+	private boolean kernelStructureSupported;
+
 	private Scope<T> scope;
 	private Variable outputVariable;
 
-	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
-		super(kernel, new ArrayVariable[0]);
+	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
+		super(context, kernel, new ArrayVariable[0]);
 		this.computation = c;
+		this.kernelStructureSupported = true;
 		init();
 	}
 
@@ -70,6 +88,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
+	public boolean isFixedCount() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).isFixedCount() : true;
+	}
+
+	@Override
 	public String getName() {
 		if (getComputation() instanceof Named) {
 			return ((Named) getComputation()).getName();
@@ -79,7 +102,38 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public void addVariable(Variable v) {
+	public List<ComputeRequirement> getComputeRequirements() {
+		if (scope != null) return scope.getComputeRequirements();
+		if (getComputation() instanceof OperationInfo) {
+			return ((OperationInfo) getComputation()).getComputeRequirements();
+		}
+
+		return super.getComputeRequirements();
+	}
+
+	public void setKernelStructureSupported(boolean supported) {
+		this.kernelStructureSupported = supported;
+	}
+
+	public boolean isKernelStructureSupported() { return kernelStructureSupported; }
+
+	@Override
+	public OptionalInt getKernelMaximum() {
+		return isFixedCount() ? OptionalInt.of(getCount()) : OptionalInt.empty();
+	}
+
+	@Override
+	public KernelSeriesProvider getSeriesProvider() {
+		return isKernelStructureSupported() ? kernelSeriesCache : null;
+	}
+
+	@Override
+	public KernelTraversalProvider getTraversalProvider() {
+		return isKernelStructureSupported() ? traversalGenerator : null;
+	}
+
+	@Override
+	public void addVariable(ExpressionAssignment<?> v) {
 		if (v.getProducer() == null) {
 			throw new IllegalArgumentException("Producer must be provided for variable");
 		}
@@ -88,18 +142,13 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public List<Variable<?, ?>> getVariables() {
+	public List<ExpressionAssignment<?>> getVariables() {
 		return ((OperationAdapter) getComputation()).getVariables();
 	}
 
 	@Override
 	public void purgeVariables() {
 		((OperationAdapter) getComputation()).purgeVariables();
-	}
-
-	@Override
-	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
 	}
 
 	@Override
@@ -112,17 +161,17 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 		getComputation().prepareScope(manager);
+
+		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
+				data -> manager.argumentForInput(this).apply(() -> new Provider<>(data)));
+		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
+				data -> manager.argumentForInput(this).apply((Supplier<Evaluable<?>>) data));
 	}
 
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
 		getComputation().resetArguments();
-	}
-
-	protected synchronized void preCompile() {
-		prepareScope();
-		if (enableCompaction) compact();
 	}
 
 	@Override
@@ -132,11 +181,12 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return scope;
 		}
 
-		preCompile();
+		prepareScope();
 
 		if (getComputation() instanceof OperationAdapter
 				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			return compile(((OperationAdapter) getComputation()).getArgument(0));
+			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+			return compile(c.getArgumentForInput(c.getInputs().get(0)));
 		} else {
 			return compile(null);
 		}
@@ -145,7 +195,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
-		scope = c.getScope();
+
+		long start = System.nanoTime();
+		// TODO  Should simplify be after converting arguments to required scopes?
+		scope = c.getScope().simplify(this);
+		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
 		scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;
@@ -156,6 +210,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		setInputs(scope.getInputs());
 		setArguments(scope.getArguments());
 		outputVariable = getComputation().getOutputVariable();
+
+		if (getComputation() instanceof Shape) {
+			scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+		}
+
 		super.postCompile();
 	}
 
@@ -165,31 +224,31 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
-			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);
+			operators = getComputeContext().deliver(scope);
+			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());
 	}
 
 	@Override
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
+		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
+		if ((getKernelMaximum().isPresent() && process.getKernelSize() !=
+					getKernelMaximum().getAsInt()) ||
+				(kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
+					kernelSeriesCache.getMaximumLength().getAsInt())) {
+			throw new UnsupportedOperationException();
+		}
+
+		return process;
+	}
+
+	@Override
 	public Variable getOutputVariable() { return outputVariable == null ? computation.getOutputVariable() : outputVariable; }
 
 	@Override
-	public void compact() {
-		if (getComputation() instanceof Compactable) {
-			((Compactable) getComputation()).compact();
-		}
-	}
-
-	@Override
-	public boolean isStatic() {
-		return getComputation() instanceof Compactable && ((Compactable) getComputation()).isStatic();
-	}
-
-	@Override
-	public boolean isAggregatedInput() {
-		return enableOperationInputAggregation;
-	}
+	public boolean isAggregatedInput() { return true; }
 
 	@Override
 	public void destroy() {
@@ -197,8 +256,34 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		scope = null;
 		setInputs((List) null);
 		outputVariable = null;
-		if (getComputation() instanceof OperationAdapter) {
-			((OperationAdapter) getComputation()).destroy();
+		if (getComputation() instanceof Destroyable) {
+			((Destroyable) getComputation()).destroy();
+		}
+	}
+
+	public static void printTimes() {
+		printTimes(false);
+	}
+
+	public static void printTimes(boolean verbose) {
+		if (verbose || KernelSeriesProvider.timingPos.getTotal() > 90) {
+			KernelSeriesProvider.timingPos.print();
+		}
+
+		if (verbose || KernelSeriesProvider.timingNeg.getTotal() > 90) {
+			KernelSeriesProvider.timingNeg.print();
+		}
+
+		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
+			KernelTraversalProvider.timing.print();
+		}
+
+		if (verbose || Scope.timing.getTotal() > 60) {
+			Scope.timing.print();
+		}
+
+		if (verbose || compileTime.getTotal() > 60) {
+			compileTime.print();
 		}
 	}
 }

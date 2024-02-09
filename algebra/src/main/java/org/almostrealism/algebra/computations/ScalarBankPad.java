@@ -28,28 +28,18 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 
-import java.util.function.Supplier;
-
-public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>> implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
+public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
+		implements ScalarBankProducerBase, ComputerFeatures {
 	private final int count;
 	private final int total;
 
-	private Supplier<PackedCollection<Scalar>> destination;
-
 	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
-		super(new TraversalPolicy(count, 2), (Supplier) input);
+		super(new TraversalPolicy(count, 2), input);
 		this.count = count;
 		this.total = total;
 	}
-
-	@Override
-	public void setDestination(Supplier<PackedCollection<Scalar>> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<PackedCollection<Scalar>> getDestination() { return destination; }
 
 	@Override
 	public Scope<PackedCollection<Scalar>> getScope() {
@@ -57,18 +47,18 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
 		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
-		String resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression();
-		String valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression();
+		String resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression(getLanguage());
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");
 		scope.code().accept("        " + resultX + " = " + valueX + ";\n");
 		scope.code().accept("        " + resultY + " = " + valueY + ";\n");
 		scope.code().accept("    } else {\n");
-		scope.code().accept("        " + resultX + " = " + stringForDouble(0.0) + ";\n");
-		scope.code().accept("        " + resultY + " = " + stringForDouble(1.0) + ";\n");
+		scope.code().accept("        " + resultX + " = " + getLanguage().getPrecision().stringForDouble(0.0) + ";\n");
+		scope.code().accept("        " + resultY + " = " + getLanguage().getPrecision().stringForDouble(1.0) + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");
 		return scope;

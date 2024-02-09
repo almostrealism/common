@@ -16,20 +16,23 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.Ops;
 import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
-import org.almostrealism.time.Temporal;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
+	default Supplier<Runnable> setup() {
+		return new OperationList();
+	}
+
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
 		return toFactor(this, value, assignment);
 	}
@@ -72,7 +75,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 												  Function<Producer<T>, Receptor<T>> assignment,
 												  BiFunction<Producer<T>, Producer<T>, Producer<T>> combine) {
 		T v = value.get();
-		Producer<T> destination = Ops.ops().p(v);
+		Producer<T> destination = Ops.o().p(v);
 
 		return new TemporalFactorFromCell<>(c, destination, assignment, combine);
 	}
@@ -96,6 +99,48 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 			@Override
 			public Supplier<Runnable> push(Producer<T> protein) {
 				return r == null ? new OperationList() : r.push(value);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
+
+	static <T> Cell<T> of(Factor<T> func) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(func.getResultant(protein));
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
+
+	static <T> Cell<T> of(Function<Producer<T>, Producer<T>> func) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(func.apply(protein));
 			}
 
 			@Override

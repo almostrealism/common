@@ -17,50 +17,79 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Stack;
+import java.util.function.Function;
 
-public class DefaultComputer implements Computer<MemoryData> {
-	private static final List<Class> libs = new ArrayList<>();
+public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
+	private Hardware hardware;
 
-	private NativeCompiler compiler;
+	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
 
-	public DefaultComputer() { this(null); }
-
-	public DefaultComputer(NativeCompiler compiler) {
-		this.compiler = compiler;
+	public DefaultComputer(Hardware hardware) {
+		this.hardware = hardware;
+		this.requirements = ThreadLocal.withInitial(Stack::new);
 	}
 
-	public boolean isNative() { return compiler != null; }
+	@Override
+	public ComputeContext<MemoryData> getContext(Computation<?> c) {
+		int count = ParallelProcess.count(c);
+		boolean fixed = ParallelProcess.isFixedCount(c);
+		boolean sequential = fixed && count == 1;
+		boolean accelerator = !fixed || count > 128;
+		List<ComputeContext<MemoryData>> contexts = hardware
+				.getComputeContexts(sequential, accelerator,
+					getActiveRequirements().toArray(ComputeRequirement[]::new));
+		if (contexts.isEmpty()) throw new RuntimeException("No compute contexts available");
+		if (contexts.size() == 1) return contexts.get(0);
 
-	public NativeCompiler getNativeCompiler() { return compiler; }
+		if (!fixed || count > 1) {
+			return contexts.stream()
+					.filter(cc -> !cc.isCPU())
+					.findFirst()
+					.orElse(contexts.get(0));
+		} else {
+			return contexts.stream()
+					.filter(cc -> cc.isCPU())
+					.findFirst()
+					.orElse(contexts.get(0));
+		}
+	}
 
-	/**
-	 * @deprecated  Use {@link NativeCompiler} directly.
-	 */
-	@Deprecated
-	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
-		if (libs.contains(cls)) return;
+	public List<ComputeRequirement> getActiveRequirements() {
+		return requirements.get().isEmpty() ? Collections.emptyList() : requirements.get().peek();
+	}
 
-		compiler.compileAndLoad(cls, code);
-		libs.add(cls);
+	public void pushRequirements(List<ComputeRequirement> requirements) {
+		this.requirements.get().push(requirements);
+	}
+
+	public void popRequirements() {
+		this.requirements.get().pop();
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return Heap.addCompiled(new AcceleratedComputationOperation<>(c, Hardware.enableKernelOps));
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c, boolean kernel) {
-		return new AcceleratedComputationOperation<>(c, kernel);
+		return new AcceleratedComputationOperation<>(getContext(c), c, kernel);
 	}
 
 	// TODO  The Computation may have a postProcessOutput method that will not be called
@@ -69,7 +98,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 	// TODO  the correct type is returned.
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		return new AcceleratedComputationEvaluable<>(c);
+		return new AcceleratedComputationEvaluable<>(getContext(c), c);
 	}
 
 	@Override
@@ -89,4 +118,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 			return Optional.empty();
 		}
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

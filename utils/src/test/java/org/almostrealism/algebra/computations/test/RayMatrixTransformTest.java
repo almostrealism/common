@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -34,13 +34,13 @@ public class RayMatrixTransformTest implements TestFeatures {
 		});
 	}
 
-	protected ExpressionComputation<Ray> getRay1() {
+	protected CollectionProducer<Ray> getRay1() {
 		return ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0);
 	}
 
 	@Test
 	public void scaleAndTranslate() {
-		RayExpressionComputation transform = transform(getMatrix(), getRay1());
+		CollectionProducer<Ray> transform = transform(getMatrix(), getRay1());
 		Evaluable<Ray> ace = transform.get();
 		Ray r = ace.evaluate();
 		System.out.println(r);

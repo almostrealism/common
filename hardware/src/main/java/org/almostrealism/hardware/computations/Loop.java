@@ -18,25 +18,30 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
+
+import java.util.Collection;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> {
-	public static final boolean enableCompaction = true;
-
 	private final Computation atom;
 	private final int iterations;
 
 	public Loop(Computation<Void> atom, int iterations) {
 		this.atom = atom;
 		this.iterations = iterations;
+		init();
+	}
+
+	@Override
+	public String getName() {
+		return "Loop x" + iterations;
 	}
 
 	@Override
@@ -62,21 +67,25 @@ public class Loop extends OperationComputationAdapter<Void> {
 		atomScope.convertArgumentsToRequiredScopes();
 
 		HybridScope<Void> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Loop x" + iterations));
+		scope.setMetadata(getMetadata());
 		scope.getRequiredScopes().add(atomScope);
 
 		String i = getVariablePrefix() + "_i";
-		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		scope.code().accept("    " + Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(atomScope.call()) + "\n");
-		scope.code().accept("}\n");
-		return scope;
-	}
 
-	@Override
-	public synchronized void compact() {
-		super.compact();
-		if (enableCompaction && atom instanceof Compactable) {
-			((Compactable) atom).compact();
-		}
+		scope.setSource((s, lang) -> {
+			StringBuilder code = new StringBuilder();
+			code.append("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+			code.append("    " + lang.renderMethod(s.getRequiredScopes().get(0).call()) + "\n");
+			code.append("}\n");
+			return code.toString();
+		});
+
+		scope.getExplicit().setWriter(w -> {
+			w.println("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+			atomScope.write(w);
+			w.println("}\n");
+		});
+
+		return scope;
 	}
 }

@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
@@ -35,12 +34,8 @@ public class PreemphasizeTest implements TestFeatures {
 
 	@Test
 	public void preemphasize() {
-		Evaluable<PackedCollection<Scalar>> ev = preemphasizeOld(SIZE,
-				v(2 * SIZE, 0),
-				v(Scalar.shape(), 1)).get();
-
-		System.out.println("Standard...");
-		PackedCollection<Scalar> b = ev.evaluate(window(), new Scalar(0.1));
+		PackedCollection<Scalar> b = Scalar.scalarBank(SIZE);
+		IntStream.range(0, SIZE).forEach(i -> b.set(i, i * 9 + (i == 0 ? 0 : 1), 1.0));
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
 
 		System.out.println("Fast...");

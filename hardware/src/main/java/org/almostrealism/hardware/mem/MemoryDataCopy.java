@@ -1,13 +1,17 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.function.Supplier;
 
-public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable> {
+public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo {
 	public static boolean enableVerbose = false;
 
 	private String name;
@@ -42,6 +46,11 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable> {
 	}
 
 	@Override
+	public OperationMetadata getMetadata() {
+		return new OperationMetadata(name, name, "Copy " + length + " values");
+	}
+
+	@Override
 	public Collection<Process<?, Runnable>> getChildren() {
 		return Collections.emptyList();
 	}
@@ -61,4 +70,10 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable> {
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
 		};
 	}
+
+	@Override
+	public Process<Process<?, Runnable>, Runnable> isolate() { return this; }
+
+	@Override
+	public Parent<Process<?, Runnable>> generate(List<Process<?, Runnable>> children) { return this; }
 }

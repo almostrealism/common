@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,15 +20,9 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Minus extends UnaryExpression<Double> {
-	public Minus(Expression<Double> value) {
-		super(Double.class, "-", value);
-	}
-
-	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		if (children.size() != 1)  throw new UnsupportedOperationException();
-		return new Minus((Expression<Double>) children.get(0));
+public class Minus<T extends Number> extends UnaryExpression<T> {
+	public Minus(Expression<? extends Number> value) {
+		super((Class) value.getType(), "-", value);
 	}
 
 	@Override
@@ -46,9 +40,25 @@ public class Minus extends UnaryExpression<Double> {
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		Number v = getChildren().get(0).kernelValue(kernelIndex);
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		Number v = getChildren().get(0).value(indexValues);
 		if (v instanceof Integer) return -1 * (Integer) v;
 		return -1.0 * (Double) v;
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return -1 * children[0].doubleValue();
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.size() != 1)  throw new UnsupportedOperationException();
+		return new Minus(children.get(0));
 	}
 }

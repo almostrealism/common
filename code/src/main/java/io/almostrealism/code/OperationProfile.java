@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,56 +16,99 @@
 
 package io.almostrealism.code;
 
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
+import io.almostrealism.uml.Named;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.TimingMetric;
 
-public class OperationProfile {
-	private Map<String, Long> totalTime;
-	private Map<String, Integer> count;
+import java.util.function.Function;
+
+public class OperationProfile implements Named, ConsoleFeatures {
+	public static long id = 0;
+
+	private String name;
+	private TimingMetric metric;
+	private Function<OperationMetadata, String> key;
 
 	public OperationProfile() {
-		totalTime = new HashMap<>();
-		count = new HashMap<>();
+		this("default");
 	}
 
-	public void print() {
-		System.out.println("Operation Profile:");
-		double all = totalTime.values().stream().mapToLong(Long::longValue).sum();
-
-		totalTime.entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
-				.forEachOrdered(entry -> {
-			System.out.println(entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
-					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)");
-		});
+	public OperationProfile(String name) {
+		this(name, OperationProfile::defaultKey);
 	}
 
-	public void recordDuration(Runnable r) {
-		long start = System.currentTimeMillis(); // System.nanoTime();
+	public OperationProfile(String name, Function<OperationMetadata, String> key) {
+		this.name = name;
+		this.metric = console().timing(name + "_prof" + id++);
+		setKey(key);
+	}
+
+	@Override
+	public String getName() { return name; }
+
+	public TimingMetric getMetric() { return metric; }
+
+	public Function<OperationMetadata, String> getKey() { return key; }
+
+	public void setKey(Function<OperationMetadata, String> key) { this.key = key; }
+
+	public void print() { log(summary()); }
+
+	public String summary() { return metric.summary(getName()); }
+
+	public long recordDuration(Runnable r) {
+		long start = System.nanoTime();
 		r.run();
-		long end = System.currentTimeMillis(); // System.nanoTime();
+		long end = System.nanoTime();
 
-		OperationMetadata metadata;
+		OperationMetadata metadata = null;
 		if (r instanceof OperationInfo) {
 			metadata = ((OperationInfo) r).getMetadata();
-		} else {
+
+			if (metadata == null) {
+				System.out.println("Warning: " + r.getClass().getSimpleName() + " has no metadata");
+			}
+		}
+
+		if (metadata == null) {
 			metadata = new OperationMetadata(r.getClass().getSimpleName(), r.getClass().getSimpleName());
 		}
 
 		recordDuration(metadata, end - start);
+		return end - start;
 	}
 
-	public void recordDuration(OperationMetadata metadata, long duration) {
+	public void recordDuration(OperationMetadata metadata, long nanos) {
+		metric.addEntry(key.apply(metadata), nanos);
+	}
+
+	public void clear() { metric.clear(); }
+
+	@Override
+	public Console console() { return Computation.console; }
+
+	public static String defaultKey(OperationMetadata metadata) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
-
-		totalTime.put(key, totalTime.getOrDefault(metadata.getShortDescription(), 0L) + duration);
-		count.put(key, count.getOrDefault(metadata.getShortDescription(), 0) + 1);
+		if (metadata.getShape() != null) key += " " + metadata.getShape().toStringDetail();
+		if (metadata.getContextName() != null) key += " | [" + metadata.getContextName() + "]";
+		return key;
 	}
 
-	public void clear() {
-		totalTime.clear();
-		count.clear();
+	public static Function<OperationMetadata, String> appendShape(Function<OperationMetadata, String> key) {
+		return metadata -> {
+			String result = key.apply(metadata);
+			if (metadata.getShape() != null) result += " " + metadata.getShape().toStringDetail();
+			return result;
+		};
+	}
+
+	public static Function<OperationMetadata, String> appendContext(Function<OperationMetadata, String> key) {
+		return metadata -> {
+			String result = key.apply(metadata);
+			if (metadata.getContextName() != null) result += " | [" + metadata.getContextName() + "]";
+			return result;
+		};
 	}
 }

@@ -16,22 +16,19 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.Statement;
-import io.almostrealism.expression.ArraySize;
-import io.almostrealism.expression.Constant;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Compactable;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.relation.Sortable;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,10 +42,10 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameable, Sortable, KernelIndex, Delegated<V> {
+public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V>, ConsoleFeatures {
 	private String name;
+	private LanguageOperations lang;
 	private PhysicalScope physicalScope;
-	private boolean declaration;
 	private int sortHint;
 
 	private Expression<T> expression;
@@ -59,65 +56,45 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	private V delegate;
 
 	public Variable(String name) {
-		this(name, (Expression<T>) null);
+		this(name, null, null, null);
 	}
 
-	public Variable(String name, Expression<T> expression) {
-		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
-	}
-
-	public Variable(String name, boolean declaration, Expression<T> expression) {
-		this(name, declaration, expression, (V) null);
-	}
-
-	public Variable(String name, boolean declaration, Expression<T> expression, V delegate) {
-		this(name, expression);
-		this.declaration = declaration;
-		this.delegate = delegate;
-	}
-
-	public Variable(String name, T value) {
-		this(name, true, (Expression) null, () -> new Provider<>(value));
-	}
-
-	public Variable(String name, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, true, new Constant<>(type), producer);
-	}
-
-	public Variable(String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, type, producer);
-		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, true, new ArraySize<>(arraySize), producer);
-		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
+	public Variable(String name, PhysicalScope scope, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
+		setPhysicalScope(scope);
 		setExpression(expression);
-		setOriginalProducer(producer);
-		this.declaration = declaration;
+		setProducer(producer);
 	}
 
 	@Override
 	public void setName(String n) { this.name = n; }
 
 	@Override
-	public String getName() { return this.name; }
+	public String getName() {
+		return this.name;
+	}
+
+	public LanguageOperations getLanguage() { return lang; }
+	public void setLanguage(LanguageOperations lang) { this.lang = lang; }
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
 	public PhysicalScope getPhysicalScope() { return physicalScope; }
 
 	@Override
-	public V getDelegate() { return delegate; }
+	public V getDelegate() {
+		if (delegate != null) {
+			return delegate;
+		}
+
+		return null;
+	}
+
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
-	public boolean isDeclaration() { return declaration; }
-
+	@Deprecated
 	public void setExpression(Expression<T> value) { this.expression = value; }
 
+	@Deprecated
 	public Expression<T> getExpression() { return expression; }
 
 	@Deprecated
@@ -126,15 +103,13 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	@Override
 	public int getSortHint() { return sortHint; }
 
-	public int getKernelIndex() {
-		return 0;
+	public Expression<Integer> getArraySize() {
+		if (getExpression() == null) return null;
+		if (getExpression().getArraySize() <= 0) return null;
+		return new IntegerConstant(getExpression().getArraySize());
 	}
 
-	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
-		this.producer = producer;
-	}
-
-	protected void setOriginalProducer(Supplier<Evaluable<? extends T>> producer) {
+	private void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.originalProducer = producer;
 
 		w: while (producer instanceof ProducerWithRank || producer instanceof Generated) {
@@ -155,16 +130,17 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 			throw new IllegalArgumentException("Provider is Evaluable, it does not supply an Evaluable");
 		}
 
-		setProducer(producer);
+		if (producer != originalProducer) {
+			warn("Producer for " + getName() + " changed from " + originalProducer + " to " + producer);
+		}
+
+		this.producer = producer;
 	}
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
+	@Deprecated
 	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
-
-	public boolean isStatic() {
-		return getProducer() instanceof Compactable && ((Compactable) getProducer()).isStatic();
-	}
 
 	public Class<T> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();
@@ -180,12 +156,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 
 	protected List<Variable<?, ?>> getExpressionDependencies() {
 		return Optional.ofNullable(getExpression()).map(Expression::getDependencies).orElse(Collections.emptyList());
-	}
-
-	public Expression<Integer> getArraySize() {
-		if (getExpression() == null) return null;
-		if (getExpression().getArraySize() <= 0) return null;
-		return new IntegerConstant(getExpression().getArraySize());
 	}
 
 	@Override

@@ -23,6 +23,7 @@ public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 
 	public ThreadLocalSuppliedValue(Supplier<T> supplier) {
 		super(supplier);
+		this.value = new ThreadLocal<>();
 	}
 
 	@Override

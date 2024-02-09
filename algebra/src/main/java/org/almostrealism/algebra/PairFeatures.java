@@ -31,6 +31,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -51,13 +52,13 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
 	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.toDouble(i))));
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp)
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		IntStream.range(0, 2).forEach(i -> comp[i] = args -> ExpressionFeatures.getInstance().e(value.toDouble(i)));
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(List.of(comp))
 				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
+	default CollectionProducer<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -73,9 +74,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> v(Pair value) { return value(value); }
+	default CollectionProducer<Pair<?>> v(Pair value) { return value(value); }
 
-	default ExpressionComputation<Pair<?>> value(Pair value) {
+	default CollectionProducer<Pair<?>> value(Pair value) {
 		return ExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 
@@ -117,8 +118,8 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 						Expression s = args[2].getValueAt(pos.add(1));
 
 						return conditional(index.mod(e(2), false).eq(e(0)),
-								new Sum(new Product(p, r), new Minus(new Product(q, s))),
-								new Sum(new Product(p, s), new Product(q, r)));
+								Sum.of(Product.of(p, r), new Minus(Product.of(q, s))),
+								Sum.of(Product.of(p, s), Product.of(q, r)));
 					},
 					(Supplier) a, (Supplier) b);
 		} else {
@@ -130,9 +131,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				Expression s = args.get(2).getValueRelative(1);
 
 				if (i == 0) {
-					return new Sum(new Product(p, r), new Minus(new Product(q, s)));
+					return Sum.of(Product.of(p, r), new Minus(Product.of(q, s)));
 				} else if (i == 1) {
-					return new Sum(new Product(p, s), new Product(q, r));
+					return Sum.of(Product.of(p, s), Product.of(q, r));
 				} else {
 					throw new IllegalArgumentException();
 				}

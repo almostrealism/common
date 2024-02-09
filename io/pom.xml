@@ -5,10 +5,17 @@
 	<parent>
 		<artifactId>common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.59</version>
+		<version>0.60</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
 	<artifactId>ar-io</artifactId>
 
+	<dependencies>
+		<dependency>
+			<groupId>org.almostrealism</groupId>
+			<artifactId>ar-uml</artifactId>
+			<version>0.60</version>
+		</dependency>
+	</dependencies>
 </project>

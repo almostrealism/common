@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.util.ResourceBundle;
 
@@ -61,6 +62,10 @@ public class MTL {
 		return createIntBuffer32(device, data, data.length);
 	}
 
+	public static long createIntBuffer32(long device, long len) {
+		return createIntBuffer32(device, null, len);
+	}
+
 	public static native long createIntBuffer32(long device, int[] data, long len);
 
 	public static long createBuffer16(long device, long len) {
@@ -77,10 +82,14 @@ public class MTL {
 	}
 	public static native long createBuffer16(long device, float[] data, long len);
 	public static native long createBuffer32(long device, float[] data, long len);
+
+	public static native long getContentPointer(long buffer);
 	public static native void setBufferContents16(long buffer, FloatBuffer in, int offset, int length);
 	public static native void setBufferContents32(long buffer, FloatBuffer in, int offset, int length);
+	public static native void setIntBufferContents32(long buffer, IntBuffer in, int offset, int length);
 	public static native void getBufferContents16(long buffer, FloatBuffer out, int offset, int length);
 	public static native void getBufferContents32(long buffer, FloatBuffer out, int offset, int length);
+	public static native void getIntBufferContents32(long buffer, IntBuffer out, int offset, int length);
 	public static native long bufferLength(long buffer);
 
 	public static native void setComputePipelineState(long commandEncoder, long pipeline);

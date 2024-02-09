@@ -17,7 +17,6 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
@@ -25,11 +24,10 @@ import java.util.function.Supplier;
 
 public abstract class LessThan<T extends PackedCollection<?>> extends AcceleratedBinaryConditionAdapter<T> {
 	public LessThan(int memLength,
-					Supplier<T> blankValue,
 					IntFunction<MemoryBank<T>> kernelDestination,
 					Supplier leftOperand, Supplier rightOperand,
 					Supplier trueValue, Supplier falseValue,
 					boolean includeEqual) {
-		super(includeEqual ? "<=" : "<", memLength, blankValue, kernelDestination, leftOperand, rightOperand, trueValue, falseValue);
+		super(includeEqual ? "<=" : "<", memLength, kernelDestination, leftOperand, rightOperand, trueValue, falseValue);
 	}
 }

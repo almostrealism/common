@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,14 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Nameable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.Hardware;
@@ -35,10 +33,9 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
-	public static boolean enableRelative = !Hardware.enableKernelOps;
+	public static boolean enableRelative = false;
 
 	private final int memLength;
 
@@ -78,24 +75,23 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
 			for (int i = 0; i < memLength; i++) {
-				Expression index = new KernelIndex(0);
+				Expression index = new KernelIndex();
 				if (memLength > 1) index = index.multiply(memLength).add(i);
 
 				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
 				Expression<Double> value = exp == null ? null : exp.getValueAt(index);
 				if (value == null) {
-//					value = getArgument(1).valueAt(i);
 					throw new UnsupportedOperationException();
 				}
 
-				Variable v;
+				ExpressionAssignment<?> v;
 				TraversableExpression out = TraversableExpression.traverse(output);
 
 				if (out == null) {
-					v = output.ref(i).assign(value.getSimplified());
+					v = output.ref(i).assign(value);
 				} else {
-					v = new Variable(out.getValueAt(index).getSimpleExpression(),
-							false, value.getSimplified(), output.getRootDelegate());
+					Expression o = out.getValueAt(index);
+					v = o.assign(value);
 				}
 
 				scope.getVariables().add(v);

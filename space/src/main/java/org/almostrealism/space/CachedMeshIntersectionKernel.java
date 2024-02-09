@@ -28,6 +28,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.stream.Stream;
 
@@ -53,15 +54,15 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return Scalar.scalarBank(size); }
+	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
 
 	@Override
-	public Evaluable withDestination(MemoryBank<Scalar> destination) {
+	public Evaluable withDestination(MemoryBank destination) {
 		return args -> {
 			cache = Pair.bank(destination.getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCount(); i++) {
-				destination.get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
+				((MemoryData) destination.get(i)).setMem(new double[] { cache.get(i).getA(), 1.0 });
 			}
 
 			return destination;
@@ -85,23 +86,17 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	public Evaluable<Vector> getClosestNormal() {
-		return new KernelizedEvaluable<>() {
-			@Override
-			public Vector evaluate(Object[] args) {
-				if (cache == null) {
-					return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
-				} else {
-					Pair pos = (Pair) args[0];
-					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return ZeroVector.getEvaluable().evaluate();
-					int a = (int) cache.get(n).getB();
-					if (a < 0) return ZeroVector.getEvaluable().evaluate();
-					return new Vector(data.get(a).get(4), 0);
-				}
+		return new HardwareEvaluable<>(() -> args -> {
+			if (cache == null) {
+				return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
+			} else {
+				Pair pos = (Pair) args[0];
+				int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+				if (n < 0) return ZeroVector.getEvaluable().evaluate();
+				int a = (int) cache.get(n).getB();
+				if (a < 0) return ZeroVector.getEvaluable().evaluate();
+				return new Vector(data.get(a).get(4), 0);
 			}
-
-			@Override
-			public MemoryBank<Vector> createKernelDestination(int size) {return Vector.bank(size); }
-		};
+		}, Vector::bank, null, true);
 	}
 }

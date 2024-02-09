@@ -16,14 +16,15 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Mod<T extends Number> extends Expression<T> {
-	public static boolean enableSimplification = true;
-	public static boolean enableIntegerSimplification = true;
-	public static boolean enableFpSimplification = true;
-
+public class Mod<T extends Number> extends BinaryExpression<T> {
 	private boolean fp;
 
 	public Mod(Expression<T> a, Expression<T> b) {
@@ -39,23 +40,14 @@ public class Mod<T extends Number> extends Expression<T> {
 			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
-			System.out.println("WARN: Module zero encountered while creating expression - " + getExpression());
+			System.out.println("WARN: Module zero encountered while creating expression");
 		}
 	}
 
 	@Override
-	public String getExpression() {
-		return fp ? "fmod(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")" :
-				"(" + getChildren().get(0).getExpression() + ") % (" + getChildren().get(1).getExpression() + ")";
-	}
-
-	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
-		if (children.size() != 2) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
+	public String getExpression(LanguageOperations lang) {
+		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :
+				"(" + getChildren().get(0).getExpression(lang) + ") % (" + getChildren().get(1).getExpression(lang) + ")";
 	}
 
 	@Override
@@ -71,51 +63,96 @@ public class Mod<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression simplify() {
-		Expression<?> flat = super.simplify();
-		if (!enableSimplification) return (Expression<Double>) flat;
-		if (!(flat instanceof Mod)) return (Expression<Double>) flat;
+	public KernelSeries kernelSeries() {
+		KernelSeries input = getChildren().get(0).kernelSeries();
+		OptionalDouble mod = getChildren().get(1).doubleValue();
+
+		if (mod.isPresent() && mod.getAsDouble() == Math.floor(mod.getAsDouble())) {
+			return input.loop((int) mod.getAsDouble());
+		}
+
+		return KernelSeries.infinite();
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return getChildren().get(1).upperBound(context);
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Mod(children.get(0), children.get(1), fp);
+	}
+
+	@Override
+	public Expression simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
+		if (!(flat instanceof Mod)) return flat;
 
 		Expression input = flat.getChildren().get(0);
 		Expression mod = flat.getChildren().get(1);
 
-		if (enableIntegerSimplification && input.intValue().isPresent()) {
+		if (input.intValue().isPresent()) {
 			if (input.intValue().getAsInt() == 0) {
-				return (Expression) new IntegerConstant(0);
+				return new IntegerConstant(0);
+			} else if (input.intValue().getAsInt() == 1 && !fp) {
+				return mod.intValue().orElse(-1) == 1 ? new IntegerConstant(0) : new IntegerConstant(1);
 			} else if (mod.intValue().isPresent() && !fp) {
 				if (mod.intValue().getAsInt() == 1) {
-					return input;
+					return new IntegerConstant(0);
 				} else if (mod.intValue().getAsInt() != 0) {
-					return (Expression) new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
+					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {
-					System.out.println("WARN: Module zero encountered while simplifying expression - " + getExpression());
+					System.out.println("WARN: Module zero encountered while simplifying expression");
 				}
 			}
-		} else if (enableIntegerSimplification && mod.intValue().isPresent()) {
-			if (mod.intValue().getAsInt() == 1) {
-				return (Expression) new IntegerConstant(0);
+		} else if (mod.intValue().isPresent()) {
+			int m = mod.intValue().getAsInt();
+			if (m == 1) return new IntegerConstant(0);
+
+			OptionalInt u = input.upperBound(context);
+			if (u.isPresent() && u.getAsInt() < m) {
+				return input;
 			}
-		} else if (enableFpSimplification && input.doubleValue().isPresent()) {
+		} else if (input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
 				return new DoubleConstant(0.0);
 			} else if (mod.doubleValue().isPresent() && !fp) {
 				return new DoubleConstant(input.doubleValue().getAsDouble() % mod.doubleValue().getAsDouble());
 			}
-		} else if (enableFpSimplification && mod.doubleValue().isPresent()) {
+		} else if (mod.doubleValue().isPresent()) {
 			if (mod.doubleValue().getAsDouble() == 1.0) {
 				return input;
 			}
 		}
 
-		return (Expression<Double>) flat;
+		return flat;
 	}
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values) && getChildren().get(1).isKernelValue(values);
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
 		if (fp) {
-			return getChildren().get(0).kernelValue(kernelIndex).doubleValue() % getChildren().get(1).kernelValue(kernelIndex).doubleValue();
+			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return getChildren().get(0).kernelValue(kernelIndex).intValue() % getChildren().get(1).kernelValue(kernelIndex).intValue();
+			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		if (fp) {
+			return children[0].doubleValue() % children[1].doubleValue();
+		} else {
+			return children[0].intValue() % children[1].intValue();
 		}
 	}
 }

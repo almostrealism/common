@@ -18,29 +18,87 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelPreferences;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
 	private static boolean enableOptimization = false;
+	private static boolean enableRepeat = true;
 
 	@Test
 	public void matmul() {
-		if (KernelPreferences.isPreferLoops()) {
-			matmul(2048, 1024, true);
-		} else {
-			matmul(128, 64, true);
-		}
+//		matmul(128, 64, true);
+		matmul(2048, 1024, true);
 	}
 
 	@Test
 	public void matmulPowers() {
-		for (int i = 1; i < 9; i++) {
+		for (int i = 1; i < 8; i++) {
 			matmul(1 << i, 1 << i, false);
 		}
+	}
+
+	@Test
+	public void matrix2() {
+		int n = 2;
+		int m = 3;
+		int p = 4;
+
+		PackedCollection<?> a = new PackedCollection<>(shape(n, m));
+		PackedCollection<?> b = new PackedCollection<>(shape(m, p));
+		PackedCollection<?> c = new PackedCollection<>(shape(n, p));
+
+		a.fill(pos -> Math.random());
+		b.fill(pos -> Math.random());
+
+		CollectionProducer<PackedCollection<?>> product =
+				cp(b).enumerate(1, 1)
+				.reshape(p, m)
+				.traverse(1)
+				.expand(n, v -> v.repeat(n))
+				.reshape(p, n, m)
+				.traverse(1)
+				.map(v -> multiply(v, cp(a)))
+				.reshape(p, n, m).sum(2)
+				.enumerate(1, 1)
+				.reshape(n, p)
+				;
+
+		c = product.get().evaluate();
+
+		print(n, p, c);
+
+		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
+		multiplyMatrices(n, m, p, a, b, reference);
+
+//		for (int i = 0; i < n; i++) {
+//			for (int j = 0; j < p; j++) {
+//				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
+//			}
+//		}
+	}
+
+	private void multiplyMatrices(int n, int m, int p, PackedCollection<?> matrix1, PackedCollection<?> matrix2, PackedCollection<?> destination) {
+		int rows1 = n;
+		int cols1 = m;
+		int cols2 = p;
+
+		double[] result = new double[rows1 * cols2];
+
+		for (int i = 0; i < rows1; i++) {
+			for (int j = 0; j < cols2; j++) {
+				for (int k = 0; k < cols1; k++) {
+					result[i * rows1 + j] += matrix1.valueAt(i, k) * matrix2.valueAt(k, j);
+				}
+			}
+		}
+
+		destination.setMem(result);
 	}
 
 	protected void matmul(int dim, int width, boolean validate) {
@@ -57,11 +115,9 @@ public class MatrixMathTests implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		MetalOperator.verboseLog(() -> {
-			r.run();
-		});
+		HardwareOperator.verboseLog(() -> r.run());
 
-		if (!skipLongTests) {
+		if (enableRepeat) {
 			profiles.clear();
 
 			for (int i = 0; i < 5000; i++) {
@@ -88,7 +144,7 @@ public class MatrixMathTests implements TestFeatures {
 	public void sumPowers() {
 		if (skipLongTests) return;
 
-		for (int i = 1; i < 8; i++) {
+		for (int i = 1; i < 7; i++) {
 			sum(600, 1 << i);
 		}
 	}

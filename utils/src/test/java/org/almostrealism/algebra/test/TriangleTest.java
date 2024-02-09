@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
@@ -26,17 +27,14 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -86,7 +84,7 @@ public class TriangleTest implements TestFeatures {
 
 	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
+		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((ExpressionComputation) noRank).getInputs().get(1);
 
 		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
 	}
@@ -134,12 +132,18 @@ public class TriangleTest implements TestFeatures {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		System.out.println(in);
 
-		PackedCollection<Vector> tp = Vector.bank(3);
+		PackedCollection<?> data = new PackedCollection<>(9);
+		PackedCollection<Vector> tp = new PackedCollection<>(new TraversalPolicy(3, 3), 1,
+				delegateSpec ->
+					new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				data, 0);
 		tp.set(0, new Vector(1.0, 1.0, -1.0));
 		tp.set(1, new Vector(-1.0, 1.0, -1.0));
 		tp.set(2, new Vector(0.0, -1.0, -1.0));
 
-		PackedCollection<?> td = triangle(p(tp)).get().evaluate();
+		Producer<PackedCollection<?>> ptp = new CollectionProviderProducer<>(tp.traverse(0));
+
+		PackedCollection<?> td = triangle(ptp).get().evaluate();
 		td = td.traverse(1);
 		Assert.assertEquals(-2.0, td.get(0).toDouble(0), 0.0001);
 		Assert.assertEquals(0.0, td.get(0).toDouble(1), 0.0001);
@@ -166,13 +170,12 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
-				Input.value(Ray.shape(), 0, -1));
+				Input.value(Ray.shape(), 0));
 
 		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);
 		AcceleratedConjunctionScalar acs = (AcceleratedConjunctionScalar) (Supplier) gts.getInputs().get(3);
 
 		Evaluable<Scalar> ev = gts.get();
-		((OperationAdapter) ev).compile();
 
 		Scalar distance = ev.evaluate(in, td);
 		System.out.println(distance);

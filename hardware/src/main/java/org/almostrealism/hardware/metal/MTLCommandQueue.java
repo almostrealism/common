@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,14 @@
 package org.almostrealism.hardware.metal;
 
 public class MTLCommandQueue extends MTLObject {
-	public MTLCommandQueue(long nativePointer) {
+	private MTLDevice device;
+
+	public MTLCommandQueue(MTLDevice device, long nativePointer) {
 		super(nativePointer);
+		this.device = device;
 	}
+
+	public MTLDevice getDevice() { return device; }
 
 	public MTLCommandBuffer commandBuffer() {
 		return new MTLCommandBuffer(MTL.commandBuffer(getNativePointer()));

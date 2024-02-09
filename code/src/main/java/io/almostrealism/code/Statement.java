@@ -16,5 +16,15 @@
 
 package io.almostrealism.code;
 
-public interface Statement {
+import io.almostrealism.kernel.KernelStructure;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.Fragment;
+import io.almostrealism.scope.Variable;
+
+import java.util.List;
+
+public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T> {
+	String getStatement(LanguageOperations lang);
+
+	List<Variable<?, ?>> getDependencies();
 }

@@ -18,13 +18,37 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 
-public class RelativeTraversableExpression<T> implements TraversableExpression<T> {
+import java.util.function.IntFunction;
+
+public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
+	private final TraversalPolicy shape;
 	private final TraversableExpression<T> expression;
 	private final Expression offset;
 
-	public RelativeTraversableExpression(TraversableExpression<T> expression, Expression offset) {
+	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression,
+										 IntFunction<Expression> offset) {
+		this(shape, expression, offset.apply(shape.getSize()));
+	}
+
+	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression, Expression offset) {
+		this.shape = shape;
 		this.expression = expression;
 		this.offset = offset;
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return shape;
+	}
+
+	@Override
+	public T reshape(TraversalPolicy shape) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public T traverse(int axis) {
+		throw new UnsupportedOperationException();
 	}
 
 	public TraversableExpression<T> getExpression() {

@@ -16,7 +16,13 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
@@ -24,9 +30,9 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public String getExpression() { return null; }
+	public String getExpression(LanguageOperations lang) { return null; }
 
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	public Constant<T> generate(List<Expression<?>> children) {
 		if (children.size() > 0) {
@@ -34,5 +40,10 @@ public class Constant<T> extends Expression<T> {
 		}
 
 		return this;
+	}
+
+	@Override
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		return CollectionExpression.create(shape, idx -> new IntegerConstant(0));
 	}
 }

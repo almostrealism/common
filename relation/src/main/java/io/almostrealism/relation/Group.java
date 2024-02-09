@@ -19,5 +19,5 @@ package io.almostrealism.relation;
 import java.util.stream.Stream;
 
 public interface Group<T> {
-	Stream<T> all();
+	Stream<T> children();
 }

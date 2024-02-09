@@ -19,7 +19,6 @@ package org.almostrealism.space;
 import java.util.*;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.*;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
@@ -558,7 +557,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	    if (textures.length > 0) {
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-				colorAt = multiply(colorAt, new AdaptProducerRGB(() -> args -> t.operate((Triple) args[0]), fp));
+				colorAt = multiply(colorAt, new AdaptProducerRGB(() -> args -> t.operate((Vector) args[0]), fp));
 	        }
 	    }
 
@@ -566,11 +565,6 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	        colorAt = multiply(colorAt, this.parent.getColorAt(fp, transform));
 		
 		return colorAt;
-	}
-
-	@Override
-	public RGB operate(Vector in) {
-		return getValueAt(v(in)).get().evaluate();
 	}
 
 	@Override

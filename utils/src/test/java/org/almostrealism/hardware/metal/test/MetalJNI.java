@@ -1,6 +1,8 @@
 package org.almostrealism.hardware.metal.test;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.metal.MTL;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.junit.Test;
 
 import java.io.BufferedReader;
@@ -12,8 +14,10 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 public class MetalJNI {
-	// @Test
+	@Test
 	public void run() throws IOException {
+		if (!(Hardware.getLocalHardware().getComputeContext() instanceof MetalComputeContext)) return;
+
 		float[] vector = { 1.0f, 2.0f, 3.0f, 4.0f };
 		float[] matrix = { 1.0f, 2.0f, 3.0f, 4.0f,
 						   5.0f, 6.0f, 7.0f, 8.0f,

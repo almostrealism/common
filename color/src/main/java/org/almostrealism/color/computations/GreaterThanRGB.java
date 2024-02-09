@@ -21,13 +21,14 @@ import org.almostrealism.bool.GreaterThan;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class GreaterThanRGB extends GreaterThan<RGB> {
 	public GreaterThanRGB(
 			Supplier leftOperand,
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(3, RGB::new, RGB::bank, leftOperand, rightOperand,
+		super(3, RGB::bank, leftOperand, rightOperand,
 				trueValue, falseValue, false);
 		setPostprocessor(RGB.postprocessor());
 	}

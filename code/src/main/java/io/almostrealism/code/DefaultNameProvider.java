@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,13 +17,16 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public class DefaultNameProvider implements NameProvider {
+	private LanguageOperations lang;
 	private String function;
 
-	public DefaultNameProvider(String function) {
+	public DefaultNameProvider(LanguageOperations lang, String function) {
+		this.lang = lang;
 		this.function = function;
 	}
 
@@ -33,12 +36,7 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return v.getName() + "[" + pos + "]";
-	}
+	public Variable getOutputVariable() { return getArgument(lang, 0); }
 
 	@Override
 	public String getVariableDimName(ArrayVariable v, int dim) {
@@ -51,7 +49,7 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex) {
+	public Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression<?> pos, int kernelIndex) {
 		throw new UnsupportedOperationException();
 	}
 }

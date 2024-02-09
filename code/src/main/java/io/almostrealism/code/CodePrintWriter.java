@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Fragment;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
@@ -33,6 +35,8 @@ import java.util.stream.IntStream;
 public interface CodePrintWriter {
 	boolean enableMetadata = SystemUtils.isEnabled("AR_HARDWARE_METADATA").orElse(false);
 
+	LanguageOperations getLanguage();
+
 	/**
 	 * This is used to write explicit scopes, but should be discouraged.
 	 */
@@ -44,11 +48,13 @@ public interface CodePrintWriter {
 	 */
 	void println(Metric m);
 
-	default void println(Statement s) {
-		if (s instanceof Method) {
+	default void println(Fragment s) {
+		if (s instanceof Scope) {
+			println((Scope<?>) s);
+		} else if (s instanceof Method) {
 			println((Method<?>) s);
-		} else if (s instanceof Variable) {
-			println((Variable<?, ?>) s);
+		} else if (s instanceof ExpressionAssignment) {
+			println((ExpressionAssignment) s);
 		} else {
 			throw new IllegalArgumentException();
 		}
@@ -60,7 +66,7 @@ public interface CodePrintWriter {
 	 *
 	 * @param v  Variable to print.
 	 */
-	void println(Variable<?, ?> v);
+	void println(ExpressionAssignment<?> v);
 
 	/**
 	 * Write a call to the function represented by the specified {@link Method}.
@@ -111,7 +117,9 @@ public interface CodePrintWriter {
 				comment(indentStr + "     " + metadata.getLongDescription());
 			}
 
-			metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
+			if (metadata.getChildren() != null) {
+				metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
+			}
 		}
 	}
 

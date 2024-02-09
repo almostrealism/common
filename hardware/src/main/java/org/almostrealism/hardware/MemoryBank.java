@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Countable;
+import io.almostrealism.uml.Multiple;
 
 /**
  * A {@link MemoryBank} tracks a section of RAM that is used to
@@ -25,7 +26,6 @@ import io.almostrealism.relation.Countable;
  *
  * @author  Michael Murray
  */
-public interface MemoryBank<T extends MemoryData> extends MemoryData, Countable {
-	T get(int index);
+public interface MemoryBank<T extends MemoryData> extends MemoryData, Multiple<T>, Countable {
 	void set(int index, T value);
 }

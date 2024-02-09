@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,8 +21,9 @@ import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.NullProcessor;
 
-public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> implements RGBFeatures {
+public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> implements NullProcessor<RGB>, RGBFeatures {
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}
@@ -45,5 +46,5 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	}
 
 	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return RGB.bank(size); }
+	public MemoryBank<RGB> createDestination(int size) { return RGB.bank(size); }
 }

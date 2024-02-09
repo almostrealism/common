@@ -16,9 +16,14 @@
 
 package io.almostrealism.expression;
 
-import java.util.List;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.lang.LanguageOperations;
 
-public class Less extends Expression<Boolean> {
+import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+
+public class Less extends Comparison {
 	private boolean orEqual;
 
 	public Less(Expression<?> left, Expression<?> right) {
@@ -26,17 +31,24 @@ public class Less extends Expression<Boolean> {
 	}
 
 	public Less(Expression<?> left, Expression<?> right, boolean orEqual) {
-		super(Boolean.class, left, right);
+		super(left, right);
 		this.orEqual = orEqual;
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		if (orEqual) {
-			return getChildren().get(0).getWrappedExpression() + " <= " + getChildren().get(1).getWrappedExpression();
+			return getChildren().get(0).getWrappedExpression(lang) + " <= " + getChildren().get(1).getWrappedExpression(lang);
 		} else{
-			return getChildren().get(0).getWrappedExpression() + " < " + getChildren().get(1).getWrappedExpression();
+			return getChildren().get(0).getWrappedExpression(lang) + " < " + getChildren().get(1).getWrappedExpression(lang);
 		}
+	}
+
+	@Override
+	protected boolean compare(Number left, Number right) {
+		return orEqual ?
+				(left.doubleValue() <= right.doubleValue()) :
+				(left.doubleValue() < right.doubleValue());
 	}
 
 	@Override

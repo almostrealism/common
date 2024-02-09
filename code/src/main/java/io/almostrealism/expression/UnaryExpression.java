@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 public class UnaryExpression<T> extends Expression<T> {
 	private String operator;
 
@@ -24,8 +26,14 @@ public class UnaryExpression<T> extends Expression<T> {
 		this.operator = operator;
 	}
 
+	protected boolean isIncludeSpace() { return true; }
+
 	@Override
-	public String getExpression() {
-		return operator + " " + getChildren().get(0).getWrappedExpression();
+	public String getExpression(LanguageOperations lang) {
+		if (isIncludeSpace()) {
+			return operator + " " + getChildren().get(0).getWrappedExpression(lang);
+		} else {
+			return operator + getChildren().get(0).getWrappedExpression(lang);
+		}
 	}
 }

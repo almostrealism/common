@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
@@ -26,7 +27,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -44,28 +44,23 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
 													AcceleratedConditionalStatement<T>,
-													DestinationSupport<MemoryData>,
 													ComputerFeatures {
 
 	private final int memLength;
 
-	private Supplier<MemoryData> destination;
-
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
-		this(memLength, blankValue, kernelDestination, null, null, null, null);
+	public AcceleratedConditionalStatementAdapter(int memLength, IntFunction<MemoryBank<T>> kernelDestination) {
+		this(memLength, kernelDestination, null, null, null, null);
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<T> blankValue,
 												  IntFunction<MemoryBank<T>> kernelDestination,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
 												  Supplier<Evaluable<? extends T>> trueValue,
 												  Supplier<Evaluable<? extends T>> falseValue) {
 		this.memLength = memLength;
-		this.destination = (Supplier) blankValue;
 
 		List inputs = new ArrayList();
 		inputs.add(new MemoryDataDestination(this, kernelDestination));
@@ -92,12 +87,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
-	@Override
-	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<MemoryData> getDestination() { return destination; }
-
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;
 	}
@@ -117,37 +106,33 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 
 		ArrayVariable<?> outputVariable = (ArrayVariable<?>) getOutputVariable();
 		List<Variable<?, ?>> vars = new ArrayList<>();
-
-		Variable<?, ?> condition = new Variable<>("", getCondition());
-		vars.add(condition);
+		vars.addAll(getCondition().getDependencies());
 
 		scope.code().accept("if (");
-		scope.code().accept(condition.getExpression().getSimpleExpression());
+		scope.code().accept(getCondition().getSimpleExpression(getLanguage()));
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getTrueValueExpression().apply(i), outputVariable);
-			Variable<?, ?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getSimpleExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getFalseValueExpression().apply(i), outputVariable);
-			Variable<?, ?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getSimpleExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 
@@ -156,8 +141,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.setDependencies(vars);
 		return scope;
 	}
-
-	protected boolean isCompacted() { return false; }
 
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {

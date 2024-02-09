@@ -29,7 +29,9 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -39,6 +41,8 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle, KernelSupport {
+	public static boolean enableHardwareEvaluable = true;
+
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -51,6 +55,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
 		this.shape = shape;
 		this.producer = producer;
+
+		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -67,14 +75,14 @@ public class ReshapeProducer<T extends Shape<T>>
 	public int getCount() { return getShape().getCount(); }
 
 	@Override
+	public boolean isFixedCount() {
+		return ParallelProcess.isFixedCount(producer);
+	}
+
+	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
-
-//	@Override
-//	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize() {
-//		return producer instanceof Process ? generate(List.of(((Process<?, ?>) producer).optimize())) : this;
-//	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
@@ -142,6 +150,20 @@ public class ReshapeProducer<T extends Shape<T>>
 		return true;
 	}
 
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		if (producer instanceof CollectionProducer) {
+			if (shape == null) {
+				return new ReshapeProducer<>(traversalAxis, ((CollectionProducer) producer).delta(target));
+			} else {
+				TraversalPolicy newShape = shape.append(shape(target));
+				return new ReshapeProducer<>(newShape, ((CollectionProducer) producer).delta(target));
+			}
+		}
+
+		return CollectionProducer.super.delta(target);
+	}
+
 	public CollectionProducer<T> traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			return new ReshapeProducer<>(axis, producer);
@@ -157,23 +179,39 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Evaluable<T> get() {
-		return new Evaluable<T>() {
-			private Evaluable<T> eval;
-
-			@Override
-			public T evaluate(Object... args) {
-				if (eval == null) {
-					eval = producer.get();
-				}
-
-				Shape out = eval.evaluate(args);
+		if (enableHardwareEvaluable) {
+			HardwareEvaluable<T> ev = new HardwareEvaluable<>(producer::get, null, null, false);
+			ev.setShortCircuit(args -> {
+				long start = System.nanoTime();
+				Shape<T> out = ev.getKernel().getValue().evaluate(args);
+				AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
 
 				if (shape == null) {
-					return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+					return out.reshape(out.getShape().traverse(traversalAxis));
 				} else {
-					return eval.evaluate(args).reshape(shape);
+					return out.reshape(shape);
 				}
-			}
-		};
+			});
+			return ev;
+		} else {
+			return new Evaluable<>() {
+				private Evaluable<T> eval;
+
+				@Override
+				public T evaluate(Object... args) {
+					if (eval == null) {
+						eval = producer.get();
+					}
+
+					Shape<T> out = eval.evaluate(args);
+
+					if (shape == null) {
+						return out.reshape(out.getShape().traverse(traversalAxis));
+					} else {
+						return out.reshape(shape);
+					}
+				}
+			};
+		}
 	}
 }

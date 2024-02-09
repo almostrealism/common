@@ -18,29 +18,18 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
+import io.almostrealism.code.DataContext;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
-public abstract class AbstractComputeContext implements ComputeContext<MemoryData> {
-	private final Hardware hardware;
-	private final DefaultComputer computer;
+public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> implements ComputeContext<MemoryData> {
+	private final T dc;
 
-	protected AbstractComputeContext(Hardware hardware) { this(hardware, true, false); }
-
-	protected AbstractComputeContext(Hardware hardware, boolean isCl, boolean isNative) {
-		this.hardware = hardware;
-		this.computer = isNative ? new DefaultComputer(NativeCompiler.factory(hardware, isCl).construct()) : new DefaultComputer();
+	protected AbstractComputeContext(T dc) {
+		this.dc = dc;
 	}
 
-	@Override
-	public DefaultComputer getComputer() { return computer; }
-
-	public String getName() { return hardware.getName(); }
-
-	@Override
-	public String getKernelIndex(int dimension) {
-		throw new UnsupportedOperationException();
-	}
+	public T getDataContext() { return dc; }
 }

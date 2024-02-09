@@ -16,14 +16,12 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.PackedCollectionHeap;
 
-import java.util.function.IntFunction;
-import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,35 +17,29 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Conditional;
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<T, T>
+		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
@@ -73,7 +67,9 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
 		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
+				.setPostprocessor(getPostprocessor())
+				.setShortCircuit(getShortCircuit())
+				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override
@@ -89,9 +85,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
 	}
 
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		// TODO  This may not be necessary, as the parent class implementation is probably fine
+		return TraversableDeltaComputation.create(getShape(), shape(target), expression, target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {
@@ -101,7 +99,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		BiFunction<TraversableExpression[], Expression, Expression> comp = (args, index) -> {
 			index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
-			index = index.getSimplified();
 
 			OptionalInt i = index.intValue();
 
@@ -111,7 +108,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 				Expression v = value.getValueAt(new IntegerConstant(0));
 
 				for (int j = 1; j < value.getShape().getTotalSize(); j++) {
-					v = new Conditional(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
+					v = Conditional.of(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
 				}
 
 				return v;

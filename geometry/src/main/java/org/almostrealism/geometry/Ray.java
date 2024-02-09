@@ -18,9 +18,9 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
@@ -154,7 +154,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public ExpressionComputation<Vector> pointAt(Producer<Scalar> t) {
+	public CollectionProducer<Vector> pointAt(Producer<Scalar> t) {
 		return pointAt(v(this), t);
 	}
 

@@ -17,14 +17,20 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.Precision;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.Hardware;
 import org.jocl.cl_event;
 
 public class OpenCLLanguageOperations extends CLanguageOperations {
 
-	public OpenCLLanguageOperations() {
-		super(false, false);
+	public OpenCLLanguageOperations(Precision precision) {
+		super(precision, false, false);
+	}
+
+	@Override
+	public String kernelIndex(int index) {
+		return "get_global_id(" + index + ")";
 	}
 
 	@Override

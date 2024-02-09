@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.expression.Constant;
-import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
@@ -30,34 +30,31 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
-
 	private final NameProvider names;
 
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
 	private boolean destroyed;
 
-	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
-		super(name, true, (Expression) null);
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
+		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
+		setLanguage(lang);
 		this.names = np;
 		setArraySize(arraySize);
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
+		this(lang, np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, scope, type, p);
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+		super(name, scope, new Constant<>(type), p);
+		setLanguage(lang);
 		this.names = np;
 	}
-
-	public NameProvider getNameProvider() { return names; }
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
@@ -66,16 +63,6 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (destroyed) throw new UnsupportedOperationException();
 		if (arraySize != null) return arraySize;
 		return super.getArraySize();
-	}
-
-	@Override
-	public int getKernelIndex() {
-		if (destroyed) throw new UnsupportedOperationException();
-		if (getOriginalProducer() instanceof KernelIndex) {
-			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
-		}
-
-		return 0;
 	}
 
 	@Override
@@ -107,14 +94,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 
 		if (getDelegate() != null) {
-			Expression<Double> v = getDelegate().getValueRelative(index + getDelegateOffset());
-			if (v instanceof InstanceReference) {
-				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
-			}
-			return v;
+			return getDelegate().getValueRelative(index + getDelegateOffset());
 		}
 
-		return (Expression) reference(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
+		return (Expression) reference(names.getArrayPosition(getLanguage(), this, new IntegerConstant(index), 0), false);
 	}
 
 	@Override
@@ -129,39 +112,30 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public InstanceReference<T> referenceRelative(Expression<?> pos) {
-		if (destroyed)
-			throw new UnsupportedOperationException();
-
 		if (getDelegate() != null) {
-			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
-			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
-			return v;
-		} else if (getKernelIndex() < 0) {
-			return reference(pos);
+			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else {
-			return reference(names.getArrayPosition(this, pos, getKernelIndex()));
+			return reference(names.getArrayPosition(getLanguage(), this, pos, 0), false);
 		}
 	}
 
 	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		return reference(pos);
+		return reference(pos, false);
 	}
 
-	protected InstanceReference<T> reference(Expression<?> pos) {
+	public InstanceReference<T> referenceDynamic(Expression<?> pos) {
+		return reference(pos, true);
+	}
+
+	protected InstanceReference<T> reference(Expression<?> pos, boolean dynamic) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == null) {
-			pos = pos.add(getOffsetValue());
-			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
-					false, new Constant<>(getType()), this), pos);
+			return InstanceReference.create(this, pos, dynamic);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()));
-			ref.getReferent().setOriginalProducer(getOriginalProducer());
-			return ref;
+			return getDelegate().reference(pos.add(getDelegateOffset()), false);
 		}
 	}
 

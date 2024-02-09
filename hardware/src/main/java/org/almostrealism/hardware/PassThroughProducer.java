@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
@@ -26,9 +27,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
@@ -36,24 +35,15 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
-public class PassThroughProducer<T extends MemoryData>
-		extends ProducerComputationBase<T, T>
-		implements ProducerArgumentReference,
-		MemoryDataComputation<T>,
-		DestinationSupport<T>,
-		TraversableExpression<Double>,
-		Shape<PassThroughProducer<T>>, KernelIndex,
-		ComputerFeatures  {
-	public static boolean enableDimSupport = true;
-
+public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
+		implements ProducerArgumentReference, MemoryDataComputation<T>,
+					TraversableExpression<Double>, Shape<PassThroughProducer<T>>,
+					ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
-	private int kernelIndex;
-
-	private Supplier<T> destination;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
 		this();
@@ -65,30 +55,10 @@ public class PassThroughProducer<T extends MemoryData>
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
-		this.kernelIndex = 0;
-	}
-
-	@Deprecated
-	public PassThroughProducer(TraversalPolicy shape, int argIndex, int kernelIndex) {
-		this();
-		this.shape = shape;
-		this.argIndex = argIndex;
-		this.kernelIndex = kernelIndex;
-		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
-	}
-
-	@Deprecated
-	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
-		this();
-		this.shape = new TraversalPolicy(memLength).traverse(0);
-		this.argIndex = argIndex;
-		this.kernelIndex = kernelIndex;
-		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
 	}
 
 	private PassThroughProducer() {
-		this.destination = () -> null;
-		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null)));
+		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null, false)));
 		init();
 	}
 
@@ -101,6 +71,8 @@ public class PassThroughProducer<T extends MemoryData>
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
+	public int getIndex() { return argIndex; }
+
 	@Override
 	public int getMemLength() { return getShape().getSize(); }
 
@@ -108,10 +80,7 @@ public class PassThroughProducer<T extends MemoryData>
 	public int getCount() { return getShape().getCount(); }
 
 	@Override
-	public void setDestination(Supplier<T> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<T> getDestination() { return destination; }
+	public boolean isFixedCount() { return false; }
 
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {
@@ -137,12 +106,6 @@ public class PassThroughProducer<T extends MemoryData>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		// Result should always be first
-		// TODO  This causes cascading issues, as the output variable is reused by the referring
-		// TODO  producer and then multiple arguments are sorted to be "first"
-		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
-
 		List<Argument<? extends T>> args = new ArrayList<>();
 		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
@@ -152,8 +115,9 @@ public class PassThroughProducer<T extends MemoryData>
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i)).getSimplified()));
+			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i))));
 		}
+
 		return scope;
 	}
 
@@ -169,39 +133,19 @@ public class PassThroughProducer<T extends MemoryData>
 	@Override
 	public KernelizedEvaluable<T> get() {
 		// return compileProducer(this);
-
-		return new KernelizedEvaluable<T>() {
-			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public T evaluate(Object... args) {
-				return (T) args[argIndex];
-			}
-		};
+		return args -> (T) args[argIndex];
 	}
 
 	/**
-	 * To avoid infinite regress (since pass through has itself as
-	 * an argument), this method does nothing.
-	 */
-	@Override
-	public void compact() {
-		// Avoid recursion, do not compact children
-	}
-
-	/**
-	 * Since the normal {@link #getArgument(int)} method returns
-	 * the {@link ArrayVariable} for the specified input index,
-	 * and this {@link io.almostrealism.relation.Producer} does
+	 * Since the normal {@link #getArgument(LanguageOperations, int)}
+	 * method returns the {@link ArrayVariable} for the specified input
+	 * index, and this {@link io.almostrealism.relation.Producer} does
 	 * not use inputs in the conventional way, this method returns
 	 * the indexed {@link ArrayVariable} directly from the list
 	 * of arguments.
 	 */
 	@Override
-	public ArrayVariable getArgument(int index) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index) {
 		return getArgumentVariables().get(index);
 	}
 
@@ -212,32 +156,28 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		ArrayVariable var = getArgument(0);
+//		ArrayVariable var = getArgumentVariables().get(0);
+//
+//		if (enableDimSupport) {
+//			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
+//		} else {
+//			return var.referenceAbsolute(index);
+//		}
 
-		if (enableDimSupport) {
-			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
-		} else {
-			return var.referenceAbsolute(index);
-		}
+		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return getArgument(0).referenceRelative(index);
+		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
 	}
 
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
 	@Override
-	public int getKernelIndex() { return kernelIndex; }
-
-	@Override
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
-		}
 	}
 }

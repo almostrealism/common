@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 
 public interface ComputeContext<MEM> {
-	Computer<MEM> getComputer();
+	DataContext<MEM> getDataContext();
 
 	LanguageOperations getLanguage();
 
@@ -31,9 +32,11 @@ public interface ComputeContext<MEM> {
 	 */
 	InstructionSet deliver(Scope scope);
 
-	boolean isKernelSupported();
+	boolean isCPU();
 
-	String getKernelIndex(int dimension);
+	default boolean isProfiling() {
+		return false;
+	}
 
 	void destroy();
 }

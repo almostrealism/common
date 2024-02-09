@@ -16,12 +16,19 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.relation.Countable;
+import io.almostrealism.code.Memory;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-public class Bytes extends MemoryDataAdapter implements Countable {
+public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	private final int atomicLength;
 	private final int memLength;
+
+	private Bytes(Memory mem, int memLength) {
+		this.atomicLength = memLength;
+		this.memLength = memLength;
+		init(mem);
+	}
 
 	public Bytes(int memLength) {
 		this(memLength, memLength);
@@ -42,9 +49,23 @@ public class Bytes extends MemoryDataAdapter implements Countable {
 	}
 
 	public Bytes(int memLength, MemoryData delegate, int delegateOffset) {
-		this.atomicLength = memLength;
+		this(memLength, memLength, delegate, delegateOffset);
+	}
+
+	public Bytes(int memLength, int atomicLength, MemoryData delegate, int delegateOffset) {
+		this.atomicLength = atomicLength;
 		this.memLength = memLength;
 		setDelegate(delegate, delegateOffset);
+	}
+
+	@Override
+	public void set(int index, Bytes value) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Bytes get(int index) {
+		return range(index * getAtomicMemLength(), getAtomicMemLength());
 	}
 
 	@Override
@@ -56,5 +77,21 @@ public class Bytes extends MemoryDataAdapter implements Countable {
 	@Override
 	public int getMemLength() {
 		return memLength;
+	}
+
+	public Bytes range(int start, int length) {
+		return range(start, length, length);
+	}
+
+	public Bytes range(int start, int length, int atomicLength) {
+		if (start < 0 || start + length > getMemLength()) {
+			throw new IllegalArgumentException();
+		}
+
+		return new Bytes(length, atomicLength, this, start);
+	}
+
+	public static Bytes of(Memory mem, int memLength) {
+		return new Bytes(mem, memLength);
 	}
 }

@@ -22,6 +22,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
@@ -57,9 +58,9 @@ public class CollectionKernelTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> b = func(shape(5), args ->
 				c(v2).get().evaluate(args));
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducerComputation<PackedCollection<?>> c = relativeMultiply(shape(2, 5).traverse(1), a.traverse(1), b.traverse(0), null);
-			KernelizedEvaluable<PackedCollection<?>> eval = c.get();
+			Evaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
 
 			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());

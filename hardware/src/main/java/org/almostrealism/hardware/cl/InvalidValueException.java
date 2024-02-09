@@ -22,6 +22,10 @@ import org.jocl.CLException;
 import java.util.Optional;
 
 public class InvalidValueException extends HardwareException {
+	public InvalidValueException(CLException cause) {
+		super("Invalid Value", cause);
+	}
+
 	public InvalidValueException(CLException cause, int srcIndex, int destIndex, int length) {
 		super(message(srcIndex, destIndex, length), cause);
 	}

@@ -16,6 +16,10 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
@@ -33,12 +37,23 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
+import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+	}
+
+	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(new TraversalPolicy(2).traverse(0), arguments);
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends Scalar>> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	@Override
@@ -47,8 +62,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
 
-		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(),
-				false, new DoubleConstant(1.0), outputVariable.getRootDelegate()));
+		scope.getVariables().add(outputVariable.valueAt(1).assign(e(1.0)));
 
 		Expression i = new StaticReference(Integer.class, "i");
 		Expression left = new StaticReference(Integer.class, getVariableName(0));
@@ -58,22 +72,22 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, left, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, right, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getSimpleExpression();
-		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
-		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
-		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression();
-		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression();
-		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression();
-		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression();
-		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
+		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression(getLanguage());
+		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,50 @@
 
 package org.almostrealism.graph.io;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.ReceptorConsumer;
 
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 
-public class CSVReceptor<T> extends ReceptorConsumer<T> {
+public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable {
 	private PrintWriter ps;
 	private long index;
+	private int rate;
 
 	public CSVReceptor(OutputStream out) {
+		this(out, 1);
+	}
+
+	public CSVReceptor(OutputStream out, int rate) {
 		super(null);
+		this.rate = rate;
 		ps = new PrintWriter(new OutputStreamWriter(out));
-		setConsumer(p -> { ps.println(index++ + "," + p); ps.flush(); });
+		setConsumer(p -> {
+			if (index % this.rate == 0) {
+				ps.println(index + "," + process(p));
+				ps.flush();
+			}
+
+			index++;
+		});
+	}
+
+	public void flush() {
+		ps.flush();
+	}
+
+	@Override
+	public void close() {
+		ps.close();
+	}
+
+	private static String process(Object o) {
+		if (o instanceof PackedCollection) {
+			return String.valueOf(((PackedCollection<?>) o).toDouble(0));
+		}
+
+		return String.valueOf(o);
 	}
 }

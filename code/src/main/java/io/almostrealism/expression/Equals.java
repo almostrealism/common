@@ -16,35 +16,60 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Equals extends Expression<Boolean> {
+public class Equals extends Comparison {
 	public Equals(Expression<?> left, Expression<?> right) {
-		super(Boolean.class, left, right);
+		super(left, right);
 	}
 
-	public String getExpression() {
-		return "(" + getChildren().get(0).getExpression() + ") == (" + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "(" + getChildren().get(0).getExpression(lang) + ") == (" + getChildren().get(1).getExpression(lang) + ")";
 	}
 
 	@Override
-	public Expression<Boolean> simplify() {
-		Expression<?> left = getChildren().get(0).simplify();
-		Expression<?> right = getChildren().get(1).simplify();
+	public boolean isSingleIndex() {
+		if (getLeft() instanceof KernelIndex) {
+			return getRight().doubleValue().isPresent();
+		} else if (getRight() instanceof KernelIndex) {
+			return getLeft().doubleValue().isPresent();
+		}
 
-		OptionalInt li = left.intValue();
-		OptionalInt ri = right.intValue();
-		if (li.isPresent() && ri.isPresent())
-			return new BooleanConstant(li.getAsInt() == ri.getAsInt());
+		return false;
+	}
 
-		OptionalDouble ld = left.doubleValue();
-		OptionalDouble rd = right.doubleValue();
-		if (ld.isPresent() && rd.isPresent())
-			return new BooleanConstant(ld.getAsDouble() == rd.getAsDouble());
+	@Override
+	protected boolean compare(Number left, Number right) {
+		return left.doubleValue() == right.doubleValue();
+	}
 
-		return new Equals(left, right);
+	@Override
+	protected int[] checkSingle(Expression left, Expression right, int len) {
+		if (left instanceof KernelIndex) {
+			OptionalInt i = right.intValue();
+			OptionalDouble d = right.doubleValue();
+
+			if (i.isPresent()) {
+				int val = i.getAsInt();
+				if (val >= 0 && val < len) {
+					int seq[] = new int[len];
+					seq[val] = 1;
+					return seq;
+				}
+			} else if (d.isPresent()) {
+				double val = d.getAsDouble();
+				if (val == Math.floor(val)) {
+					int seq[] = new int[len];
+					seq[(int) val] = 1;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	@Override

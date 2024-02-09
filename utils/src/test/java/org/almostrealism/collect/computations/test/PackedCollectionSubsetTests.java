@@ -16,10 +16,9 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.Operator;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
@@ -30,9 +29,8 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
@@ -75,7 +73,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -525,7 +523,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 //			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach(subset)).reshape(filterShape);
 			Producer<PackedCollection<?>> product = relativeMultiply(p(filter), subset, null);
@@ -544,139 +542,6 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			}
 		});
-	}
-
-	@Test
-	public void repeat3d() {
-		int w = 1;
-		int h = 2;
-		int d = 4;
-
-		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
-		v.fill(pos -> Math.random());
-
-		MetalOperator.verboseLog(() -> {
-			PackedCollection<?> out = c(p(v)).traverseEach().expand(d, x -> x.repeat(d)).get().evaluate();
-
-			for (int x = 0; x < w; x++) {
-				for (int y = 0; y < h; y++) {
-					for (int z = 0; z < d; z++) {
-						double expected = v.valueAt(x, y);
-						double actual = out.valueAt(x, y, z);
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
-						assertEquals(expected, actual);
-					}
-				}
-			}
-		});
-	}
-
-	@Test
-	public void repeatSum() {
-		int size = 30;
-		int nodes = 10;
-
-		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
-
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
-		weights.fill(pos -> Math.random());
-
-		Supplier<Producer<PackedCollection<?>>> dense =
-				() -> c(p(input)).repeat(nodes).traverse(1).sum();
-
-		Consumer<PackedCollection<?>> valid = output -> {
-			for (int i = 0; i < nodes; i++) {
-				double expected = 0;
-
-				for (int x = 0; x < size; x++) {
-					expected += input.valueAt(x);
-				}
-
-				double actual = output.valueAt(i);
-
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-				Assert.assertEquals(expected, actual, 0.0001);
-			}
-		};
-
-		kernelTest(dense, valid);
-	}
-
-	@Test
-	public void repeatEnumerateMultiply() {
-		int size = 30;
-		int nodes = 10;
-
-		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
-
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
-		weights.fill(pos -> Math.random());
-
-		Supplier<Producer<PackedCollection<?>>> dense =
-				() -> c(p(input)).repeat(nodes).traverseEach()
-						.multiply(c(p(weights))
-								.enumerate(1, 1))
-						.traverse(1).sum();
-
-		Consumer<PackedCollection<?>> valid = output -> {
-			for (int i = 0; i < nodes; i++) {
-				double expected = 0;
-
-				for (int x = 0; x < size; x++) {
-					expected += weights.valueAt(x, i) * input.valueAt(x);
-				}
-
-				double actual = output.valueAt(i);
-
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-				Assert.assertEquals(expected, actual, 0.0001);
-			}
-		};
-
-		kernelTest(dense, valid);
-	}
-
-	@Test
-	public void repeatEnumerateMultiplyAdd() {
-		int size = 30;
-		int nodes = 10;
-
-		Tensor<Double> t = tensor(shape(size));
-		PackedCollection<?> input = t.pack();
-
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
-		weights.fill(pos -> Math.random());
-
-		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
-		biases.fill(pos -> Math.random());
-
-		Supplier<Producer<PackedCollection<?>>> dense =
-				() -> c(p(input)).repeat(nodes).traverseEach()
-						.multiply(c(p(weights))
-								.enumerate(1, 1))
-						.traverse(1).sum()
-						.add(p(biases));
-
-		Consumer<PackedCollection<?>> valid = output -> {
-			for (int i = 0; i < nodes; i++) {
-				double expected = 0;
-
-				for (int x = 0; x < size; x++) {
-					expected += weights.valueAt(x, i) * input.valueAt(x);
-				}
-
-				double actual = output.valueAt(i);
-				Assert.assertNotEquals(expected, actual, 0.0001);
-
-				expected += biases.valueAt(i);
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-				Assert.assertEquals(expected, actual, 0.0001);
-			}
-		};
-
-		kernelTest(dense, valid);
 	}
 
 	// @Test
@@ -724,15 +589,15 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		// output[i, j] = np.sum(im_region * self.filters, axis=(1, 2))
 
-		Expression index = KernelSupport.index();
-		Expression i = outputShape.position(index)[0];
-		Expression j = outputShape.position(index)[1];
-		Expression k = outputShape.position(index)[2];
-
 		// TODO  The ideal way to describe this computation looks like this
 		// kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum());
 
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = (List<ArrayVariable<Double>> args) -> {
+			Expression index = new KernelIndex();
+			Expression i = outputShape.position(index)[0];
+			Expression j = outputShape.position(index)[1];
+			Expression k = outputShape.position(index)[2];
+
 			List<Expression> sum = new ArrayList<>();
 
 			// args.get(1).get(k).multiply(args.get(2).get(shape(size, size), i, j)).sum()
@@ -750,12 +615,12 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				sum.add(filterValue.multiply(inputValue));
 			}
 
-			return new Sum(sum.toArray(Expression[]::new));
+			return Sum.of(sum.toArray(Expression[]::new));
 		};
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				new ArrayVariableComputation<>(outputShape.traverseEach(), List.of(expression), p(filter), p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<PackedCollection<?>> result = new PackedCollection(outputShape);
 		ev.into(result.traverseEach()).evaluate(filter, input);
@@ -802,14 +667,13 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy subsetShape = shape(w, h, d).traverseEach();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> KernelSupport.kernelIndex(i),
-						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
+				kernel(subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
 
 //		TODO  Why does this version not work? Should be equivalent to the above
 //		CollectionProducerComputation<PackedCollection<?>> producer =
 //				kernel(i -> KernelSupport.kernelIndex(i),
 //						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).getValue(p), p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(subsetShape);
 		ev.into(result.traverseEach()).evaluate();
@@ -840,13 +704,12 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> KernelSupport.kernelIndex(i),
-						outputShape, (i, p) -> {
+				kernel(outputShape, (i, p) -> {
 							System.out.println("i.v(0).shape = " + i.v(0).getShape());
 							Expression exp = i.v(0).get(shape(size, size), p.l(0), p.l(1)).toList().sum();
 							return exp;
 						}, p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(outputShape);
 		ev.into(result.traverseEach()).evaluate();
@@ -860,55 +723,6 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 					for (int x = 0; x < size; x++) {
 						for (int y = 0; y < size; y++) {
 							expected += input.toDouble(inputShape.index(p + x, q + y));
-						}
-					}
-
-					double actual = result.toDouble(outputShape.index(p, q, r));
-					System.out.println("PackedCollectionSubsetTests: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
-				}
-			}
-		}
-	}
-
-	@Test
-	public void convKernel() {
-		int filterCount = 4;
-		int size = 3;
-		int w = 10;
-		int h = 10;
-
-		TraversalPolicy filterShape = shape(filterCount, size, size);
-		TraversalPolicy inputShape = shape(h, w);
-		TraversalPolicy outputShape = shape(h - 2, w - 2, filterCount).traverseEach();
-
-		Tensor<Double> f = tensor(filterShape);
-		Tensor<Double> t = tensor(inputShape);
-
-		PackedCollection<?> filter = f.pack();
-		PackedCollection<?> input = t.pack();
-
-		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(outputShape, (i, p) -> {
-							System.out.println("i.v(0).shape = " + i.v(0).getShape());
-							System.out.println("i.v(1).shape = " + i.v(1).getShape());
-							return i.v(0).get(shape(1, size, size), p.l(2))
-									.multiply(i.v(1).get(shape(size, size), p.l(0), p.l(1))).sum();
-						}, p(filter), p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
-
-		PackedCollection<?> result = new PackedCollection(outputShape);
-		ev.into(result.traverseEach()).evaluate();
-		System.out.println(result.getShape());
-
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					double expected = 0;
-
-					for (int x = 0; x < size; x++) {
-						for (int y = 0; y < size; y++) {
-							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
 						}
 					}
 

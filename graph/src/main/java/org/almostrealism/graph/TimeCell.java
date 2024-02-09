@@ -95,7 +95,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
 			Producer<PackedCollection<?>> left = c(p(time), 0);
 			left = add(left, c(1.0));
-			left = greaterThanConditional(ld, c(0.0), mod(left, ld), left, false);
+			left = greaterThanConditional(ld, c(0.0), relativeMod(left, ld), left, false);
 
 			Producer<PackedCollection<?>> right = c(p(time), 1);
 			right = add(right, c(1.0));

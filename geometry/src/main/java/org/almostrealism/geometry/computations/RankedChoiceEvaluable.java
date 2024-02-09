@@ -25,11 +25,10 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Compactable;
 
 import java.util.ArrayList;
 
-public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T>, Compactable {
+public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T> {
 	protected double e;
 	protected boolean tolerateNull;
 
@@ -94,7 +93,4 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 
 		return best == null ? null : best.get().evaluate(args);
 	}
-
-	@Override
-	public void compact() { forEach(ProducerWithRank::compact); }
 }

@@ -29,7 +29,7 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import java.util.function.Supplier;
 
 public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
-	public static final int defaultSize = 16 * 1024 * 1024;
+	public static final int defaultSize = 10 * 1024 * 1024; // 16 * 1024 * 1024;
 
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
@@ -37,12 +37,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 		if (defaultCacheLevel == CacheLevel.ALL) {
 			System.out.println("WARN: AcceleratedTimeSeries default cache level is ALL");
 		}
-	}
-
-	public AcceleratedTimeSeries() {
-		super(Hardware.getLocalHardware().getTimeSeriesSize() <= 0 ? defaultSize : Hardware.getLocalHardware().getTimeSeriesSize(), AcceleratedTimeSeriesPool.getLocal(), defaultCacheLevel);
-		setBeginCursorIndex(1);
-		setEndCursorIndex(1);
 	}
 
 	public AcceleratedTimeSeries(int maxEntries) {
@@ -129,6 +123,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 	}
 
 	public static AcceleratedTimeSeries defaultSeries() {
-		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(defaultSize);
+		return new AcceleratedTimeSeries(defaultSize);
 	}
 }

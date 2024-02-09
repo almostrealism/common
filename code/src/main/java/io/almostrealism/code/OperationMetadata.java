@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,19 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.TraversalPolicy;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class OperationMetadata {
 	private String displayName, shortDescription, longDescription;
+	private TraversalPolicy shape;
+	private String contextName;
+
 	private List<OperationMetadata> children;
 
-	private OperationMetadata() { children = new ArrayList<>(); }
+	private OperationMetadata() { }
 
 	public OperationMetadata(OperationMetadata from) {
 		this();
@@ -32,48 +37,60 @@ public class OperationMetadata {
 			setDisplayName(from.getDisplayName());
 			setShortDescription(from.getShortDescription());
 			setLongDescription(from.getLongDescription());
+			setShape(from.getShape());
+			setContextName(from.getContextName());
+			setChildren(from.getChildren());
 		}
 	}
 
 	public OperationMetadata(String displayName, String shortDescription) {
+		this(displayName, shortDescription, null);
+	}
+
+	public OperationMetadata(String displayName, String shortDescription, String longDescription) {
 		this();
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
+		setLongDescription(longDescription);
 
 		if (displayName == null) {
 			throw new IllegalArgumentException();
 		}
 	}
 
-	public String getDisplayName() {
-		return displayName;
+	public String getDisplayName() { return displayName; }
+	public void setDisplayName(String displayName) { this.displayName = displayName; }
+
+	public String getShortDescription() { return shortDescription; }
+	public void setShortDescription(String description) { this.shortDescription = description; }
+
+	public String getLongDescription() { return longDescription; }
+	public void setLongDescription(String longDescription) { this.longDescription = longDescription; }
+
+	public TraversalPolicy getShape() { return shape; }
+	public void setShape(TraversalPolicy shape) { this.shape = shape; }
+
+	public String getContextName() { return contextName; }
+	public void setContextName(String contextName) { this.contextName = contextName; }
+
+	public List<OperationMetadata> getChildren() { return children; }
+	public void setChildren(List<OperationMetadata> children) { this.children = children; }
+
+	public OperationMetadata withShape(TraversalPolicy shape) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setShape(shape);
+		return metadata;
 	}
 
-	public void setDisplayName(String displayName) {
-		this.displayName = displayName;
+	public OperationMetadata withContextName(String contextName) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setContextName(contextName);
+		return metadata;
 	}
 
-	public String getShortDescription() {
-		return shortDescription;
-	}
-
-	public void setShortDescription(String description) {
-		this.shortDescription = description;
-	}
-
-	public String getLongDescription() {
-		return longDescription;
-	}
-
-	public void setLongDescription(String longDescription) {
-		this.longDescription = longDescription;
-	}
-
-	public List<OperationMetadata> getChildren() {
-		return children;
-	}
-
-	public void setChildren(List<OperationMetadata> children) {
-		this.children = children;
+	public OperationMetadata appendShortDescription(String desc) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setShortDescription(metadata.getShortDescription() + desc);
+		return metadata;
 	}
 }

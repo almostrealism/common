@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,9 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Mod;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.collect.CollectionVariable;
@@ -34,7 +31,10 @@ import java.util.OptionalDouble;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+		extends IndexProjectionProducerComputation<T> {
+	public static boolean enableTraverseEach = false;
+	public static boolean enableItem = true;
+
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
 
@@ -43,61 +43,80 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(shape(collection).replace(shape.prependDimension(repeat)).traverseEach(), (Supplier) collection);
+		super(enableTraverseEach ?
+					shape(collection).replace(shape.prependDimension(repeat)).traverseEach() :
+					shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+				collection, null);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
 	}
 
-	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape, TraversalPolicy sliceShape,
-								   Producer<?> collection) {
-		super(shape, (Supplier) collection);
+	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
+								   TraversalPolicy sliceShape, Producer<?> collection) {
+		super(shape, collection, null);
 		this.subsetShape = subsetShape;
 		this.sliceShape = sliceShape;
 	}
 
 	@Override
-	public int getMemLength() { return 1; }
+	public int getMemLength() { return enableItem ? super.getMemLength() : 1; }
 
-	protected Expression offsetForIndex(Expression index) {
-		// Identify the slice
-		Expression slice;
-
-		if (sliceShape.getTotalSize() == 1) {
-			slice = index;
-		} else if (index.getType() == Integer.class ||
-				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-			slice = index.divide(e(sliceShape.getTotalSize()));
-		} else {
-			slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
-		}
-
-		// Find the index in that slice
-//		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
-		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
-
-		// Position the offset relative to the slice
-		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
-
-		return offset;
+	@Override
+	public int getCount() {
+		return enableItem ? super.getCount() : getShape().traverseEach().getCount();
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		Expression offset = offsetForIndex(index);
+	protected Expression projectIndex(Expression index) {
+		if (!enableItem) {
+			// Identify the slice
+			Expression slice;
 
-		// Otherwise the value will only be available if the
-		// argument is a Shape implementation represented by
-		// a CollectionVariable which supports TraversableExpression
-		// operations like getValueAt
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
+			if (sliceShape.getTotalSize() == 1) {
+				slice = index;
+			} else if (index.getType() == Integer.class ||
+					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+				slice = index.divide(e(sliceShape.getTotalSize()));
+			} else {
+				slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+			}
 
-		return var.getValueAt(offset);
+			// Find the index in that slice
+			Expression offset = index.toInt().imod(subsetShape.getTotalSize());
+
+			// Position the offset relative to the slice
+			offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+
+			return offset;
+		} else {
+			// Identify the output slice
+			Expression slice;
+
+			if (sliceShape.getTotalSize() == 1) {
+				slice = index;
+			} else if (index.getType() == Integer.class ||
+					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+				slice = index.divide(e(sliceShape.getTotalSize()));
+			} else {
+				slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+			}
+
+			// Find the index in the output slice
+			Expression offset = index.toInt().imod(sliceShape.getTotalSize());
+
+			// Find the index in the input slice
+			offset = offset.imod(subsetShape.getTotalSize());
+
+			// Position the offset relative to the slice
+			offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+
+			return offset;
+		}
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		Expression offset = offsetForIndex(index);
+		Expression offset = projectIndex(index);
 		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
 		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 

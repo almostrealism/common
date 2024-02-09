@@ -21,10 +21,10 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
@@ -127,10 +127,10 @@ public class MeshIntersectionTest implements TestFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		KernelizedEvaluable<Vector> ho = h.get();
+		KernelizedEvaluable<Vector> ho = (KernelizedEvaluable) h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
-		KernelizedEvaluable<Scalar> fo = f.get();
+		KernelizedEvaluable<Scalar> fo = (KernelizedEvaluable) f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
 		KernelizedEvaluable<Scalar> uo = (KernelizedEvaluable<Scalar>) u.get();
@@ -145,7 +145,7 @@ public class MeshIntersectionTest implements TestFeatures {
 				lessThan(u, v(1.0), true),
 				greaterThan(v, v(0.0), true),
 				lessThan(add(u, v), v(1.0), true));
-		KernelizedEvaluable<Scalar> evs = acs.get();
+		KernelizedEvaluable<Scalar> evs = (KernelizedEvaluable) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 
@@ -205,7 +205,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void intersectionKernel1() {
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		Producer<Ray> ray = ray(origin1, direction1);
-		data1.evaluateIntersectionKernelScalar((KernelizedEvaluable<Ray>) ray.get(), distances, new MemoryBank[0]);
+		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
@@ -221,7 +221,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel2() {
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
-		RayExpressionComputation ray = ray(origin2, direction2);
+		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		assertEquals(1.0, distances.get(0));
@@ -229,7 +229,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel3() {
-		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
+		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
 		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions

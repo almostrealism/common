@@ -16,19 +16,27 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.Function;
 
 public class DynamicCollectionProducer<T extends PackedCollection<?>> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
 	private TraversalPolicy shape;
+	private boolean kernel;
 
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
+		this(shape, function, true);
+	}
+
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
 		super(function, len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
+		this.kernel = kernel;
 	}
 
 	@Override
@@ -44,5 +52,14 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	@Override
 	public CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
+	}
+
+	@Override
+	public Evaluable<T> get() {
+		if (kernel) {
+			return super.get();
+		} else {
+			return getFunction()::apply;
+		}
 	}
 }

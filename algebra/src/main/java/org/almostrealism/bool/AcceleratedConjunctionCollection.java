@@ -34,6 +34,6 @@ public class AcceleratedConjunctionCollection extends AcceleratedConjunctionAdap
 	@SafeVarargs
 	public AcceleratedConjunctionCollection(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<PackedCollection<?>>... conjuncts) {
-		super(1, () -> new PackedCollection<>(1), PackedCollection.bank(new TraversalPolicy(1)), trueValue, falseValue, conjuncts);
+		super(1, PackedCollection.bank(new TraversalPolicy(1)), trueValue, falseValue, conjuncts);
 	}
 }

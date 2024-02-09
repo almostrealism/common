@@ -19,11 +19,20 @@ package io.almostrealism.scope;
 import io.almostrealism.code.Array;
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -32,9 +41,11 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Named;
+import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,8 +54,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -53,16 +66,22 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, OperationInfo, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
+	public static final Console console = Console.root().child();
+
+	public static TimingMetric timing = console.timing("scope");
 
 	private String name;
 	private OperationMetadata metadata;
-	private final List<Statement> statements;
-	private final List<Variable<?, ?>> variables;
+	private List<ComputeRequirement> requirements;
+
+	private final List<Statement<?>> statements;
+	private final List<ExpressionAssignment<?>> variables;
 	private final List<Method> methods;
 	private final List<Metric> metrics;
 	private final List<Scope> required;
+	private Set<KernelIndexChild> kernelChildren;
 
 	private List<Argument<?>> arguments;
 	private boolean embedded;
@@ -119,10 +138,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 
 	public void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
-	public List<Statement> getStatements() { return statements; }
+	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
+	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
-	/** @return  The {@link Variable}s in this {@link Scope}. */
-	public List<Variable<?, ?>> getVariables() { return variables; }
+	public List<Statement<?>> getStatements() { return statements; }
+
+	/** @return  The {@link ExpressionAssignment}s in this {@link Scope}. */
+	public List<ExpressionAssignment<?>> getVariables() { return variables; }
 
 	/** @return  The {@link Method}s in this {@link Scope}. */
 	public List<Method> getMethods() { return methods; }
@@ -131,10 +153,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
+	public Set<KernelIndexChild> getKernelChildren() { return kernelChildren; }
+	public void setKernelChildren(Set<KernelIndexChild> kernelChildren) { this.kernelChildren = kernelChildren; }
+
 	public List<Metric> getMetrics() { return metrics; }
 
 	public boolean isEmbedded() { return embedded; }
-
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
 
 	@Override
@@ -204,7 +228,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
-			args.addAll(extractArgumentDependencies(variables));
+			args.addAll(extractArgumentDependencies(statements
+					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
+			args.addAll(extractArgumentDependencies(variables
+					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			sortArguments(args);
 
 			this.stream()
@@ -270,7 +297,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 					Variable<?, ?> var = arg.getVariable();
 
 					// Argument references may be Computations, but they cannot
-					// by converted to required scopes because they refer directly
+					// be converted to required scopes because they refer directly
 					// to data passed into evaluation of the compiled Scope
 					if (var.getProducer() instanceof ProducerArgumentReference) {
 						return Collections.singletonList(arg);
@@ -322,7 +349,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 					// If the computation produces a Scope that was already
 					// converted by a child scope, skip over it
 					if (convertedScopes.contains(s.getName())) {
-						return Collections.emptyList();
+						return Collections.singletonList(arg);
+					}
+
+					// If the Scope contains this Scope, it should not be
+					// recursively made into a requirement of itself
+					if (s.contains(this)) {
+						return Collections.singletonList(arg);
 					}
 
 					// Recursively convert the required Scope's arguments
@@ -399,29 +432,97 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	 */
 	public void write(CodePrintWriter w) {
 		w.renderMetadata(getMetadata());
+
+		if (getKernelChildren() != null) {
+			for (KernelIndexChild c : getKernelChildren()) {
+				StaticReference ref = new StaticReference(Integer.class, c.getName());
+				w.println(new ExpressionAssignment(true, ref, c));
+			}
+		}
+
 		for (Method m : getMethods()) { w.println(m); }
 		for (Statement s : getStatements()) { w.println(s); }
-		for (Variable v : getVariables()) { w.println(v); }
+		for (ExpressionAssignment<?> v : getVariables()) { w.println(v); }
 		for (Scope s : getChildren()) { s.write(w); }
 		for (Metric m : getMetrics()) { w.println(m); }
 		w.flush();
 	}
 
-	@Deprecated
-	public static Scope verbatim(String code) {
-		return new Scope() {
-			public void write(CodePrintWriter w) {
-				w.println(code);
+	@Override
+	public Scope<T> simplify(KernelStructureContext context) {
+		Scope<T> scope = (Scope<T>) generate(getChildren()
+				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+		scope.getRequiredScopes().addAll(getRequiredScopes()
+				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+
+		UnaryOperator simplification = simplification(context);
+		scope.getMethods().addAll((List) getMethods()
+				.stream().map(simplification).collect(Collectors.toList()));
+		scope.getStatements().addAll((List) getStatements()
+				.stream().map(simplification).collect(Collectors.toList()));
+		scope.getVariables().addAll((List) getVariables()
+				.stream().map(simplification).collect(Collectors.toList()));
+		scope.getMetrics().addAll(getMetrics());
+
+
+		List<KernelIndexChild> kernelChildren = new ArrayList<>();
+		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
+		kernelChildren.addAll(generateKernelChildren(scope.getStatements()));
+		kernelChildren.addAll(generateKernelChildren(scope.getVariables()));
+		scope.setKernelChildren(kernelChildren.stream().map(KernelIndexChild::renderAlias).collect(Collectors.toSet()));
+		return scope;
+	}
+
+	@Override
+	public Parent<Scope<T>> generate(List<Scope<T>> children) {
+		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.getChildren().addAll(children);
+		return scope;
+	}
+
+	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
+		List<KernelIndexChild> kernelChildren = new ArrayList<>();
+
+		for (T value : values) {
+			if (value instanceof ExpressionAssignment) {
+				((ExpressionAssignment) value).getExpression().children()
+						.filter(c -> c instanceof KernelIndexChild)
+						.forEach(c -> kernelChildren.add((KernelIndexChild) c));
+			}
+		}
+
+		return kernelChildren;
+	}
+
+	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {
+		return t -> {
+			String key = null;
+			if (t instanceof Tree) {
+				key = String.valueOf(((Tree) t).countNodes());
+			} else if (t instanceof ExpressionAssignment) {
+				key = String.valueOf(((ExpressionAssignment) t).getExpression().countNodes());
+			}
+
+			long start = System.nanoTime();
+
+			try {
+				return t.simplify(context);
+			} finally {
+				timing.addEntry(key, System.nanoTime() - start);
 			}
 		};
 	}
 
-	public static <T extends Sortable> void sortArguments(List<T> arguments) {
+	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
 		if (arguments != null) {
-			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v).map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
-			// c = c.thenComparing(v -> v == null ? "" : v.getName());
+			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
+					.map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
+			c = c.thenComparing(v -> v == null ? "" : v.getName());
 			arguments.sort(c);
+			return true;
 		}
+
+		return false;
 	}
 
 	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> args) {

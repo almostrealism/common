@@ -70,12 +70,6 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	}
 
 	@Override
-	public void compact() {
-		getProducer().compact();
-		getRank().compact();
-	}
-
-	@Override
 	public Evaluable<T> get() {
 		if (getProducer() == this) {
 			throw new UnsupportedOperationException();

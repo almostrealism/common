@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.hardware.metal;
+
+import io.almostrealism.code.Precision;
 
 public class MTLDevice extends MTLObject {
 	public MTLDevice(long nativePointer) {
@@ -34,7 +36,7 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLCommandQueue newCommandQueue() {
-		return new MTLCommandQueue(MTL.createCommandQueue(getNativePointer()));
+		return new MTLCommandQueue(this, MTL.createCommandQueue(getNativePointer()));
 	}
 
 	public MTLComputePipelineState newComputePipelineState(MTLFunction function) {
@@ -45,24 +47,64 @@ public class MTLDevice extends MTLObject {
 		return new MTLFunction(MTL.createFunction(getNativePointer(), func, src));
 	}
 
+	public MTLBuffer newIntBuffer32(long len) {
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), len));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newIntBuffer32", System.nanoTime() - start);
+		}
+	}
+
 	public MTLBuffer newIntBuffer32(int values[]) {
-		return new MTLBuffer(MTL.createIntBuffer32(getNativePointer(), values));
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), values));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newIntBuffer32", System.nanoTime() - start);
+		}
 	}
 
 	public MTLBuffer newBuffer16(long len) {
-		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), len));
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), len));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newBuffer16", System.nanoTime() - start);
+		}
 	}
 
 	public MTLBuffer newBuffer16(float[] data) {
-		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), data));
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), data));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newBuffer16", System.nanoTime() - start);
+		}
 	}
 
 	public MTLBuffer newBuffer32(long len) {
-		return new MTLBuffer(MTL.createBuffer32(getNativePointer(), len));
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), len));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newBuffer32", System.nanoTime() - start);
+		}
 	}
 
 	public MTLBuffer newBuffer32(float[] data) {
-		return new MTLBuffer(MTL.createBuffer32(getNativePointer(), data));
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), data));
+		} finally {
+			MTLBuffer.ioTime.addEntry("newBuffer32", System.nanoTime() - start);
+		}
 	}
 
 	public void release() {

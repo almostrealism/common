@@ -16,7 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 public class BooleanConstant extends Constant<Boolean> {
 	private boolean value;
@@ -27,12 +31,22 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
+	public String getExpression(LanguageOperations lang) {
+		return String.valueOf(value);
+	}
+
+	@Override
 	public Optional<Boolean> booleanValue() {
 		return Optional.of(value);
 	}
 
 	@Override
-	public String getExpression() {
-		return String.valueOf(value);
+	public IndexSequence sequence(Index index, int len) {
+		return IndexSequence.of(value ? 1 : 0, len);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return value ? 1 : 0;
 	}
 }

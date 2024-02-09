@@ -16,7 +16,7 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Factor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 

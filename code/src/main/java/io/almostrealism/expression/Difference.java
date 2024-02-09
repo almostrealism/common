@@ -16,11 +16,54 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.List;
+import java.util.OptionalInt;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Difference<T extends Number> extends NAryExpression<T> {
-	public Difference(Expression<Double>... values) {
-		super((Class<T>) type(values), "-", values);
+	public Difference(Expression<T>... values) {
+		super((Class<T>) type(List.of(values)), "-", values);
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		List<OptionalInt> values = getChildren().stream()
+				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (values.size() != getChildren().size()) return OptionalInt.empty();
+		return OptionalInt.of(IntStream.range(0, values.size())
+				.map(i -> i == 0 ? values.get(i).getAsInt() : -1 * values.get(i).getAsInt())
+				.reduce(0, (a, b) -> a + b));
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		List<Number> values = getChildren().stream()
+				.map(e -> e.value(indexValues))
+				.collect(Collectors.toList());
+
+		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
+			return IntStream.range(0, values.size())
+					.mapToDouble(i -> i == 0 ? values.get(i).doubleValue() : -1 * values.get(i).doubleValue())
+					.reduce(0.0, (a, b) -> a + b);
+		} else {
+			return IntStream.range(0, values.size())
+					.map(i -> i == 0 ? values.get(i).intValue() : -1 * values.get(i).intValue())
+					.reduce(0, (a, b) -> a + b);
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		double value = children[0].doubleValue();
+		for (int i = 1; i < children.length; i++) {
+			value = value - children[i].doubleValue();
+		}
+
+		return value;
 	}
 
 	@Override

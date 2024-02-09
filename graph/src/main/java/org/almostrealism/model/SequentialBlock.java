@@ -1,6 +1,8 @@
 package org.almostrealism.model;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Named;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
@@ -8,12 +10,13 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class SequentialBlock implements Block, LayerFeatures {
+public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private TraversalPolicy inputShape;
 
 	private List<Block> blocks;
@@ -21,6 +24,10 @@ public class SequentialBlock implements Block, LayerFeatures {
 	private Cell<PackedCollection<?>> entry;
 	private Receptor<PackedCollection<?>> push;
 	private Receptor<PackedCollection<?>> downstream;
+
+	private Cell<PackedCollection<?>> propagate;
+	private Receptor<PackedCollection<?>> back;
+	private Receptor<PackedCollection<?>> upstream;
 
 	private List<Receptor<PackedCollection<?>>> receptors;
 
@@ -35,6 +42,20 @@ public class SequentialBlock implements Block, LayerFeatures {
 			if (downstream != null) op.add(downstream.push(in));
 			return op;
 		};
+
+		this.back = in -> {
+			OperationList op = new OperationList();
+			if (upstream != null) op.add(upstream.push(in));
+			return op;
+		};
+	}
+
+	@Override
+	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+		blocks.forEach(b -> {
+			if (b instanceof Learning)
+				((Learning) b).setLearningRate(learningRate);
+		});
 	}
 
 	public <T extends Block> T add(T block) {
@@ -42,7 +63,19 @@ public class SequentialBlock implements Block, LayerFeatures {
 			throw new IllegalArgumentException();
 
 		Block last = lastBlock();
-		if (last != null) last.getForward().setReceptor(block.getForward());
+		Receptor<PackedCollection<?>> prev;
+		if (last != null) {
+			last.getForward().setReceptor(block.getForward());
+			prev = last.getBackward();
+		} else {
+			prev = back;
+		}
+
+		if (block.getBackward() == null) {
+			System.out.println("WARN: No backward Cell for " + Named.nameOf(block));
+		} else {
+			block.getBackward().setReceptor(prev);
+		}
 
 		blocks.add(block);
 		lastBlock().getForward().setReceptor(push);
@@ -66,10 +99,10 @@ public class SequentialBlock implements Block, LayerFeatures {
 		return branch;
 	}
 
-	public CellularLayer accum(Block value) {
+	public CellularLayer accum(Block value, ComputeRequirement... requirements) {
 		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
-		return add(accum(getOutputShape(), value.getForward()));
+		return add(accum(getOutputShape(), value.getForward(), requirements));
 	}
 
 	public CellularLayer product(Block value) {
@@ -78,12 +111,12 @@ public class SequentialBlock implements Block, LayerFeatures {
 		return add(product(value.getOutputShape(), value.getForward()));
 	}
 
-	public CellularLayer product(Block a, Block b) {
+	public CellularLayer product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
-		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward()));
+		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward(), requirements));
 	}
 
 	@Override
@@ -101,6 +134,10 @@ public class SequentialBlock implements Block, LayerFeatures {
 		return blocks.isEmpty() ? getInputShape() : lastBlock().getOutputShape();
 	}
 
+	public Block firstBlock() {
+		return blocks.isEmpty() ? null : blocks.get(0);
+	}
+
 	public Block lastBlock() {
 		return blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
 	}
@@ -110,13 +147,8 @@ public class SequentialBlock implements Block, LayerFeatures {
 		if (entry == null) {
 			entry = new Cell<>() {
 				@Override
-				public Supplier<Runnable> setup() {
-					return new OperationList();
-				}
-
-				@Override
 				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
-					return blocks.get(0).getForward().push(in);
+					return firstBlock().getForward().push(in);
 				}
 
 				@Override
@@ -131,7 +163,21 @@ public class SequentialBlock implements Block, LayerFeatures {
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
-		throw new UnsupportedOperationException();
+		if (propagate == null) {
+			propagate = new Cell<>() {
+				@Override
+				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+					return lastBlock().getBackward().push(in);
+				}
+
+				@Override
+				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					SequentialBlock.this.upstream = r;
+				}
+			};
+		}
+
+		return propagate;
 	}
 
 	@Override

@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OutputSupport;
@@ -25,18 +26,17 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Compactable;
 
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport, Compactable {
+public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport {
 	Expression getCondition();
 
 	List<Supplier<Evaluable<? extends MemoryData>>> getInputs();
 	List<Argument<? extends MemoryData>> getArguments();
-	List<Variable<?, ?>> getVariables();
+	List<ExpressionAssignment<?>> getVariables();
 
 	List<ArrayVariable<Scalar>> getOperands();
 

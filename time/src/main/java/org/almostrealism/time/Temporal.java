@@ -24,6 +24,7 @@ import java.util.function.Supplier;
  * 
  * @author  Michael Murray
  */
+@FunctionalInterface
 public interface Temporal extends TemporalFeatures {
 	Supplier<Runnable> tick();
 

@@ -20,10 +20,10 @@ import java.util.HashMap;
 import java.util.List;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Defaults;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {

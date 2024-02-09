@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,19 +21,20 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
 public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>> {
-	private IntFunction<MemoryBank<T>> supplier;
+	private BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier;
 	private MemoryBank<T> last;
 	private int lastSize;
 
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
-		this.supplier = supplier;
+		this((v, i) -> supplier.apply(i));
+	}
 
-		if (GlobalContextDebugFlags.gate) {
-			System.out.println("!");
-		}
+	public MemoryBankProvider(BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier) {
+		this.supplier = supplier;
 	}
 
 	public MemoryBank<T> apply(int size) {
@@ -42,9 +43,9 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		}
 
 		if (Hardware.enableVerbose)
-			System.out.println("MemoryBankProvider: Creating a new MemoryBank");
+			System.out.println("MemoryBankProvider: Creating a new MemoryBank with size " + size);
 
-		last = supplier.apply(size);
+		last = supplier.apply(last, size);
 		lastSize = size;
 		return last;
 	}

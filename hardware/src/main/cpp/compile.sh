@@ -11,9 +11,20 @@ g++ -c -fPIC \
 -I${METAL_HOME} \
 MTL.cpp -o MTL.o
 
-g++ -dynamiclib MTL.o -o ../resources/libMTL.dylib -framework Metal -framework MetalKit -framework Cocoa -framework QuartzCore -framework IOKit -framework CoreVideo
+g++ -dynamiclib MTL.o \
+-o ../resources/libMTL.dylib \
+-framework Metal \
+-framework MetalKit \
+-framework Cocoa \
+-framework QuartzCore \
+-framework IOKit \
+-framework CoreVideo
 
-#gcc \
-#-I${JAVA_HOME}/include \
-#-I${JAVA_HOME}/include/darwin \
-#-dynamiclib MTL.c -o MTL.o
+g++ -c -fPIC \
+-std="gnu++20" \
+-I${JAVA_HOME}/include \
+-I${JAVA_HOME}/include/darwin \
+NIO.cpp -o NIO.o
+
+g++ -dynamiclib NIO.o \
+-o ../resources/libNIO.dylib

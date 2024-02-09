@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,16 +20,30 @@ import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
+import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
+	Console console = Console.root.child();
+
+	default void print(int rows, int colWidth, PackedCollection<?> value) {
+		if (value.getShape().getTotalSize() > (rows * colWidth)) {
+			value = value.range(shape(rows * colWidth), 0);
+		}
+
+		value.reshape(shape(rows, colWidth).traverse()).print();
+		System.out.println("--");
+	}
 
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());
@@ -56,8 +70,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	private static void assertEquals(double a, double b, boolean positive) {
-		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
-		double fallbackGap = Math.pow(10, -3);
+//		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
+//		double fallbackGap = Math.pow(10, -3);
+		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon();
+		double fallbackGap = 10 * gap;
 
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
@@ -83,7 +99,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				System.out.println("TestFeatures: Running kernel evaluation...");
 				Producer<PackedCollection<?>> p = supply.get();
 				PackedCollection<?> output = p.get().evaluate();
@@ -100,7 +116,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (operation) {
 			outputRef.get().clear();
 
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 
 				System.out.println("TestFeatures: Running kernel operation...");
@@ -115,7 +131,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			CLOperator.verboseLog(() -> {
+			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 
@@ -132,4 +148,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			});
 		}
 	}
+
+	@Override
+	default Console console() { return console; }
 }

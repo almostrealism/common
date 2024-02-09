@@ -26,7 +26,7 @@ public class GreaterThanScalar extends GreaterThan<Scalar> {
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand) {
-		super(2, Scalar::new, Scalar::scalarBank, leftOperand, rightOperand, null, null, false);
+		super(2, Scalar::scalarBank, leftOperand, rightOperand, null, null, false);
 		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 
@@ -44,7 +44,7 @@ public class GreaterThanScalar extends GreaterThan<Scalar> {
 			Supplier trueValue,
 			Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar::new, Scalar::scalarBank,
+		super(2, Scalar::scalarBank,
 				leftOperand, rightOperand,
 				trueValue, falseValue, includeEqual);
 		setPostprocessor((BiFunction) Scalar.postprocessor());

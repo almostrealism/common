@@ -16,22 +16,26 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
-		super(Double.class, null, input);
+		super(Double.class, input);
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		OptionalDouble v = getChildren().get(0).doubleValue();
-		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression() + ")";
+		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public OptionalDouble doubleValue() {
@@ -41,16 +45,33 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt v = getChildren().get(0).upperBound(context);
+		if (v.isPresent()) return v;
+		return OptionalInt.empty();
+	}
+
+	@Override
+	public boolean isKernelValue(IndexValues values) {
+		return getChildren().get(0).isKernelValue(values);
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		return Math.floor((double) getChildren().get(0).value(indexValues));
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.floor(children[0].doubleValue());
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1) {
 			throw new UnsupportedOperationException();
 		}
 
 		return new Floor((Expression<Double>) children.get(0));
-	}
-
-	@Override
-	public Number kernelValue(int kernelIndex) {
-		return Math.floor((double) getChildren().get(0).kernelValue(kernelIndex));
 	}
 }

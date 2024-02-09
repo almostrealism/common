@@ -77,10 +77,10 @@ public class TriangleIntersectAt extends LessThanScalar {
 		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ScalarFeatures.getInstance().scalar(-1.0),
-						Ops.ops().greaterThan(u, Ops.ops().v(0.0), true),
-						Ops.ops().lessThan(u, Ops.ops().v(1.0), true),
-						Ops.ops().greaterThan(v, Ops.ops().v(0.0), true),
-						Ops.ops().lessThan(Ops.ops().add(u, v), Ops.ops().v(1.0), true)));
+						Ops.o().greaterThan(u, Ops.o().v(0.0), true),
+						Ops.o().lessThan(u, Ops.o().v(1.0), true),
+						Ops.o().greaterThan(v, Ops.o().v(0.0), true),
+						Ops.o().lessThan(Ops.o().add(u, v), Ops.o().v(1.0), true)));
 	}
 
 	protected TriangleIntersectAt(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
@@ -94,36 +94,36 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	// TODO  Make private
 	public static ExpressionComputation<Vector> h(Producer<Vector> def, Producer<Vector> direction) {
-		return Ops.ops().crossProduct(direction, def);
+		return Ops.o().crossProduct(direction, def);
 	}
 
 	// TODO  Make private
 	public static ExpressionComputation<Scalar> f(Producer<Vector> abc, ExpressionComputation<Vector> h) {
-		return Ops.ops().dotProduct(abc, h);
+		return Ops.o().dotProduct(abc, h);
 	}
 
 	// TODO  Make private
 	public static Producer<Vector> s(Producer<Vector> jkl, Producer<Vector> origin) {
-		return Ops.ops().subtract(origin, jkl);
+		return Ops.o().subtract(origin, jkl);
 	}
 
 	// TODO  Make private
 	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
-		return Ops.ops().scalar(f.multiply(Ops.ops().dotProduct(s, h)));
+		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(s, h)));
 	}
 
 	// TODO  Make private
 	public static ExpressionComputation<Vector> q(Producer<Vector> abc, Producer<Vector> s) {
-		return Ops.ops().crossProduct(s, abc);
+		return Ops.o().crossProduct(s, abc);
 	}
 
 	// TODO  Make private
 	public static Producer<Scalar> v(Producer<Vector> direction, CollectionProducer<Scalar> f, ExpressionComputation<Vector> q) {
-		return Ops.ops().scalar(f.multiply(Ops.ops().dotProduct(direction, q)));
+		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(direction, q)));
 	}
 
 	private static Producer<Scalar> t(Producer<Vector> def, Producer<Scalar> f, ExpressionComputation<Vector> q) {
-		return Ops.ops().multiply(f, Ops.ops().dotProduct(def, q));
+		return Ops.o().multiply(f, Ops.o().dotProduct(def, q));
 	}
 
 	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {

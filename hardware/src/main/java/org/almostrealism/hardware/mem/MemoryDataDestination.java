@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,80 +16,93 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DestinationSupport;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
-public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>>, KernelIndex {
+public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<Countable> {
 	public static boolean enableThreadLocalProvider = true;
 
-	private final DestinationSupport<T> destination;
+	private final Countable process;
 	private ThreadLocalContextSpecific<MemoryBankProvider<T>> provider;
 
-	public MemoryDataDestination(DestinationSupport<T> destination) {
-		this(destination, null);
+	public MemoryDataDestination(Countable process) {
+		this(process, (IntFunction<MemoryBank<T>>) null);
 	}
 
-	public MemoryDataDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
-		super(args -> destination.getDestination().get(), kernelDestination);
-		this.destination = destination;
+	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination) {
+		this(process, destination, true);
+	}
+
+	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination, boolean provider) {
+		super(args -> { throw new UnsupportedOperationException(); }, destination);
+		this.process = process;
+		if (enableThreadLocalProvider && provider) {
+			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
+			this.provider.init();
+		}
+	}
+
+	public MemoryDataDestination(Countable process, BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> destination) {
+		super(args -> { throw new UnsupportedOperationException(); }, i -> destination.apply(null, i));
+		this.process = process;
 		if (enableThreadLocalProvider) {
-			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(kernelDestination), MemoryBankProvider::destroy);
+			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
 			this.provider.init();
 		}
 	}
 
 	@Override
-	public DestinationSupport<T> getDelegate() { return destination; }
+	public Countable getDelegate() { return process; }
 
 	@Override
 	public int getCount() {
-		if (destination instanceof Countable) {
-			return ((Countable) destination).getCount();
+		if (process != null) {
+			return process.getCount();
 		}
 
 		return super.getCount();
 	}
 
 	@Override
-	public int getKernelIndex() {
-		if (destination instanceof KernelIndex) {
-			return ((KernelIndex) destination).getKernelIndex();
-		}
-
-		return 0;
-	}
+	public boolean isFixedCount() { return true; }
 
 	@Override
 	public KernelizedEvaluable<T> get() {
-		KernelizedEvaluable<T> e = super.get();
+		Evaluable<T> e = super.get();
 
 		return new KernelizedEvaluable<T>() {
 			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
+			public Multiple<T> createDestination(int size) {
 				if (enableThreadLocalProvider) {
 					return provider.getValue().apply(size);
 				} else {
-					return e.createKernelDestination(size);
+					return e.createDestination(size);
 				}
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+			public Evaluable<T> withDestination(MemoryBank destination) {
 				return args -> (T) destination;
 			}
 
 			@Override
-			public T evaluate(Object... args) { return e.evaluate(args); }
+			public T evaluate(Object... args) {
+				return createDestination(1).get(0);
+			}
 		};
+	}
+
+	public void destroy() {
+		if (provider != null) provider.destroy();
 	}
 }

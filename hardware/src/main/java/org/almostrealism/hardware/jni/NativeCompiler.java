@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,10 +17,15 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
+import org.almostrealism.io.TimingMetric;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -28,12 +33,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
+import java.util.function.Consumer;
 
-public class NativeCompiler {
+public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
+	public static boolean enableInstructionSetMonitoring = false;
+	public static boolean enableLargeInstructionSetMonitoring = false;
+
+	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
 
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
@@ -47,26 +58,21 @@ public class NativeCompiler {
 
 	private static int runnableCount;
 	private static int dataCount;
+	private static int monitorOutputCount;
 
-	private String libExecutable, exeExecutable;
-	private final String libCompiler, exeCompiler;
+	private Precision precision;
+
+	private LinkedLibraryGenerator libraryGenerator;
 	private final String libDir;
 	private final String libFormat;
 	private final String dataDir;
 
 	private final String header;
 
-	public NativeCompiler(Hardware hardware, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
-		if (libCompiler != null) {
-			this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
-		}
-
-		if (exeCompiler != null) {
-			this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
-		}
-
-		this.libCompiler = libCompiler;
-		this.exeCompiler = exeCompiler;
+	public NativeCompiler(Precision precision, LinkedLibraryGenerator libraryGenerator,
+						  String libDir, String libFormat, String dataDir, boolean cl) {
+		this.libraryGenerator = libraryGenerator;
+		this.precision = precision;
 		this.libDir = libDir;
 		this.libFormat = libFormat;
 		this.dataDir = dataDir;
@@ -76,11 +82,13 @@ public class NativeCompiler {
 			if (!data.exists()) data.mkdir();
 		}
 
-		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
+		String pi = precision.typeName() + " M_PI_F = M_PI;";
 		this.header = STDIO + STDLIB + STR + MATH + JNI +
 				(cl ? OPENCL : "") +
 				pi + "\n";
 	}
+
+	public Precision getPrecision() { return precision; }
 
 	public String getLibraryDirectory() { return libDir; }
 
@@ -95,16 +103,6 @@ public class NativeCompiler {
 		return data;
 	}
 
-	protected String getExecutable(boolean lib) {
-		if (lib) {
-			if (libExecutable != null) return libExecutable;
-			return libCompiler;
-		} else {
-			if (exeExecutable != null) return exeExecutable;
-			return exeCompiler;
-		}
-	}
-
 	protected String getInputFile(String name) {
 		return libDir + "/" + name + ".c";
 	}
@@ -115,25 +113,6 @@ public class NativeCompiler {
 		} else {
 			return libDir + "/" + name;
 		}
-	}
-
-	protected List<String> getArguments(String name, boolean lib) {
-		List<String> command = new ArrayList<>();
-		if (lib) {
-			if (libExecutable != null) command.add(libCompiler);
-		} else {
-			if (exeExecutable != null) command.add(exeCompiler);
-		}
-		command.add(getInputFile(name));
-		command.add(getOutputFile(name, lib));
-		return command;
-	}
-
-	protected List<String> getCommand(String name, boolean lib) {
-		List<String> command = new ArrayList<>();
-		command.add(getExecutable(lib));
-		command.addAll(getArguments(name, lib));
-		return command;
 	}
 
 	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
@@ -157,7 +136,9 @@ public class NativeCompiler {
 	}
 
 	public String compile(String name, String code, boolean lib) {
-		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + name);
+		if (enableVerbose) {
+			log("Compiling native code for " + name + "\nSource:\n" + code);
+		}
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
@@ -167,50 +148,106 @@ public class NativeCompiler {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 
-		try {
-			Process process = new ProcessBuilder(getCommand(name, lib)).inheritIO().start();
-			process.waitFor();
+		libraryGenerator.generateLibrary(getInputFile(name), getOutputFile(name, lib), runner(name));
 
-			if (process.exitValue() != 0) {
-				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
-			}
-		} catch (IOException | InterruptedException e) {
-			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-		}
-
-		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + name);
+		if (enableVerbose) log("Native code compiled for " + name);
 		return name;
 	}
 
 	public void compileAndLoad(Class target, String code) {
-		String name = compile(target, code);
-		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
-		System.loadLibrary(name);
-		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
+		if (enableInstructionSetMonitoring || (enableLargeInstructionSetMonitoring && code.length() > 50000)) {
+			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
+
+			try {
+				Files.writeString(Path.of("results/" + name), code);
+			} catch (IOException ex) {
+				throw new RuntimeException(ex);
+			}
+
+			log("Wrote " + name);
+		}
+
+		long start = System.nanoTime();
+
+		try {
+			String name = compile(target, code);
+			if (enableVerbose) log("Loading native library " + name);
+			System.loadLibrary(name);
+			if (enableVerbose) log("Loaded native library " + name);
+		} finally {
+			compileTime.addEntry(System.nanoTime() - start);
+		}
 	}
 
-	public static Factory<NativeCompiler> factory(Hardware hardware, boolean cl) {
+	protected Consumer<List<String>> runner(String name) {
+		return command -> {
+			try {
+				Process process = new ProcessBuilder(command).inheritIO().start();
+				process.waitFor();
+
+				if (process.exitValue() != 0) {
+					if (enableVerbose) {
+						log(Arrays.toString(command.toArray()));
+					}
+
+					throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
+				}
+			} catch (IOException | InterruptedException e) {
+				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+			}
+		};
+	}
+
+	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 			if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
-			if (libFormat == null) libFormat = "lib%NAME%.so";
+			if (libFormat == null) libFormat = SystemUtils.isAarch64() ? "lib%NAME%.dylib" : "lib%NAME%.so";
 
-			String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
-			if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+			String libCompiler = SystemUtils.getProperty("AR_HARDWARE_NATIVE_COMPILER");
+			String libLinker = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LINKER");
+			String exeCompiler = SystemUtils.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
+			String libDir = SystemUtils.getProperty("AR_HARDWARE_LIBS");
+			String data = SystemUtils.getProperty("AR_HARDWARE_DATA");
 
-			String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
-			if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
+			boolean localToolchain = libCompiler == null || !libCompiler.contains("/");
 
-			String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
-			if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
+			if (libDir == null && SystemUtils.isMacOS()) {
+				if (localToolchain) {
+					libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
+				} else {
+					libDir = "Extensions";
+				}
 
-			String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
-			if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
+				File ld = new File(libDir);
+				if (!ld.exists()) ld.mkdir();
+			}
 
-			String data = System.getProperty("AR_HARDWARE_DATA");
-			if (data == null) data = System.getenv("AR_HARDWARE_DATA");
+			CompilerCommandProvider commandProvider;
 
-			return new NativeCompiler(hardware, libCompiler, exeCompiler, libDir, libFormat, data, cl);
+			if (libCompiler == null) {
+				commandProvider = new Clang();
+			} else if (libCompiler.endsWith("gcc") || libCompiler.endsWith("clang")) {
+				commandProvider = new Clang(libCompiler, localToolchain);
+			} else if (libCompiler.endsWith("icc")) {
+				throw new UnsupportedOperationException();
+			} else {
+				commandProvider = new DefaultCompilerCommandProvider(libCompiler, exeCompiler);
+			}
+
+			if (libLinker != null) {
+				if (commandProvider instanceof Clang) {
+					((Clang) commandProvider).setLinker(libLinker);
+				} else {
+					throw new UnsupportedOperationException("Cannot set linker for " + commandProvider.getClass().getName());
+				}
+			}
+
+			return new NativeCompiler(precision, new DefaultLinkedLibraryGenerator(commandProvider),
+										libDir, libFormat, data, cl);
 		};
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

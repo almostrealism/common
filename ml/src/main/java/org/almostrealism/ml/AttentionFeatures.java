@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
@@ -30,7 +31,9 @@ import org.almostrealism.layers.LayerFeatures;
 
 public interface AttentionFeatures extends LayerFeatures {
 
-	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys, Producer<PackedCollection<?>> position) {
+	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
+										Producer<PackedCollection<?>> position,
+										ComputeRequirement... requirements) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
 
 		if (inputShape.getDimensions() != 2 || keyShape.getDimensions() != 3)
@@ -54,10 +57,12 @@ public interface AttentionFeatures extends LayerFeatures {
 					.enumerate(1, 1);
 			if (next != null) return next.push(o.reshape(outputShape));
 			return new OperationList();
-		}), null);
+		}), null, requirements);
 	}
 
-	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values, Producer<PackedCollection<?>> position) {
+	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values,
+										  Producer<PackedCollection<?>> position,
+										  ComputeRequirement... requirements) {
 		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
 
 		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
@@ -81,7 +86,7 @@ public interface AttentionFeatures extends LayerFeatures {
 			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			if (next != null) return next.push(o.reshape(shape(dim).traverseEach()));
 			return new OperationList();
-		}), null);
+		}), null, requirements);
 	}
 
 	static AttentionFeatures getInstance() {

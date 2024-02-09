@@ -16,17 +16,40 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.DataContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
 public class CLExceptionProcessor {
+	public static HardwareException process(CLException e, CLComputeContext ctx, String msg, String src) {
+		HardwareException ex;
+
+		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
+			ex = new InvalidContextException(ctx.toString(), e);
+			if (msg != null) ex = new HardwareException(msg, ex);
+		} else if ("CL_INVALID_VALUE".equals(e.getMessage())) {
+			ex = new InvalidValueException(e);
+			if (msg != null) ex = new HardwareException(msg, ex);
+		} else {
+			ex = new HardwareException(msg, e);
+		}
+
+		ex.setProgram(src);
+		return ex;
+	}
+
 	public static HardwareException process(CLException e, CLMemoryProvider provider, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
-			if (provider.getContext() == Hardware.getLocalHardware().getClDataContext()) {
+			DataContext ctx = Hardware.getLocalHardware().getDataContext(ComputeRequirement.CL);
+
+			if (provider.getContext() == ctx) {
 				return new InvalidContextException(provider.getContext().toString(), e);
+			} else if (ctx instanceof CLDataContext) {
+				return new MismatchedContextException(provider.getContext(), (CLDataContext) ctx, e);
 			} else {
-				return new MismatchedContextException(provider.getContext(), Hardware.getLocalHardware().getClDataContext(), e);
+				return new MismatchedContextException(provider.getContext(), null, e);
 			}
 		} else if ("CL_INVALID_VALUE".equals(e.getMessage())) {
 			return new InvalidValueException(e, srcIndex, destIndex, length);

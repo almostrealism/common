@@ -16,16 +16,50 @@
 
 package io.almostrealism.expression;
 
-import java.util.List;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
 
-public class Max extends Expression<Double> {
+import java.util.List;
+import java.util.OptionalInt;
+import java.util.function.Function;
+import java.util.function.Predicate;
+
+public class Max extends BinaryExpression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, a, b);
 	}
 
 	@Override
-	public String getExpression() {
-		return "max(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return lang.max(
+				getChildren().get(0).getExpression(lang),
+				getChildren().get(1).getExpression(lang));
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.max(children[0].doubleValue(), children[1].doubleValue());
+	}
+
+	@Override
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		return CollectionExpression.conditional(shape,
+				getLeft().greaterThan(getRight()),
+				getLeft().delta(shape, target),
+				getRight().delta(shape, target));
 	}
 
 	@Override

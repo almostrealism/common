@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -84,6 +85,10 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void reduceMax() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int c = 16;
 		int d = 1;
 		int w = 2;
@@ -115,6 +120,10 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerateReduceMax() {
+		if (skipMapProjectionTests) {
+			throw new UnsupportedOperationException();
+		}
+
 		int c = 16;
 		int d = 1;
 		int w = 2;
@@ -258,8 +267,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		input.fill(pos -> Math.random());
 
 		CLOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> repeat = c(p(input)).repeat(2).multiply(p(filter));
-//			CollectionProducer<PackedCollection<?>> repeat = dynamicMultiply(c(p(input)).repeat(2), p(filter));
+			CollectionProducer<PackedCollection<?>> repeat = c(p(input)).repeat(2).each().multiply(p(filter));
 			System.out.println(repeat.getShape());
 
 			PackedCollection<?> output = repeat.get().evaluate();
@@ -289,7 +297,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> repeat =
-					c(p(input)).traverse(1).expand(n, v -> v.repeat(n).multiply(p(filter)));
+					c(p(input)).traverse(1).expand(n, v -> v.repeat(n).each().multiply(p(filter)));
 			System.out.println(repeat.getShape());
 
 			PackedCollection<?> output = repeat.get().evaluate();
