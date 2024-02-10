@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,17 @@
 
 package org.almostrealism.space;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Set;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.*;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.color.Shader;
+import org.almostrealism.color.ShaderContext;
+import org.almostrealism.color.ShaderSet;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import io.almostrealism.code.Constant;
