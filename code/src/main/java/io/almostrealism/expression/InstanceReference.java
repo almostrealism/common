@@ -60,9 +60,6 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public Expression<?> getIndex() { return index; }
 
 	@Override
-	public boolean isSeriesSimplificationTarget() { return true; }
-
-	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (var instanceof ArrayVariable) {
 			ArrayVariable v = (ArrayVariable) var;

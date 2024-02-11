@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.IntStream;
 
@@ -87,7 +86,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
+	public void beginScope(String name, OperationMetadata metadata, Accessibility access,
+						   List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
 		if (arguments.size() > 150) {
 			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
 		}
@@ -95,14 +95,17 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		renderMetadata(metadata);
 
 		if (getTopLevelMethodName() == null) {
-			super.beginScope(name, metadata, arguments, access);
+			super.beginScope(name, metadata, access, arguments, parameters);
 			return;
 		}
 
 		if (access == Accessibility.EXTERNAL && getTopLevelMethodName() != null) {
-			super.beginScope(getTopLevelMethodName(), metadata, arguments, access);
+			if (!parameters.isEmpty())
+				throw new UnsupportedOperationException();
+
+			super.beginScope(getTopLevelMethodName(), metadata, access, arguments, parameters);
 		} else {
-			super.beginScope(name, metadata, arguments, access);
+			super.beginScope(name, metadata, access, arguments, parameters);
 		}
 
 		if (access == Accessibility.EXTERNAL) {

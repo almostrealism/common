@@ -49,8 +49,8 @@ public class CJNIPrintWriter extends CPrintWriter {
 	}
 
 	@Override
-	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
-		super.beginScope(name, metadata, arguments, access);
+	public void beginScope(String name, OperationMetadata metadata, Accessibility access, List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
+		super.beginScope(name, metadata, access, arguments, parameters);
 
 		if (access == Accessibility.EXTERNAL) {
 			if (parallel > 1) {

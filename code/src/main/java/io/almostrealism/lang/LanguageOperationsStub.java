@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,11 +18,18 @@ package io.almostrealism.lang;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
 
 public class LanguageOperationsStub implements LanguageOperations {
 	@Override
 	public Precision getPrecision() { return Precision.FP64; }
+
+	@Override
+	public String pi() {
+		// Unicode for pi
+		return "\u03C0";
+	}
 
 	@Override
 	public String pow(String a, String b) {
@@ -45,12 +52,18 @@ public class LanguageOperationsStub implements LanguageOperations {
 	}
 
 	@Override
-	public String declaration(Class type, String destination, String expression) {
+	public String declaration(Class type, String destination, String expression, String arrayLength) {
 		if (type == null) {
 			return assignment(destination, expression);
-		}
+		} else if (arrayLength != null) {
+			if (expression != null) {
+				throw new UnsupportedOperationException();
+			}
 
-		return nameForType(type) + " " + destination + " = " + expression;
+			return nameForType(type) + " " + destination + "[" + arrayLength + "]";
+		} else {
+			return nameForType(type) + " " + destination + " = " + expression;
+		}
 	}
 
 	@Override

@@ -64,7 +64,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 				.filter(Objects::nonNull)
 				.forEach(result::append);
 
-		output.beginScope(scope.getName(), scope.getMetadata(), scope.getArgumentVariables(), access);
+		output.beginScope(scope.getName(), scope.getMetadata(), access, scope.getArgumentVariables(), scope.getParameters());
 		scope.write(output);
 		output.endScope();
 

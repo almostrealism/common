@@ -22,6 +22,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 
 import java.util.List;
 import java.util.Optional;
@@ -60,12 +61,18 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	@Override
-	public String declaration(Class type, String destination, String expression) {
+	public String declaration(Class type, String destination, String expression, String arrayLength) {
 		if (type == null) {
 			return assignment(destination, expression);
-		}
+		} else if (arrayLength != null) {
+			if (expression != null) {
+				throw new UnsupportedOperationException();
+			}
 
-		return nameForType(type) + " " + destination + " = " + expression;
+			return nameForType(type) + " " + destination + "[" + arrayLength + "]";
+		} else {
+			return nameForType(type) + " " + destination + " = " + expression;
+		}
 	}
 
 	@Override
@@ -161,11 +168,34 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation) {
+	public void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, Accessibility access) {
+		renderParameters(arguments, out, true, true, access, null, "", "");
+	}
+
+	protected void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, boolean enableType,
+									boolean enableAnnotation, Accessibility access, Class replaceType,
+									String prefix, String suffix) {
+		for (int i = 0; i < arguments.size(); i++) {
+			Variable<?, ?> arg = arguments.get(i);
+
+			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType));
+
+			out.accept(prefix);
+			out.accept(arguments.get(i).getName());
+			out.accept(suffix);
+			out.accept(argumentPost(i, enableAnnotation, access));
+
+			if (i < arguments.size() - 1) {
+				out.accept(", ");
+			}
+		}
+	}
+
+	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation) {
 		return argumentPre(arg, enableType, enableAnnotation, null);
 	}
 
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
+	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
 		StringBuilder buf = new StringBuilder();
 
 		if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {

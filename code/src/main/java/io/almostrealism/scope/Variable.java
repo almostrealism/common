@@ -17,7 +17,9 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
@@ -71,6 +73,10 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	@Override
 	public String getName() {
 		return this.name;
+	}
+
+	public InstanceReference<?> ref() {
+		return new InstanceReference<>(this);
 	}
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
@@ -170,4 +176,8 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	@Override
 	public int hashCode() { return name.hashCode(); }
+
+	public static Variable<Integer, ?> integer(String name) {
+		return new Variable<>(name, null, new Constant<>(Integer.class), null);
+	}
 }

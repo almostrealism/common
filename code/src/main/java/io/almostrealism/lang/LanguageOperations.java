@@ -23,6 +23,8 @@ import io.almostrealism.scope.Method;
 public interface LanguageOperations {
 	Precision getPrecision();
 
+	String pi();
+
 	String pow(String a, String b);
 
 	String min(String a, String b);
@@ -30,7 +32,11 @@ public interface LanguageOperations {
 
 	String kernelIndex(int axis);
 
-	String declaration(Class type, String destination, String expression);
+	default String declaration(Class type, String destination, String expression) {
+		return declaration(type, destination, expression, null);
+	}
+
+	String declaration(Class type, String destination, String expression, String arrayLength);
 
 	String assignment(String destination, String expression);
 
@@ -39,4 +45,8 @@ public interface LanguageOperations {
 	String nameForType(Class<?> type);
 
 	String renderMethod(Method<?> method);
+
+	default String getStatementTerminator() {
+		return "";
+	}
 }

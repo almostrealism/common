@@ -43,6 +43,11 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	public boolean isEnableArgumentDetailReads() { return enableArgumentDetailReads; }
 
 	@Override
+	public String pi() {
+		return getPrecision() == Precision.FP64 ? "M_PI" : "M_PI_F";
+	}
+
+	@Override
 	public String kernelIndex(int index) {
 		if (index != 0)
 			throw new IllegalArgumentException();
@@ -102,5 +107,10 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + type);
 		}
+	}
+
+	@Override
+	public String getStatementTerminator() {
+		return ";";
 	}
 }
