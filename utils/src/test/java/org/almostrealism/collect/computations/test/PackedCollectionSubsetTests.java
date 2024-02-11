@@ -671,7 +671,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 //		TODO  Why does this version not work? Should be equivalent to the above
 //		CollectionProducerComputation<PackedCollection<?>> producer =
-//				kernel(i -> KernelSupport.kernelIndex(i),
+//				kernel(i -> kernelIndex(i),
 //						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).getValue(p), p(input));
 		Evaluable<PackedCollection<?>> ev = producer.get();
 

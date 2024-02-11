@@ -26,7 +26,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.List;
@@ -112,7 +111,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 	}
 
-	private class Destination implements Producer<PackedCollection<?>>, Delegated<Countable>, Countable, KernelSupport {
+	private class Destination implements Producer<PackedCollection<?>>, Delegated<Countable>, Countable {
 		@Override
 		public Evaluable<PackedCollection<?>> get() {
 			return args -> new PackedCollection<>(getShape().traverseEach());

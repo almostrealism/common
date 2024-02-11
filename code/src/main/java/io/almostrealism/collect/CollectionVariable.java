@@ -37,18 +37,18 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	private CollectionVariable<T> parent;
 	private Expression pos[];
 
-	public CollectionVariable(LanguageOperations lang, NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
-		this(lang, np, name, shape, np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
+	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
+		this(np, name, shape, np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
 	}
 
-	public CollectionVariable(LanguageOperations lang, NameProvider np, String name, TraversalPolicy shape,
+	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
 							  PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(lang, np, name, scope, type, p);
+		super(np, name, scope, type, p);
 		this.shape = shape;
 	}
 
-	protected CollectionVariable(LanguageOperations lang, TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
-		super(lang, null, null, (Expression<Integer>) null);
+	protected CollectionVariable(TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
+		super(null, null, (Expression<Integer>) null);
 		this.shape = shape;
 		this.parent = parent;
 		this.pos = pos;
@@ -144,17 +144,17 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 					"d collection is likely to produce an unexpected result");
 		}
 
-		return new CollectionVariable<>(getLanguage(), shape, this, pos);
+		return new CollectionVariable<>(shape, this, pos);
 	}
 
 	public static <T> ArrayVariable<T> create(LanguageOperations lang, NameProvider np,
 											  String name, Supplier<Evaluable<? extends T>> p) {
 		if (p instanceof Shape) {
-			return new CollectionVariable(lang, np, name, ((Shape) p).getShape(), p);
+			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {
-			return new CollectionVariable(lang, np, name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
+			return new CollectionVariable(np, name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
 		} else {
-			return new ArrayVariable<>(lang, np, name, p);
+			return new ArrayVariable<>(np, name, p);
 		}
 	}
 }

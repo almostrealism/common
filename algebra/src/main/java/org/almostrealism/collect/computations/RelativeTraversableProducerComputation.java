@@ -110,8 +110,9 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 //	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
 
 	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
-		System.out.println("WARN: Using default getValue implementation");
-		return getValueFunction().apply(index);
+		// System.out.println("WARN: Using default getValue implementation");
+		// return getValueFunction().apply(index);
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

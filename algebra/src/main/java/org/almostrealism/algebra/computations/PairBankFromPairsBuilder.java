@@ -22,8 +22,13 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -31,6 +36,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.RelativeTraversableProducerComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -43,6 +50,11 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 		producers = new Producer[count];
 	}
 
+	protected PairBankFromPairsBuilder(TraversalPolicy shape, Producer<Pair<?>>[] producers) {
+		super(shape, new Producer[0]);
+		this.producers = producers;
+	}
+
 	public Producer<Pair<?>> get(int index) {
 		return producers[index];
 	}
@@ -51,7 +63,23 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 		producers[index] = value;
 	}
 
-	public int getCount() { return producers.length; }
+	public int getProducerCount() { return producers.length; }
+
+	@Override
+	public boolean isFixedCount() {
+		return getChildren().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+	}
+
+	@Override
+	public int getCount() {
+		// TODO  Does this need to be based on the Producer array?
+		return super.getCount();
+	}
+
+	@Override
+	public Collection getChildren() {
+		return List.of(producers);
+	}
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -73,8 +101,17 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 	@Override
 	public Producer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
 
+	@Override
+	public PairBankFromPairsBuilder generate(List<Process<?, ?>> children) {
+		return new PairBankFromPairsBuilder(getShape(), children.toArray(new Producer[0]));
+	}
+
 	private int arg(int index) { return index / 2; }
 	private int pos(int index) { return index % 2; }
+
+	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
+		return ((TraversableExpression) producers[arg(index)]).getValueAt(new IntegerConstant(pos(index)));
+	}
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {

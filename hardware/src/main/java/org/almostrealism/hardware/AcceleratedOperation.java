@@ -19,10 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import io.almostrealism.kernel.KernelSeriesMatcher;
-import io.almostrealism.kernel.KernelSeriesProvider;
-import io.almostrealism.kernel.KernelTraversalProvider;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Argument;
@@ -125,7 +121,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
-	public ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(int index, Expression<Integer> size) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 

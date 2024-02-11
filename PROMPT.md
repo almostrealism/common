@@ -1,158 +1,9 @@
-<a name="readme-top"></a>
+## Documentation
 
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![Apache License][license-shield]][license-url]
-
-<h3 align="center">Almost Realism Scientific Computing and Machine Learning Libraries</h3>
-<h5 align="center">Tools for high-performance scientific computing, generative art, and machine learning in Java
-with pluggable native acceleration.</h5>
-
-  <p align="center">
-    Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
-    <br />
-    <a href="https://github.com/almostrealism/common/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/almostrealism/common/issues">Request Feature</a>
-  </p>
-
-  <p align="right">
-    <i>If you are interested in a part-time, paid position, developing common ML model architectures as part of
-    our ongoing project to increase the stability and performance of this framework - please email
-    <a href="https://twitter.com/ashesfall">michael</a> @ almostrealism.com</i>
-    <br>
-    <img src="https://img.shields.io/github/contributors/almostrealism/common.svg?style=for-the-badge"/>
-  </p>
-
-### What does this do?
-It provides data structures for operations in algebra, geometry, and other mathematics along
-with datatypes for both video and audio that are useful in both scientific computations and
-the automated production of artwork. These libraries provide abstractions that can be used
-at runtime with a whole range of different acceleration strategies, so you do not have to make
-a commitment to a particular strategy for production use of your model code ahead of time.
-
-There is a complete implementation of n-dimensional arrays, but unlike other acceleration
-frameworks where specific operations are accelerated, this library provides a mechanism for
-compiling an entire accelerator program from a hierarchy of mathematical operations. This
-makes it potentially faster than systems which are designed to perform certain common operations
-quickly, but are not capable of generating custom accelerator code.
-
-Machine learning capabilities will be expanded substantially over the remainder of 2023, but
-an early example of a neural network is provided at the end of this document.
-
-Using this library correctly allows you to take complex operations, written in Java, and end
-up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
-
- *Note: A subset of this documentation for use as the preamble to a LLM prompt is available in PROMPT.md*
- *(This can sometimes be an easier way to get help using the library, than reading this yourself.)*
-
-#### Support Accelerators
-    1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
-    2. OpenCL on CPU (x86/Aarch64)
-    3. OpenCL on GPU (x86/Aarch64)
-    4. Metal (JNI with dylib) on GPU (Aarch64)
-    5. External Native Operations via a generated executable (x86/Aarch64)
-
-*For more information about the Java bindings for OpenCL used here, visit jocl.org*
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-### Why would you want this?
-When choosing Java as your target language, you are normally making a trade-off related to
-leveraging native instruction sets. The assumption is normally that applications can benefit
-from the JVM in a way that makes it worth sacrificing access to native instruction sets like
-AVX2 or native frameworks like CL and Metal. The Almost Realism Libraries eliminate this trade
-off, allowing you to create Java applications that make use of acceleration without breaking
-the design patterns that are normally used in Java development.
-
-This also means you can, for example, define ML workflows and other HPC processes in Scala,
-Kotlin or Groovy. If you've ever been frustrated trying to take a Python project to production,
-this library should be able to make it unnecessary. You also can run your programs on any
-machine with an OpenCL compatible device and a JVM, without compiling on the target system.
-This means no more of the headache of "numpy failed to build on this Amazon Graviton machine",
-etc.
-
-### What does it depend on?
-The dependency footprint is unbelievably small. The only dependency that is brought with
-this library results from your choice of accelerator. To use JOCL you will need the native
-bindings for CL. They are available from jocl.org.
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-### To use the libraries
-
-Add Maven Repository:
-
-        <repositories>
-                <repository>
-                        <id>almostrealism</id>
-                        <name>Almost Realism/name>
-                        <url>https://maven.pkg.github.com/almostrealism/common</url>
-                        <releases><enabled>true</enabled></releases>
-                        <snapshots><enabled>true</enabled></snapshots>
-                </repository>
-        </repositories>
-
-Add utils:
-
-        <dependency>
-            <groupId>org.almostrealism</groupId>
-            <artifactId>ar-utils</artifactId>
-            <version>0.60</version>
-        </dependency>
-
-### Enabling Your Application
-
-All of the library functionality is provided as default methods of an interface called
-**CodeFeatures**
-
-```Java
-    public class MyNativeEnabledApplication implements CodeFeatures {
-	    public static void main(String args[]) {
-			new MyNativeEnabledApplication().performMath();
-		}
-		
-		public void performMath() {
-			// .. include native operations here
-		}
-    }
-```
-
-Simple mathematical operations on constant values are compact to express, using
-the c() method to create a constant value, and the multiply() method to create a
-multiplication operation. The get() method is used to compile the operation, and
-the evaluate() method is used to execute it. The result is a PackedCollection, a
-generic datastructure for storing numbers in a fixed arrangement in memory.
-(When you are not using a fixed arrangement, you can use the Tensor class discussed
-below instead).
-
-```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-	// ....
-
-	public void performMath() {
-		// Compose the expression
-		Producer<PackedCollection<?>> constantOperation = c(3.0).multiply(c(2.0));
-
-		// Compile the expression
-		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
-
-		// Evaluate the expression
-		StringBuffer displayResult = new StringBuffer();
-		displayResult.append("3 * 2 = ");
-		compiledOperation.evaluate().print(displayResult::append);
-
-		// Display the result
-		System.out.println(displayResult);
-	}
-}
-```
-
-When the expression is compiled it will be converted to the target accelerator. This might
-be an OpenCL kernel program, an entirely separate native process or library, or something else.
-You can write your entire application this way without having to decide which backend to use,
-or you can use different backends in different places - leveraging Metal on MacOS, while
-using a native lib on windows and an external native process in the cloud - all with the same
-language for defining your expressions.
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Almost Realism Scientific Computing and Machine Learning Libraries
+Tools for high-performance scientific computing, generative art, and machine learning in Java
+with pluggable native acceleration.
+Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
 
 ### Tutorial
 
@@ -312,7 +163,7 @@ but we will perform multiplication using a (potentially separate) context that s
 The example also shows some other features, including the a() method for assignment. Assignment
 produces a **Runnable** rather than an **Evaluable**, and the run() method is used to execute it.
 Be aware that, the **ComputeContext** which is used for a given **Evaluable** or **Runnable** is
-always the one that was in effect when the **Evaluable** or **Runnable** was compiled via the 
+always the one that was in effect when the **Evaluable** or **Runnable** was compiled via the
 get() method.
 
 *Note: The contexts available on a given machine will depend on the hardware.*
@@ -502,7 +353,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 #### More Complex Operations
 
 All these atomic operations (together with the standard mathematical operations) can be combined to achieve
-basically any kind of tensor algebra you may need. If you find otherwise, please 
+basically any kind of tensor algebra you may need. If you find otherwise, please
 [open an issue][issues-url]
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -633,112 +484,6 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 }
 ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+############################################################################################################
 
-### Machine Learning
-
-The system is gradually becoming fully-featured enough to support machine learning tasks.
-An example of CNN training is shown below. In the example below the input and loss
-computation are both random, so there isn't really anything useful being learned, but it
-is a good example of how to use the framework for these kinds of workloads.
-
-```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-	public static void main(String args[]) {
-		new MyNativeEnabledApplication().trainCnn();
-	}
-	
-	public void trainCnn() {
-		int s = 10;
-
-		Tensor<Double> t = new Tensor<>();
-		shape(s, s).stream().forEach(pos -> t.insert(0.5 + 0.5 * Math.random(), pos));
-
-		PackedCollection<?> input = t.pack();
-		train(input, model(s, s, 3, 8, 10));
-	}
-
-	protected void train(PackedCollection<?> input, Model model) {
-		CompiledModel compiled = model.compile();
-		log("Model compiled");
-
-		int epochSize = 1000;
-		int count = 100 * epochSize;
-
-		for (int i = 0; i < count; i++) {
-			input.fill(pos -> 0.5 + 0.5 * Math.random());
-
-			compiled.forward(input);
-
-			if (i % 1000 == 0) {
-				log("Input Size = " + input.getShape() +
-						"\t | epoch = " + i / epochSize);
-			}
-
-			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-
-			if (i % 1000 == 0) {
-				log("\t\tbackprop\t\t\t | epoch = " + i / epochSize);
-			}
-		}
-	}
-
-	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
-		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
-		log("Created model (" + model.getBlocks().size() + " blocks)");
-		return model;
-	}
-}
-```
-
-This functionality will be substantially improved during the remainder of 2024 prior to the release of
-version 1.0.0.
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-### What are the terms of the LICENSE?
-
-Copyright 2024  Michael Murray
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-## Contact
-
-Michael Murray - [@ashesfall](https://twitter.com/ashesfall) - michael@almostrealism.com
-
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
-Original Project Link: [https://github.com/almostrealism/common](https://github.com/almostrealism/common)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-[contributors-shield]: https://img.shields.io/github/contributors/almostrealism/common.svg?style=for-the-badge
-[contributors-url]: https://github.com/almostrealism/common/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/almostrealism/common.svg?style=for-the-badge
-[forks-url]: https://github.com/almostrealism/common/network/members
-[stars-shield]: https://img.shields.io/github/stars/almostrealism/common.svg?style=for-the-badge
-[stars-url]: https://github.com/almostrealism/common/stargazers
-[issues-shield]: https://img.shields.io/github/issues/almostrealism/common.svg?style=for-the-badge
-[issues-url]: https://github.com/almostrealism/common/issues
-[license-shield]: https://img.shields.io/github/license/almostrealism/common.svg?style=for-the-badge
-[license-url]: https://github.com/almostrealism/common/blob/master/LICENSE
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/ashesfall
+Now that you have read this documentation, I want you to try and answer the following question:

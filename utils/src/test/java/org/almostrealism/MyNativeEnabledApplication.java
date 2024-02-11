@@ -17,26 +17,19 @@
 package org.almostrealism;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.ComplexNumber;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class MyNativeEnabledApplication implements CodeFeatures {
@@ -288,6 +281,16 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
 		PackedCollection<?> dout = dy.evaluate(v);
 		dout.print();
+	}
+
+	@Test
+	public void complexMath() {
+		ComplexNumber a = new ComplexNumber(1, 2);
+		ComplexNumber b = new ComplexNumber(3, 4);
+
+		Producer<ComplexNumber> c = multiplyComplex(c(a), c(b));
+		System.out.println("(1 + 2i) * (3 + 4i) = ");
+		c.evaluate().print();
 	}
 
 	@Test

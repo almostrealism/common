@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,13 +27,10 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
-import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
 
@@ -205,15 +202,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		public RootDelegateProviderSupplier(MemoryData mem) {
 			this.provider = new Provider<>(rootDelegate(mem));
 			rootDelegateSuppliers.add(this);
-		}
-
-		@Override
-		public boolean isKernelEnabled() {
-			// TODO  This is not ideal, but until we cleanup kernel functionality further
-			// TODO  allowing this to be treated as KernelSupport is not compatible with
-			// TODO  the scenarios where we need to disable kernel operations
-			// return Hardware.enableKernelOps;
-			return true;
 		}
 
 		@Override
