@@ -34,6 +34,18 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 		this.size = size;
 	}
 
+	public Class<T> getType() {
+		return type;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public Expression<?> getSize() {
+		return size;
+	}
+
 	@Override
 	public String getStatement(LanguageOperations lang) {
 		return lang.declaration(type, name, null, size.getExpression(lang));

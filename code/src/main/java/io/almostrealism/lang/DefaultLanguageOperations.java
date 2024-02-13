@@ -30,7 +30,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public abstract class DefaultLanguageOperations implements LanguageOperations {
-	protected boolean enableWarnOnExplictParams = true;
 
 	private Precision precision;
 	private boolean enableArrayVariables;
@@ -90,6 +89,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return buf.toString();
 	}
 
+	@Deprecated
 	protected void renderParametersExplicit(List<Expression> parameters, Consumer<String> out) {
 		for (int i = 0; i < parameters.size(); i++) {
 			Expression arg = parameters.get(i);
@@ -103,17 +103,8 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
-		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
-		if (explicit.isPresent()) {
-			if (enableWarnOnExplictParams) {
-				System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression(this) +
-									") provided to method; falling back to explicit rendering");
-			}
-			renderParametersExplicit(parameters, out);
-			return;
-		}
-
 		List<ArrayVariable<?>> arguments = parameters.stream()
+				.filter(exp -> exp instanceof InstanceReference)
 				.map(exp -> (InstanceReference) exp)
 				.map(InstanceReference::getReferent)
 				.map(v -> (ArrayVariable<?>) v)
@@ -131,6 +122,18 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			}
 		} else {
 			renderArguments(arguments, out, false, false,  Accessibility.INTERNAL,null, "", "");
+		}
+
+		List<Expression> explicit = parameters.stream()
+				.filter(exp -> !(exp instanceof InstanceReference))
+				.collect(Collectors.toList());
+
+		if (!explicit.isEmpty()) {
+			if (!arguments.isEmpty()) {
+				out.accept(", ");
+			}
+
+			renderParametersExplicit(explicit, out);
 		}
 	}
 

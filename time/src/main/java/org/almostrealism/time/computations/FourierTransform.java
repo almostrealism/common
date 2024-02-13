@@ -19,6 +19,7 @@ package org.almostrealism.time.computations;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -44,8 +45,10 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
-		Scope<?> radix2 = radix2(scope.declareArray(this, "output", e(SIZE)),
-				scope.declareArray(this, "input", e(SIZE)));
+		ArrayVariable<Double> input =  new ArrayVariable<>(this, Double.class, "input", e(SIZE));
+		ArrayVariable<Double> output = new ArrayVariable<>(this, Double.class, "output", e(SIZE));
+
+		Scope<?> radix2 = radix2(output, input);
 		scope.getRequiredScopes().add(radix2);
 		scope.getStatements().add(radix2.call(e(SIZE), e(0), e(0)));
 
@@ -69,21 +72,44 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		ArrayVariable<Double> evenFft = radix2.declareArray(this, "evenFft", e(SIZE / 2));
 		ArrayVariable<Double> oddFft = radix2.declareArray(this, "oddFft", e(SIZE / 2));
 
-		Cases cases = new Cases<>();
-		Scope<?> main = cases.addCase(len.ref().greaterThanOrEqual(e(2)), new Scope<>());
-		Expression halfN = main.declareInteger("halfN", len.ref().divide(e(2)));
-		Expression angle = main.declareDouble("angle", e(2).multiply(pi()).divide(len.ref()));
-		main.addCase(inverseTransform.ref().eq(e(0)), assign(angle, angle.minus()));
+		Cases cases = new Cases<>(); {
+			Scope<?> main = cases.addCase(len.ref().greaterThanOrEqual(e(2)), new Scope<>());
+			Expression halfN = main.declareInteger("halfN", len.ref().divide(e(2)));
+			Expression angle = main.declareDouble("angle", e(2).multiply(pi()).divide(len.ref()));
+			main.addCase(inverseTransform.ref().eq(e(0)), assign(angle, angle.minus()));
 
-		Repeated evenOdd = new Repeated<>();
-		Variable k = Variable.integer("k");
-		evenOdd.setIndex(k);
-		evenOdd.setCondition(k.ref().lessThan(halfN));
-		evenOdd.setInterval(e(1));
-		main.add(evenOdd);
+			Repeated evenOdd = new Repeated<>(); {
+				InstanceReference k = Variable.integer("k").ref();
+				evenOdd.setIndex(k.getReferent());
+				evenOdd.setCondition(k.lessThan(halfN));
+				evenOdd.setInterval(e(1));
 
-		Scope<?> base = cases.addCase(null, new Scope<>());
-		radix2.add(cases);
+				Scope<?> body = new Scope(); {
+					Expression<?> kPlusHalfN = body.declareInteger("kPlusHalfN", k.add(halfN));
+					Expression<?> angleK = body.declareDouble("angleK", k.multiply(k));
+					Expression<?> omegaR = body.declareDouble("omegaR", angleK.cos());
+					Expression<?> omegaI = body.declareDouble("omegaI", angleK.sin());
+
+					Expression k2 = k.multiply(2);
+					Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
+
+					body.assign(even.valueAt(k2), input.valueAt(k2).add((Expression) input.valueAt(kPlusHalfN2)));
+					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add((Expression) input.valueAt(kPlusHalfN2.add(1))));
+
+					Expression inKMinusInKPlusHalfnR = input.valueAt(k2).subtract((Expression) input.valueAt(kPlusHalfN2));
+
+					evenOdd.add(body);
+				}
+
+				main.add(evenOdd);
+			}
+
+			Scope<?> base = cases.addCase(null, new Scope<>()); {
+
+			}
+
+			radix2.add(cases);
+		}
 
 		return radix2;
 	}

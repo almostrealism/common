@@ -48,7 +48,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	protected CollectionVariable(TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
-		super(null, null, (Expression<Integer>) null);
+		super(null, null, null, (Expression<Integer>) null);
 		this.shape = shape;
 		this.parent = parent;
 		this.pos = pos;

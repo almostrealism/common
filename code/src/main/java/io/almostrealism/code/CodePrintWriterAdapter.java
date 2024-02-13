@@ -29,8 +29,6 @@ import java.util.List;
 import java.util.Stack;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
-	protected boolean enableWarnOnExplictParams = true;
-
 	protected PrintWriter p;
 	protected LanguageOperations language;
 
@@ -125,6 +123,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 			buf.append("(");
 			((DefaultLanguageOperations) language).renderArguments(arguments, buf::append, access);
+			if (!arguments.isEmpty() && !parameters.isEmpty()) { buf.append(", "); }
 			((DefaultLanguageOperations) language).renderParameters(parameters, buf::append, access);
 			buf.append(")");
 		}

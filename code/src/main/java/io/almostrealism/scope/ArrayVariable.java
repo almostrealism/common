@@ -39,12 +39,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
+	private boolean disableOffset;
 	private boolean destroyed;
 
-	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
+	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
 		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
 		this.names = np;
 		setArraySize(arraySize);
+		if (type != null) setExpression(new Constant<>(type));
 	}
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
@@ -72,6 +74,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+
+	public boolean isDisableOffset() {
+		return disableOffset;
+	}
+
+	public void setDisableOffset(boolean disableOffset) {
+		this.disableOffset = disableOffset;
+	}
 
 	public int getOffset() {
 		if (destroyed) throw new UnsupportedOperationException();

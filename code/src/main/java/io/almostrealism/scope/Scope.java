@@ -27,6 +27,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArrayDeclaration;
+import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -258,7 +259,16 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 
 	public ArrayVariable<?> declareArray(NameProvider np, String name, Expression<Integer> size) {
 		getStatements().add(new ArrayDeclaration(Double.class, name, size));
-		return new ArrayVariable<>(np, name, size);
+
+		ArrayVariable v = new ArrayVariable<>(np, Double.class, name, size);
+		v.setDisableOffset(true);
+		return v;
+	}
+
+	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<V> src) {
+		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, src);
+		getStatements().add(assignment);
+		return assignment;
 	}
 
 	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
@@ -273,9 +283,16 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			sortArguments(args);
 
+			List<String> declaredArrays = getStatements().stream()
+					.map(s -> s instanceof ArrayDeclaration ? (ArrayDeclaration) s : null)
+					.filter(Objects::nonNull)
+					.map(ArrayDeclaration::getName)
+					.collect(Collectors.toList());
+
 			this.stream()
 					.map(Scope::arguments)
 					.flatMap(List::stream)
+					.filter(v -> !declaredArrays.contains(v.getVariable().getName()))
 					.forEach(args::add);
 
 			methods.stream()
