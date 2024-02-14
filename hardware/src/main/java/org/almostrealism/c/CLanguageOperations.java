@@ -73,7 +73,7 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 				return;
 			} else if (isEnableArgumentDetailReads() && isEnableArrayVariables()) {
 				if (!arguments.isEmpty()) {
-					renderArguments(arguments, out, true, true, access, null, "*", "");
+					renderArguments(arguments, out, true, true, access, ParamType.ARRAY);
 					out.accept(", ");
 					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
 					out.accept(" int *offsetArr");

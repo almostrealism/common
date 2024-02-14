@@ -96,6 +96,13 @@ public interface ExpressionFeatures {
 		return Conditional.of(condition, (Expression) positive, (Expression) negative);
 	}
 
+	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {
+		return new Expression[] {
+				aReal.multiply(bReal).subtract(aImg.multiply(bImg)),
+				aReal.multiply(bImg).add(aImg.multiply(bReal))
+		};
+	}
+
 	static ExpressionFeatures getInstance() {
 		return new ExpressionFeatures() { };
 	}

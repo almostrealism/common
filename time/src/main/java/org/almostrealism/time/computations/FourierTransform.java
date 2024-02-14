@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -55,7 +56,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		return scope;
 	}
 
-	protected Scope<?> radix2(ArrayVariable<?> output, ArrayVariable<?> input) {
+	protected Scope<?> radix2(ArrayVariable<Double> output, ArrayVariable<Double> input) {
 		Variable<Integer, ?> len = Variable.integer("len");
 		Variable<Integer, ?> inverseTransform = Variable.integer("inverseTransform");
 		Variable<Integer, ?> isFirstSplit = Variable.integer("isFirstSplit");
@@ -93,15 +94,28 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					Expression k2 = k.multiply(2);
 					Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
 
-					body.assign(even.valueAt(k2), input.valueAt(k2).add((Expression) input.valueAt(kPlusHalfN2)));
-					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add((Expression) input.valueAt(kPlusHalfN2.add(1))));
+					body.assign(even.valueAt(k2), input.valueAt(k2).add(input.valueAt(kPlusHalfN2)));
+					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add(input.valueAt(kPlusHalfN2.add(1))));
 
-					Expression inKMinusInKPlusHalfnR = input.valueAt(k2).subtract((Expression) input.valueAt(kPlusHalfN2));
+					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr", input.valueAt(k2).subtract(input.valueAt(kPlusHalfN2)));
+					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi", input.valueAt(k2.add(1)).subtract(input.valueAt(kPlusHalfN2.add(1))));
+
+					Expression oddExp[] = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
+					body.assign(odd.valueAt(k2), oddExp[0]);
+					body.assign(odd.valueAt(k2.add(1)), oddExp[1]);
 
 					evenOdd.add(body);
 				}
 
 				main.add(evenOdd);
+
+				Scope recursion = new Scope(); {
+					Method<?> evenFftCall = radix2.call(evenFft.ref(), halfN, inverseTransform.ref(), e(0));
+					evenFftCall.setArgument(input, even);
+					recursion.getStatements().add(evenFftCall);
+
+					main.getChildren().add(recursion);
+				}
 			}
 
 			Scope<?> base = cases.addCase(null, new Scope<>()); {
