@@ -24,7 +24,7 @@ public class TimeCellTest implements TestFeatures {
 			tick.run();
 		}
 
-		assertEquals(100.0, cell.frame().get().evaluate());
+		assertEquals(100.0, cell.frameScalar().get().evaluate());
 	}
 
 	@Test

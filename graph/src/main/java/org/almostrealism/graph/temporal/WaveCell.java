@@ -23,7 +23,6 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -63,6 +62,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, offset, repeat, frameIndex, frameCount);
 	}
+
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat,
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
@@ -96,7 +96,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		}
 
 		this.clock = new TimeCell(initial, duration);
-		this.frame = clock.frame();
+		this.frame = clock.frameScalar();
 
 		this.frameIndex = frameIndex;
 		this.frameCount = frameCount;
