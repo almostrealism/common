@@ -79,6 +79,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableAxisAlignment = false;
 	boolean enableIndexProjection = true;
+	boolean enableCollectionIndexSize = false;
 
 	Console console = Computation.console.child();
 
@@ -266,7 +267,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
 																			   Producer<PackedCollection<?>> index) {
-		return c(shape(collection), collection, index);
+		if (enableCollectionIndexSize) {
+			return c(shape(index), collection, index);
+		} else {
+			return c(shape(collection), collection, index);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
@@ -801,9 +806,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																			   Producer<T> trueValue, Producer<T> falseValue,
 																			   boolean includeEqual) {
 		TraversalPolicy shape = shape(1);
-//			if (shape(a).getSize() == shape(b).getSize()) {
-//				shape = shape(a);
-//			}
+		if (shape(a).getSize() == shape(b).getSize()) {
+			shape = shape(a);
+		}
 
 		return new TraversableExpressionComputation<>(shape,
 				(args, index) -> conditional(
