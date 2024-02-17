@@ -458,6 +458,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new TraversableExpressionComputation<>(shape, (args, idx) -> indexExpression.apply(idx));
 	}
 
+	default CollectionProducerComputation<PackedCollection<?>> integers() {
+		return new TraversableExpressionComputation<>(shape(1), (args, idx) -> idx);
+	}
+
+
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 

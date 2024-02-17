@@ -51,7 +51,7 @@ import java.util.stream.IntStream;
 public class CollectionComputationTests implements TestFeatures {
 
 	@Test
-	public void integers() {
+	public void evaluateIntegers() {
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
