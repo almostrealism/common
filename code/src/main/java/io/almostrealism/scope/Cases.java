@@ -51,7 +51,8 @@ public class Cases<T> extends Scope<T> {
 	public List<Expression<Boolean>> getConditions() { return conditions; }
 
 	@Override
-	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope) {
+	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
+		if (altScope != null) throw new UnsupportedOperationException();
 		if (condition != null) conditions.add(condition);
 		getChildren().add(scope);
 		return scope;

@@ -27,7 +27,6 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArrayDeclaration;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -151,15 +150,29 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return parameters;
 	}
 
+	@Override
+	public boolean add(Scope<T> child) {
+		if (child == null) {
+			throw new IllegalArgumentException();
+		}
+
+		return super.add(child);
+	}
+
 	public Scope<T> addCase(Expression<Boolean> condition, Statement<?> statement) {
 		Scope<T> scope = new Scope<>();
 		scope.getStatements().add(statement);
-		return addCase(condition, scope);
+		return addCase(condition, scope, null);
 	}
 
 	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope) {
+		return addCase(condition, scope, null);
+	}
+
+	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
 		Cases cases = new Cases<>();
 		cases.addCase(condition, scope);
+		if (altScope != null) cases.add(altScope);
 		add(cases);
 		return scope;
 	}
@@ -289,10 +302,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					.map(ArrayDeclaration::getName)
 					.collect(Collectors.toList());
 
+			List<String> declaredParameters = getParameters().stream()
+					.map(Variable::getName)
+					.collect(Collectors.toList());
+
 			this.stream()
 					.map(Scope::arguments)
 					.flatMap(List::stream)
 					.filter(v -> !declaredArrays.contains(v.getVariable().getName()))
+					.filter(v -> !declaredParameters.contains(v.getVariable().getName()))
 					.forEach(args::add);
 
 			methods.stream()
@@ -318,11 +336,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.flatMap(List::stream)
 				.forEach(v -> args.add((Argument<?>) v));
 
-//		List<Argument<?>> result = args.stream()
-//				.map(Delegated::getRootDelegate)
-//				.collect(Collectors.toList());
-//
-//		result = removeDuplicateArguments(result);
+		if (args.stream().anyMatch(Objects::isNull)) {
+			throw new UnsupportedOperationException();
+		}
 
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
