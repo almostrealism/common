@@ -204,36 +204,37 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ScalarChoice(choiceCount, decision, choices);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> greaterThan(Supplier<Evaluable<? extends Scalar>> left,
-															  Supplier<Evaluable<? extends Scalar>> right,
-															  boolean includeEqual) {
-		return greaterThan(left, right, null, null, includeEqual);
+	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,
+																	  Supplier<Evaluable<? extends Scalar>> right,
+																	  boolean includeEqual) {
+		return scalarGreaterThan(left, right, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> greaterThan(Supplier<Evaluable<? extends Scalar>> left,
-																Supplier<Evaluable<? extends Scalar>> right,
-																Supplier<Evaluable<? extends Scalar>> trueValue,
-																Supplier<Evaluable<? extends Scalar>> falseValue,
-																boolean includeEqual) {
+	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,
+																	  Supplier<Evaluable<? extends Scalar>> right,
+																	  Supplier<Evaluable<? extends Scalar>> trueValue,
+																	  Supplier<Evaluable<? extends Scalar>> falseValue,
+																	  boolean includeEqual) {
 		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> lessThan(Supplier<Evaluable<? extends Scalar>> left,
-															  Supplier<Evaluable<? extends Scalar>> right,
-															  boolean includeEqual) {
-		return lessThan(left, right, null, null, includeEqual);
+	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
+																   Supplier<Evaluable<? extends Scalar>> right,
+																   boolean includeEqual) {
+		return scalarLessThan(left, right, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> lessThan(Supplier<Evaluable<? extends Scalar>> left,
-															  Supplier<Evaluable<? extends Scalar>> right,
-															  Supplier<Evaluable<? extends Scalar>> trueValue,
-															  Supplier<Evaluable<? extends Scalar>> falseValue,
-															  boolean includeEqual) {
+	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
+																   Supplier<Evaluable<? extends Scalar>> right,
+																   Supplier<Evaluable<? extends Scalar>> trueValue,
+																   Supplier<Evaluable<? extends Scalar>> falseValue,
+																   boolean includeEqual) {
 		return new LessThanScalar(left, right, trueValue, falseValue, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar> left,
-															Producer<Scalar>  right) {
+	default AcceleratedConditionalStatementVector scalarLessThan(Producer<Scalar> left,
+																 Producer<Scalar> right) {
+		// TODO  This should not be Vector-specific
 		return new LessThanVector(left, right, null, null);
 	}
 

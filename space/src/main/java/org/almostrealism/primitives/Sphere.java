@@ -16,10 +16,8 @@
 
 package org.almostrealism.primitives;
 
-import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -144,7 +142,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
 //			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
 //												scalar(-1.0), closest(t(fr))));
-			Producer<Scalar> distance = scalar(_greaterThan(discriminant(fr), c(0.0),
+			Producer<Scalar> distance = scalar(greaterThan(discriminant(fr), c(0.0),
 												closest(t(fr)), scalar(-1.0)));
 			return new ShadableIntersection(this, r, distance);
 		} else {

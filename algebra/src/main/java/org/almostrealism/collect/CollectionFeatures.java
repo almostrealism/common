@@ -25,7 +25,6 @@ import io.almostrealism.collect.KernelExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exp;
@@ -59,7 +58,6 @@ import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
-import org.almostrealism.collect.computations.RepeatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
@@ -78,7 +76,7 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableAxisAlignment = false;
-	boolean enableIndexProjection = true;
+	boolean enableIndexProjection = false;
 	boolean enableCollectionIndexSize = false;
 
 	Console console = Computation.console.child();
@@ -690,13 +688,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				a, b);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMin(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Min(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		TraversalPolicy shape = shape(1);
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -706,13 +697,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new TraversableExpressionComputation<>(shape,
 				(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
-	}
-
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMax(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
@@ -734,11 +718,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
-	}
-
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeBound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
-		return relativeMin(relativeMax(a, c(min)), c(max));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
@@ -791,14 +770,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _greaterThan(Producer<T> a, Producer<T> b,
-																			Producer<T> trueValue, Producer<T> falseValue) {
-		return _greaterThan(a, b, trueValue, falseValue, false);
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<T> a, Producer<T> b,
+																			  Producer<T> trueValue, Producer<T> falseValue) {
+		return greaterThan(a, b, trueValue, falseValue, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _greaterThan(Producer<?> a, Producer<?> b,
-																			Producer<T> trueValue, Producer<T> falseValue,
-																			boolean includeEqual) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<?> a, Producer<?> b,
+																			  Producer<T> trueValue, Producer<T> falseValue,
+																			  boolean includeEqual) {
 		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
 	}
 
@@ -823,14 +802,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(Supplier) trueValue, (Supplier) falseValue);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<T> a, Producer<T> b,
-																  Producer<T> trueValue, Producer<T> falseValue) {
-		return _lessThan(a, b, trueValue, falseValue, false);
+	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<T> a, Producer<T> b,
+																		   Producer<T> trueValue, Producer<T> falseValue) {
+		return lessThan(a, b, trueValue, falseValue, false);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<?> a, Producer<?> b,
-																  Producer<T> trueValue, Producer<T> falseValue,
-																  boolean includeEqual) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<?> a, Producer<?> b,
+																		   Producer<T> trueValue, Producer<T> falseValue,
+																		   boolean includeEqual) {
 		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
 	}
 

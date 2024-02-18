@@ -141,10 +141,10 @@ public class MeshIntersectionTest implements TestFeatures {
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
-				greaterThan(u, v(0.0), true),
-				lessThan(u, v(1.0), true),
-				greaterThan(v, v(0.0), true),
-				lessThan(add(u, v), v(1.0), true));
+				scalarGreaterThan(u, v(0.0), true),
+				scalarLessThan(u, v(1.0), true),
+				scalarGreaterThan(v, v(0.0), true),
+				scalarLessThan(add(u, v), v(1.0), true));
 		KernelizedEvaluable<Scalar> evs = (KernelizedEvaluable) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}

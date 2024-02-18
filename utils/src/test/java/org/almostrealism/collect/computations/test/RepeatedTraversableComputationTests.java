@@ -74,47 +74,4 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		HardwareOperator.profile.print();
 	}
-
-	@Test
-	public void relativeOperations() {
-		TraversalPolicy parameterShape = shape(6, 1).traverse(1);
-		TraversalPolicy inputShape = shape(100).traverse(1);
-
-		PackedCollection<?> parameters = pack(0.0, 90.0, 1.1, 1.0, 1.0, 0.0).reshape(parameterShape);
-		PackedCollection<?> input = new PackedCollection<>(inputShape);
-		PackedCollection<?> dest = new PackedCollection<>(inputShape);
-
-		input.fill(pos -> pos[0] / 10.0);
-
-		PassThroughProducer p = new PassThroughProducer<>(parameterShape.traverse(0), 1);
-		PassThroughProducer in = new PassThroughProducer<>(inputShape, 0);
-
-		CollectionProducerComputation polyWaveLength = c(p, 1);
-		CollectionProducerComputation polyExp = c(p, 2);
-		CollectionProducerComputation initial = c(p, 3);
-		CollectionProducerComputation scale = c(p, 4);
-		CollectionProducerComputation offset = c(p, 5);
-
-		double min = 0.0;
-		double max = 1000.0;
-
-		CollectionProducerComputationBase pos = relativeSubtract(in, offset);
-		CollectionProducerComputationBase c = relativeBound(pos._greaterThan(c(0.0),
-						relativeAdd(polyWaveLength.pow(c(-1.0))
-								.relativeMultiply(pos).pow(polyExp)
-								.relativeMultiply(scale), initial), initial),
-				min, max);
-
-		c.get().into(dest).evaluate(input, parameters.traverse(0));
-		System.out.println(dest.toArrayString(0, 10));
-
-		PackedCollection altDest = new PackedCollection<>(inputShape);
-		c.toRepeated().get().into(altDest).evaluate(input, parameters.traverse(0));
-
-		System.out.println(altDest.toArrayString(0, 10));
-
-		IntStream.range(0, inputShape.getCount()).forEach(i -> {
-			assertEquals(dest.toDouble(i), altDest.toDouble(i));
-		});
-	}
 }

@@ -166,11 +166,6 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return mod((Producer) this, (Producer) mod);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMod(Producer<T> mod) {
-		return relativeMod((Producer) this, (Producer) mod);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
 		return sum(traverse(axis, (Producer) this));
 	}
@@ -235,6 +230,6 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
 																boolean includeEqual) {
-		return _lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
+		return lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 }
