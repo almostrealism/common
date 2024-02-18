@@ -368,6 +368,17 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void indexOfMax2d() {
+		PackedCollection<?> value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+
+		PackedCollection<?> m = cp(value).indexOfMax().get().evaluate();
+		m.print();
+
+		assertEquals(0.0, m.toDouble(0));
+		assertEquals(1.0, m.toDouble(1));
+	}
+
+	@Test
 	public void collectionMaxTwoSeries() {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);

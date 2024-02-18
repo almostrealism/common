@@ -162,6 +162,15 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return max((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax() {
+		return indexOfMax((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min() {
+		// TODO  return min((Producer) this);
+		throw new UnsupportedOperationException();
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
 		return mod((Producer) this, (Producer) mod);
 	}

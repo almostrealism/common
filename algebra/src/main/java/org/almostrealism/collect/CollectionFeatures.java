@@ -31,6 +31,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
@@ -58,6 +59,7 @@ import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RepeatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
@@ -469,25 +471,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {
-		TraversalPolicy shape = shape(1);
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		}
-
-		return add(shape.getSize(), (Supplier) a, (Supplier) b);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(int depth,
-																		 				Supplier<Evaluable<? extends PackedCollection<?>>> a,
-																						Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
 		if (shape.getSize() != size) {
 			if (shape.getSize() == 1) {
-				return add(1, a, traverseEach((Producer) b));
+				return add(a, traverseEach((Producer) b));
 			} else if (size == 1) {
-				return add(1, traverseEach((Producer) a), b);
+				return add(traverseEach((Producer) a), b);
 			}
 
 			throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
@@ -575,7 +566,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
 							" with a collection of size " + size);
 				} else {
-					// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
+					// TODO This should actually just call traverseEach (or repeat)
+					// TODO if the shapes don't match, but one size is = 1
 					System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
 							" with a collection of size " + size + " (will broadcast)");
 				}
@@ -710,6 +702,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				a, b);
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
@@ -753,6 +746,22 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new AggregatedCollectionProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> minValue(),
 				(out, arg) -> new Max(out, arg),
+				(Supplier) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {
+		TraversalPolicy shape = shape(input);
+		int size = shape.getSize();
+
+		return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
+				(args, index) -> e(0),
+				(args, index) -> index.lessThan(new IntegerConstant(size)),
+				(args, index) -> {
+					Expression<?> current = args[0].getValueRelative(e(0));
+					return conditional(args[1].getValueRelative(index)
+									.greaterThan(args[1].getValueRelative(current)),
+							index, current);
+				},
 				(Supplier) input);
 	}
 
