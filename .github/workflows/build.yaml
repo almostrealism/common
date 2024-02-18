@@ -31,4 +31,4 @@ jobs:
           distribution: adopt
           cache: 'maven'
       - name: Build
-        run: mvn package
+        run: mvn package -DAR_HARDWARE_DRIVER=native
