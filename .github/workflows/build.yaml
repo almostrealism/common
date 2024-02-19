@@ -32,7 +32,7 @@ jobs:
           cache: 'maven'
       - name: Build
         run: |
-         mvn package \
+         mkdir /usr/java/packages ; mvn package \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=/usr/java/packages/lib \
            -Djava.library.path=/usr/java/packages/lib
