@@ -82,6 +82,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		command.addAll(includes);
 
 		command.add("-" + cmd);
+		if (!SystemUtils.isMacOS()) command.add("-fPIC");
 		command.add(inputFile);
 		command.add("-o");
 		command.add(outputFile);
