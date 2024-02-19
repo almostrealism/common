@@ -75,7 +75,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
 			}
 		} else {
-			warn("Reference to value which is not an ArrayVariable");
+			// warn("Reference to value which is not an ArrayVariable");
 			return var.getName();
 		}
 	}

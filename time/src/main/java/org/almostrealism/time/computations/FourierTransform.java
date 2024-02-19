@@ -33,7 +33,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
-		super(new TraversalPolicy(bins, 2), input);
+		super(null, new TraversalPolicy(bins, 2), input);
 	}
 
 	@Override

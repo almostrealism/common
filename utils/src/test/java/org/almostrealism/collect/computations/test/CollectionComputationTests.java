@@ -21,7 +21,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
-import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -38,6 +37,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -45,7 +45,6 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
@@ -359,16 +358,20 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void max2d() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
 		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
 		PackedCollection<?> m = cp(value).max().get().evaluate();
-		print(2, 1, m);
+		m.print();
 		assertEquals(3.0, m.toDouble(0));
 		assertEquals(7.0, m.toDouble(1));
 	}
 
 	@Test
 	public void indexOfMax2d() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
 		PackedCollection<?> value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
 
 		PackedCollection<?> m = cp(value).indexOfMax().get().evaluate();
@@ -451,24 +454,24 @@ public class CollectionComputationTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), p(in),
-				(input, idx) -> {
-					Expression<?> result = null;
+		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), (args, idx) -> {
+			Expression<?> result = null;
 
-					for (int i = 0; i < shape.getSize(); i++) {
-						Expression<?> index = shape.index(idx, e(i));
+			for (int i = 0; i < shape.getSize(); i++) {
+				Expression<?> index = shape.index(idx, e(i));
 
-						if (result == null) {
-							result = index;
-						} else {
-							result = conditional(in.getValueAt(index)
-										.greaterThan(in.getValueAt(result)),
-									index, result);
-						}
-					}
+				if (result == null) {
+					result = index;
+				} else {
+					result = conditional(in.getValueAt(index)
+								.greaterThan(in.getValueAt(result)),
+							index, result);
+				}
+			}
 
-					return result;
-				});
+			return result;
+		}, p(in)
+		);
 
 		PackedCollection<?> out = c.get().evaluate();
 		print(2, 1, out);

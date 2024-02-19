@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Product;
@@ -47,7 +46,6 @@ import java.util.stream.IntStream;
 
 public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 	boolean enableTraversableComplex = true;
-
 
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
@@ -140,6 +138,23 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 			}));
 			return (ExpressionComputation) Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b));
 		}
+	}
+
+	default ExpressionComputation<Pair<?>> complexFromReal(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		if (value == null) return null;
+
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		comp[0] = args -> args.get(1).getValueRelative(0);
+		comp[1] = args -> expressionForDouble(0.0);
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Pair.postprocessor());
+	}
+
+	default ExpressionComputation<Pair<?>> complexFromParts(Supplier<Evaluable<? extends PackedCollection<?>>> real,
+																 Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+		comp[0] = args -> args.get(1).getValueRelative(0);
+		comp[1] = args -> args.get(2).getValueRelative(0);
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(List.of(comp), real, imag).setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {

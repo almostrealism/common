@@ -57,7 +57,7 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 												 BiFunction<TraversableExpression[], Expression, Expression> condition,
 												 BiFunction<TraversableExpression[], Expression, Expression> expression,
 												 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, (Supplier[]) args);
+		super(null, shape, (Supplier[]) args);
 		this.initial = initial;
 		this.condition = condition;
 		this.expression = expression;

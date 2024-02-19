@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public abstract class RelativeTraversableProducerComputation<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<I, O>
@@ -40,7 +39,7 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	protected RelativeTraversableProducerComputation() { }
 
 	public RelativeTraversableProducerComputation(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
-		super(outputShape, arguments);
+		super(null, outputShape, arguments);
 	}
 
 	protected List<ArrayVariable<Double>> getInputArguments(Expression index) {

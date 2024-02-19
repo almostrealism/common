@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 														ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
+	private String name;
 	private TraversalPolicy shape;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private Evaluable<O> shortCircuit;
@@ -65,16 +66,22 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected CollectionProducerComputationBase() {
 	}
 
-	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this();
 
 		if (outputShape.getTotalSizeLong() <= 0) {
 			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
 		}
 
+		this.name = name;
 		this.shape = outputShape;
 		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
+	}
+
+	@Override
+	public String getName() {
+		return name == null ? super.getName() : name;
 	}
 
 	protected List<ArrayVariable<Double>> getInputArguments() {

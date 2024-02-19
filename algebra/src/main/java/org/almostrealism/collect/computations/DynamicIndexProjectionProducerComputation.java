@@ -33,23 +33,35 @@ import java.util.function.Supplier;
 
 public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	private BiFunction<TraversableExpression, Expression, Expression> indexExpression;
+	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 
-	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape, Producer<?> collection,
-											BiFunction<TraversableExpression, Expression, Expression> indexExpression) {
-		super(shape, collection, null);
+	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,
+													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
+													 Producer<?> collection,
+													 Producer<?>... inputs) {
+		this(shape, indexExpression, false, collection, inputs);
+	}
+
+	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,
+													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
+													 boolean relative,
+													 Producer<?> collection,
+													 Producer<?>... inputs) {
+		super(shape, null, relative, collection, inputs);
 		this.indexExpression = indexExpression;
 	}
 
 	@Override
 	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {
-		return indexExpression.apply(input, index);
+		return indexExpression.apply(getTraversableArguments(index), index);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		return (DynamicIndexProjectionProducerComputation)
-				new DynamicIndexProjectionProducerComputation<>(getShape(), (Producer<?>) children.get(1), indexExpression)
+				new DynamicIndexProjectionProducerComputation<>(getShape(), indexExpression, relative,
+							(Producer<?>) children.get(1),
+							children.stream().skip(2).toArray(Producer[]::new))
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 

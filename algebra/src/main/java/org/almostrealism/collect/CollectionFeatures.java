@@ -42,6 +42,7 @@ import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -718,24 +719,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			TraversalPolicy shape = shape(input).flatten(true);
 
 			DynamicIndexProjectionProducerComputation<T> c =
-					new DynamicIndexProjectionProducerComputation<>(shape(shape.getCount()).traverse(), input,
-						(in, idx) -> {
-							Expression<?> result = null;
-
-							for (int i = 0; i < shape.getSize(); i++) {
-								Expression<?> index = shape.index(idx, e(i));
-
-								if (result == null) {
-									result = index;
-								} else {
-									result = conditional(in.getValueAt(index)
-													.greaterThan(in.getValueAt(result)),
-											index, result);
-								}
-							}
-
-							return result;
-						});
+					new DynamicIndexProjectionProducerComputation<>(shape(shape.getCount()).traverse(),
+							(args, idx) -> args[2].getValueAt(idx),
+							true, input, indexOfMax(input));
 
 			return (CollectionProducerComputationBase<T, T>) c;
 		}
@@ -757,10 +743,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(args, index) -> e(0),
 				(args, index) -> index.lessThan(new IntegerConstant(size)),
 				(args, index) -> {
-					Expression<?> current = args[0].getValueRelative(e(0));
+					Expression<?> currentIndex = args[0].getValueRelative(e(0));
 					return conditional(args[1].getValueRelative(index)
-									.greaterThan(args[1].getValueRelative(current)),
-							index, current);
+									.greaterThan(args[1].getValueRelative(currentIndex)),
+							index, currentIndex);
 				},
 				(Supplier) input);
 	}

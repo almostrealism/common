@@ -37,7 +37,7 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super(new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) choices);
+		super(null, new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) choices);
 		this.choiceCount = choiceCount;
 	}
 

@@ -36,7 +36,7 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	private final int total;
 
 	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
-		super(new TraversalPolicy(count, 2), input);
+		super(null, new TraversalPolicy(count, 2), input);
 		this.count = count;
 		this.total = total;
 	}
