@@ -87,7 +87,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		command.add("-o");
 		command.add(outputFile);
 
-		log(Arrays.toString(command.toArray()));
+		// log(Arrays.toString(command.toArray()));
 
 		return command;
 	}
