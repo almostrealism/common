@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.jni;
 
+import org.almostrealism.io.SystemUtils;
+
 import java.io.File;
 import java.util.List;
 
@@ -27,7 +29,7 @@ public class Clang extends LlvmCommandProvider {
 	}
 
 	public Clang(String path, boolean localToolchain) {
-		super(path, "dynamiclib", localToolchain);
+		super(path, SystemUtils.isMacOS() ? "dynamiclib" : "shared", localToolchain);
 	}
 
 	public String getLinker() {
