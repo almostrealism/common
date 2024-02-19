@@ -31,20 +31,18 @@ jobs:
 
       - name: Validate Maven Wrapper
         run: mvn --version
-        working-directory: JVM/intellij-coverage-agent/maven
 
       - name: Run Tests
         run: |
           LD_LIBRARY_PATH=Extensions mvn test \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS=Extensions
-        working-directory: JVM/intellij-coverage-agent/maven
 
       - name: Archive coverage data
         uses: actions/upload-artifact@v2
         with:
           name: maven-coverage-data
-          path: JVM/intellij-coverage-agent/maven/.qodana/code-coverage
+          path: .qodana/code-coverage
 
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main
@@ -53,5 +51,5 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          args: "-i,JVM/intellij-coverage-agent/maven,--linter,jetbrains/qodana-jvm:2023.3-eap"
+          args: "-i,.,--linter,jetbrains/qodana-jvm:2023.3-eap"
           pr-mode: false
