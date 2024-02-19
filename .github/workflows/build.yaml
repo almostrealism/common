@@ -33,6 +33,6 @@ jobs:
       - name: Build
         run: |
          mvn package \
-         -DAR_HARDWARE_DRIVER=native \
-         -DAR_HARDWARE_LIBS=Extensions \
-         -Djava.library.path=Extensions
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_LIBS=/usr/java/packages/lib \
+           -Djava.library.path=/usr/java/packages/lib
