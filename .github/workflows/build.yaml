@@ -30,12 +30,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: adopt
           cache: 'maven'
-      - name: Prepare
-        run: |
-          mkdir /usr/java ; mkdir /usr/java/packages
       - name: Build
         run: |
-         mvn package \
+         LD_LIBRARY_PATH=Extensions mvn package \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=/usr/java/packages/lib \
-           -Djava.library.path=/usr/java/packages/lib
+           -DAR_HARDWARE_LIBS=Extensions
