@@ -33,7 +33,7 @@ public class TestUtils implements TestSettings {
 	}
 
 	public static boolean getSkipLongTests() {
-		if (Objects.equals(getTestProfile(), PIPELINE)) return true;
+		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
 
 		return !SystemUtils.isEnabled("AR_LONG_TESTS").orElse(true);
 	}

@@ -54,3 +54,8 @@ jobs:
           fetch-depth: 0
           args: "-i,.,--linter,jetbrains/qodana-jvm"
           pr-mode: false
+
+      - name: Github Scan
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json

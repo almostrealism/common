@@ -44,6 +44,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -66,6 +67,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void dense() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
 
 		int size = 30;

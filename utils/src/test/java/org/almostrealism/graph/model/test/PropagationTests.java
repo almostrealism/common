@@ -26,6 +26,7 @@ import org.almostrealism.layers.PropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -71,6 +72,7 @@ public class PropagationTests implements TestFeatures {
 
 	@Test
 	public void denseBackwards() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
 
 		int size = 12;
