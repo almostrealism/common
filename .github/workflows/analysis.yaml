@@ -48,7 +48,7 @@ jobs:
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main
         env:
-          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_MVN }}
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
