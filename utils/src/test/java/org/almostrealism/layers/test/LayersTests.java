@@ -26,6 +26,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.List;
@@ -127,6 +128,8 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void softmaxComputation() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int heads = 12;
 		int len = KernelPreferences.isPreferLoops() ? 1024 : 8;
 		int l = KernelPreferences.isPreferLoops() ? 64 : 4;

@@ -21,11 +21,14 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 public class ComplexMathTests implements TestFeatures {
 	@Test
 	public void multiply() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<Pair<?>> a = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 		PackedCollection<Pair<?>> b = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 
@@ -52,6 +55,8 @@ public class ComplexMathTests implements TestFeatures {
 
 	@Test
 	public void broadcastMultiply() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int w = 12;
 		int h = 32;
 

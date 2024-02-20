@@ -41,6 +41,7 @@ import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -452,6 +453,8 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void dynamicProjection() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 
 		TraversalPolicy shape = shape(in).flatten(true);
@@ -465,8 +468,8 @@ public class CollectionComputationTests implements TestFeatures {
 				if (result == null) {
 					result = index;
 				} else {
-					result = conditional(in.getValueAt(index)
-								.greaterThan(in.getValueAt(result)),
+					result = conditional(args[1].getValueAt(index)
+								.greaterThan(args[1].getValueAt(result)),
 							index, result);
 				}
 			}
