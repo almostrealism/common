@@ -52,5 +52,5 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          args: "-i,.,--linter,jetbrains/qodana-jvm:2023.3-eap"
+          args: "-i,.,--linter,jetbrains/qodana-jvm"
           pr-mode: false
