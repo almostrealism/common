@@ -85,10 +85,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void reduceMax() {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
 		int c = 16;
 		int d = 1;
 		int w = 2;
@@ -98,10 +94,10 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
-					c(p(input)).traverse(1).reduce(v -> max(v));
+					c(p(input)).traverse(1).max();
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection<?> output = pool.get().evaluate().reshape(c / w, d);
 			System.out.println(output.getShape());
 
 			int c2 = c / w;
@@ -120,10 +116,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerateReduceMax() {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
 		int c = 16;
 		int d = 1;
 		int w = 2;
@@ -131,13 +123,12 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
-					enumerate(shape(1, c, d), c(p(input)))
-							.traverse(1).reduce(slice -> max(slice));
+					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
 			System.out.println(pool.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
+			PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
 			System.out.println(output.getShape());
 
 			for (int copy = 0; copy < d; copy++) {
@@ -656,35 +647,32 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
+		CollectionProducer<PackedCollection<?>> pool =
+				cp(input)
+						.enumerate(1, 1)
+						.enumerate(1, w)
+						.traverse(2)
+						.max();
+		System.out.println(pool.getShape());
 
-		CLOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
-					c(p(input)).enumerate(w)
-							.traverse(1)
-							.map(shape(d, 1), v ->
-									enumerate(shape(1, w, 1), v)
-											.traverse(1).reduce(slice -> max(slice)));
-			System.out.println(pool.getShape());
+		PackedCollection<?> output = pool.get().evaluate().reshape(4, 3);
+		System.out.println(output.getShape());
 
-			PackedCollection<?> output = pool.get().evaluate();
-			System.out.println(output.getShape());
+		int c2 = c / w;
 
-			int c2 = c / w;
+		for (int copy = 0; copy < d; copy++) {
+			for (int j = 0; j < c2; j++) {
+				double expected = -Math.pow(10, 5);
 
-			for (int copy = 0; copy < d; copy++) {
-				for (int j = 0; j < c2; j++) {
-					double expected = -Math.pow(10, 5);
-
-					for (int k = 0; k < w; k++) {
-						expected = Math.max(expected, input.valueAt(j * w + k, copy));
-					}
-
-					double actual = output.valueAt(j, copy);
-
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+				for (int k = 0; k < w; k++) {
+					expected = Math.max(expected, input.valueAt(j * w + k, copy));
 				}
+
+				double actual = output.valueAt(j, copy);
+
+				System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
 			}
-		});
+		}
 	}
 }

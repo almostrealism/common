@@ -79,7 +79,7 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableAxisAlignment = false;
-	boolean enableIndexProjection = false;
+	boolean enableIndexProjection = true;
 	boolean enableCollectionIndexSize = false;
 
 	Console console = Computation.console.child();

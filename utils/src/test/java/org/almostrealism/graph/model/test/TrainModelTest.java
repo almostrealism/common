@@ -329,13 +329,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
 
 		int dim = 64;
 		int filters = 8;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TranslationMatrix;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
@@ -35,14 +36,9 @@ public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
 
 	@Test
 	public void apply() {
-		Ray r = transform().evaluate();
-		assertions(r);
-	}
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-	@Test
-	public void applyCompact() {
-		Evaluable<Ray> t = transform();
-		Ray r = t.evaluate();
+		Ray r = transform().evaluate();
 		assertions(r);
 	}
 

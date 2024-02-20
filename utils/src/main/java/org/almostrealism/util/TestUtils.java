@@ -20,7 +20,11 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.Objects;
+
 public class TestUtils implements TestSettings {
+	public static final String PIPELINE = "pipeline";
+
 	static {
 		if (CLMemoryProvider.enableWarnings)
 			CLMemoryProvider.enableWarnings = !skipLongTests;
@@ -29,10 +33,16 @@ public class TestUtils implements TestSettings {
 	}
 
 	public static boolean getSkipLongTests() {
+		if (Objects.equals(getTestProfile(), PIPELINE)) return true;
+
 		return !SystemUtils.isEnabled("AR_LONG_TESTS").orElse(true);
 	}
 
 	public static boolean getTrainTests() {
+		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
+
 		return SystemUtils.isEnabled("AR_TRAIN_TESTS").orElse(false);
 	}
+
+	public static String getTestProfile() { return SystemUtils.getProperty("AR_TEST_PROFILE", "default"); }
 }

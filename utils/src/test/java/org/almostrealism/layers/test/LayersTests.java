@@ -159,7 +159,8 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 			}
 
 			o = o.expIgnoreZero().traverse(1);
-			o = o.divide(o.sum().expand(len, v -> v.repeat(len)));
+//			o = o.divide(o.sum().expand(len, v -> v.repeat(len)));
+			o = o.divide(o.sum().repeat(len).consolidate());
 
 			// PackedCollection<?> output = o.get().evaluate();
 

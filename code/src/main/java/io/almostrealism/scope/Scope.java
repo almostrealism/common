@@ -555,6 +555,16 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return scope;
 	}
 
+	@Override
+	public boolean equals(Object o) {
+		return Objects.equals(getName(), ((Scope) o).getName());
+	}
+
+	@Override
+	public int hashCode() {
+		return getName() == null ? 0 : getName().hashCode();
+	}
+
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 

@@ -16,12 +16,15 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.collect.CollectionFeatures;
+import java.util.Objects;
 
 public interface TestSettings {
 	boolean enableArgumentCountAssertions = false;
 
 	boolean skipLongTests = TestUtils.getSkipLongTests();
-	boolean skipMapProjectionTests = CollectionFeatures.enableIndexProjection;
 	boolean trainingTests = TestUtils.getTrainTests();
+
+	default boolean testProfileIs(String profile) {
+		return (Objects.equals(TestUtils.getTestProfile(), profile));
+	}
 }

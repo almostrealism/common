@@ -33,7 +33,7 @@ public class MTLBuffer extends MTLObject {
 	public static TimingMetric ioTime = Hardware.console.timing("metalIO");
 
 	static {
-		ioTime.setThreshold(8.0);
+		ioTime.setThreshold(20.0);
 	}
 
 	public MTLBuffer(Precision precision, long nativePointer) {

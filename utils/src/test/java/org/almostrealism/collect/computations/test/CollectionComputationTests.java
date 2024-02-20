@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -28,6 +29,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
@@ -362,7 +364,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
-		PackedCollection<?> m = cp(value).max().get().evaluate();
+		PackedCollection<?> m = max(cp(value)).get().evaluate();
 		m.print();
 		assertEquals(3.0, m.toDouble(0));
 		assertEquals(7.0, m.toDouble(1));

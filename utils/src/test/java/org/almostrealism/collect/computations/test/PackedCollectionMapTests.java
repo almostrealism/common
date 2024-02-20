@@ -240,10 +240,6 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void maxReduce() {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
 		int size = 4;
 		int count = 3;
 
@@ -251,8 +247,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer<PackedCollection<?>> max = enumerated.traverse(1).reduce(slice -> max(slice));
-			PackedCollection<?> output = max.get().evaluate();
+			CollectionProducer<PackedCollection<?>> max = enumerated.traverse(1).max();
+			PackedCollection<?> output = max.get().evaluate().reshape(shape(count, 1));
 			System.out.println(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
@@ -840,10 +836,6 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void enumerateReduceEnumerate() {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
 		int r = 12;
 		int c = 16;
 		int d = 1;
@@ -854,19 +846,19 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
-					c(p(input)).enumerate(1, w)
-							.enumerate(1, w)
-							.traverse(2)
-							.reduce(v ->
-									enumerate(shape(1, 1, w, w, 1), v)
-											.traverse(1).reduce(slice -> max(slice)));
+					c(p(input))
+					.enumerate(2, 1)
+					.enumerate(2, w)
+					.enumerate(2, w)
+					.traverse(3)
+					.max();
 			System.out.println(pool.getShape());
-
-			PackedCollection<?> output = pool.get().evaluate();
-			System.out.println(output.getShape());
 
 			int r2 = r / w;
 			int c2 = c / w;
+
+			PackedCollection<?> output = pool.get().evaluate().reshape(r2, c2, d);
+			System.out.println(output.getShape());
 
 			for (int copy = 0; copy < d; copy++) {
 				for (int i = 0; i < r2; i++) {
@@ -881,7 +873,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 							}
 						}
 
-						double actual = output.toDouble(output.getShape().index(i, j, copy));
+						double actual = output.valueAt(i, j, copy);
 
 						System.out.println("PackedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);

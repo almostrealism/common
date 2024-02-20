@@ -53,7 +53,11 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 
 	@Override
 	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {
-		return indexExpression.apply(getTraversableArguments(index), index);
+		return projectIndex(getTraversableArguments(index), index);
+	}
+
+	protected Expression<?> projectIndex(TraversableExpression[] args, Expression<?> index) {
+		return indexExpression.apply(args, index);
 	}
 
 	@Override
@@ -71,7 +75,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			TraversableDeltaComputation<T> delta =
 					TraversableDeltaComputation.create(getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
-										(idx) -> args[1].getValueAt(projectIndex(args[1], idx))),
+										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
 							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
 			return delta;
 		} else {
