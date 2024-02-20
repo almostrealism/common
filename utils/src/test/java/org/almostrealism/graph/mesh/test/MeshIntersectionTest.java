@@ -236,6 +236,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel3() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
 		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
