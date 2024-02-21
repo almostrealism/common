@@ -265,7 +265,13 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	public long getTotalSizeLong() { return sizeLong(0); }
 
 	@Override
-	public int getCount() { return Math.toIntExact(getTotalSizeLong() / getSizeLong()); }
+	public int getCount() {
+		if (getSizeLong() == 0) {
+			throw new UnsupportedOperationException();
+		}
+
+		return Math.toIntExact(getTotalSizeLong() / getSizeLong());
+	}
 
 	public int getDimensions() { return dims.length; }
 
