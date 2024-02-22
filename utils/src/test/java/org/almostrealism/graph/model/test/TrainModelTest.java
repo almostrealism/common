@@ -281,6 +281,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
+		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_41"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));

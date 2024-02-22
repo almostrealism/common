@@ -26,6 +26,10 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
 import org.almostrealism.io.Console;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -279,6 +283,17 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return IntStream.range(0, getTotalSize()).mapToObj(this::position);
 	}
 
+	public void store(DataOutputStream dos) throws IOException {
+		dos.writeInt(dims.length);
+		dos.writeInt(traversalAxis);
+
+		for(long d : dims) {
+			dos.writeLong(d);
+		}
+
+		dos.flush();
+	}
+
 	@Override
 	public int hashCode() {
 		return Arrays.hashCode(dims);
@@ -312,6 +327,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		}
 		sb.append(")");
 		return sb.toString();
+	}
+
+	public static TraversalPolicy load(DataInputStream in) throws IOException {
+		int dimCount = in.readInt();
+		int traversalAxis = in.readInt();
+
+		int dims[] = new int[dimCount];
+
+		for(int i = 0; i < dims.length; i++) {
+			long d = in.readLong();
+			if (d > Integer.MAX_VALUE) {
+				throw new UnsupportedOperationException();
+			}
+
+			dims[i] = (int) d;
+		}
+
+		return new TraversalPolicy(dims).traverse(traversalAxis);
 	}
 
 	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,

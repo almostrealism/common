@@ -158,6 +158,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return sq((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> magnitude() {
+		return magnitude((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
 		return max((Producer) this);
 	}

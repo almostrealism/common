@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :
-				"(" + getChildren().get(0).getExpression(lang) + ") % (" + getChildren().get(1).getExpression(lang) + ")";
+				getChildren().get(0).getWrappedExpression(lang) + " % " + getChildren().get(1).getWrappedExpression(lang);
 	}
 
 	@Override
@@ -117,6 +117,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			OptionalInt u = input.upperBound(context);
 			if (u.isPresent() && u.getAsInt() < m) {
 				return input;
+			} else if (isPowerOf2(m)) {
+				return new And(input, new IntegerConstant(m - 1));
 			}
 		} else if (input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
@@ -154,5 +156,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		} else {
 			return children[0].intValue() % children[1].intValue();
 		}
+	}
+
+	private static boolean isPowerOf2(int number) {
+		return number > 0 && (number & (number - 1)) == 0;
 	}
 }

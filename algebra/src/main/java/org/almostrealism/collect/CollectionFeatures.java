@@ -659,9 +659,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(Supplier) value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq(
-			Producer<PackedCollection<?>> value) {
-		return (CollectionProducerComputationBase<T, T>) multiply(value, value);
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq(Producer<T> value) {
+		return multiply(value, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
@@ -712,6 +711,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> magnitude(Producer<T> vector) {
+		return sq(vector).sum().sqrt();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
