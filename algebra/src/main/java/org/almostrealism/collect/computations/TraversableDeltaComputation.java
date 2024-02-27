@@ -47,6 +47,7 @@ import java.util.stream.Stream;
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
+	public static boolean enableOptimization = true;
 	public static boolean enableTraverseEach = false;
 	public static boolean enableDirect = false;
 
@@ -66,7 +67,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
-		return this;
+		if (!enableOptimization) return this;
+		return super.optimize(ctx);
 	}
 
 	@Override

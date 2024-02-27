@@ -281,11 +281,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_41"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
-
 		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -300,7 +295,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
+		// ParallelProcess.isolationFlags.add(operationFilter("f_constantRepeatedProducerComputation_82"));
 
 		int dim = 16;
 		int filters = 8;
@@ -316,8 +311,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
-
 		int dim = 32;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -331,14 +324,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
-
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
 
 		int dim = 64;
 		int filters = 8;
@@ -436,8 +421,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
 		model.addLayer(pool2d(2));
-//		model.addBlock(flatten());
-//		model.addLayer(dense(denseSize));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
 //		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;

@@ -268,7 +268,7 @@ public class GradientDescentTests implements CodeFeatures {
 		CompiledModel runner = model.compile();
 
 		int epochs = 300;
-		int steps = 60;
+		int steps = 75;
 
 		double originalLoss = -1.0;
 		double updatedLoss = -1.0;
