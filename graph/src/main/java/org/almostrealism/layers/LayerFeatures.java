@@ -18,7 +18,9 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ExpressionList;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -27,6 +29,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.KernelOperation;
@@ -45,6 +48,25 @@ public interface LayerFeatures extends MatrixFeatures {
 	boolean enableLegacyConvLayer = false;
 	boolean enableLegacyPoolLayer = false;
 
+	@Deprecated
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
+																	  KernelExpression kernel,
+																	  Producer... arguments) {
+		return new ArrayVariableComputation<>(
+				shape.traverseEach(), List.of(args -> {
+			CollectionVariable vars[] = new CollectionVariable[args.size()];
+			for (int i = 0; i < vars.length; i++) {
+				vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;
+			}
+
+			Expression index = new KernelIndex();
+			Expression pos[] = shape.position(index);
+
+			return kernel.apply(vars, pos);
+		}), arguments);
+	}
+
+	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								ComputeRequirement... requirements) {
@@ -52,6 +74,7 @@ public interface LayerFeatures extends MatrixFeatures {
 				Collections.emptyList(), new OperationList(), requirements);
 	}
 
+	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights, ComputeRequirement... requirements) {
@@ -146,7 +169,8 @@ public interface LayerFeatures extends MatrixFeatures {
 							.repeat(outputShape.length(1)).traverse(0)
 							.repeat(outputShape.length(0)).traverse(2))
 					.traverse()
-					.reduce(v -> v.sum());
+//					.reduce(v -> v.sum());
+					.sum();
 			return layer("convolution2d", inputShape, outputShape,
 					operator, List.of(filters),
 					a(p(filters.each()), divide(randn(filterShape).traverseEach(), c(size * size).traverse(0))),

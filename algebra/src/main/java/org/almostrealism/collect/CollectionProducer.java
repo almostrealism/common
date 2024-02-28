@@ -63,6 +63,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return reduce(this, mapper);
 	}
 
+	/**
+	 * @deprecated Use {@link #repeat(int)}
+	 */
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat) {
 		return expand(repeat, this);
 	}

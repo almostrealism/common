@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,21 +28,17 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class AggregatedCollectionProducerComputation<T extends PackedCollection<?>> extends RepeatedCollectionProducerComputation<T> implements TraversableExpression<Double> {
+public class AggregatedCollectionProducerComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	private BiFunction<Expression, Expression, Expression> expression;
-	private int count;
 
 	public AggregatedCollectionProducerComputation(TraversalPolicy shape, int count,
 												   BiFunction<TraversableExpression[], Expression, Expression> initial,
 												   BiFunction<Expression, Expression, Expression> expression,
 												   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(shape, initial,
-				(args, index) -> index.lessThan(new IntegerConstant(count)),
-				null, arguments);
+		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
 
@@ -50,11 +46,6 @@ public class AggregatedCollectionProducerComputation<T extends PackedCollection<
 				expression.apply(
 						getCollectionArgumentVariable(0).referenceRelative(new IntegerConstant(0)),
 						args[1].getValueRelative(index)));
-	}
-
-	@Override
-	protected OptionalInt getIndexLimit() {
-		return OptionalInt.of(count);
 	}
 
 	@Override
@@ -86,7 +77,7 @@ public class AggregatedCollectionProducerComputation<T extends PackedCollection<
 	}
 
 	@Override
-	public RepeatedCollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+	public AggregatedCollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new AggregatedCollectionProducerComputation<>(getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));

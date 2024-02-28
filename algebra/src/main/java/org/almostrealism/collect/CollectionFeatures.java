@@ -52,6 +52,7 @@ import org.almostrealism.collect.computations.AggregatedCollectionProducerComput
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -338,24 +339,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new DynamicCollectionProducer(shape, function, kernel);
 	}
 
-	@Deprecated
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
-																	  KernelExpression kernel,
-																	  Producer... arguments) {
-		return new ArrayVariableComputation<>(
-				shape.traverseEach(), List.of(args -> {
-					CollectionVariable vars[] = new CollectionVariable[args.size()];
-					for (int i = 0; i < vars.length; i++) {
-						vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;
-					}
-
-					Expression index = new KernelIndex();
-					Expression pos[] = shape.position(index);
-
-					return kernel.apply(vars, pos);
-				}), arguments);
-	}
-
 	default <T, P extends Producer<T>> Producer<T> alignTraversalAxes(
 			List<Producer<T>> producers, BiFunction<TraversalPolicy, List<Producer<T>>, P> processor) {
 		return TraversalPolicy
@@ -441,6 +424,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return map(shape(1), collection, (Function) mapper);
 	}
 
+	/**
+	 * @deprecated Use {@link #repeat(int)}
+	 */
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection) {
 		return expand(repeat, collection, v -> v.repeat(repeat));
 	}
@@ -742,9 +729,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
+		return new ConstantRepeatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> e(0),
-				(args, index) -> index.lessThan(new IntegerConstant(size)),
 				(args, index) -> {
 					Expression<?> currentIndex = args[0].getValueRelative(e(0));
 					return conditional(args[1].getValueRelative(index)
