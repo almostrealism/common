@@ -20,6 +20,9 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -131,13 +134,12 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
-		// return compileProducer(this);
+	public Evaluable<T> get() {
 		return args -> (T) args[argIndex];
 	}
 
 	/**
-	 * Since the normal {@link #getArgument(LanguageOperations, int)}
+	 * Since the normal {@link #getArgument(int)}
 	 * method returns the {@link ArrayVariable} for the specified input
 	 * index, and this {@link io.almostrealism.relation.Producer} does
 	 * not use inputs in the conventional way, this method returns
@@ -145,7 +147,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	 * of arguments.
 	 */
 	@Override
-	public ArrayVariable getArgument(LanguageOperations lang, int index) {
+	public ArrayVariable getArgument(int index) {
 		return getArgumentVariables().get(index);
 	}
 
@@ -156,14 +158,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-//		ArrayVariable var = getArgumentVariables().get(0);
-//
-//		if (enableDimSupport) {
-//			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
-//		} else {
-//			return var.referenceAbsolute(index);
-//		}
-
 		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 
@@ -174,6 +168,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
+
+	@Override
+	public PassThroughProducer<T> generate(List<Process<?, ?>> children) {
+		return this;
+	}
 
 	@Override
 	public void destroy() {

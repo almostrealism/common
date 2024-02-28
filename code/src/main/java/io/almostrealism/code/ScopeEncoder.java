@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,16 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	private final Function<PrintWriter, CodePrintWriter> generator;
@@ -64,7 +67,17 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 				.filter(Objects::nonNull)
 				.forEach(result::append);
 
-		output.beginScope(scope.getName(), scope.getMetadata(), scope.getArgumentVariables(), access);
+		List<ArrayVariable<?>> arrayVariables = new ArrayList<>();
+		arrayVariables.addAll(scope.getArgumentVariables());
+		scope.getParameters().stream()
+				.filter(v -> v instanceof ArrayVariable)
+				.forEach(v -> arrayVariables.add((ArrayVariable<?>) v));
+
+		List<Variable<?, ?>> parameters = (List<Variable<?, ?>>) scope.getParameters().stream()
+				.filter(v -> !(v instanceof ArrayVariable))
+				.collect(Collectors.toList());
+
+		output.beginScope(scope.getName(), scope.getMetadata(), access, arrayVariables, parameters);
 		scope.write(output);
 		output.endScope();
 

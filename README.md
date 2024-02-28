@@ -5,6 +5,7 @@
 [![Apache License][license-shield]][license-url]
 
 <h3 align="center">Almost Realism Scientific Computing and Machine Learning Libraries</h3>
+<h5 align="center">[![Qodana](https://github.com/almostrealism/common/actions/workflows/analysis.yaml/badge.svg)](https://github.com/almostrealism/common/actions/workflows/analysis.yaml)</h5>
 <h5 align="center">Tools for high-performance scientific computing, generative art, and machine learning in Java
 with pluggable native acceleration.</h5>
 
@@ -42,6 +43,9 @@ an early example of a neural network is provided at the end of this document.
 
 Using this library correctly allows you to take complex operations, written in Java, and end
 up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
+
+ *Note: A subset of this documentation for use as the preamble to a LLM prompt is available in PROMPT.md*
+ *(This can sometimes be an easier way to get help using the library, than reading this yourself.)*
 
 #### Support Accelerators
     1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
@@ -93,7 +97,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.60</version>
+            <version>0.61</version>
         </dependency>
 
 ### Enabling Your Application
@@ -162,7 +166,7 @@ a tensor can be used in computations, it has to be packed (at which point it's s
 immutable).
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void createTensor() {
@@ -195,7 +199,7 @@ public class MyNativeEnableApplication implements CodeFeatures {
 Mathematical operations can use both constant values and variable values:
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void variableMath() {
@@ -236,7 +240,7 @@ collection this actually becomes quite important for longer-running "service" ap
 time.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void performThreeExperiments() {
@@ -286,7 +290,7 @@ and it will make a best effort to fulfill them.
 just provide computing resources other than what you expected.*
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void useCpuAndGpu() {
@@ -322,7 +326,7 @@ concept. If you are targeting a GPU with OpenCL or Metal, for example, you'll wa
 express a collection of operations with a single operation. This works the same way.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
 	// ....
 
 	public void kernelEvaluation() {
@@ -356,6 +360,7 @@ or other kernel features of your available hardware. One is the Evaluable::into 
 allows you to specify the destination of the results. This is useful when you are using (or
 reusing) a pre-existing data structure. The other is the traverse() method, which is used to
 adjust the traversal axis of the PackedCollection. More on this in the next section.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### TraversalPolicy
 
@@ -364,31 +369,35 @@ that tells other components how it is expected to be traversed during a computat
 properties of the **TraversalPolicy** (often called the shape) are shown in the example below.
 
 ```Java
+public class MyNativeEnabledApplication implements CodeFeatures {
+	// ....
+
 	public void shapes() {
-	// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
-	// However, it will be treated for the purpose of GPU parallelism as one
-	// value with 80 elements. In this case, 1 is referred to as the count and
-	// 80 is referred to as the size.
-	TraversalPolicy shape = shape(10, 4, 2);
-	System.out.println("Shape = " + shape.toStringDetail());
-	// Shape = (10, 4, 2)[axis=0|1x80]
-	//           <dims> [Count x Size]
+		// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
+		// However, it will be treated for the purpose of GPU parallelism as one
+		// value with 80 elements. In this case, 1 is referred to as the count and
+		// 80 is referred to as the size.
+		TraversalPolicy shape = shape(10, 4, 2);
+		System.out.println("Shape = " + shape.toStringDetail());
+		// Shape = (10, 4, 2)[axis=0|1x80]
+		//           <dims> [Count x Size]
 
-	// What if we want to operate on groups of elements at once, via SIMD or
-	// some other method? We can simply adjust the traversal axis
-	shape = shape.traverse();
-	System.out.println("Shape = " + shape.toStringDetail());
-	// Shape = (10, 4, 2)[axis=1|10x8]
-	//           <dims> [Count x Size]
-	// --> Now we have 10 groups of 8 elements each, and 10 operations can work on
-	// 8 elements each - at the same time.
+		// What if we want to operate on groups of elements at once, via SIMD or
+		// some other method? We can simply adjust the traversal axis
+		shape = shape.traverse();
+		System.out.println("Shape = " + shape.toStringDetail());
+		// Shape = (10, 4, 2)[axis=1|10x8]
+		//           <dims> [Count x Size]
+		// --> Now we have 10 groups of 8 elements each, and 10 operations can work on
+		// 8 elements each - at the same time.
 
-	shape = shape.traverseEach(); // Move the traversal axis to the innermost dimension
-	shape = shape.consolidate(); // Move the traversal axis back by 1 position
-	shape = shape.item(); // Pull off just the shape of one item in the parallel group
-	System.out.println("Shape = " + shape.toStringDetail());
-	// Shape = (2)[axis=0|1x2]
-	// --> And that's just one item from the original shape (which contained 40 of them).
+		shape = shape.traverseEach(); // Move the traversal axis to the innermost dimension
+		shape = shape.consolidate(); // Move the traversal axis back by 1 position
+		shape = shape.item(); // Pull off just the shape of one item in the parallel group
+		System.out.println("Shape = " + shape.toStringDetail());
+		// Shape = (2)[axis=0|1x2]
+		// --> And that's just one item from the original shape (which contained 40 of them).
+	}
 }
 ```
 
@@ -406,7 +415,7 @@ of a collection some finite number of times. This is useful for broadcasting ope
 different ways.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
     // ....
 
 	public void repeat() {
@@ -429,7 +438,7 @@ axis of that collection. This is useful for performing a lot of common tensor op
 transpose or convolution. The enumerate() method accepts an axis, a length, and a stride.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
     // ....
 
 	public void enumerate() {
@@ -459,7 +468,7 @@ To take just a slice of a collection, the subset operation can be used. It accep
 position information for the slice.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
     // ....
 
 	public void subset3d() {
@@ -496,6 +505,73 @@ public class MyNativeEnableApplication implements CodeFeatures {
 All these atomic operations (together with the standard mathematical operations) can be combined to achieve
 basically any kind of tensor algebra you may need. If you find otherwise, please 
 [open an issue][issues-url]
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Special Purpose Types
+
+Although **PackedCollection** is a general purpose data structure for laying out numerical values in
+memory, and any operation can ultimately use it, there are other types that extend **PackedCollection**
+to provide functionality that may be specific to a particular domain.
+
+#### Pair
+
+The **Pair** type is used to store two values. This seems like it wouldn't require a type of its own,
+but there are some unique things that make sense only for a pair of values. Some **Pair** subclasses
+are listed below.
+
+1. **ComplexNumber** - A pair of real numbers, used together to represent a complex number.
+2. **TemporalScalar** - A pair of a number and a time, used to represent a scalar values distributed along a timeseries.
+3. **Scalar** - A number and a corresponding uncertainty, used to represent a measurement that may not be precisely known.
+4. **Photon** - A wavelength and a phase, used to represent a photon in a manner that accounts for quantum interference.
+5. **CursorPair** - A pair of values that form an interval.
+
+#### Vector
+
+The **Vector** type stores three values and is used for geometric operations, especially 3D graphics.
+It has one subclass, **Vertex**, which represents a position in space but includes references to values
+for a normal or gradient and a **Pair** of texture coordinates.
+
+#### RGB
+
+The **RGB** type stores three values and is used for color operations. It has one subclass, **RGBA**, which
+keeps a reference to an additional value for an alpha (transparency) channel.
+
+#### MeshData
+
+The **MeshData** type is used to store the data for a 3D mesh. It directly represents all the data needed
+for rendering a triagulated 3D object, including the positions of the vertices and the normal/gradient values.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Other Mathematical Operations
+
+#### Complex Numbers
+
+Given that the sum of two complex numbers is the sum of their real and imaginary parts, there is no need
+for special handling of complex addition and subtraction, the **CollectionProducer**::add and
+**CollectionProducer**::subtract methods work just as well as for other types of data.  However, the
+process of multiplying two complex numbers is not trivially reducible to multiplication of the
+individual values, and hence cannot be accomplished with some variation of the tensor multiplication
+provided by **CollectionProducer**::multiply (this is similarly true for exponentiation, etc).
+
+For this case, special methods are available.
+
+```Java
+public class MyNativeEnabledApplication implements CodeFeatures {
+    // ....
+
+	public void complexMath() {
+		ComplexNumber a = new ComplexNumber(1, 2);
+		ComplexNumber b = new ComplexNumber(3, 4);
+
+		Producer<ComplexNumber> c = multiplyComplex(c(a), c(b));
+		System.out.println("(1 + 2i) * (3 + 4i) = ");
+		c.evaluate().print();
+	}
+}
+```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Automatic Differentiation
 
@@ -511,7 +587,7 @@ respect to a particular input. The shape of the result will be the shape of the 
 output shape - resulting in a derivative for each combination of input and output. Some examples follow.
 
 ```Java
-public class MyNativeEnableApplication implements CodeFeatures {
+public class MyNativeEnabledApplication implements CodeFeatures {
     // ....
 
 	@Test
@@ -558,6 +634,7 @@ public class MyNativeEnableApplication implements CodeFeatures {
 }
 ```
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Machine Learning
 

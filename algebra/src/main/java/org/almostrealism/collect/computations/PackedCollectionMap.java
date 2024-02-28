@@ -39,7 +39,6 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -62,7 +61,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		super(shape, (Supplier) collection);
+		super(null, shape, (Supplier) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;
 

@@ -17,7 +17,9 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
@@ -44,7 +46,6 @@ import java.util.function.Supplier;
  */
 public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V>, ConsoleFeatures {
 	private String name;
-	private LanguageOperations lang;
 	private PhysicalScope physicalScope;
 	private int sortHint;
 
@@ -74,8 +75,9 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		return this.name;
 	}
 
-	public LanguageOperations getLanguage() { return lang; }
-	public void setLanguage(LanguageOperations lang) { this.lang = lang; }
+	public InstanceReference<?> ref() {
+		return new InstanceReference<>(this);
+	}
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
 	public PhysicalScope getPhysicalScope() { return physicalScope; }
@@ -174,4 +176,8 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	@Override
 	public int hashCode() { return name.hashCode(); }
+
+	public static Variable<Integer, ?> integer(String name) {
+		return new Variable<>(name, null, new Constant<>(Integer.class), null);
+	}
 }

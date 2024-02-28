@@ -50,6 +50,14 @@ public class Cases<T> extends Scope<T> {
 
 	public List<Expression<Boolean>> getConditions() { return conditions; }
 
+	@Override
+	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
+		if (altScope != null) throw new UnsupportedOperationException();
+		if (condition != null) conditions.add(condition);
+		getChildren().add(scope);
+		return scope;
+	}
+
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 		args.addAll(extractArgumentDependencies(getConditions().stream()
@@ -65,9 +73,14 @@ public class Cases<T> extends Scope<T> {
 		for (Statement s : getStatements()) { w.println(s); }
 		for (ExpressionAssignment<?> v : getVariables()) { w.println(v); }
 
-		for (int i = 0; i < getConditions().size(); i++) {
-			String pre = i > 0 ? "else if (" : "if (";
-			w.println(pre + getConditions().get(i).getExpression(w.getLanguage()) + ") {");
+		for (int i = 0; i < getChildren().size(); i++) {
+			if (i < getConditions().size()) {
+				String pre = i > 0 ? "else if (" : "if (";
+				w.println(pre + getConditions().get(i).getExpression(w.getLanguage()) + ") {");
+			} else {
+				w.println(" else {");
+			}
+
 			getChildren().get(i).write(w);
 			w.println("}");
 		}

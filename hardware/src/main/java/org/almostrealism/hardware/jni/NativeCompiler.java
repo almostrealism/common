@@ -218,10 +218,10 @@ public class NativeCompiler implements ConsoleFeatures {
 				} else {
 					libDir = "Extensions";
 				}
-
-				File ld = new File(libDir);
-				if (!ld.exists()) ld.mkdir();
 			}
+
+			File ld = new File(libDir);
+			if (!ld.exists()) ld.mkdir();
 
 			CompilerCommandProvider commandProvider;
 

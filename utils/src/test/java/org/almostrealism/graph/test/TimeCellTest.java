@@ -24,7 +24,7 @@ public class TimeCellTest implements TestFeatures {
 			tick.run();
 		}
 
-		assertEquals(100.0, cell.frame().get().evaluate());
+		assertEquals(100.0, cell.frameScalar().get().evaluate());
 	}
 
 	@Test
@@ -33,7 +33,7 @@ public class TimeCellTest implements TestFeatures {
 		Producer<Scalar> loopDuration = v(2.0);
 
 		Producer<Scalar> left = l(() -> new Provider<>(time));
-		left = greaterThan(loopDuration, v(0.0),
+		left = scalarGreaterThan(loopDuration, v(0.0),
 				scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 				scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 

@@ -310,7 +310,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	private String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(getArgument(lang, index), pos, assignment, kernelIndex);
+		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
 	}
 
 	private String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {

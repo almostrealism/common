@@ -37,7 +37,6 @@ import java.util.stream.IntStream;
 public class CLJNIPrintWriter extends CJNIPrintWriter {
 	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism, LanguageOperations lang) {
 		super(p, topLevelMethodName, parallelism, lang, new DefaultJNIMemoryAccessor());
-		enableWarnOnExplictParams = false;
 	}
 
 	@Override

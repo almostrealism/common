@@ -39,7 +39,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		super(computeShape(shape, stride, collection), collection, null);
+		super(computeShape(shape, stride, collection), null, collection);
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}

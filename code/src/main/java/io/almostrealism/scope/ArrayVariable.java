@@ -18,6 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.expression.Constant;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
@@ -26,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
@@ -37,22 +39,22 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
+	private boolean disableOffset;
 	private boolean destroyed;
 
-	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
+	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
 		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
-		setLanguage(lang);
 		this.names = np;
 		setArraySize(arraySize);
+		if (type != null) setExpression(new Constant<>(type));
 	}
 
-	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(lang, np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
+		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
 	}
 
-	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, scope, new Constant<>(type), p);
-		setLanguage(lang);
 		this.names = np;
 	}
 
@@ -72,6 +74,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+
+	public boolean isDisableOffset() {
+		return disableOffset;
+	}
+
+	public void setDisableOffset(boolean disableOffset) {
+		this.disableOffset = disableOffset;
+	}
 
 	public int getOffset() {
 		if (destroyed) throw new UnsupportedOperationException();
@@ -97,7 +107,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return getDelegate().getValueRelative(index + getDelegateOffset());
 		}
 
-		return (Expression) reference(names.getArrayPosition(getLanguage(), this, new IntegerConstant(index), 0), false);
+		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
 	}
 
 	@Override
@@ -115,7 +125,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else {
-			return reference(names.getArrayPosition(getLanguage(), this, pos, 0), false);
+			return reference(getArrayPosition(this, pos, 0), false);
 		}
 	}
 
@@ -177,6 +187,20 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (destroyed) throw new UnsupportedOperationException();
 		if (getDelegate() == null) return super.getExpressionDependencies();
 		return Collections.emptyList();
+	}
+
+	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+		Expression offset = new IntegerConstant(0);
+
+		if (v.getProducer() instanceof Countable) {
+			KernelIndex idx = new KernelIndex(kernelIndex);
+			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, kernelIndex));
+
+			Expression kernelOffset = idx.multiply(dim);
+			return kernelOffset.add(offset).add(pos.toInt());
+		} else {
+			return offset.add(pos).toInt();
+		}
 	}
 
 	public void destroy() {

@@ -26,7 +26,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -44,11 +43,11 @@ import java.util.function.Supplier;
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
-		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+		super(null, new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}
 
 	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(new TraversalPolicy(2).traverse(0), arguments);
+		super(null, new TraversalPolicy(2).traverse(0), arguments);
 	}
 
 	@Override

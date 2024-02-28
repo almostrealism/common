@@ -18,6 +18,4 @@ package org.almostrealism.hardware;
 
 public interface KernelSupport {
 
-	default boolean isKernelEnabled() { return true; }
-
 }

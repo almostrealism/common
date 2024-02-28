@@ -81,7 +81,7 @@ public class SphereTest implements TestFeatures {
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
 		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
-		Evaluable<Scalar> ev = scalar(_greaterThan(c(d), c(0.0), scalar(1.0), scalar(-1.0))).get();
+		Evaluable<Scalar> ev = scalar(greaterThan(c(d), c(0.0), scalar(1.0), scalar(-1.0))).get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;

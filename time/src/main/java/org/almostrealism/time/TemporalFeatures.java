@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
 
 import java.util.function.Function;
@@ -65,12 +66,16 @@ public interface TemporalFeatures {
 		return new Interpolate(series, position, rate);
 	}
 
-	default <T extends PackedCollection<?>> Interpolate interpolate(
+	default Interpolate interpolate(
 									Producer<PackedCollection<?>> series,
 									Producer<PackedCollection<?>> position,
 									Producer<PackedCollection<?>> rate,
 									Function<Expression, Expression> timeForIndex,
 									Function<Expression, Expression> indexForTime) {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
+	}
+
+	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input) {
+		return new FourierTransform(bins, input);
 	}
 }

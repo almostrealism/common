@@ -60,9 +60,6 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public Expression<?> getIndex() { return index; }
 
 	@Override
-	public boolean isSeriesSimplificationTarget() { return true; }
-
-	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (var instanceof ArrayVariable) {
 			ArrayVariable v = (ArrayVariable) var;
@@ -70,12 +67,15 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 			if (pos == null) {
 				// Reference to the whole array
 				return var.getName();
-			} else {
+			} else if (v.isDisableOffset()) {
 				// Reference to a specific element
+				return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
+			} else {
+				// Reference to a specific element, with offset
 				return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
 			}
 		} else {
-			warn("Reference to value which is not an ArrayVariable");
+			// warn("Reference to value which is not an ArrayVariable");
 			return var.getName();
 		}
 	}

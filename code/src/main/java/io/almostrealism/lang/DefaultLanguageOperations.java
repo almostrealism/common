@@ -22,6 +22,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +30,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public abstract class DefaultLanguageOperations implements LanguageOperations {
-	protected boolean enableWarnOnExplictParams = true;
 
 	private Precision precision;
 	private boolean enableArrayVariables;
@@ -60,12 +60,18 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	@Override
-	public String declaration(Class type, String destination, String expression) {
+	public String declaration(Class type, String destination, String expression, String arrayLength) {
 		if (type == null) {
 			return assignment(destination, expression);
-		}
+		} else if (arrayLength != null) {
+			if (expression != null) {
+				throw new UnsupportedOperationException();
+			}
 
-		return nameForType(type) + " " + destination + " = " + expression;
+			return nameForType(type) + " " + destination + "[" + arrayLength + "]";
+		} else {
+			return nameForType(type) + " " + destination + " = " + expression;
+		}
 	}
 
 	@Override
@@ -83,6 +89,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return buf.toString();
 	}
 
+	@Deprecated
 	protected void renderParametersExplicit(List<Expression> parameters, Consumer<String> out) {
 		for (int i = 0; i < parameters.size(); i++) {
 			Expression arg = parameters.get(i);
@@ -96,57 +103,93 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
-		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
-		if (explicit.isPresent()) {
-			if (enableWarnOnExplictParams) {
-				System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression(this) +
-									") provided to method; falling back to explicit rendering");
-			}
-			renderParametersExplicit(parameters, out);
-			return;
-		}
-
 		List<ArrayVariable<?>> arguments = parameters.stream()
+				.filter(exp -> exp instanceof InstanceReference)
 				.map(exp -> (InstanceReference) exp)
 				.map(InstanceReference::getReferent)
+				.filter(v -> v instanceof ArrayVariable<?>)
 				.map(v -> (ArrayVariable<?>) v)
 				.collect(Collectors.toList());
 
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, null, "", "");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.NONE);
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Offset");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.OFFSET);
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Size");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.SIZE);
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Dim0");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.DIM0);
 			}
 		} else {
-			renderArguments(arguments, out, false, false,  Accessibility.INTERNAL,null, "", "");
+			renderArguments(arguments, out, false, false,  Accessibility.INTERNAL, ParamType.NONE);
+		}
+
+		List<Expression> explicit = parameters.stream()
+				.filter(exp -> !(exp instanceof InstanceReference) ||
+						!(((InstanceReference<?>) exp).getReferent() instanceof ArrayVariable<?>))
+				.collect(Collectors.toList());
+
+		if (!explicit.isEmpty()) {
+			if (!arguments.isEmpty()) {
+				out.accept(", ");
+			}
+
+			renderParametersExplicit(explicit, out);
 		}
 	}
 
 	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, true, true, access, null, "*", "");
+				renderArguments(arguments, out, true, true, access, ParamType.ARRAY);
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, access, Integer.class, "", "Offset");
+				renderArguments(arguments, out, true, false, access, ParamType.OFFSET);
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, access, Integer.class, "", "Size");
+				renderArguments(arguments, out, true, false, access, ParamType.SIZE);
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, access, Integer.class, "", "Dim0");
+				renderArguments(arguments, out, true, false, access, ParamType.DIM0);
 			}
 		} else {
-			renderArguments(arguments, out, true, true, access, null, "", "");
+			renderArguments(arguments, out, true, true, access, ParamType.NONE);
 		}
 	}
 
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
-								   boolean enableAnnotation, Accessibility access, Class replaceType, String prefix, String suffix) {
+								   boolean enableAnnotation, Accessibility access, ParamType type) {
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<?> arg = arguments.get(i);
+
+			if (arg.isDisableOffset() && type == ParamType.OFFSET) {
+				out.accept("0");
+			} else if (arg.isDisableOffset() && type == ParamType.DIM0) {
+				out.accept("0");
+			} else if (arg.isDisableOffset() && type == ParamType.SIZE) {
+				out.accept(arg.getArraySize().getExpression(this));
+			} else {
+				out.accept(argumentPre(arg, enableType, enableAnnotation, type.getType()));
+
+				out.accept(type.getPrefix());
+				out.accept(arguments.get(i).getName());
+				out.accept(type.getSuffix());
+				out.accept(argumentPost(i, enableAnnotation, access));
+			}
+
+			if (i < arguments.size() - 1) {
+				out.accept(", ");
+			}
+		}
+	}
+
+	public void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, Accessibility access) {
+		renderParameters(arguments, out, true, true, access, null, "", "");
+	}
+
+	protected void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, boolean enableType,
+									boolean enableAnnotation, Accessibility access, Class replaceType,
+									String prefix, String suffix) {
+		for (int i = 0; i < arguments.size(); i++) {
+			Variable<?, ?> arg = arguments.get(i);
 
 			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType));
 
@@ -161,11 +204,11 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation) {
+	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation) {
 		return argumentPre(arg, enableType, enableAnnotation, null);
 	}
 
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
+	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
 		StringBuilder buf = new StringBuilder();
 
 		if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
@@ -183,5 +226,46 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 
 	protected String argumentPost(int index, boolean enableAnnotation, Accessibility access) {
 		return "";
+	}
+
+	protected enum ParamType {
+		NONE, ARRAY, OFFSET, SIZE, DIM0;
+
+		public Class getType() {
+			switch (this) {
+				case NONE:
+				case ARRAY:
+					return null;
+				case OFFSET:
+				case SIZE:
+				case DIM0:
+					return Integer.class;
+				default: throw new UnsupportedOperationException();
+			}
+		}
+
+		public String getPrefix() {
+			switch (this) {
+				case NONE: return "";
+				case ARRAY: return "*";
+				case OFFSET:
+				case SIZE:
+				case DIM0:
+					return "";
+				default: throw new UnsupportedOperationException();
+			}
+		}
+
+		public String getSuffix() {
+			switch (this) {
+				case NONE:
+				case ARRAY:
+					return "";
+				case OFFSET: return "Offset";
+				case SIZE: return "Size";
+				case DIM0: return "Dim0";
+				default: throw new UnsupportedOperationException();
+			}
+		}
 	}
 }

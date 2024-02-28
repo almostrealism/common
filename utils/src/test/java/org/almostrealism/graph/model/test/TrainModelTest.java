@@ -44,6 +44,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -66,6 +67,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void dense() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
 
 		int size = 30;
@@ -279,6 +281,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
+		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_41"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
 		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
@@ -329,13 +332,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
+//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
 
 		int dim = 64;
 		int filters = 8;

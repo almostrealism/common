@@ -16,14 +16,18 @@
 
 package org.almostrealism.hardware.jni;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.cl.CLDataContext;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-public abstract class LlvmCommandProvider implements CompilerCommandProvider {
+public abstract class LlvmCommandProvider implements CompilerCommandProvider, ConsoleFeatures {
 	private static String includePath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_INCLUDES", "Contents/Resources/include");
 	private static String libPath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS", "Contents/Resources/lib");
 
@@ -78,10 +82,19 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider {
 		command.addAll(includes);
 
 		command.add("-" + cmd);
+		if (!SystemUtils.isMacOS()) command.add("-fPIC");
 		command.add(inputFile);
 		command.add("-o");
 		command.add(outputFile);
+
+		// log(Arrays.toString(command.toArray()));
+
 		return command;
+	}
+
+	@Override
+	public Console console() {
+		return Hardware.console;
 	}
 }
 

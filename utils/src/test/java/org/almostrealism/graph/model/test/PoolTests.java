@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -57,10 +58,6 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool2dSquareOptimize() {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
 		int r = 8;
 		int c = 8;
 		int d = 8;
@@ -70,82 +67,33 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		input.fill(pos -> Math.random());
 
 		Supplier<Producer<PackedCollection<?>>> pool =
-				() -> (Producer) c(p(input)).enumerate(1, w)
-						.enumerate(1, w)
-						.traverse(2)
-						.map(shape(d, 1), v ->
-								enumerate(shape(1, 1, w, w, 1), v)
-										.traverse(1).reduce(slice ->
-												max(slice))).optimize();
+				() -> (Producer) Process.optimized(cp(input)
+						.enumerate(2, 1)
+						.enumerate(2, w)
+						.enumerate(2, w)
+						.traverse(3)
+						.max()
+						.reshape(r / w, c / 2, d));
 
 		kernelTest(pool, output -> pool2d(r, c, d, w, input, output), true, false, false);
 	}
 
-	public void pool(int r, int c, int d, int w, boolean steps) {
-		if (skipMapProjectionTests) {
-			throw new UnsupportedOperationException();
-		}
-
+	public void pool(int r, int c, int d, int w, boolean kernel) {
 		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		{
-			CollectionProducer<?> pt = c(p(input));
-			System.out.println("1: " + pt.getShape() + " - " + pt.getShape().getCount() +
-					"x" + pt.getShape().getSize());
-			pt = pt.enumerate(1, w);
-			System.out.println("2: " + pt.getShape() + " - " + pt.getShape().getCount() +
-					"x" + pt.getShape().getSize());
-			pt = pt.enumerate(1, w);
-			System.out.println("3: " + pt.getShape() + " - " + pt.getShape().getCount() +
-					"x" + pt.getShape().getSize());
-			pt = pt.traverse(2);
-			System.out.println("4: " + pt.getShape() + " - " + pt.getShape().getCount() +
-					"x" + pt.getShape().getSize());
-			pt = pt.map(shape(d, 1), v ->
-					enumerate(shape(1, 1, w, w, 1), v)
-							.traverse(1).reduce(slice ->
-									max(slice)));
-			System.out.println("5: " + pt.getShape() + " - " + pt.getShape().getCount() +
-					"x" + pt.getShape().getSize());
-		}
+		Supplier<CollectionProducer<PackedCollection<?>>> pool =
+				() -> cp(input)
+						.enumerate(2, 1)
+						.enumerate(2, w)
+						.enumerate(2, w)
+						.traverse(3)
+						.max()
+						.reshape(r / w, c / 2, d);
 
-		if (steps) {
-			Supplier<Producer<PackedCollection<?>>> pool = () -> () -> args -> {
-				long start = System.currentTimeMillis();
-				Evaluable<PackedCollection<?>> step1 = c(p(input)).enumerate(1, w)
-						.enumerate(1, w).get();
-				System.out.println("Step 1 Compile: " + (System.currentTimeMillis() - start) / 1000 + "s");
-
-				start = System.currentTimeMillis();
-				PackedCollection<?> step1Out = step1.evaluate();
-				System.out.println("Step 1 Evaluate: " + (System.currentTimeMillis() - start) / 1000 + "s");
-
-				start = System.currentTimeMillis();
-				Evaluable<PackedCollection<?>> step2 =
-						c(p(step1Out)).traverse(2).map(shape(d, 1), v ->
-						enumerate(shape(1, 1, w, w, 1), v)
-								.traverse(1).reduce(slice ->
-										max(slice))).get();
-				System.out.println("Step 2 Compile: " + (System.currentTimeMillis() - start) / 1000 + "s");
-
-				start = System.currentTimeMillis();
-				PackedCollection<?> step2Out = step2.evaluate();
-				System.out.println("Step 2 Evaluate: " + (System.currentTimeMillis() - start) / 1000 + "s");
-				return step2Out;
-			};
-
+		if (kernel) {
 			kernelTest(pool, output -> pool2d(r, c, d, w, input, output), true, false, false);
 		} else {
-			Supplier<CollectionProducer<PackedCollection<?>>> pool =
-					() -> c(p(input)).enumerate(1, w)
-							.enumerate(1, w)
-							.traverse(2)
-							.map(shape(d, 1), v ->
-									enumerate(shape(1, 1, w, w, 1), v)
-											.traverse(1).reduce(slice ->
-													max(slice)));
-
 			kernelTest(pool, output -> pool2d(r, c, d, w, input, output), false, false, true);
 		}
 	}

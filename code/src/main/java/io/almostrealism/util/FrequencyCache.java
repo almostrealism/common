@@ -16,7 +16,12 @@
 
 package io.almostrealism.util;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 public class FrequencyCache<K, V> {
@@ -43,6 +48,8 @@ public class FrequencyCache<K, V> {
 	private final Map<V, CacheEntry> reverseCache;
 	private final int capacity;
 
+	private BiConsumer<K, V> evictionListener;
+
 	public FrequencyCache(int capacity, double frequencyBias) {
 		if (frequencyBias > 1 || frequencyBias < 0) throw new IllegalArgumentException();
 
@@ -50,6 +57,10 @@ public class FrequencyCache<K, V> {
 		this.frequencyBias = frequencyBias;
 		this.cache = new HashMap<>(capacity);
 		this.reverseCache = new HashMap<>(capacity);
+	}
+
+	public void setEvictionListener(BiConsumer<K, V> listener) {
+		this.evictionListener = listener;
 	}
 
 	public V get(K key) {
@@ -61,6 +72,10 @@ public class FrequencyCache<K, V> {
 		clock++;
 		entry.accessed();
 		return entry.value;
+	}
+
+	public boolean containsKey(K key) {
+		return cache.containsKey(key);
 	}
 
 	public void put(K key, V value) {
@@ -86,6 +101,13 @@ public class FrequencyCache<K, V> {
 
 			List<K> matchingKeys = cache.entrySet()
 					.stream().filter(e -> e.getValue() == ent.getValue())
+					.map(e -> {
+						if (evictionListener != null) {
+							evictionListener.accept(e.getKey(), e.getValue().value);
+						}
+
+						return e;
+					})
 					.map(Map.Entry::getKey).collect(Collectors.toList());
 			matchingKeys.forEach(cache::remove);
 		}

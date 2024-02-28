@@ -71,6 +71,11 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	boolean enableFixedCollections = true;
 
 	default <T> Producer<T> v(T v) {
+		if (v instanceof TraversalPolicy) {
+			warn("TraversalPolicy provided as Producer value");
+			return v((TraversalPolicy) v, 0);
+		}
+
 		return value(v);
 	}
 

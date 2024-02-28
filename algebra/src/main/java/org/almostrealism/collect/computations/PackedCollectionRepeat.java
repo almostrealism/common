@@ -20,7 +20,6 @@ import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -28,7 +27,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
-import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
@@ -46,14 +44,14 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		super(enableTraverseEach ?
 					shape(collection).replace(shape.prependDimension(repeat)).traverseEach() :
 					shape(collection).replace(shape.prependDimension(repeat)).traverse(),
-				collection, null);
+				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
 	}
 
 	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
 								   TraversalPolicy sliceShape, Producer<?> collection) {
-		super(shape, collection, null);
+		super(shape, null, collection);
 		this.subsetShape = subsetShape;
 		this.sliceShape = sliceShape;
 	}

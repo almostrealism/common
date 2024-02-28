@@ -6,9 +6,10 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.60</version>
+    <version>0.61</version>
 
 	<properties>
+		<jacoco.version>0.8.11</jacoco.version>
 		<maven.compiler.source>16</maven.compiler.source>
 		<maven.compiler.target>16</maven.compiler.target>
 	</properties>
@@ -54,6 +55,32 @@
 					<source>11</source>
 					<target>11</target>
 				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.basedir}/.qodana/code-coverage/</outputDirectory>
+							<formats>XML</formats>
+							<includes>
+								<include>**</include>
+							</includes>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

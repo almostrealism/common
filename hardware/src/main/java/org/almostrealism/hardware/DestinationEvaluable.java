@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.jocl.CLException;
 
 import java.util.stream.Stream;
@@ -30,6 +31,10 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination) {
 		this.operation = operation;
 		this.destination = destination;
+
+		if (operation instanceof HardwareEvaluable) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	@Override

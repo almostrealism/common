@@ -36,11 +36,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class RankedChoiceEvaluableTest implements CodeFeatures {
+public class RankedChoiceEvaluableTest implements TestFeatures {
 	private double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon();
 
 	@Test
 	public void highestRank() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		IntStream.range(0, 5).forEach(i -> {
 			Scalar in = new Scalar(1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
@@ -53,6 +55,8 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 
 	@Test
 	public void highestRankKernel() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<Scalar> in = Scalar.scalarBank(4);
 		in.set(0, new Scalar(0.0));
 		in.set(1, new Scalar(2.0));

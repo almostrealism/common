@@ -30,6 +30,16 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -285,6 +295,34 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
+	public void store(File f) throws IOException {
+		store(new FileOutputStream(f));
+	}
+
+	public void store(OutputStream out) throws IOException {
+		try (DataOutputStream dos = new DataOutputStream(out)) {
+			getShape().store(dos);
+
+			try {
+				doubleStream().forEach(d -> {
+					try {
+						dos.writeDouble(d);
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				});
+			} catch (RuntimeException e) {
+				if (e.getCause() instanceof IOException) {
+					throw (IOException) e.getCause();
+				} else {
+					throw e;
+				}
+			}
+
+			dos.flush();
+		}
+	}
+
 	public PackedCollection<T> clone() {
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
@@ -315,6 +353,52 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		}
 
 		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
+	}
+
+	public static Iterable<PackedCollection<?>> loadCollections(File src) {
+		try {
+			return loadCollections(new FileInputStream(src));
+		} catch (FileNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static Iterable<PackedCollection<?>> loadCollections(InputStream in) {
+		DataInputStream dis = new DataInputStream(in);
+
+		return () -> new Iterator<>() {
+			@Override
+			public boolean hasNext() {
+				try {
+					if (dis.available() <= 0) {
+						dis.close();
+						return false;
+					}
+
+					return true;
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+
+			@Override
+			public PackedCollection next() {
+				try {
+					TraversalPolicy shape = TraversalPolicy.load(dis);
+					PackedCollection<?> collection = new PackedCollection<>(shape);
+					double input[] = new double[shape.getTotalSize()];
+
+					for (int i = 0; i < shape.getTotalSize(); i++) {
+						input[i] = dis.readDouble();
+					}
+
+					collection.setMem(0, input, 0, input.length);
+					return collection;
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		};
 	}
 
 	public static DynamicCollectionProducer blank(int... dims) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,12 +26,11 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.expression.ArrayDeclaration;
 import io.almostrealism.expression.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
@@ -77,8 +76,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	private List<ComputeRequirement> requirements;
 
 	private final List<Statement<?>> statements;
-	private final List<ExpressionAssignment<?>> variables;
-	private final List<Method> methods;
+	private final List<Variable<?, ?>> parameters;
+
+	private final List<ExpressionAssignment<?>> variables; // TODO  Remove
+	private final List<Method> methods; // TODO  Remove
+
 	private final List<Metric> metrics;
 	private final List<Scope> required;
 	private Set<KernelIndexChild> kernelChildren;
@@ -91,6 +93,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	 */
 	public Scope() {
 		this.statements = new ArrayList<>();
+		this.parameters = new ArrayList<>();
 		this.variables = new ArrayList<>();
 		this.methods = new ArrayList<>();
 		this.metrics = new ArrayList<>();
@@ -143,10 +146,43 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 
 	public List<Statement<?>> getStatements() { return statements; }
 
+	public List<Variable<?, ?>> getParameters() {
+		return parameters;
+	}
+
+	@Override
+	public boolean add(Scope<T> child) {
+		if (child == null) {
+			throw new IllegalArgumentException();
+		}
+
+		return super.add(child);
+	}
+
+	public Scope<T> addCase(Expression<Boolean> condition, Statement<?> statement) {
+		Scope<T> scope = new Scope<>();
+		scope.getStatements().add(statement);
+		return addCase(condition, scope, null);
+	}
+
+	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope) {
+		return addCase(condition, scope, null);
+	}
+
+	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
+		Cases cases = new Cases<>();
+		cases.addCase(condition, scope);
+		if (altScope != null) cases.add(altScope);
+		add(cases);
+		return scope;
+	}
+
 	/** @return  The {@link ExpressionAssignment}s in this {@link Scope}. */
+	@Deprecated
 	public List<ExpressionAssignment<?>> getVariables() { return variables; }
 
 	/** @return  The {@link Method}s in this {@link Scope}. */
+	@Deprecated
 	public List<Method> getMethods() { return methods; }
 
 	/** @return  The inner {@link Scope}s contained by this {@link Scope}. */
@@ -222,6 +258,32 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.collect(Collectors.toList());
 	}
 
+	public Expression<Integer> declareInteger(String name, Expression<Integer> value) {
+		Expression<Integer> i = new StaticReference(Integer.class, name);
+		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		return i;
+	}
+
+	public Expression<Double> declareDouble(String name, Expression<Double> value) {
+		Expression<Double> i = new StaticReference(Double.class, name);
+		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		return i;
+	}
+
+	public ArrayVariable<?> declareArray(NameProvider np, String name, Expression<Integer> size) {
+		getStatements().add(new ArrayDeclaration(Double.class, name, size));
+
+		ArrayVariable v = new ArrayVariable<>(np, Double.class, name, size);
+		v.setDisableOffset(true);
+		return v;
+	}
+
+	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<V> src) {
+		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, src);
+		getStatements().add(assignment);
+		return assignment;
+	}
+
 	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
 
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
@@ -234,9 +296,21 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			sortArguments(args);
 
+			List<String> declaredArrays = getStatements().stream()
+					.map(s -> s instanceof ArrayDeclaration ? (ArrayDeclaration) s : null)
+					.filter(Objects::nonNull)
+					.map(ArrayDeclaration::getName)
+					.collect(Collectors.toList());
+
+			List<String> declaredParameters = getParameters().stream()
+					.map(Variable::getName)
+					.collect(Collectors.toList());
+
 			this.stream()
 					.map(Scope::arguments)
 					.flatMap(List::stream)
+					.filter(v -> !declaredArrays.contains(v.getVariable().getName()))
+					.filter(v -> !declaredParameters.contains(v.getVariable().getName()))
 					.forEach(args::add);
 
 			methods.stream()
@@ -262,11 +336,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.flatMap(List::stream)
 				.forEach(v -> args.add((Argument<?>) v));
 
-//		List<Argument<?>> result = args.stream()
-//				.map(Delegated::getRootDelegate)
-//				.collect(Collectors.toList());
-//
-//		result = removeDuplicateArguments(result);
+		if (args.stream().anyMatch(Objects::isNull)) {
+			throw new UnsupportedOperationException();
+		}
 
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
@@ -389,10 +461,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return convertedScopes;
 	}
 
-	public Method<?> call() {
-		List<Expression> args = getArgumentVariables().stream()
+	public Method<?> call(Expression<?>... parameters) {
+		List<Expression> args = new ArrayList<>();
+		getArgumentVariables().stream()
 				.map(a -> new InstanceReference((Variable) a))
-				.collect(Collectors.toList());
+				.forEach(args::add);
+		for (Expression<?> p : parameters) { args.add(p); }
 		return new Method(Double.class, getName(), args);
 	}
 
@@ -454,6 +528,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
 		scope.getRequiredScopes().addAll(getRequiredScopes()
 				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+		scope.getParameters().addAll(getParameters());
 
 		UnaryOperator simplification = simplification(context);
 		scope.getMethods().addAll((List) getMethods()
@@ -478,6 +553,16 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
 		scope.getChildren().addAll(children);
 		return scope;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		return Objects.equals(getName(), ((Scope) o).getName());
+	}
+
+	@Override
+	public int hashCode() {
+		return getName() == null ? 0 : getName().hashCode();
 	}
 
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {

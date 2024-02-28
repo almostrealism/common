@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public abstract class RelativeTraversableProducerComputation<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<I, O>
@@ -40,7 +39,7 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	protected RelativeTraversableProducerComputation() { }
 
 	public RelativeTraversableProducerComputation(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
-		super(outputShape, arguments);
+		super(null, outputShape, arguments);
 	}
 
 	protected List<ArrayVariable<Double>> getInputArguments(Expression index) {
@@ -110,8 +109,9 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 //	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
 
 	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
-		System.out.println("WARN: Using default getValue implementation");
-		return getValueFunction().apply(index);
+		// System.out.println("WARN: Using default getValue implementation");
+		// return getValueFunction().apply(index);
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

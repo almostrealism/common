@@ -24,7 +24,9 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.uml.Nameable;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -35,6 +37,7 @@ import java.util.List;
 public class Method<T> extends Expression<T> implements Statement<Expression<?>>, Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
+	private Map<String, String> arrayVariableReplacements;
 
 	public Method(String name, List<Expression<?>> arguments) {
 		this((Class<T>) String.class, name, arguments);
@@ -71,6 +74,18 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 		this(type, member, name, Arrays.asList(v));
 	}
 
+	public void setArgument(ArrayVariable<?> methodArg, ArrayVariable<?> replacement) {
+		setArgument(methodArg.getName(), replacement.getName());
+	}
+
+	protected void setArgument(String methodArg, String replacement) {
+		if (arrayVariableReplacements == null) {
+			arrayVariableReplacements = new HashMap<>();
+		}
+
+		arrayVariableReplacements.put(methodArg, replacement);
+	}
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (getMember() == null) {
@@ -100,7 +115,11 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		return new Method<>(getType(), getMember(), getName(), children);
+		Method m = new Method<>(getType(), getMember(), getName(), children);
+		if (arrayVariableReplacements != null) {
+			arrayVariableReplacements.forEach(m::setArgument);
+		}
+		return m;
 	}
 
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {

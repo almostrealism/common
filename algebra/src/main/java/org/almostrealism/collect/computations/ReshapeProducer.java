@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.Collection;
@@ -40,7 +39,7 @@ import java.util.List;
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					ScopeLifecycle, KernelSupport {
+					ScopeLifecycle {
 	public static boolean enableHardwareEvaluable = true;
 
 	private TraversalPolicy shape;

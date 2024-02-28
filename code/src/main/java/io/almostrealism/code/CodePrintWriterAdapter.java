@@ -22,14 +22,13 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
 import java.util.Stack;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
-	protected boolean enableWarnOnExplictParams = true;
-
 	protected PrintWriter p;
 	protected LanguageOperations language;
 
@@ -97,7 +96,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void println(Scope<?> s) {
-		beginScope(s.getName(), null, s.getArgumentVariables(), Accessibility.EXTERNAL);
+		beginScope(s.getName(), null, Accessibility.EXTERNAL, s.getArgumentVariables());
 		s.write(this);
 		endScope();
 	}
@@ -106,7 +105,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void flush() { }
 
 	@Override
-	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
+	public void beginScope(String name, OperationMetadata metadata, Accessibility access, List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
 		scopeName.push(name);
 
 		StringBuilder buf = new StringBuilder();
@@ -124,6 +123,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 			buf.append("(");
 			((DefaultLanguageOperations) language).renderArguments(arguments, buf::append, access);
+			if (!arguments.isEmpty() && !parameters.isEmpty()) { buf.append(", "); }
+			((DefaultLanguageOperations) language).renderParameters(parameters, buf::append, access);
 			buf.append(")");
 		}
 

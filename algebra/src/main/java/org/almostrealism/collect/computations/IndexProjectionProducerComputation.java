@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -37,19 +38,44 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	public static boolean enableChainDelta = true;
 
 	private UnaryOperator<Expression<?>> indexProjection;
+	protected boolean relative;
 
-	public IndexProjectionProducerComputation(TraversalPolicy shape, Producer<?> collection,
-											  UnaryOperator<Expression<?>> indexProjection) {
-		super(shape, (Supplier<Evaluable<? extends PackedCollection<?>>>) collection);
+	public IndexProjectionProducerComputation(TraversalPolicy shape,
+											  UnaryOperator<Expression<?>> indexProjection,
+											  Producer<?> collection) {
+		this(shape, indexProjection, false, collection, new Producer[0]);
+	}
+
+	public IndexProjectionProducerComputation(TraversalPolicy shape,
+											  UnaryOperator<Expression<?>> indexProjection,
+											  boolean relative,
+											  Producer<?> collection) {
+		this(shape, indexProjection, relative, collection, new Producer[0]);
+	}
+
+	protected IndexProjectionProducerComputation(TraversalPolicy shape,
+											  UnaryOperator<Expression<?>> indexProjection,
+											  boolean relative,
+											  Producer<?> collection,
+											  Producer<?>... inputs) {
+		super(shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
 		this.indexProjection = indexProjection;
+		this.relative = relative;
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
+		if (relative) {
+			TraversableExpression var = getTraversableArguments(index)[1];
+			if (var == null) return null;
 
-		return var.getValueAt(projectIndex(var, index));
+			return var.getValueRelative(projectIndex(var, index));
+		} else {
+			TraversableExpression var = getCollectionArgumentVariable(1);
+			if (var == null) return null;
+
+			return var.getValueAt(projectIndex(var, index));
+		}
 	}
 
 	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {
@@ -74,7 +100,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
-		return new IndexProjectionProducerComputation<>(getShape(), (Producer<?>) children.get(1), indexProjection);
+		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
+				(Producer<?>) children.get(1),
+				children.stream().skip(2).toArray(Producer[]::new));
 	}
 
 	@Override

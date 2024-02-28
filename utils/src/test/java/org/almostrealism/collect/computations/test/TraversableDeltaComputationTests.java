@@ -597,6 +597,21 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void max() {
+		PackedCollection<?> in = pack(10, 100, 1000);
+		CollectionProducer<PackedCollection<?>> c = cp(in).max();
+
+		c.get().evaluate().print();
+
+		PackedCollection<?> result = c.delta(cp(in)).evaluate();
+		result.print();
+
+		for (int i = 0; i < 3; i++) {
+			assertEquals(i == 2 ? 1 : 0, result.valueAt(0, i));
+		}
+	}
+
+	@Test
 	public void map() {
 		PackedCollection<?> g = pack(3, 5);
 		PackedCollection<?> w = pack(10, 100, 1000);

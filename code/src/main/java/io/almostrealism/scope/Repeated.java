@@ -21,6 +21,7 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -43,6 +44,17 @@ public class Repeated<T> extends Scope<T> {
 
 		if (metadata == null)
 			throw new IllegalArgumentException();
+	}
+
+	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition) {
+		this(idx, condition, new IntegerConstant(1));
+	}
+
+	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition, Expression<Integer> interval) {
+		this();
+		setIndex(idx);
+		setInterval(interval);
+		setCondition(condition);
 	}
 
 	public Variable<Integer, ?> getIndex() { return index; }

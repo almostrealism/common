@@ -158,17 +158,25 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return sq((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> magnitude() {
+		return magnitude((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
 		return max((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
-		return mod((Producer) this, (Producer) mod);
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax() {
+		return indexOfMax((Producer) this);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMod(Producer<T> mod) {
-		return relativeMod((Producer) this, (Producer) mod);
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min() {
+		// TODO  return min((Producer) this);
+		throw new UnsupportedOperationException();
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
+		return mod((Producer) this, (Producer) mod);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
@@ -235,6 +243,6 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
 																boolean includeEqual) {
-		return _lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
+		return lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 }

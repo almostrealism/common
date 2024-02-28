@@ -81,7 +81,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return r == null ? new OperationList("TimeCell Push") : r.push(frame());
+		return r == null ? new OperationList("TimeCell Push") : r.push(frameScalar());
 	}
 
 	@Override
@@ -103,7 +103,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 			tick.add(a(2, p(time), concat(left, right)));
 		} else {
 			Producer<Scalar> left = l(p(time));
-			left = greaterThan(loopDuration, v(0.0),
+			left = scalarGreaterThan(loopDuration, v(0.0),
 					scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
@@ -120,9 +120,11 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	@Override
 	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
 
-	public Producer<Scalar> frame() { return l(() -> new Provider<>(time)); }
+	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
+
+	public Producer<PackedCollection<?>> frame() { return c(() -> new Provider<>(time), 0); }
 
 	public Producer<PackedCollection<?>> time(double sampleRate) {
-		return divide(c(frame(), 0), c(sampleRate));
+		return divide(frame(), c(sampleRate));
 	}
 }

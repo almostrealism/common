@@ -20,6 +20,7 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,11 +74,13 @@ public class CJNILanguageOperations extends CLanguageOperations {
 		}
 
 		super.renderArguments(arguments, out, access);
+	}
 
-		if (!arguments.isEmpty()) {
-			out.accept(", ");
-			out.accept("jint global_id");
-		}
+	@Override
+	protected void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Accessibility access, Class replaceType, String prefix, String suffix) {
+		super.renderParameters(arguments, out, enableType, enableAnnotation, access, replaceType, prefix, suffix);
+		out.accept(", ");
+		out.accept("jint global_id");
 	}
 
 	@Override

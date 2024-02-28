@@ -101,7 +101,12 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 			destinationValidation.accept(destination);
 		}
 
-		return new DestinationEvaluable<>((Evaluable) getKernel().getValue(), destination);
+		Evaluable ev = getKernel().getValue();
+		if (ev instanceof HardwareEvaluable<?>) {
+			return ((HardwareEvaluable) ev).withDestination(destination);
+		}
+
+		return new DestinationEvaluable<>(ev, destination);
 	}
 
 	public ContextSpecific<Evaluable<T>> getKernel() { return kernel; }

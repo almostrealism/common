@@ -38,7 +38,7 @@ public class PackedCollectionMax extends CollectionProducerComputationBase<Packe
 	}
 
 	public PackedCollectionMax(Supplier<Evaluable<? extends PackedCollection<?>>> values, Function<Expression, Expression> expression) {
-		super(new TraversalPolicy(1), values);
+		super(null, new TraversalPolicy(1), values);
 		this.expression = expression;
 	}
 

@@ -35,6 +35,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -141,10 +142,10 @@ public class MeshIntersectionTest implements TestFeatures {
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
-				greaterThan(u, v(0.0), true),
-				lessThan(u, v(1.0), true),
-				greaterThan(v, v(0.0), true),
-				lessThan(add(u, v), v(1.0), true));
+				scalarGreaterThan(u, v(0.0), true),
+				scalarLessThan(u, v(1.0), true),
+				scalarGreaterThan(v, v(0.0), true),
+				scalarLessThan(add(u, v), v(1.0), true));
 		KernelizedEvaluable<Scalar> evs = (KernelizedEvaluable) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
@@ -203,6 +204,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel1() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		Producer<Ray> ray = ray(origin1, direction1);
 		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
@@ -212,6 +215,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectAt2() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		double distance = intersection().get().evaluate(
 				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
@@ -220,6 +225,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel2() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
@@ -229,6 +236,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel3() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
 		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);

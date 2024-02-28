@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
@@ -28,6 +29,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.LanguageOperations;
 
 public interface ExpressionFeatures {
 
@@ -57,6 +59,15 @@ public interface ExpressionFeatures {
 
 	default KernelIndex kernel() { return new KernelIndex(); }
 
+	default StaticReference<Double> pi() {
+		return new StaticReference<>(Double.class, null) {
+			@Override
+			public String getExpression(LanguageOperations lang) {
+				return lang.pi();
+			}
+		};
+	}
+
 	default <T> ExpressionAssignment<T> declare(String name, Expression<T> expression) {
 		return declare(new StaticReference<>(expression.getType(), name), expression);
 	}
@@ -83,6 +94,13 @@ public interface ExpressionFeatures {
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Conditional.of(condition, (Expression) positive, (Expression) negative);
+	}
+
+	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {
+		return new Expression[] {
+				aReal.multiply(bReal).subtract(aImg.multiply(bImg)),
+				aReal.multiply(bImg).add(aImg.multiply(bReal))
+		};
 	}
 
 	static ExpressionFeatures getInstance() {

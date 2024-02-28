@@ -16,17 +16,13 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public class DefaultNameProvider implements NameProvider {
-	private LanguageOperations lang;
 	private String function;
 
-	public DefaultNameProvider(LanguageOperations lang, String function) {
-		this.lang = lang;
+	public DefaultNameProvider(String function) {
 		this.function = function;
 	}
 
@@ -36,7 +32,7 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(lang, 0); }
+	public Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
 	public String getVariableDimName(ArrayVariable v, int dim) {
@@ -46,10 +42,5 @@ public class DefaultNameProvider implements NameProvider {
 	@Override
 	public String getVariableSizeName(ArrayVariable v) {
 		return "1";
-	}
-
-	@Override
-	public Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression<?> pos, int kernelIndex) {
-		throw new UnsupportedOperationException();
 	}
 }

@@ -25,6 +25,7 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -55,6 +56,8 @@ public interface CodePrintWriter {
 			println((Method<?>) s);
 		} else if (s instanceof ExpressionAssignment) {
 			println((ExpressionAssignment) s);
+		} else if (s instanceof Statement) {
+			println(((Statement) s).getStatement(getLanguage()) + getLanguage().getStatementTerminator());
 		} else {
 			throw new IllegalArgumentException();
 		}
@@ -91,10 +94,18 @@ public interface CodePrintWriter {
 	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
 	 * null for the name.
 	 */
-	void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access);
+	default void beginScope(String name, OperationMetadata metadata, Accessibility access, List<ArrayVariable<?>> arguments) {
+		beginScope(name, metadata, access, arguments, Collections.emptyList());
+	}
 
 	/**
-	 * End a scope which was introduced with {@link #beginScope(String, OperationMetadata, List, Accessibility)}.
+	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
+	 * null for the name.
+	 */
+	void beginScope(String name, OperationMetadata metadata, Accessibility access, List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters);
+
+	/**
+	 * End a scope which was introduced with {@link #beginScope(String, OperationMetadata, Accessibility, List)}.
 	 */
 	void endScope();
 

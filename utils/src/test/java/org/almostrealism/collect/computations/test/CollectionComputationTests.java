@@ -29,6 +29,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
@@ -38,20 +39,21 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
 
 	@Test
-	public void integers() {
+	public void evaluateIntegers() {
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
@@ -359,12 +361,27 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void max2d() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
 		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
-		PackedCollection<?> m = cp(value).max().get().evaluate();
-		print(2, 1, m);
+		PackedCollection<?> m = max(cp(value)).get().evaluate();
+		m.print();
 		assertEquals(3.0, m.toDouble(0));
 		assertEquals(7.0, m.toDouble(1));
+	}
+
+	@Test
+	public void indexOfMax2d() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
+		PackedCollection<?> value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+
+		PackedCollection<?> m = cp(value).indexOfMax().get().evaluate();
+		m.print();
+
+		assertEquals(0.0, m.toDouble(0));
+		assertEquals(1.0, m.toDouble(1));
 	}
 
 	@Test
@@ -436,28 +453,30 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void dynamicProjection() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), p(in),
-				(input, idx) -> {
-					Expression<?> result = null;
+		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), (args, idx) -> {
+			Expression<?> result = null;
 
-					for (int i = 0; i < shape.getSize(); i++) {
-						Expression<?> index = shape.index(idx, e(i));
+			for (int i = 0; i < shape.getSize(); i++) {
+				Expression<?> index = shape.index(idx, e(i));
 
-						if (result == null) {
-							result = index;
-						} else {
-							result = conditional(in.getValueAt(index)
-										.greaterThan(in.getValueAt(result)),
-									index, result);
-						}
-					}
+				if (result == null) {
+					result = index;
+				} else {
+					result = conditional(args[1].getValueAt(index)
+								.greaterThan(args[1].getValueAt(result)),
+							index, result);
+				}
+			}
 
-					return result;
-				});
+			return result;
+		}, p(in)
+		);
 
 		PackedCollection<?> out = c.get().evaluate();
 		print(2, 1, out);

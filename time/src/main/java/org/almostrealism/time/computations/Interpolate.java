@@ -23,7 +23,6 @@ import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -47,7 +46,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
 					   Producer<PackedCollection<?>> rate, Function<Expression, Expression> timeForIndex,
 					   Function<Expression, Expression> indexForTime) {
-		super(new TraversalPolicy(1), new Producer[] { series, position, rate });
+		super(null, new TraversalPolicy(1), new Producer[] { series, position, rate });
 		this.timeForIndex = timeForIndex;
 		this.indexForTime = indexForTime;
 	}

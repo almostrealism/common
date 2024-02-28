@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,16 +16,43 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 public class ComplexMathTests implements TestFeatures {
 	@Test
+	public void complexFromPartsMagnitude() {
+		Evaluable<PackedCollection<?>> m =
+				complexFromParts(
+						v(shape(1024), 0),
+						v(shape(1024), 1))
+				.magnitude().get();
+
+		PackedCollection<?> real = new PackedCollection<>(1024).fill(Math::random);
+		PackedCollection<?> imag = new PackedCollection<>(1024).fill(Math::random);
+		PackedCollection<?> out = new PackedCollection<>(1024, 1);
+
+		HardwareOperator.verboseLog(() -> {
+			m.into(out.traverseEach()).evaluate(real.traverseEach(), imag.traverseEach());
+
+			for (int i = 0; i < 1024; i++) {
+				double expected = Math.hypot(real.valueAt(i), imag.valueAt(i));
+				double actual = out.valueAt(i, 0);
+				assertEquals(expected, actual);
+			}
+		});
+	}
+
+	@Test
 	public void multiply() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<Pair<?>> a = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 		PackedCollection<Pair<?>> b = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 
@@ -52,6 +79,8 @@ public class ComplexMathTests implements TestFeatures {
 
 	@Test
 	public void broadcastMultiply() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int w = 12;
 		int h = 32;
 
