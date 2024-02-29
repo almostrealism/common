@@ -16,12 +16,16 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
@@ -99,6 +103,31 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return (Expression) Quotient.of(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Expression numerator = getChildren().get(0);
+		Expression denominator = getChildren().get(1);
+
+		CollectionExpression numeratorDelta = numerator.delta(shape, target);
+		CollectionExpression denominatorDelta = denominator.delta(shape, target);
+
+		// f'(x)g(x)
+		CollectionExpression term1 = CollectionExpression.product(shape,
+				List.of(numeratorDelta, CollectionExpression.create(shape, denominator)));
+		// f(x)g'(x)
+		CollectionExpression term2 = CollectionExpression.product(shape,
+				List.of(CollectionExpression.create(shape, numerator), denominatorDelta));
+
+		CollectionExpression derivativeNumerator =
+				CollectionExpression.difference(shape, List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
+		CollectionExpression derivativeDenominator =
+				CollectionExpression.create(shape, new Product(denominator, denominator)); // [g(x)]^2
+		return CollectionExpression.quotient(shape, List.of(derivativeNumerator, derivativeDenominator));
 	}
 
 	@Override

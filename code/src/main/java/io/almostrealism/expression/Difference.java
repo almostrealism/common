@@ -70,4 +70,8 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Difference(children.toArray(new Expression[0]));
 	}
+
+	public static <T> Expression<T> of(Expression... values) {
+		return new Difference(values);
+	}
 }

@@ -17,9 +17,11 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionList;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 
 import java.util.List;
@@ -68,8 +70,16 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return create(shape, idx -> Sum.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
+	static CollectionExpression difference(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> Difference.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
+	}
+
 	static CollectionExpression product(TraversalPolicy shape, List<CollectionExpression> operands) {
 		return create(shape, idx -> Product.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
+	}
+
+	static CollectionExpression quotient(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> Quotient.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
 	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
