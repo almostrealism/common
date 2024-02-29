@@ -423,7 +423,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.addLayer(pool2d(2));
 		model.addBlock(flatten());
 		model.addLayer(dense(denseSize));
-//		model.addLayer(softmax());
+		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}

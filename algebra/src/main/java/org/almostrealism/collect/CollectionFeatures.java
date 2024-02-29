@@ -425,11 +425,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	/**
-	 * @deprecated Use {@link #repeat(int)}
+	 * @deprecated Use {@link #repeat(int, Producer)}
 	 */
 	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection) {
-		return expand(repeat, collection, v -> v.repeat(repeat));
+	default <T extends PackedCollection<?>> CollectionProducer<T> expand(int repeat, Producer<?> collection) {
+		// return expand(repeat, collection, v -> v.repeat(repeat));
+		return (CollectionProducer) repeat(repeat, collection).consolidate();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {

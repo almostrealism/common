@@ -67,7 +67,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 	 * @deprecated Use {@link #repeat(int)}
 	 */
 	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> expand(int repeat) {
 		return expand(repeat, this);
 	}
 

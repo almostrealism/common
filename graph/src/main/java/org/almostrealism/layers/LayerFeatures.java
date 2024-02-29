@@ -47,6 +47,7 @@ public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 	boolean enableLegacyConvLayer = false;
 	boolean enableLegacyPoolLayer = false;
+	boolean enableLegacyLayers = false;
 
 	@Deprecated
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
@@ -256,43 +257,48 @@ public interface LayerFeatures extends MatrixFeatures {
 	default CellularLayer softmax(int size) {
 		TraversalPolicy shape = shape(size);
 
-		KernelExpression backward = (i, p) -> {
-			ExpressionList gradient = i.v(0).toList();
-			ExpressionList in = i.v(1).toList().exp();
+		if (enableLegacyLayers) {
+			KernelExpression backward = (i, p) -> {
+				ExpressionList gradient = i.v(0).toList();
+				ExpressionList in = i.v(1).toList().exp();
 
-			Expression t = i.v(1).referenceRelative(p.l(0)).exp();
-			Expression s = in.sum();
-			Expression gr = i.v(0).referenceRelative(p.l(0));
+				Expression t = i.v(1).referenceRelative(p.l(0)).exp();
+				Expression s = in.sum();
+				Expression gr = i.v(0).referenceRelative(p.l(0));
 
-			return gradient.sum().multiply(
-					in.minus().multiply(gradient).sum().multiply(t)
-					.add(gr.multiply(t).multiply(s.subtract(t)))
-					.divide(s.pow(e(2))));
-		};
+				return gradient.sum().multiply(
+						in.minus().multiply(gradient).sum().multiply(t)
+								.add(gr.multiply(t).multiply(s.subtract(t)))
+								.divide(s.pow(e(2))));
+			};
 
-		Propagation propagation = (lr, gradient, input, next) -> {
-			OperationList ops = new OperationList();
-			PackedCollection<?> output = new PackedCollection<>(shape);
-			CollectionProducerComputation<PackedCollection<?>> gr = kernel(shape, backward, gradient, input);
+			Propagation propagation = (lr, gradient, input, next) -> {
+				OperationList ops = new OperationList();
+				PackedCollection<?> output = new PackedCollection<>(shape);
+				CollectionProducerComputation<PackedCollection<?>> gr = kernel(shape, backward, gradient, input);
 
-			ops.add(new KernelOperation(gr, output.traverseEach()));
-			if (next != null) ops.add(next.push(p(output)));
-			return ops;
-		};
+				ops.add(new KernelOperation(gr, output.traverseEach()));
+				if (next != null) ops.add(next.push(p(output)));
+				return ops;
+			};
 
-		return layer("softmax", shape, shape, Cell.of((input, next) -> {
-			PackedCollection<?> output = new PackedCollection<>(shape);
+			return layer("softmax", shape, shape, Cell.of((input, next) -> {
+				PackedCollection<?> output = new PackedCollection<>(shape);
 
-			OperationList ops = new OperationList();
-			Producer<PackedCollection<?>> softmax =
-					c(input).traverse(1).exp()
-							.divide(c(input).traverse(1).exp().traverse(0).sum());
+				OperationList ops = new OperationList();
+				Producer<PackedCollection<?>> softmax =
+						c(input).traverse(1).exp()
+								.divide(c(input).traverse(1).exp().traverse(0).sum());
 
-			ops.add(output.traverse(1).getShape().getSize(), softmax, p(output.traverse(1)));
+				ops.add(output.traverse(1).getShape().getSize(), softmax, p(output.traverse(1)));
 
-			if (next != null) ops.add(next.push(p(output)));
-			return ops;
-		}), propagation);
+				if (next != null) ops.add(next.push(p(output)));
+				return ops;
+			}), propagation);
+		} else {
+			return layer("softmax", shape, shape,
+					input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
+		}
 	}
 
 	default CellularLayer softmax2d(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
@@ -302,30 +308,53 @@ public interface LayerFeatures extends MatrixFeatures {
 		int heads = shape.length(0);
 		int seqLen = shape.length(1);
 
-		return layer("softmax2d", shape, shape, Cell.of((input, next) -> {
-			PackedCollection<?> output = new PackedCollection<>(shape);
+		if (enableLegacyLayers) {
+			return layer("softmax2d", shape, shape, Cell.of((input, next) -> {
+				PackedCollection<?> output = new PackedCollection<>(shape);
 
-			CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+				CollectionProducer<PackedCollection<?>> o = traverse(1, input);
 
-			if (subtractMax) {
-				o = o.max();
-				o = o.expand(seqLen, v -> v.repeat(seqLen));
-				o = traverse(2, input).subtractIgnoreZero(o);
-			}
+				if (subtractMax) {
+					o = o.max();
+					// o = o.expand(seqLen, v -> v.repeat(seqLen));
+					o = o.expand(seqLen);
+					o = traverse(2, input).subtractIgnoreZero(o);
+				}
 
-			o = o.expIgnoreZero().traverse(1);
-			o = o.divide(o.sum().expand(seqLen, v -> v.repeat(seqLen)));
+				o = o.expIgnoreZero().traverse(1);
+				// o = o.divide(o.sum().expand(seqLen, v -> v.repeat(seqLen)));
+				o = o.divide(o.sum().expand(seqLen));
 
-			return next == null ? new OperationList() : next.push(o);
-		}), null, requirements);
+				return next == null ? new OperationList() : next.push(o);
+			}), null, requirements);
+		} else {
+			return layer("softmax2d", shape, shape, input -> {
+				CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+
+				if (subtractMax) {
+					o = o.max();
+					o = o.expand(seqLen);
+					o = traverse(2, input).subtractIgnoreZero(o);
+				}
+
+				o = o.expIgnoreZero().traverse(1);
+				o = o.divide(o.sum().expand(seqLen));
+
+				return o;
+			}, requirements);
+		}
 	}
 
 	default CellularLayer accum(Producer<PackedCollection<?>> value) {
 		TraversalPolicy shape = shape(value);
 
-		return layer("accum", shape, shape, Cell.of((input, next) -> {
-			return next == null ? new OperationList() : next.push(add(traverseEach(input), traverseEach(value)));
-		}), null);
+		if (enableLegacyLayers) {
+			return layer("accum", shape, shape, Cell.of((input, next) -> {
+				return next == null ? new OperationList() : next.push(add(traverseEach(input), traverseEach(value)));
+			}), null);
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
@@ -343,21 +372,31 @@ public interface LayerFeatures extends MatrixFeatures {
 	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		TraversalPolicy shape = shape(value);
 
-		return layer("product", shape, shape, Cell.of((input, next) -> {
-			return next.push(multiply(traverseEach(input), traverseEach(value)));
-		}), null, requirements);
+		if (enableLegacyLayers) {
+			return layer("product", shape, shape, Cell.of((input, next) -> {
+				return next.push(multiply(traverseEach(input), traverseEach(value)));
+			}), null, requirements);
+		} else {
+			return layer("product", shape, shape, input -> {
+				return multiply(traverseEach(input), traverseEach(value));
+			}, requirements);
+		}
 	}
 
 	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
-		return layer("product", shape, shape, Cell.of((input, next) -> {
-			CaptureReceptor r = new CaptureReceptor();
-			value.setReceptor(r);
+		if (enableLegacyLayers) {
+			return layer("product", shape, shape, Cell.of((input, next) -> {
+				CaptureReceptor r = new CaptureReceptor();
+				value.setReceptor(r);
 
-			OperationList ops = new OperationList();
-			ops.add(value.push(input));
-			if (next != null) ops.add(next.push(multiply(traverseEach(input), traverseEach(r.getReceipt()))));
-			return ops;
-		}), null, requirements);
+				OperationList ops = new OperationList();
+				ops.add(value.push(input));
+				if (next != null) ops.add(next.push(multiply(traverseEach(input), traverseEach(r.getReceipt()))));
+				return ops;
+			}), null, requirements);
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -373,7 +412,8 @@ public interface LayerFeatures extends MatrixFeatures {
 			OperationList ops = new OperationList();
 			ops.add(a.push(input));
 			ops.add(b.push(input));
-			if (next != null) ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
+			if (next != null)
+				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
 			return ops;
 		}), null, requirements);
 	}
@@ -382,9 +422,13 @@ public interface LayerFeatures extends MatrixFeatures {
 		if (shape.getDimensions() != 1)
 			throw new IllegalArgumentException();
 
-		return layer("silu", shape, shape, Cell.of((input, next) -> {
-			return next == null ? new OperationList() : next.push(multiply(traverseEach(input), sigmoid(traverseEach(input))));
-		}), null, requirements);
+		if (enableLegacyLayers) {
+			return layer("silu", shape, shape, Cell.of((input, next) -> {
+				return next == null ? new OperationList() : next.push(multiply(traverseEach(input), sigmoid(traverseEach(input))));
+			}), null, requirements);
+		} else {
+			return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
+		}
 	}
 
 	default CellularLayer rmsnorm(int size) {
