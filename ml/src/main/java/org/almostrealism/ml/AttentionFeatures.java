@@ -49,25 +49,13 @@ public interface AttentionFeatures extends LayerFeatures {
 		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
 			throw new IllegalArgumentException();
 
-		if (enableLegacyLayers) {
-			return layer("attentionKeys", inputShape, outputShape, Cell.of((input, next) -> {
-				CollectionProducer<PackedCollection<?>> o = traverse(1, keys).map(v -> v.multiply(input))
+		return layer("attentionKeys", inputShape, outputShape, input ->
+				traverse(1, keys).map(v -> v.multiply(input))
 						.traverse(2).sum()
 						.divide(c(Math.sqrt(headSize)))
 						.reshape(shape(seqLength, heads))
-						.enumerate(1, 1);
-				if (next != null) return next.push(o.reshape(outputShape));
-				return new OperationList();
-			}), null, requirements);
-		} else {
-			return layer("attentionKeys", inputShape, outputShape, input ->
-					traverse(1, keys).map(v -> v.multiply(input))
-					.traverse(2).sum()
-					.divide(c(Math.sqrt(headSize)))
-					.reshape(shape(seqLength, heads))
-					.enumerate(1, 1)
-					.reshape(outputShape), requirements);
-		}
+						.enumerate(1, 1)
+						.reshape(outputShape), requirements);
 	}
 
 	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values,
@@ -88,26 +76,14 @@ public interface AttentionFeatures extends LayerFeatures {
 		if (valueShape.length(1) != heads || valueShape.length(0) != seqLength)
 			throw new IllegalArgumentException();
 
-		if (enableLegacyLayers) {
-			return layer("attentionValues", inputShape, outputShape, Cell.of((input, next) -> {
-				Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), values);
-				v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
+		return layer("attentionValues", inputShape, outputShape, input -> {
+			Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), values);
+			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
-				CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
-				CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
-				if (next != null) return next.push(o.reshape(shape(dim).traverseEach()));
-				return new OperationList();
-			}), null, requirements);
-		} else {
-			return layer("attentionValues", inputShape, outputShape, input -> {
-				Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), values);
-				v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
-
-				CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
-				CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
-				return o.reshape(shape(dim).traverseEach());
-			}, requirements);
-		}
+			CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
+			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+			return o.reshape(shape(dim).traverseEach());
+		}, requirements);
 	}
 
 	static AttentionFeatures getInstance() {

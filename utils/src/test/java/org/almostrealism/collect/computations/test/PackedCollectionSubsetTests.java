@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,33 +16,20 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ArrayVariableComputation;
-import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
-import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
 

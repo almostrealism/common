@@ -58,13 +58,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
-	public CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
-		if (skipLongTests && !LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
-			throw new UnsupportedOperationException();
-
-		return TestFeatures.super.convolution2d(inputShape, size, filterCount, requirements);
-	}
-
 	@Test
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
