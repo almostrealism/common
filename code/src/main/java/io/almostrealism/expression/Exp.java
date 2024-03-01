@@ -16,11 +16,15 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
@@ -56,5 +60,12 @@ public class Exp extends Expression<Double> {
 		}
 
 		return new Exp((Expression<Double>) children.get(0));
+	}
+
+	@Override
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		CollectionExpression delta = getChildren().get(0).delta(shape, target);
+		CollectionExpression exp = CollectionExpression.create(shape, this);
+		return CollectionExpression.product(shape, List.of(delta, exp));
 	}
 }
