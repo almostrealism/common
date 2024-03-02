@@ -20,10 +20,10 @@ import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
 
-public class RepeatOrdering implements TraversalOrdering {
+public class RepeatTraversalOrdering implements TraversalOrdering {
 	private int length;
 
-	public RepeatOrdering(int length) {
+	public RepeatTraversalOrdering(int length) {
 		this.length = length;
 	}
 
