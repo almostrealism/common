@@ -16,7 +16,6 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
@@ -147,8 +146,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return new CollectionVariable<>(shape, this, pos);
 	}
 
-	public static <T> ArrayVariable<T> create(LanguageOperations lang, NameProvider np,
-											  String name, Supplier<Evaluable<? extends T>> p) {
+	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {

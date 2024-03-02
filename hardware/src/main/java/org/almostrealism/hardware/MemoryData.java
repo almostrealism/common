@@ -128,6 +128,16 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	TraversalOrdering getDelegateOrdering();
 
+	default TraversalOrdering getMemOrdering() {
+		if (getDelegate() == null) {
+			return getDelegateOrdering();
+		} else if (getDelegateOrdering() == null) {
+			return getDelegate().getMemOrdering();
+		} else {
+			return getDelegateOrdering().compose(getDelegate().getMemOrdering());
+		}
+	}
+
 	default DoubleStream doubleStream() {
 		return doubleStream(0, getMemLength());
 	}

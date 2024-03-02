@@ -22,7 +22,7 @@ import io.almostrealism.lang.LanguageOperations;
 public class CollectionScopeInputManager extends DefaultScopeInputManager {
 	public CollectionScopeInputManager(LanguageOperations lang) {
 		super(lang);
-		setVariableFactory((p, input) -> CollectionVariable.create(lang, p, p.getArgumentName(counter++), input));
+		setVariableFactory((p, input) -> CollectionVariable.create(p, p.getArgumentName(counter++), input));
 	}
 
 	public static CollectionScopeInputManager getInstance(LanguageOperations lang) {

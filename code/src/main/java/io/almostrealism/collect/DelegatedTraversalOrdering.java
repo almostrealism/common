@@ -17,26 +17,28 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Delegated;
 
-import java.util.OptionalInt;
+public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<TraversalOrdering> {
+	private TraversalOrdering order;
+	private TraversalOrdering delegate;
 
-public interface TraversalOrdering {
-	Expression<Integer> indexOf(Expression<Integer> idx);
-
-	default int indexOf(int idx) {
-		return indexOf(new IntegerConstant(idx)).intValue().orElseThrow();
+	public DelegatedTraversalOrdering(TraversalOrdering order, TraversalOrdering delegate) {
+		this.order = order;
+		this.delegate = delegate;
 	}
 
-	default OptionalInt getLength() {
-		return OptionalInt.empty();
+	public TraversalOrdering getOrder() {
+		return order;
 	}
 
-	default TraversalOrdering compose(TraversalOrdering other) {
-		if (other == null) {
-			return this;
-		} else {
-			return new DelegatedTraversalOrdering(this, other);
-		}
+	@Override
+	public TraversalOrdering getDelegate() {
+		return delegate;
+	}
+
+	@Override
+	public Expression<Integer> indexOf(Expression<Integer> idx) {
+		return getDelegate().indexOf(order.indexOf(idx));
 	}
 }
