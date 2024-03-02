@@ -17,21 +17,14 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.ExpressionList;
-import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;

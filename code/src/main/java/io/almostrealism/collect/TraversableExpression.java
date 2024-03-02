@@ -26,9 +26,6 @@ import io.almostrealism.scope.Variable;
 import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
-	default Expression<T> getValue(PositionExpression pos) {
-		return getValue(pos.toArray());
-	}
 
 	Expression<T> getValue(Expression... pos);
 

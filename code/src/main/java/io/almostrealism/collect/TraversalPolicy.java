@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,12 +24,10 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
-import org.almostrealism.io.Console;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -82,10 +80,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 			index += pos[i] * size(i + 1);
 		}
 		return index;
-	}
-
-	public Expression index(PositionExpression pos) {
-		return index(pos.toArray());
 	}
 
 	public Expression index(Expression... pos) {
