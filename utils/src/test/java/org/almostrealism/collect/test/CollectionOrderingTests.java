@@ -18,6 +18,8 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.RepeatOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -43,14 +45,16 @@ public class CollectionOrderingTests implements TestFeatures {
 		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
 				root, 0, new RepeatOrdering(3));
 
-		PackedCollection<?> product = c(2).multiply(cp(repeated)).evaluate();
-		product.print();
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> product = c(2).multiply(cp(repeated)).evaluate();
+			product.print();
 
-		assertEquals(4.0, product.valueAt(0, 0));
-		assertEquals(6.0, product.valueAt(0, 1));
-		assertEquals(2.0, product.valueAt(0, 2));
-		assertEquals(4.0, product.valueAt(1, 0));
-		assertEquals(6.0, product.valueAt(1, 1));
-		assertEquals(2.0, product.valueAt(1, 2));
+			assertEquals(4.0, product.valueAt(0, 0));
+			assertEquals(6.0, product.valueAt(0, 1));
+			assertEquals(2.0, product.valueAt(0, 2));
+			assertEquals(4.0, product.valueAt(3, 0));
+			assertEquals(6.0, product.valueAt(3, 1));
+			assertEquals(2.0, product.valueAt(3, 2));
+		});
 	}
 }

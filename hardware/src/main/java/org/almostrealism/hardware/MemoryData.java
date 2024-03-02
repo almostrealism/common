@@ -151,8 +151,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	default double toDouble(int index) {
-		if (getDelegateOrdering() == null) {
+		if (getMemOrdering() == null) {
 			return toArray(index, 1)[0];
+		} else if (getDelegate() == null) {
+			return getMem().toArray(getOffset() + getMemOrdering().indexOf(index), 1)[0];
 		} else {
 			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
 		}
@@ -163,7 +165,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
 		}
 
-		if (getDelegateOrdering() == null) {
+		if (getMemOrdering() == null) {
 			return getMem().toArray(getOffset() + offset, length);
 		} else {
 			return doubleStream(offset, length).toArray();

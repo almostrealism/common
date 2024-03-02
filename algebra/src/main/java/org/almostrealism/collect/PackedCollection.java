@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -91,8 +92,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
-		this.shape = shape.traverse(traversalAxis);
-		setDelegate(delegate, delegateOffset, order);
+		this.shape = shape.traverse(order).traverse(traversalAxis);
+		setDelegate(delegate, delegateOffset);
 		init();
 	}
 
@@ -144,6 +145,21 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public TraversalOrdering getDelegateOrdering() {
+		if (getShape().getOrder() == null) return null;
+		return getShape().getOrder().getLength().stream()
+				.mapToObj(DefaultTraversalOrdering::new)
+				.findFirst()
+				.orElseGet(DefaultTraversalOrdering::new);
+	}
+
+	@Override
+	public double toDouble(int index) {
+		if (getShape().getOrder() == null) return super.toDouble(index);
+		return super.toDouble(getShape().getOrder().indexOf(index));
+	}
 
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);

@@ -118,6 +118,10 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 			return (Expression) reference(e(0), false);
 		} else {
 			index = index.toInt().mod(e(getShape().getTotalSize()), false);
+			if (getShape().getOrder() != null) {
+				index = getShape().getOrder().indexOf(index);
+			}
+
 			return (Expression) reference(index, false);
 		}
 	}

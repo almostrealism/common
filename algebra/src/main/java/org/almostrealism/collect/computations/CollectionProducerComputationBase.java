@@ -74,7 +74,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		this.name = name;
-		this.shape = outputShape;
+		this.shape = outputShape.withOrder(null);
 		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
 	}
