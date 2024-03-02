@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,14 +18,17 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.collect.TraversalOrdering;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class MemoryDataAdapter implements MemoryData {
+public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public static boolean enableMemVersions = true;
 
 	private Memory mem;
@@ -33,6 +36,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 
 	private MemoryData delegateMem;
 	private int delegateMemOffset;
+	private TraversalOrdering delegateOrder;
 
 	protected void init() {
 		if (getDelegate() == null) {
@@ -42,7 +46,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 				mem = Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength());
 			} else {
 				Bytes data = heap.allocate(getMemLength());
-				setDelegate(data.getDelegate(), data.getDelegateOffset());
+				setDelegate(data.getDelegate(), data.getDelegateOffset(), data.getDelegateOrdering());
 				setMem(new double[getMemLength()]);
 			}
 		}
@@ -60,6 +64,9 @@ public abstract class MemoryDataAdapter implements MemoryData {
 
 	@Override
 	public int getDelegateOffset() { return delegateMemOffset; }
+
+	@Override
+	public TraversalOrdering getDelegateOrdering() { return delegateOrder; }
 
 	@Override
 	public void reallocate(MemoryProvider<?> provider) {
@@ -96,7 +103,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	public void destroy() {
 		if (mem == null) return;
 		if (delegateMem != null) {
-			System.out.println("WARN: MemoryData has a delegate, but also directly reserved memory");
+			warn("MemoryData has a delegate, but also directly reserved memory");
 		}
 
 		mem.getProvider().deallocate(getMemLength(), mem);
@@ -104,9 +111,15 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	}
 
 	@Override
-	public void setDelegate(MemoryData m, int offset) {
-		if (m != null && (offset + getMemLength()) > m.getMemLength()) {
-			throw new HardwareException("Delegate offset is out of bounds");
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
+		this.delegateOrder = order;
+
+		if (m != null) {
+			if (offset >= m.getMemLength()) {
+				throw new HardwareException("Delegate offset is out of bounds");
+			} else if (offset + getDelegatedLength() > m.getMemLength()) {
+				throw new HardwareException("MemoryData extends beyond the length of the delegate");
+			}
 		}
 
 		this.delegateMem = m;
@@ -114,6 +127,9 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	}
 
 	public Heap getDefaultDelegate() { return null; }
+
+	@Override
+	public Console console() { return Hardware.console; }
 
 	@Override
 	public void finalize() {

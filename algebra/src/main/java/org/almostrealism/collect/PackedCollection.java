@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -46,12 +47,12 @@ import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
+		implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -86,8 +87,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
+		this(shape, traversalAxis, delegate, delegateOffset, null);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
 		this.shape = shape.traverse(traversalAxis);
-		setDelegate(delegate, delegateOffset);
+		setDelegate(delegate, delegateOffset, order);
 		init();
 	}
 
@@ -143,8 +148,6 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
-
-	public DoubleStream doubleStream() { return DoubleStream.of(toArray()); }
 
 	public Stream<String> stringStream() {
 		int colWidth = getShape().getSize();
