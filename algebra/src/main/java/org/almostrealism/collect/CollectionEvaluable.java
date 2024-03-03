@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.collect.computations;
+package org.almostrealism.collect;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.PackedCollection;
 
 public interface CollectionEvaluable<T extends PackedCollection> extends Evaluable<T>, CollectionFeatures {
 }
