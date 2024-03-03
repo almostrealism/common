@@ -19,12 +19,15 @@ package org.almostrealism.layers.test;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -229,6 +232,17 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		ModelOptimizer train = new ModelOptimizer(model, profile, data);
 		log("Model compiled");
 
-		train.optimize(1);
+		try {
+			train.optimize(1);
+		} finally {
+			profile.print();
+			HardwareOperator.profile.print();
+			AcceleratedComputationOperation.printTimes();
+			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
+					" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
+			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
+					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
+			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		}
 	}
 }
