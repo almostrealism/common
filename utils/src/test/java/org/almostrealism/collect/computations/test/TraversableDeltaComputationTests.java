@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -597,6 +596,48 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void denseWeightsSmall() {
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_17"));
+		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_22"));
+
+		denseWeights(4, 3);
+	}
+
+	@Test
+	public void denseWeightsLarge() {
+		if (skipLongTests) return;
+		denseWeights(1800, 10);
+	}
+
+	public void denseWeights(int size, int nodes) {
+		PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
+		PackedCollection<?> g = new PackedCollection<>(shape(nodes)).fill(Math::random);
+		PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+
+		int weightSize = size * nodes;
+		Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), p(w));
+
+		Producer<PackedCollection<?>> cdy = c.delta(p(w))
+				.reshape(nodes, weightSize)
+				.traverse(1)
+				.multiply(c(g).reshape(nodes).traverse(1).repeat(weightSize))
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(weightSize))
+				.each();
+
+		try {
+			initKernelMetrics();
+			Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy))).optimize();
+			cda.get().run();
+		} finally {
+			logKernelMetrics();
+		}
+	}
+
+	@Test
 	public void max() {
 		PackedCollection<?> in = pack(10, 100, 1000);
 		CollectionProducer<PackedCollection<?>> c = cp(in).max();
@@ -752,9 +793,5 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		cda.get().run();
-	}
-
-	private Predicate<Process> operationFilter(String classSubstring) {
-		return p -> p.getClass().getSimpleName().contains(classSubstring);
 	}
 }

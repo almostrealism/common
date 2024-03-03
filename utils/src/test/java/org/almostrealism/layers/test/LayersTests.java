@@ -220,8 +220,7 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		Model model = new Model(shape(size));
 		model.addLayer(dense(nodes));
 
-		HardwareOperator.profile = new OperationProfile("HardwareOperator",
-				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		initKernelMetrics();
 		OperationProfile profile = new OperationProfile("Model");
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
@@ -235,14 +234,7 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		try {
 			train.optimize(1);
 		} finally {
-			profile.print();
-			HardwareOperator.profile.print();
-			AcceleratedComputationOperation.printTimes();
-			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
-					" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
-			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
-					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
-			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+			logKernelMetrics(profile);
 		}
 	}
 }

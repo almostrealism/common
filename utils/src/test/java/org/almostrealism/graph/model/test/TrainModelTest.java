@@ -343,8 +343,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator",
-				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		initKernelMetrics();
 		OperationProfile profile = new OperationProfile("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
@@ -399,14 +398,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 				}
 			}
 		} finally {
-			profile.print();
-			HardwareOperator.profile.print();
-			AcceleratedComputationOperation.printTimes();
-			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
-							" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
-			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
-					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
-			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+			logKernelMetrics(profile);
 		}
 	}
 
@@ -419,10 +411,5 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
-	}
-
-	private Predicate<Process> operationFilter(String functionName) {
-		return p -> p instanceof OperationAdapter &&
-				((OperationAdapter) p).getFunctionName().equals(functionName);
 	}
 }
