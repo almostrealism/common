@@ -36,6 +36,7 @@
 		<module>optimize</module>
 		<module>collect</module>
 		<module>ml</module>
+		<module>ml-script</module>
 		<module>llvm</module>
 	</modules>
 
