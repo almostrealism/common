@@ -169,10 +169,9 @@ public class GradientDescentTests implements TestFeatures {
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {
 		i: for (int i = 0; i < 5; i++) {
-			ModelOptimizer optimizer = new ModelOptimizer(model.compile());
+			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
 			try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
-				optimizer.setDataset(data.get());
 				optimizer.setReceptor(receptor);
 				optimizer.setLossTarget(lossTarget);
 				optimizer.optimize(epochs);

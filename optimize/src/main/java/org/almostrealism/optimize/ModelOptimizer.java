@@ -16,16 +16,20 @@
 
 package org.almostrealism.optimize;
 
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+
+import java.util.function.Supplier;
 
 public class ModelOptimizer implements CodeFeatures {
 	private CompiledModel model;
-	private Dataset<?> dataset;
+	private Supplier<Dataset<?>> dataset;
 	private Receptor<PackedCollection<?>> receptor;
 
 	private Evaluable<PackedCollection<?>> dloss;
@@ -34,14 +38,32 @@ public class ModelOptimizer implements CodeFeatures {
 	private double lossTarget;
 	private int totalIterations;
 
+	public ModelOptimizer(Model model) {
+		this(model, null);
+	}
+
+	public ModelOptimizer(Model model, Supplier<Dataset<?>> dataset) {
+		this(model.compile(), dataset);
+	}
+
+	public ModelOptimizer(Model model, OperationProfile profile, Supplier<Dataset<?>> dataset) {
+		this(model.compile(profile), dataset);
+	}
+
 	public ModelOptimizer(CompiledModel model) {
+		this(model, null);
+	}
+
+	public ModelOptimizer(CompiledModel model, Supplier<Dataset<?>> dataset) {
 		this.model = model;
 		this.dloss = c(2).multiply(x().subtract(y())).get();
 		this.loss = x().subtract(y()).pow(2.0).get();
 		this.averageLoss = -1;
+
+		setDataset(dataset);
 	}
 
-	public void setDataset(Dataset<?> dataset) {
+	public void setDataset(Supplier<Dataset<?>> dataset) {
 		this.dataset = dataset;
 	}
 
@@ -62,6 +84,8 @@ public class ModelOptimizer implements CodeFeatures {
 	public int getTotalIterations() { return totalIterations; }
 
 	public void optimize(int iterations) {
+		Dataset<?> data = dataset.get();
+
 		for (int i = 0; i < iterations; i++) {
 			boolean first = true;
 			double updatedLoss;
@@ -69,7 +93,7 @@ public class ModelOptimizer implements CodeFeatures {
 			double totalLoss = 0.0;
 			int count = 0;
 
-			for (ValueTarget<?> target : dataset) {
+			for (ValueTarget<?> target : data) {
 				PackedCollection<?> input = target.getInput();
 
 				PackedCollection<?> valid = target.getExpectedOutput();
@@ -81,7 +105,9 @@ public class ModelOptimizer implements CodeFeatures {
 				totalLoss += ls;
 				count++;
 
-				receptor.push(p(l)).get().run();
+				if (receptor != null)
+					receptor.push(p(l)).get().run();
+
 				model.backward(grad);
 
 				if (first) {

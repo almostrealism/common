@@ -17,6 +17,8 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -24,12 +26,20 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.optimize.Dataset;
+import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class LayersTests implements LayerFeatures, TestFeatures {
 	private static final int SIZE = 768;
@@ -196,5 +206,29 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void dense() {
+		int size = 1800;
+		int nodes = 10;
+		int steps = 100;
+
+		Model model = new Model(shape(size));
+		model.addLayer(dense(nodes));
+
+		HardwareOperator.profile = new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		OperationProfile profile = new OperationProfile("Model");
+
+		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+				.map(input -> ValueTarget.of(input, input))
+				.collect(Collectors.toList()));
+		ModelOptimizer train = new ModelOptimizer(model, profile, data);
+		log("Model compiled");
+
+		train.optimize(1);
 	}
 }
