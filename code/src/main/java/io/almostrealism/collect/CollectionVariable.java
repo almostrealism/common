@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	@Override
-	public InstanceReference<T> referenceRelative(Expression<?> idx) {
+	public Expression<T> referenceRelative(Expression<?> idx) {
 		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.reference(p, false);

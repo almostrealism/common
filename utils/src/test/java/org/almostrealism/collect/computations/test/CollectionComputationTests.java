@@ -423,7 +423,8 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollection<?> dest = new PackedCollection(1);
-		CollectionProducer<PackedCollection<?>> max = new PackedCollectionMax(p(series.traverse(0)));
+//		CollectionProducer<PackedCollection<?>> max = new PackedCollectionMax(p(series.traverse(0)));
+		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();
 		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
 		HardwareOperator.verboseLog(() -> {

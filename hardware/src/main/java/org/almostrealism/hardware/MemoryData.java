@@ -152,10 +152,16 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default double toDouble(int index) {
 		if (getMemOrdering() == null) {
-			return toArray(index, 1)[0];
+			return index < 0 ? 0.0 : toArray(index, 1)[0];
 		} else if (getDelegate() == null) {
-			return getMem().toArray(getOffset() + getMemOrdering().indexOf(index), 1)[0];
+			index = getMemOrdering().indexOf(index);
+			if (index < 0) return 0.0;
+
+			return getMem().toArray(getOffset() + index, 1)[0];
 		} else {
+			index = getDelegateOrdering().indexOf(index);
+			if (index < 0) return 0.0;
+
 			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
 		}
 	}

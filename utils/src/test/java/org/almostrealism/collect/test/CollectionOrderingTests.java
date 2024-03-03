@@ -17,6 +17,8 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
+import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
@@ -55,5 +57,36 @@ public class CollectionOrderingTests implements TestFeatures {
 			assertEquals(6.0, product.valueAt(3, 1));
 			assertEquals(2.0, product.valueAt(3, 2));
 		});
+	}
+
+	@Test
+	public void compactOrdering() {
+		PackedCollection<?> values = pack(2.0, 3.0);
+
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1));
+		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+
+		compact.print();
+
+		assertEquals(2.0, compact.valueAt(0, 0));
+		assertEquals(0.0, compact.valueAt(0, 1));
+		assertEquals(0.0, compact.valueAt(1, 0));
+		assertEquals(3.0, compact.valueAt(1, 1));
+	}
+
+	@Test
+	public void maskOrdering() {
+		PackedCollection<?> values = pack(2.0, 3.0);
+		PackedCollection<?> indices = pack(0, 3);
+
+		IndexMaskTraversalOrdering order = new IndexMaskTraversalOrdering(indices);
+		PackedCollection<?> compact = new PackedCollection<>(shape(2, 2), 1, values, 0, order);
+
+		compact.print();
+
+		assertEquals(2.0, compact.valueAt(0, 0));
+		assertEquals(0.0, compact.valueAt(0, 1));
+		assertEquals(0.0, compact.valueAt(1, 0));
+		assertEquals(3.0, compact.valueAt(1, 1));
 	}
 }

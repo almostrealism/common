@@ -116,12 +116,12 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return referenceRelative(exp);
 	}
 
-	public InstanceReference<T> ref(int pos) {
+	public Expression<T> ref(int pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}
 
-	public InstanceReference<T> referenceRelative(Expression<?> pos) {
+	public Expression<T> referenceRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else {
@@ -129,15 +129,15 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
+	public Expression<T> referenceAbsolute(Expression<?> pos) {
 		return reference(pos, false);
 	}
 
-	public InstanceReference<T> referenceDynamic(Expression<?> pos) {
+	public Expression<T> referenceDynamic(Expression<?> pos) {
 		return reference(pos, true);
 	}
 
-	protected InstanceReference<T> reference(Expression<?> pos, boolean dynamic) {
+	protected Expression<T> reference(Expression<?> pos, boolean dynamic) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == null) {

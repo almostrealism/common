@@ -39,6 +39,8 @@ import java.util.function.Predicate;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> implements ExpressionFeatures, ConsoleFeatures {
+	public static boolean enableMask = false;
+
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	private Variable<T, ?> var;
@@ -109,13 +111,19 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		}
 	}
 
-	public static <T> InstanceReference<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
+	public static <T> Expression<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
+		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
+
 		Expression<?> pos = index.toInt();
 		if (dynamic) {
 			index = pos.imod(var.length());
 			pos = pos.divide(var.length()).multiply(var.getDimValue()).add(index);
 		}
 
-		return new InstanceReference<>(var, pos, index);
+		if (enableMask) {
+			return Mask.of(condition, new InstanceReference<>(var, pos, index));
+		} else {
+			return new InstanceReference<>(var, pos, index);
+		}
 	}
 }

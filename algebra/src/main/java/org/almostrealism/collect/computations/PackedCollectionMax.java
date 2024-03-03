@@ -48,13 +48,14 @@ public class PackedCollectionMax extends CollectionProducerComputationBase<Packe
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionMax"));
 
 		Expression i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
-		String result = getArgument(0, 2).ref(0).getSimpleExpression(getLanguage());
-		String value = expression.apply(getArgument(1).referenceRelative(i)).getSimpleExpression(getLanguage());
+		Expression result = getArgument(0, 2).ref(0);
+		Expression value = expression.apply(getArgument(1).referenceRelative(i));
 		String count = getArgument(1).length().getSimpleExpression(getLanguage());
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
-		scope.code().accept("    if (" + i + " == 0 || " + value + " > " + result + ") {\n");
-		scope.code().accept("        " + result + " = " + value + ";\n");
+		scope.code().accept("    if (" + i + " == 0 || " + value.getSimpleExpression(getLanguage()) +
+										" > " + result.getSimpleExpression(getLanguage()) + ") {\n");
+		scope.code().accept("        " + result.assign(value).getStatement(getLanguage()) + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");
 		return scope;

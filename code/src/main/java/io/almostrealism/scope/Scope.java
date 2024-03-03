@@ -323,7 +323,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 			metrics.stream()
 					.map(Metric::getArguments)
 					.flatMap(List::stream)
-					.map(v -> v.getReferent())
+					.map(v -> v.getDependencies())
+					.flatMap(List::stream)
 					.forEach(v -> args.add(new Argument(v, Expectation.WILL_ALTER)));
 		} else {
 			args.addAll(arguments.stream()
