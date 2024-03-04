@@ -31,7 +31,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -597,11 +596,15 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void denseWeightsSmall() {
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_17"));
-		ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_22"));
+		try {
+			ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
+			ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_17"));
+			ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_22"));
 
-		denseWeights(4, 3);
+			denseWeights(4, 3);
+		} finally {
+			ParallelProcess.explicitIsolationTargets.clear();
+		}
 	}
 
 	@Test

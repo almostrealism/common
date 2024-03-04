@@ -22,6 +22,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -29,7 +31,7 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>> extends RepeatedCollectionProducerComputation<T> {
+public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>> extends RepeatedProducerComputation<T> {
 	protected int count;
 
 	@SafeVarargs
@@ -51,6 +53,14 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>> 
 
 	@Override
 	protected OptionalInt getIndexLimit() { return OptionalInt.of(count); }
+
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		return ConstantRepeatedDeltaComputation.create(
+				getShape(), shape(target),
+				count, expression, target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+	}
 
 	@Override
 	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {

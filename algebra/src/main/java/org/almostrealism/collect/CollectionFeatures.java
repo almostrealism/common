@@ -43,7 +43,7 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
-import org.almostrealism.collect.computations.AggregatedCollectionProducerComputation;
+import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
@@ -713,7 +713,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new AggregatedCollectionProducerComputation<>(shape.replace(shape(1)), size,
+		return new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> minValue(),
 				(out, arg) -> new Max(out, arg),
 				(Supplier) input);
@@ -738,7 +738,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new AggregatedCollectionProducerComputation<>(shape.replace(shape(1)), size,
+		return new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> e(0.0),
 				(out, arg) -> out.add(arg),
 				(Supplier) input);

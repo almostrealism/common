@@ -26,7 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> extends RepeatedCollectionProducerComputation<T> {
+public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> extends RepeatedProducerComputation<T> {
 
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
@@ -43,7 +43,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	}
 
 	@Override
-	protected Expression<?> getDestination(Expression<?> index, Expression<?> offset) {
-		return ((ArrayVariable) getOutputVariable()).valueAt(index);
+	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
+		return ((ArrayVariable) getOutputVariable()).valueAt(localIndex);
 	}
 }

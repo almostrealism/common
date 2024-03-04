@@ -21,6 +21,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -196,7 +197,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 	}
 
 	default CollectionProducer<T> delta(Producer<?> target) {
-		if (TraversableDeltaComputation.match(this, target)) {
+		if (DeltaFeatures.match(this, target)) {
 			TraversalPolicy shape = getShape();
 			TraversalPolicy targetShape = shape(target);
 			PackedCollection<?> identity =

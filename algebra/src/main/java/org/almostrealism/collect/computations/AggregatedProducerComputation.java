@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -31,20 +33,22 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class AggregatedCollectionProducerComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class AggregatedProducerComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+	public static boolean enableValueAtDelta = true;
+
 	private BiFunction<Expression, Expression, Expression> expression;
 
-	public AggregatedCollectionProducerComputation(TraversalPolicy shape, int count,
-												   BiFunction<TraversableExpression[], Expression, Expression> initial,
-												   BiFunction<Expression, Expression, Expression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	public AggregatedProducerComputation(TraversalPolicy shape, int count,
+										 BiFunction<TraversableExpression[], Expression, Expression> initial,
+										 BiFunction<Expression, Expression, Expression> expression,
+										 Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
 
 		setExpression((args, index) ->
 				expression.apply(
-						getCollectionArgumentVariable(0).referenceRelative(new IntegerConstant(0)),
+						((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0)),
 						args[1].getValueRelative(index)));
 	}
 
@@ -69,16 +73,20 @@ public class AggregatedCollectionProducerComputation<T extends PackedCollection<
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-				args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
-		delta.addDependentLifecycle(this);
-		return delta;
+		if (enableValueAtDelta) {
+			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					getInputs().stream().skip(1).toArray(Supplier[]::new));
+			delta.addDependentLifecycle(this);
+			return delta;
+		} else {
+			return super.delta(target);
+		}
 	}
 
 	@Override
-	public AggregatedCollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new AggregatedCollectionProducerComputation<>(getShape(),
+	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return new AggregatedProducerComputation<>(getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}

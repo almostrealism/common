@@ -66,6 +66,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected CollectionProducerComputationBase() {
 	}
 
+	@SafeVarargs
 	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this();
 

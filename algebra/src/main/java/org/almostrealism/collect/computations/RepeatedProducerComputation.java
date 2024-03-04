@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.DefaultIndex;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.TraversableExpression;
@@ -28,6 +29,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -35,7 +37,7 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
@@ -43,20 +45,20 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 	private int memLength;
 
 	@SafeVarargs
-	public RepeatedCollectionProducerComputation(TraversalPolicy shape,
-												 BiFunction<TraversableExpression[], Expression, Expression> initial,
-												 BiFunction<TraversableExpression[], Expression, Expression> condition,
-												 BiFunction<TraversableExpression[], Expression, Expression> expression,
-												 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public RepeatedProducerComputation(TraversalPolicy shape,
+									   BiFunction<TraversableExpression[], Expression, Expression> initial,
+									   BiFunction<TraversableExpression[], Expression, Expression> condition,
+									   BiFunction<TraversableExpression[], Expression, Expression> expression,
+									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		this(shape, 1, initial, condition, expression, args);
 	}
 
 	@SafeVarargs
-	public RepeatedCollectionProducerComputation(TraversalPolicy shape, int size,
-												 BiFunction<TraversableExpression[], Expression, Expression> initial,
-												 BiFunction<TraversableExpression[], Expression, Expression> condition,
-												 BiFunction<TraversableExpression[], Expression, Expression> expression,
-												 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public RepeatedProducerComputation(TraversalPolicy shape, int size,
+									   BiFunction<TraversableExpression[], Expression, Expression> initial,
+									   BiFunction<TraversableExpression[], Expression, Expression> condition,
+									   BiFunction<TraversableExpression[], Expression, Expression> expression,
+									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(null, shape, (Supplier[]) args);
 		this.initial = initial;
 		this.condition = condition;
@@ -105,10 +107,13 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 
 		Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
-		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = getDestination(e(0), e(j));
-			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
-			scope.getStatements().add(out.assign(val));
+		if (initial != null) {
+			for (int j = 0; j < getMemLength(); j++) {
+//				Expression<?> out = getDestination(index, e(0), e(j));
+				Expression<?> out = getDestination(new KernelIndex(), e(0), e(j));
+				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
+				scope.getStatements().add(out.assign(val));
+			}
 		}
 
 		OperationMetadata bodyMetadata = new OperationMetadata
@@ -117,7 +122,8 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 
 		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = getDestination(ref, e(j));
+//			Expression<?> out = getDestination(index, ref, e(j));
+			Expression<?> out = getDestination(new KernelIndex(), ref, e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
 			body.getStatements().add(out.assign(val));
 		}
@@ -126,13 +132,13 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		return scope;
 	}
 
-	protected Expression<?> getDestination(Expression<?> index, Expression<?> offset)	{
+	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
 		return ((ArrayVariable) getOutputVariable()).referenceRelative(offset);
 	}
 
 	@Override
-	public RepeatedCollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new RepeatedCollectionProducerComputation<>(
+	public RepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return new RepeatedProducerComputation<>(
 				getShape(), getMemLength(),
 				initial, condition, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));

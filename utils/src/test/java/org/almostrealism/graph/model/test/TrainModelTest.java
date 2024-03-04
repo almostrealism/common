@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,31 +16,19 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.GradientPropagation;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -48,7 +36,6 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
