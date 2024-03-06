@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,17 +20,16 @@ import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexMatchingCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared
@@ -91,14 +90,20 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
-		return CollectionExpression.create(shape, idx -> {
-			if (!target.apply(idx).test(this)) {
-				return e(0);
-			}
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+		return IndexMatchingCollectionExpression.create(shape,
+				idx -> this,
+				idx -> conditional(idx.eq(getIndex()), e(1), e(0)),
+				idx -> e(0),
+				target);
 
-			return conditional(idx.eq(getIndex()), e(1), e(0));
-		});
+//		return CollectionExpression.create(shape, idx -> {
+//			if (!target.matcherForIndex(idx).test(this)) {
+//				return e(0);
+//			}
+//
+//			return conditional(idx.eq(getIndex()), e(1), e(0));
+//		});
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {
@@ -108,6 +113,31 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 			return new InstanceReference<>(var, children.get(0), index);
 		} else {
 			throw new UnsupportedOperationException();
+		}
+	}
+
+	public static boolean compareExpressions(Expression<?> a, Expression<?> b) {
+		if (a == null && b == null) return true;
+		if (a == null || b == null) return false;
+		if (a.getClass() != b.getClass()) return false;
+
+		if (a instanceof InstanceReference) {
+			InstanceReference ra = (InstanceReference) a;
+			InstanceReference rb = (InstanceReference) b;
+			return Objects.equals(ra.getReferent().getName(), rb.getReferent().getName()) &&
+					compareExpressions(ra.getIndex(), rb.getIndex());
+		} else if (a.getChildren().size() == b.getChildren().size()) {
+			if (a.getChildren().isEmpty()) return Objects.equals(a, b);
+
+			for (int i = 0; i < a.getChildren().size(); i++) {
+				if (!compareExpressions(a.getChildren().get(i), b.getChildren().get(i))) {
+					return false;
+				}
+			}
+
+			return true;
+		} else {
+			return false;
 		}
 	}
 

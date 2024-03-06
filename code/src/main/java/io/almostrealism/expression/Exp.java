@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
@@ -63,7 +61,7 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		CollectionExpression delta = getChildren().get(0).delta(shape, target);
 		CollectionExpression exp = CollectionExpression.create(shape, this);
 		return CollectionExpression.product(shape, List.of(delta, exp));

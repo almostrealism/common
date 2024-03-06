@@ -39,8 +39,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	public static boolean enableOptimization = true;
-	public static boolean enableTraverseEach = false;
-	public static boolean enableDirect = false;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
@@ -95,8 +93,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  	 	Function<TraversableExpression[], CollectionExpression> expression,
 															  	Producer<?> target,
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		TraversalPolicy ds = enableTraverseEach ? deltaShape.traverseEach() : deltaShape;
-		return new TraversableDeltaComputation<>(ds.append(targetShape),
+		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
 				exp ->
 						expression.apply(exp).delta(targetShape, DeltaFeatures.matcher(target)), args);
 	}

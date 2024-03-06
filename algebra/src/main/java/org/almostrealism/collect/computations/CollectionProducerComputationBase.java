@@ -30,7 +30,9 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -247,6 +249,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		} else {
 			return null;
 		}
+	}
+
+	@Override
+	public CollectionProducer<O> delta(Producer<?> target) {
+		return CollectionProducerComputation.super.delta(target);
 	}
 
 	@Override

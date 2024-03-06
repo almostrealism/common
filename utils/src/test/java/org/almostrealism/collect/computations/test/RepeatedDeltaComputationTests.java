@@ -34,5 +34,48 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 		PackedCollection<?> out = cp(in).sum().delta(cp(in)).evaluate();
 		out.print();
+
+		assertEquals(1.0, out.valueAt(0, 0, 0, 0));
+		assertEquals(1.0, out.valueAt(0, 0, 0, 1));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 0));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 1));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 0));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 1));
+		assertEquals(1.0, out.valueAt(1, 0, 1, 0));
+		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
+	}
+
+	@Test
+	public void productSum() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> out = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).evaluate();
+		out.print();
+
+		assertEquals(4.0, out.valueAt(0, 0, 0, 0));
+		assertEquals(3.0, out.valueAt(0, 0, 0, 1));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 0));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 1));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 0));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 1));
+		assertEquals(2.0, out.valueAt(1, 0, 1, 0));
+		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
+	}
+
+	@Test
+	public void productSumEnumerate() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> out = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1).evaluate();
+		out.traverse(1).print();
+
+		assertEquals(4.0, out.valueAt(0, 0));
+		assertEquals(3.0, out.valueAt(1, 0));
+		assertEquals(0.0, out.valueAt(2, 0));
+		assertEquals(0.0, out.valueAt(3, 0));
+		assertEquals(0.0, out.valueAt(0, 1));
+		assertEquals(0.0, out.valueAt(1, 1));
+		assertEquals(2.0, out.valueAt(2, 1));
+		assertEquals(1.0, out.valueAt(3, 1));
 	}
 }

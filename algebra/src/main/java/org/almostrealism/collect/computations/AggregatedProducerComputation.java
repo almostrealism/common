@@ -33,9 +33,8 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class AggregatedProducerComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
-	public static boolean enableValueAtDelta = true;
-
+public class AggregatedProducerComputation<T extends PackedCollection<?>>
+		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	private BiFunction<Expression, Expression, Expression> expression;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
@@ -73,15 +72,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (enableValueAtDelta) {
-			TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-					getInputs().stream().skip(1).toArray(Supplier[]::new));
-			delta.addDependentLifecycle(this);
-			return delta;
-		} else {
-			return super.delta(target);
-		}
+		TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
+				args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+		traversable.addDependentLifecycle(this);
+
+		ConstantRepeatedDeltaComputation delta = (ConstantRepeatedDeltaComputation) super.delta(target);
+		delta.setFallback(traversable);
+		return delta;
 	}
 
 	@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IndexedExpressionMatcher;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
@@ -27,7 +28,6 @@ import io.almostrealism.expression.Sum;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -62,7 +62,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
-	default CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
+	default CollectionExpression delta(TraversalPolicy targetShape, IndexedExpressionMatcher target) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -96,52 +96,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 	}
 
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
-		if (shape == null) {
-			throw new IllegalArgumentException("Shape is required");
-		}
-
-		return new CollectionExpression() {
-			@Override
-			public TraversalPolicy getShape() {
-				return shape;
-			}
-
-			@Override
-			public Expression<Double> getValueAt(Expression index) {
-				return (Expression) valueAt.apply(index);
-			}
-
-			@Override
-			public Expression<Double> getValueRelative(Expression index) {
-				return CollectionExpression.super.getValueRelative(index);
-			}
-
-			@Override
-			public CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-				return createDelta(this, targetShape, target);
-			}
-		};
-	}
-
-	static CollectionExpression createDelta(CollectionExpression exp, TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-		return new CollectionExpression() {
-			@Override
-			public TraversalPolicy getShape() {
-				return exp.getShape();
-			}
-
-			@Override
-			public Expression<Double> getValueAt(Expression index) {
-				return exp.getValueAt(index.divide(targetShape.getTotalSize()))
-										.delta(targetShape, target)
-						.getValueAt(index.imod(targetShape.getTotalSize()));
-			}
-
-			@Override
-			public CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-				return createDelta(this, targetShape, target);
-			}
-		};
+		return new DefaultCollectionExpression(shape, valueAt);
 	}
 
 	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {

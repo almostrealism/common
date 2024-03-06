@@ -25,8 +25,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -93,7 +91,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		return CollectionExpression.sum(shape,
 				getChildren().stream().map(e -> e.delta(shape, target)).collect(Collectors.toList()));
 	}

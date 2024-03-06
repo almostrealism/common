@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IndexedExpressionMatcher;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -29,34 +30,66 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> {
+public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+	private TraversalPolicy deltaShape, targetShape;
+	private BiFunction<TraversableExpression[], Expression, Expression> expression;
+	private IndexedExpressionMatcher matcher;
+	private Expression row;
+
+	private TraversableExpression<Double> fallback;
+
 	@SafeVarargs
-	public ConstantRepeatedDeltaComputation(TraversalPolicy shape, int count,
-											BiFunction<TraversableExpression[], Expression, Expression> initial,
+	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
+											IndexedExpressionMatcher matcher,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, count, initial, expression, args);
+		this(deltaShape, targetShape, 1, count, expression, matcher, args);
 	}
 
 	@SafeVarargs
-	public ConstantRepeatedDeltaComputation(TraversalPolicy shape, int size, int count,
-											BiFunction<TraversableExpression[], Expression, Expression> initial,
+	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int size, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
+											IndexedExpressionMatcher matcher,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
-		super(shape, size, count, initial, expression, inputs);
+		super(deltaShape.append(targetShape), size, count, null, null, inputs);
+		this.deltaShape	= deltaShape;
+		this.targetShape = targetShape;
+		this.expression = expression;
+		this.matcher = matcher;
+
+		setExpression((args, idx) ->
+				expression.apply(args, row.add(idx))
+						.delta(targetShape, matcher)
+						.getValueRelative(row.add(idx)));
+	}
+
+	protected void setFallback(TraversableDeltaComputation<T> fallback) {
+		addDependentLifecycle(fallback);
+		this.fallback = fallback;
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return fallback == null ? null : fallback.getValueAt(index);
 	}
 
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		Expression row = globalIndex.multiply(e(count));
+		row = globalIndex.multiply(e(count));
 		return super.getDestination(globalIndex, localIndex, row.add(localIndex));
 	}
 
 	@Override
-	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedProducerComputation<>(
-				getShape(), getMemLength(), count,
-				initial, expression,
+	public ConstantRepeatedDeltaComputation<T> generate(List<Process<?, ?>> children) {
+		return new ConstantRepeatedDeltaComputation<>(
+				deltaShape, targetShape,
+				getMemLength(), count,
+				expression, matcher,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
@@ -65,12 +98,8 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 			BiFunction<TraversableExpression[], Expression, Expression> expression,
 			Producer<?> target,
 			Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		return new ConstantRepeatedDeltaComputation<>(deltaShape.append(targetShape), count,
-				null,
-				(args, idx) ->
-						expression.apply(args, idx)
-								.delta(targetShape, DeltaFeatures.matcher(target))
-								.getValueRelative(idx),
-				arguments);
+		return new ConstantRepeatedDeltaComputation<>(
+				deltaShape, targetShape, count, expression,
+				DeltaFeatures.matcher(target), arguments);
 	}
 }

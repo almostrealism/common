@@ -43,7 +43,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -345,7 +344,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Cast(Integer.class, "int", this);
 	}
 
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		throw new UnsupportedOperationException();
 	}
 

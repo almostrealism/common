@@ -213,6 +213,8 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void dense() {
+		if (skipLongTests) return;
+
 		int size = 1800;
 		int nodes = 10;
 		int steps = 100;

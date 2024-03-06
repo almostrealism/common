@@ -21,8 +21,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
@@ -43,7 +41,7 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		return CollectionExpression.create(shape, idx -> new IntegerConstant(0));
 	}
 }

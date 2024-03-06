@@ -22,8 +22,6 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Mask<T extends Number> extends Conditional<T> {
 	protected Mask(Expression<Boolean> mask, Expression<T> value) {
@@ -43,7 +41,7 @@ public class Mask<T extends Number> extends Conditional<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		return getMaskedValue().delta(shape, target);
 	}
 

@@ -23,8 +23,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Max extends BinaryExpression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
@@ -55,7 +53,7 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
 		return CollectionExpression.conditional(shape,
 				getLeft().greaterThan(getRight()),
 				getLeft().delta(shape, target),
