@@ -37,7 +37,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	private Expression pos[];
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, shape, np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
+		this(np, name, shape, np == null ? null : np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
 	}
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
@@ -47,7 +47,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	protected CollectionVariable(TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
-		super(null, null, null, (Expression<Integer>) null);
+		super(null, null, null, null);
 		this.shape = shape;
 		this.parent = parent;
 		this.pos = pos;

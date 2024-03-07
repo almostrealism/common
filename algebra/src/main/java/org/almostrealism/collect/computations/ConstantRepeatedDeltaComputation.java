@@ -59,7 +59,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 
 		setExpression((args, idx) ->
 				expression.apply(args, row.add(idx))
-						.delta(targetShape, matcher)
+						.delta(targetShape, matcher, null)
 						.getValueRelative(row.add(idx)));
 	}
 

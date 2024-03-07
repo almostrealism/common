@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;

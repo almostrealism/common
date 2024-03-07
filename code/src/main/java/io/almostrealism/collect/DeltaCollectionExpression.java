@@ -19,30 +19,31 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IndexedExpressionMatcher;
 
-import java.util.function.Function;
-import java.util.function.Predicate;
-
 public class DeltaCollectionExpression extends CollectionExpressionBase {
-	private final CollectionExpression exp;
+	private final CollectionExpression deltaExpression;
+	private final CollectionExpression targetExpression;
 	private final TraversalPolicy targetShape;
 	private final IndexedExpressionMatcher target;
 
-	public DeltaCollectionExpression(CollectionExpression exp, TraversalPolicy targetShape,
+	public DeltaCollectionExpression(CollectionExpression deltaExpression,
+									 CollectionExpression targetExpression,
+									 TraversalPolicy targetShape,
 									 IndexedExpressionMatcher target) {
-		this.exp = exp;
+		this.deltaExpression = deltaExpression;
+		this.targetExpression = targetExpression;
 		this.targetShape = targetShape;
 		this.target = target;
 	}
 
 	@Override
 	public TraversalPolicy getShape() {
-		return exp.getShape();
+		return deltaExpression.getShape();
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return exp.getValueAt(index.divide(targetShape.getTotalSize()))
-				.delta(targetShape, target)
+		return deltaExpression.getValueAt(index.divide(targetShape.getTotalSize()))
+				.delta(targetShape, target, targetExpression)
 				.getValueAt(index.imod(targetShape.getTotalSize()));
 	}
 }

@@ -97,7 +97,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		List<Expression<?>> operands = getChildren();
 		List<CollectionExpression> sum = new ArrayList<>();
 
@@ -105,7 +105,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			List<CollectionExpression> product = new ArrayList<>();
 
 			for (int j = 0; j < operands.size(); j++) {
-				CollectionExpression op = i == j ? operands.get(j).delta(shape, target) : CollectionExpression.create(shape, operands.get(j));
+				CollectionExpression op = i == j ? operands.get(j).delta(shape, matcher, target) : CollectionExpression.create(shape, operands.get(j));
 				product.add(op);
 			}
 
@@ -122,10 +122,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			result = CollectionExpression.sum(shape, sum);
 		}
 
-		return IndexMatchingCollectionExpression.create(shape,
-				idx -> this,
-				idx -> new IntegerConstant(1),
-				result, target);
+//		return IndexMatchingCollectionExpression.create(shape,
+//				idx -> this,
+//				idx -> new IntegerConstant(1),
+//				result, matcher);
+		return result;
 	}
 
 	@Override

@@ -62,7 +62,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
-	default CollectionExpression delta(TraversalPolicy targetShape, IndexedExpressionMatcher target) {
+	default CollectionExpression delta(TraversalPolicy targetShape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 

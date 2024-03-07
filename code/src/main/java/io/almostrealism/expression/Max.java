@@ -53,11 +53,11 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		return CollectionExpression.conditional(shape,
 				getLeft().greaterThan(getRight()),
-				getLeft().delta(shape, target),
-				getRight().delta(shape, target));
+				getLeft().delta(shape, matcher, target),
+				getRight().delta(shape, matcher, target));
 	}
 
 	@Override

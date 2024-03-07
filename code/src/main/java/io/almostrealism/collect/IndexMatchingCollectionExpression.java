@@ -21,6 +21,7 @@ import io.almostrealism.expression.IndexedExpressionMatcher;
 
 import java.util.function.Function;
 
+@Deprecated
 public class IndexMatchingCollectionExpression extends CollectionExpressionBase {
 	private final CollectionExpression compare;
 	private final CollectionExpression match;

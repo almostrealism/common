@@ -344,7 +344,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Cast(Integer.class, "int", this);
 	}
 
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 

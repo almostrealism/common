@@ -91,9 +91,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		return CollectionExpression.sum(shape,
-				getChildren().stream().map(e -> e.delta(shape, target)).collect(Collectors.toList()));
+				getChildren().stream().map(e -> e.delta(shape, matcher, target)).collect(Collectors.toList()));
 	}
 
 	@Override

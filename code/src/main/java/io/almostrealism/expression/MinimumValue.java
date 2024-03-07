@@ -46,7 +46,7 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		return CollectionExpression.zeros(shape);
 	}
 }

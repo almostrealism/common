@@ -61,8 +61,8 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
-		CollectionExpression delta = getChildren().get(0).delta(shape, target);
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
+		CollectionExpression delta = getChildren().get(0).delta(shape, matcher, target);
 		CollectionExpression exp = CollectionExpression.create(shape, this);
 		return CollectionExpression.product(shape, List.of(delta, exp));
 	}

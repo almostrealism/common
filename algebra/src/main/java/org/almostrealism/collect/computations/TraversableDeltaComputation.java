@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
@@ -95,6 +96,9 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
 				exp ->
-						expression.apply(exp).delta(targetShape, DeltaFeatures.matcher(target)), args);
+						expression.apply(exp).delta(targetShape, DeltaFeatures.matcher(target),
+								// TODO  This should be done in prepareScope so that the name related values are available
+								(CollectionExpression) CollectionVariable.create(null, null, target)),
+				args);
 	}
 }

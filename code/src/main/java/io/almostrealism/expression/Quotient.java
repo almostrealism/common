@@ -104,15 +104,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
 		Expression numerator = getChildren().get(0);
 		Expression denominator = getChildren().get(1);
 
-		CollectionExpression numeratorDelta = numerator.delta(shape, target);
-		CollectionExpression denominatorDelta = denominator.delta(shape, target);
+		CollectionExpression numeratorDelta = numerator.delta(shape, matcher, target);
+		CollectionExpression denominatorDelta = denominator.delta(shape, matcher, target);
 
 		// f'(x)g(x)
 		CollectionExpression term1 = CollectionExpression.product(shape,

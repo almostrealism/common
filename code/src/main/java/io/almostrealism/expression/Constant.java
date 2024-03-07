@@ -41,7 +41,7 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher target) {
+	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
 		return CollectionExpression.create(shape, idx -> new IntegerConstant(0));
 	}
 }

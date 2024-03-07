@@ -25,6 +25,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
@@ -32,6 +33,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -58,6 +60,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
+
+	static {
+		// TODO  This should not be necessary
+		ExpressionMatchingCollectionExpression.matcher = DeltaFeatures::match;
+	}
 
 	private String name;
 	private TraversalPolicy shape;
