@@ -22,8 +22,6 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.collect.IndexMatchingCollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -92,12 +90,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-//		return IndexMatchingCollectionExpression.create(shape,
-//				idx -> this,
-//				idx -> conditional(idx.eq(getIndex()), e(1), e(0)),
-//				idx -> e(0),
-//				matcher);
+	public CollectionExpression delta(CollectionExpression target) {
 		if (getReferent() instanceof CollectionExpression) {
 			return ExpressionMatchingCollectionExpression.create(
 					target, (CollectionExpression) getReferent(),

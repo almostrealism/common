@@ -165,6 +165,7 @@ public interface DeltaFeatures extends CollectionFeatures {
 		};
 	}
 
+	@Deprecated
 	static IndexedExpressionMatcher matcher(Producer<?> target) {
 		return index -> exp -> {
 			if (enableTraversableExpressions && target instanceof TraversableExpression) {

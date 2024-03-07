@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -53,11 +52,11 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return CollectionExpression.conditional(shape,
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.conditional(target.getShape(),
 				getLeft().greaterThan(getRight()),
-				getLeft().delta(shape, matcher, target),
-				getRight().delta(shape, matcher, target));
+				getLeft().delta(target),
+				getRight().delta(target));
 	}
 
 	@Override

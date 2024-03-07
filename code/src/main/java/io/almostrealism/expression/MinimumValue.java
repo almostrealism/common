@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -46,7 +45,7 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return CollectionExpression.zeros(shape);
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.zeros(target.getShape());
 	}
 }

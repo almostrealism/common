@@ -29,6 +29,10 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 									 CollectionExpression targetExpression,
 									 TraversalPolicy targetShape,
 									 IndexedExpressionMatcher target) {
+		if (!targetExpression.getShape().equals(targetShape)) {
+			throw new IllegalArgumentException();
+		}
+
 		this.deltaExpression = deltaExpression;
 		this.targetExpression = targetExpression;
 		this.targetShape = targetShape;
@@ -43,7 +47,7 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return deltaExpression.getValueAt(index.divide(targetShape.getTotalSize()))
-				.delta(targetShape, target, targetExpression)
+				.delta(targetExpression)
 				.getValueAt(index.imod(targetShape.getTotalSize()));
 	}
 }

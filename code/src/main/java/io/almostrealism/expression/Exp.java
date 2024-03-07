@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -61,9 +60,9 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		CollectionExpression delta = getChildren().get(0).delta(shape, matcher, target);
-		CollectionExpression exp = CollectionExpression.create(shape, this);
-		return CollectionExpression.product(shape, List.of(delta, exp));
+	public CollectionExpression delta(CollectionExpression target) {
+		CollectionExpression delta = getChildren().get(0).delta(target);
+		CollectionExpression exp = CollectionExpression.create(target.getShape(), this);
+		return CollectionExpression.product(target.getShape(), List.of(delta, exp));
 	}
 }

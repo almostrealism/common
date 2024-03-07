@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -41,7 +40,7 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return CollectionExpression.create(shape, idx -> new IntegerConstant(0));
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
 	}
 }

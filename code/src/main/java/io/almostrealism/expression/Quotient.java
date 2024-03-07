@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -104,28 +103,28 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
+	public CollectionExpression delta(CollectionExpression target) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
 		Expression numerator = getChildren().get(0);
 		Expression denominator = getChildren().get(1);
 
-		CollectionExpression numeratorDelta = numerator.delta(shape, matcher, target);
-		CollectionExpression denominatorDelta = denominator.delta(shape, matcher, target);
+		CollectionExpression numeratorDelta = numerator.delta(target);
+		CollectionExpression denominatorDelta = denominator.delta(target);
 
 		// f'(x)g(x)
-		CollectionExpression term1 = CollectionExpression.product(shape,
-				List.of(numeratorDelta, CollectionExpression.create(shape, denominator)));
+		CollectionExpression term1 = CollectionExpression.product(target.getShape(),
+				List.of(numeratorDelta, CollectionExpression.create(target.getShape(), denominator)));
 		// f(x)g'(x)
-		CollectionExpression term2 = CollectionExpression.product(shape,
-				List.of(CollectionExpression.create(shape, numerator), denominatorDelta));
+		CollectionExpression term2 = CollectionExpression.product(target.getShape(),
+				List.of(CollectionExpression.create(target.getShape(), numerator), denominatorDelta));
 
 		CollectionExpression derivativeNumerator =
-				CollectionExpression.difference(shape, List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
+				CollectionExpression.difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
 		CollectionExpression derivativeDenominator =
-				CollectionExpression.create(shape, new Product(denominator, denominator)); // [g(x)]^2
-		return CollectionExpression.quotient(shape, List.of(derivativeNumerator, derivativeDenominator));
+				CollectionExpression.create(target.getShape(), new Product(denominator, denominator)); // [g(x)]^2
+		return CollectionExpression.quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
 	@Override

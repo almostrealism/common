@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -91,9 +90,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return CollectionExpression.sum(shape,
-				getChildren().stream().map(e -> e.delta(shape, matcher, target)).collect(Collectors.toList()));
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.sum(target.getShape(),
+				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
 	}
 
 	@Override

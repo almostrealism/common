@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
@@ -344,7 +343,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Cast(Integer.class, "int", this);
 	}
 
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
+	public CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 

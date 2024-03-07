@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,8 +40,8 @@ public class Mask<T extends Number> extends Conditional<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return getMaskedValue().delta(shape, matcher, target);
+	public CollectionExpression delta(CollectionExpression target) {
+		return getMaskedValue().delta(target);
 	}
 
 	@Override

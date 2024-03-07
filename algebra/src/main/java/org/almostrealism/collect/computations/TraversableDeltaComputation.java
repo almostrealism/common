@@ -96,7 +96,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
 				exp ->
-						expression.apply(exp).delta(targetShape, DeltaFeatures.matcher(target),
+						expression.apply(exp).delta(targetShape, null,
 								// TODO  This should be done in prepareScope so that the name related values are available
 								(CollectionExpression) CollectionVariable.create(null, null, target)),
 				args);
