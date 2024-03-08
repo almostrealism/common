@@ -35,6 +35,8 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+	public static boolean enableTransitiveDelta = false;
+
 	private BiFunction<Expression, Expression, Expression> expression;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
@@ -72,14 +74,28 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
-				args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
-		traversable.addDependentLifecycle(this);
+		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
+			int outLength = ((CollectionProducer<T>) getInputs().get(1)).getShape().getTotalSize();
+			int inLength = shape(target).getTotalSize();
 
-		ConstantRepeatedDeltaComputation delta = (ConstantRepeatedDeltaComputation) super.delta(target);
-		delta.setFallback(traversable);
-		return delta;
+			CollectionProducer<?> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+			delta = delta.reshape(outLength, inLength);
+			delta = delta.enumerate(1, count).traverse(2);
+			return new AggregatedProducerComputation<>(shape(delta).replace(shape(1)),
+						count, initial, expression, (Supplier) delta)
+					.reshape(getShape().append(shape(target)));
+		} else {
+			CollectionProducer<T> delta = super.delta(target);
+			if (delta instanceof ConstantRepeatedDeltaComputation) {
+				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
+						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+						getInputs().stream().skip(1).toArray(Supplier[]::new));
+				traversable.addDependentLifecycle(this);
+				((ConstantRepeatedDeltaComputation) delta).setFallback(traversable);
+			}
+
+			return delta;
+		}
 	}
 
 	@Override
