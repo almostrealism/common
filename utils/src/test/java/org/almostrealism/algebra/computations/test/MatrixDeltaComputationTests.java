@@ -63,16 +63,14 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(out.toArray(0, dim)));
 		assertEquals(8.5, out.toDouble(1));
 
-		HardwareOperator.verboseLog(() -> {
-			// dy0/dw = x0, x1, 0,  0
-			// dy1/dw = 0,  0,  x0, x1
-			Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
-			PackedCollection<?> dout = dy.evaluate();
-			System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
-			Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
-			assertEquals(0.0, dout.toDouble(5));
-			assertEquals(3.0, dout.toDouble(7));
-		});
+		// dy0/dw = x0, x1, 0,  0
+		// dy1/dw = 0,  0,  x0, x1
+		Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
+		PackedCollection<?> dout = dy.evaluate();
+		dout.print();
+		Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
+		assertEquals(0.0, dout.toDouble(5));
+		assertEquals(3.0, dout.toDouble(7));
 	}
 
 	@Test
@@ -159,7 +157,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			Evaluable<? extends PackedCollection<?>> dy = Process.optimized(c.delta(p(w))).get();
 			PackedCollection<?> dout = dy.evaluate(v.traverse());
 			System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
-			Assert.assertEquals(dout.getMemLength(), dim * dim * dim);
+			Assert.assertEquals(dim * dim * dim, dout.getMemLength());
 			assertEquals(0.0, dout.toDouble(5));
 			assertEquals(3.0, dout.toDouble(7));
 		});

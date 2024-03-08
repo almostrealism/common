@@ -22,6 +22,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -107,31 +108,6 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 			return new InstanceReference<>(var, children.get(0), index);
 		} else {
 			throw new UnsupportedOperationException();
-		}
-	}
-
-	public static boolean compareExpressions(Expression<?> a, Expression<?> b) {
-		if (a == null && b == null) return true;
-		if (a == null || b == null) return false;
-		if (a.getClass() != b.getClass()) return false;
-
-		if (a instanceof InstanceReference) {
-			InstanceReference ra = (InstanceReference) a;
-			InstanceReference rb = (InstanceReference) b;
-			return Objects.equals(ra.getReferent().getName(), rb.getReferent().getName()) &&
-					compareExpressions(ra.getIndex(), rb.getIndex());
-		} else if (a.getChildren().size() == b.getChildren().size()) {
-			if (a.getChildren().isEmpty()) return Objects.equals(a, b);
-
-			for (int i = 0; i < a.getChildren().size(); i++) {
-				if (!compareExpressions(a.getChildren().get(i), b.getChildren().get(i))) {
-					return false;
-				}
-			}
-
-			return true;
-		} else {
-			return false;
 		}
 	}
 

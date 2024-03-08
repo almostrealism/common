@@ -259,11 +259,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public CollectionProducer<O> delta(Producer<?> target) {
-		return CollectionProducerComputation.super.delta(target);
-	}
-
-	@Override
 	public Evaluable<O> get() {
 		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
 		ev.setDestinationValidation(destination -> {

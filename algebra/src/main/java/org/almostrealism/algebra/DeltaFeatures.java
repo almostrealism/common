@@ -52,7 +52,6 @@ import java.util.function.Supplier;
 public interface DeltaFeatures extends CollectionFeatures {
 	boolean enableChainRule = false;
 	boolean enableInputStub = false;
-	boolean enableTraversableExpressions = false;
 
 	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,
 																			 ComputationBase<T, T, Evaluable<T>> producer,
@@ -168,13 +167,6 @@ public interface DeltaFeatures extends CollectionFeatures {
 	@Deprecated
 	static IndexedExpressionMatcher matcher(Producer<?> target) {
 		return index -> exp -> {
-			if (enableTraversableExpressions && target instanceof TraversableExpression) {
-				Expression compare = ((TraversableExpression) target).getValueAt(index);
-				if (InstanceReference.compareExpressions(compare.getSimplified(), exp.getSimplified())) {
-					return true;
-				}
-			}
-
 			if (!(exp instanceof InstanceReference)) return false;
 
 			InstanceReference ref = (InstanceReference) exp;

@@ -16,8 +16,12 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.expression.BooleanConstant;
+import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -49,21 +53,57 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return conditional(index.eq(this.index), positive.getValueAt(index), negative.getValueAt(index));
+		if (this.index == null) {
+			Expression<Boolean> comparison = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
+			return conditional(comparison, positive.getValueAt(index), negative.getValueAt(index));
+		} else {
+			return conditional(index.eq(this.index), positive.getValueAt(index), negative.getValueAt(index));
+		}
 	}
 
-	public static CollectionExpression create(CollectionExpression reference,
-																CollectionExpression compareTo,
-																Expression<?> index,
-																Expression<?> positive,
-																Expression<?> negative) {
+	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {
+		if (a == null && b == null) return new BooleanConstant(true);
+		if (a == null || b == null) return new BooleanConstant(false);
+		if (a.getClass() != b.getClass()) return new BooleanConstant(false);
+
+		if (a instanceof InstanceReference) {
+			InstanceReference ra = (InstanceReference) a;
+			InstanceReference rb = (InstanceReference) b;
+			if (Objects.equals(ra.getReferent().getName(), rb.getReferent().getName())) {
+				return ra.getIndex().eq(rb.getIndex());
+			}
+		} else if (a.getChildren().size() == b.getChildren().size()) {
+			if (a.getChildren().isEmpty()) return a.eq(b);
+
+			Expression<Boolean> comparisons[] = new Expression[a.getChildren().size()];
+
+			for (int i = 0; i < a.getChildren().size(); i++) {
+				comparisons[i] = compareExpressions(a.getChildren().get(i), b.getChildren().get(i));
+			}
+
+			return new Conjunction(comparisons);
+		}
+
+		return new BooleanConstant(false);
+	}
+
+	public static CollectionExpression create(
+			CollectionExpression reference, CollectionExpression compareTo, Expression<?> index,
+			Expression<?> positive, Expression<?> negative) {
 		return create(reference, compareTo, index,
 				DefaultCollectionExpression.create(reference.getShape(), idx -> positive),
 				DefaultCollectionExpression.create(reference.getShape(), idx -> negative));
 	}
 
-	public static CollectionExpression create(CollectionExpression reference, CollectionExpression compareTo, Expression<?> index,
-											  CollectionExpression positive, CollectionExpression negative) {
+	public static CollectionExpression create(
+			CollectionExpression reference, CollectionExpression compareTo,
+			CollectionExpression positive, CollectionExpression negative) {
+		return create(reference, compareTo, null, positive, negative);
+	}
+
+	public static CollectionExpression create(
+			CollectionExpression reference, CollectionExpression compareTo, Expression<?> index,
+			CollectionExpression positive, CollectionExpression negative) {
 		if (checkPossibleMatch(reference, compareTo)) {
 			return new ExpressionMatchingCollectionExpression(reference, compareTo, index, positive, negative);
 		} else {
@@ -74,6 +114,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	protected static boolean checkPossibleMatch(CollectionExpression reference, CollectionExpression compareTo) {
 		Supplier referenceProducer = reference instanceof CollectionVariable ? ((CollectionVariable) reference).getProducer() : null;
 		Supplier compareToProducer = compareTo instanceof CollectionVariable ? ((CollectionVariable) compareTo).getProducer() : null;
-		return matcher == null ? false : matcher.apply(referenceProducer, compareToProducer);
+		if (matcher == null || referenceProducer == null || compareToProducer == null) return true;
+		return matcher.apply(referenceProducer, compareToProducer);
 	}
 }

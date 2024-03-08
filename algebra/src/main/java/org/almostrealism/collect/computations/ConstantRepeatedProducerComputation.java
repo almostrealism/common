@@ -56,6 +56,9 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>> 
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
+		CollectionProducer<T> delta = attemptDelta(this, target);
+		if (delta != null) return delta;
+
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
 				count, expression, target,

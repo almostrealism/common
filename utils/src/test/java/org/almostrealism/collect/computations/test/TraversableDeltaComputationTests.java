@@ -236,6 +236,29 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void embedded2() {
+		int dim = 3;
+
+		PackedCollection<?> w1 = pack(4, -3, 2);
+		CollectionProducer<PackedCollection<?>> x = cp(pack(0.0, 0.0, 0.0));
+
+		// w0 * x0 + w1 * x1 + w2 * x2
+		CollectionProducer<PackedCollection<?>> c = x.mul(p(w1)).sum();
+
+		// x.mul(p(w1)).delta(x).traverse(1).sum().evaluate().print();
+
+		// dy = f'(x)
+		//    = w0, w1, w2
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate();
+		dout.print();
+
+		for (int i = 0; i < dim; i++) {
+			assertEquals(w1.toDouble(i), dout.toDouble(i));
+		}
+	}
+
+	@Test
 	public void multiplyEnumerate() {
 		int dim = 2;
 

@@ -17,6 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -121,11 +123,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			result = CollectionExpression.sum(target.getShape(), sum);
 		}
 
-//		return IndexMatchingCollectionExpression.create(shape,
-//				idx -> this,
-//				idx -> new IntegerConstant(1),
-//				result, matcher);
-		return result;
+		return ExpressionMatchingCollectionExpression.create(
+				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				target,
+				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				result);
 	}
 
 	@Override
