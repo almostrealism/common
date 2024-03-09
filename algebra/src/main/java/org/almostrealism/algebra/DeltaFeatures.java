@@ -18,20 +18,14 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IndexedExpressionMatcher;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -160,29 +154,6 @@ public interface DeltaFeatures extends CollectionFeatures {
 			public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 				return this;
 			}
-		};
-	}
-
-	@Deprecated
-	static IndexedExpressionMatcher matcher(Producer<?> target) {
-		return index -> exp -> {
-			if (!(exp instanceof InstanceReference)) return false;
-
-			InstanceReference ref = (InstanceReference) exp;
-			Variable v = ref.getReferent();
-
-			w: while (true) {
-				if (match(v.getProducer(), target)) {
-					break w;
-				}
-
-				v = v.getDelegate();
-				if (v == null) {
-					return false;
-				}
-			}
-
-			return true;
 		};
 	}
 
