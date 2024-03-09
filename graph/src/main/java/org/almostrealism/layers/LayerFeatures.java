@@ -121,7 +121,6 @@ public interface LayerFeatures extends MatrixFeatures {
 								.repeat(outputShape.length(1)).traverse(0)
 								.repeat(outputShape.length(0)).traverse(2))
 						.traverse()
-//					.reduce(v -> v.sum());
 						.sum();
 		return layer("convolution2d", inputShape, outputShape,
 				operator, List.of(filters),
