@@ -17,26 +17,15 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IndexedExpressionMatcher;
 
 public class DeltaCollectionExpression extends CollectionExpressionBase {
 	private final CollectionExpression deltaExpression;
 	private final CollectionExpression targetExpression;
-	private final TraversalPolicy targetShape;
-	private final IndexedExpressionMatcher target;
 
 	public DeltaCollectionExpression(CollectionExpression deltaExpression,
-									 CollectionExpression targetExpression,
-									 TraversalPolicy targetShape,
-									 IndexedExpressionMatcher target) {
-		if (!targetExpression.getShape().equals(targetShape)) {
-			throw new IllegalArgumentException();
-		}
-
+									 CollectionExpression targetExpression) {
 		this.deltaExpression = deltaExpression;
 		this.targetExpression = targetExpression;
-		this.targetShape = targetShape;
-		this.target = target;
 	}
 
 	@Override
@@ -46,8 +35,8 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return deltaExpression.getValueAt(index.divide(targetShape.getTotalSize()))
+		return deltaExpression.getValueAt(index.divide(targetExpression.getShape().getTotalSize()))
 				.delta(targetExpression)
-				.getValueAt(index.imod(targetShape.getTotalSize()));
+				.getValueAt(index.imod(targetExpression.getShape().getTotalSize()));
 	}
 }

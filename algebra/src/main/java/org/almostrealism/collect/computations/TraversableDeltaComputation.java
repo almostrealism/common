@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
@@ -24,7 +27,6 @@ import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -42,17 +44,39 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	public static boolean enableOptimization = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
+	private Producer<?> target;
+	private CollectionVariable<?> targetVariable;
 
 	@SafeVarargs
 	protected TraversableDeltaComputation(TraversalPolicy shape,
-											Function<TraversableExpression[], CollectionExpression> expression,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+										  Function<TraversableExpression[], CollectionExpression> expression,
+										  Producer<?> target,
+										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = expression;
+		this.target = target;
+		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		targetVariable = null;
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
-		return expression.apply(getTraversableArguments(index));
+		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
 	}
 
 	@Override
@@ -64,7 +88,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
 		TraversableDeltaComputation<T> result =
-				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
+				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression, target,
 					children.stream().skip(1).toArray(Supplier[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 		getDependentLifecycles().forEach(result::addDependentLifecycle);
@@ -94,11 +118,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  	 	Function<TraversableExpression[], CollectionExpression> expression,
 															  	Producer<?> target,
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
-				exp ->
-						expression.apply(exp).delta(targetShape, null,
-								// TODO  This should be done in prepareScope so that the name related values are available
-								(CollectionExpression) CollectionVariable.create(null, null, target)),
-				args);
+		return new TraversableDeltaComputation<>(deltaShape.append(targetShape), expression, target, args);
 	}
 }

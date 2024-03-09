@@ -259,6 +259,73 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void repeatMultiply1() {
+		int dim = 2;
+
+		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
+
+		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
+		PackedCollection<?> out = c.delta(cp(vector)).evaluate();
+		System.out.println(out.getShape().toStringDetail());
+		out.print();
+
+		assertEquals(2.0, out.toDouble(0));
+		assertEquals(0.0, out.toDouble(1));
+		assertEquals(0.0, out.toDouble(2));
+		assertEquals(3.0, out.toDouble(3));
+		assertEquals(4.0, out.toDouble(4));
+		assertEquals(0.0, out.toDouble(5));
+		assertEquals(0.0, out.toDouble(6));
+		assertEquals(5.0, out.toDouble(7));
+	}
+
+	@Test
+	public void repeatMultiply2() {
+		int dim = 2;
+
+		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
+
+		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
+		PackedCollection<?> out = c.delta(x(dim)).evaluate(vector);
+		System.out.println(out.getShape().toStringDetail());
+		out.print();
+
+		assertEquals(2.0, out.toDouble(0));
+		assertEquals(0.0, out.toDouble(1));
+		assertEquals(0.0, out.toDouble(2));
+		assertEquals(3.0, out.toDouble(3));
+		assertEquals(4.0, out.toDouble(4));
+		assertEquals(0.0, out.toDouble(5));
+		assertEquals(0.0, out.toDouble(6));
+		assertEquals(5.0, out.toDouble(7));
+	}
+
+	@Test
+	public void repeatMultiply3() {
+		int dim = 2;
+
+		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(1, dim));
+
+		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, x(dim))));
+		PackedCollection<?> out = c.delta(cp(matrix)).evaluate(vector.traverse());
+		System.out.println(out.getShape().toStringDetail());
+		out.print();
+
+		for (int i = 0; i < (dim * dim); i++) {
+			for (int j = 0; j < (dim * dim); j++) {
+				if (i == j) {
+					assertEquals(vector.toDouble(i % 2), out.toDouble(i * dim * dim + j));
+				} else {
+					assertEquals(0.0, out.toDouble(i * dim * dim + j));
+				}
+			}
+		}
+	}
+
+	@Test
 	public void multiplyEnumerate() {
 		int dim = 2;
 

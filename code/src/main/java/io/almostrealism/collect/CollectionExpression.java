@@ -19,7 +19,6 @@ package io.almostrealism.collect;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IndexedExpressionMatcher;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
@@ -62,7 +61,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
-	default CollectionExpression delta(TraversalPolicy targetShape, IndexedExpressionMatcher matcher, CollectionExpression target) {
+	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 

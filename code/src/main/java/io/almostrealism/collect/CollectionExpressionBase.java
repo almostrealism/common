@@ -16,12 +16,9 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.expression.IndexedExpressionMatcher;
-
 public abstract class CollectionExpressionBase implements CollectionExpression {
 	@Override
-	public CollectionExpression delta(TraversalPolicy targetShape,
-									  IndexedExpressionMatcher matcher, CollectionExpression target) {
-		return new DeltaCollectionExpression(this, target, targetShape, matcher);
+	public CollectionExpression delta(CollectionExpression target) {
+		return new DeltaCollectionExpression(this, target);
 	}
 }

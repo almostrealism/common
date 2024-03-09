@@ -35,7 +35,7 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
-	public static boolean enableTransitiveDelta = false;
+	public static boolean enableTransitiveDelta = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 
