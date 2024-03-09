@@ -162,10 +162,9 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmul5() {
-		int count = 1;
 		int dim = 3;
 
-		PackedCollection<?> v = integers(2, 2 + count * dim)
+		PackedCollection<?> v = integers(2, 2 + dim)
 				.get().evaluate();
 		PackedCollection<?> w = pack(
 				1000.0, 1000.0, 1000.0,
@@ -174,7 +173,23 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				.reshape(shape(dim, dim));
 		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
 
-//		PackedCollection<?> out = Process.optimized(c.delta(cp(w))).get().evaluate();
+		PackedCollection<?> out = c.delta(cp(w)).get().evaluate();
+		out.print();
+	}
+
+	@Test
+	public void matmul6() {
+		int rows = 3;
+		int cols = 2;
+
+		PackedCollection<?> v = integers(2, 2 + cols).get().evaluate();
+		PackedCollection<?> w = pack(
+				10.0, 100.0,
+				20.0, 200.0,
+				30.0, 300.0)
+				.reshape(shape(rows, cols));
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+
 		PackedCollection<?> out = c.delta(cp(w)).get().evaluate();
 		out.print();
 	}

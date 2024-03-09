@@ -480,7 +480,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerateSum() {
+	public void enumerateSum1() {
 		int count = 2;
 		int dim = 3;
 
@@ -499,13 +499,29 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 											.reshape(3, 3);
 		Evaluable<PackedCollection<?>> dy = cdy.get();
 		PackedCollection<?> dout = dy.evaluate();
-		System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+		dout.print();
+
 		assertEquals(7.0, dout.toDouble(0));
 		assertEquals(9.0, dout.toDouble(1));
 		assertEquals(11.0, dout.toDouble(2));
 		assertEquals(7.0, dout.toDouble(3));
 		assertEquals(9.0, dout.toDouble(4));
 		assertEquals(11.0, dout.toDouble(5));
+	}
+
+	@Test
+	public void enumerateSum2() {
+		int dim = 5;
+		int size = 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.enumerate(1, size, 1)
+				.sum(2);
+
+		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		dout.print();
 	}
 
 	@Test
