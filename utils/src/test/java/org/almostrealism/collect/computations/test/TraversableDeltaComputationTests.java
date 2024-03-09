@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -385,7 +386,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerateMultiply() {
+	public void enumerateMultiplySum() {
 		boolean enableSum = true;
 		int count = 1;
 		int dim = 2;
@@ -477,6 +478,46 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
+	}
+
+	@Test
+	public void multiplyTwice() {
+		int dim = 5;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(dim));
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.multiply(3)
+				.multiply(2);
+
+		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+//		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		PackedCollection<?> dout = dy.get().evaluate();
+		dout.traverse().print();
+
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(6.0, dout.toDouble(i * dim + j));
+				} else {
+					assertEquals(0.0, dout.toDouble(i * dim + j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerateMultiply() {
+		int dim = 5;
+		int size = 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.enumerate(1, size, 1)
+				.multiply(2);
+
+		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		assertEquals(80, dout.doubleStream().sum());
 	}
 
 	@Test
@@ -611,6 +652,32 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 //				}
 //			}
 //		}
+	}
+
+	@Test
+	public void enumerate2d() {
+		int dim = 6;
+		int size = 3;
+		int filterCount = 2;
+		int pad = size - 1;
+		TraversalPolicy outputShape = shape(dim - pad, dim - pad, filterCount);
+
+		PackedCollection<?> input = integers(1, 1 + dim * dim).evaluate().reshape(dim, dim);
+		PackedCollection<?> filters = new PackedCollection<>(shape(size, size, filterCount)).fill(Math::random);
+
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.enumerate(1, size, 1)
+				.enumerate(1, size, 1)
+				.traverse(2)
+				.repeat(filterCount)
+				.traverse(2)
+				.multiply(cp(filters)
+						.repeat(outputShape.length(1)).traverse(0)
+						.repeat(outputShape.length(0)).traverse(2))
+				.traverse();
+
+		PackedCollection<?> result = Process.optimized(c.delta(p(input))).get().evaluate();
+		result.print();
 	}
 
 	@Test

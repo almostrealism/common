@@ -16,9 +16,15 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class Conjunction extends NAryExpression<Boolean> {
+	public Conjunction(List<Expression<?>> values) { super(Boolean.class, "&", values); }
+
 	public Conjunction(Expression<Boolean>... values) {
 		super(Boolean.class, "&", values);
 	}
@@ -26,5 +32,28 @@ public class Conjunction extends NAryExpression<Boolean> {
 	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		return new Conjunction(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression<Boolean> simplify(KernelStructureContext context) {
+		Expression<Boolean> flat = super.simplify(context);
+		if (!(flat instanceof Conjunction)) return flat;
+
+		List<Expression<?>> children = new ArrayList<>();
+
+		for (Expression<?> child : flat.getChildren()) {
+			Optional<Boolean> value = child.booleanValue();
+			if (value.isPresent()) {
+				if (!value.get()) {
+					return new BooleanConstant(false);
+				}
+			} else {
+				children.add(child);
+			}
+		}
+
+		if (children.isEmpty()) return new BooleanConstant(true);
+		if (children.size() == 1) return (Expression) children.get(0);
+		return new Conjunction(children);
 	}
 }
