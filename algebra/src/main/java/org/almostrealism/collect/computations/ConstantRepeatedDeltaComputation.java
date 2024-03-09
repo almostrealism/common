@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
@@ -33,7 +35,10 @@ import java.util.function.Supplier;
 public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	private TraversalPolicy deltaShape, targetShape;
 	private BiFunction<TraversableExpression[], Expression, Expression> expression;
+
 	private Producer<?> target;
+	private CollectionVariable<?> targetVariable;
+
 	private Expression row;
 
 	private TraversableExpression<Double> fallback;
@@ -56,18 +61,36 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 		this.targetShape = targetShape;
 		this.expression = expression;
 		this.target = target;
-
-		setExpression((args, idx) ->
-				expression.apply(args, row.add(idx))
-						.delta(
-								// TODO  This should be done in prepareScope so that the name related values are available
-								(CollectionExpression) CollectionVariable.create(null, null, target))
-						.getValueRelative(row.add(idx)));
 	}
 
 	protected void setFallback(TraversableDeltaComputation<T> fallback) {
 		addDependentLifecycle(fallback);
 		this.fallback = fallback;
+	}
+
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		targetVariable = null;
+	}
+
+	@Override
+	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
+		return expression.apply(getTraversableArguments(globalIndex), row.add(localIndex))
+				.delta(targetVariable)
+				.getValueRelative(row.add(localIndex));
 	}
 
 	@Override

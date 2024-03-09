@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.DefaultIndex;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Producer;
@@ -124,12 +125,16 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 		for (int j = 0; j < getMemLength(); j++) {
 //			Expression<?> out = getDestination(index, ref, e(j));
 			Expression<?> out = getDestination(new KernelIndex(), ref, e(j));
-			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
+			Expression<?> val = getExpression(index, ref.add(j));
 			body.getStatements().add(out.assign(val));
 		}
 
 		scope.add(body);
 		return scope;
+	}
+
+	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
+		return expression.apply(getTraversableArguments(globalIndex), localIndex);
 	}
 
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
