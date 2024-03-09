@@ -45,11 +45,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public interface DeltaFeatures extends CollectionFeatures {
+	boolean enableIsolationWarnings = false;
 	boolean enableChainRule = false;
 	boolean enableInputStub = false;
 
@@ -222,8 +221,9 @@ public interface DeltaFeatures extends CollectionFeatures {
 			return true;
 		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
 			return ((PassThroughProducer) p).getIndex() == ((PassThroughProducer) q).getIndex();
-		} else if (p instanceof CollectionProducerComputation.IsolatedProcess ||
-				q instanceof CollectionProducerComputation.IsolatedProcess) {
+		} else if (enableIsolationWarnings &&
+				(p instanceof CollectionProducerComputation.IsolatedProcess ||
+				q instanceof CollectionProducerComputation.IsolatedProcess)) {
 			Computation.console.features(DeltaFeatures.class)
 					.warn("Isolated producer cannot be matched");
 		}
