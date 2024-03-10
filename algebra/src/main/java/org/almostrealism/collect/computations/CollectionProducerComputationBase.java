@@ -63,7 +63,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	static {
 		// TODO  This should not be necessary
-		ExpressionMatchingCollectionExpression.matcher = DeltaFeatures::match;
+		// ExpressionMatchingCollectionExpression.matcher = DeltaFeatures::match;
 	}
 
 	private String name;

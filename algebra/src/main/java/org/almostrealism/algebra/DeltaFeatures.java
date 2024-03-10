@@ -44,7 +44,7 @@ import java.util.function.Supplier;
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableIsolationWarnings = false;
 	boolean enableChainRule = true;
-	boolean enableInputStub = false;
+	boolean enableInputStub = true;
 
 	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,
 																			 ComputationBase<T, T, Evaluable<T>> producer,
@@ -52,7 +52,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 		if (enableInputStub) {
 			CollectionProducerComputation<?> inputStub = inputStub(inputShape);
 			ComputationBase delta = (ComputationBase) ((CollectionProducer) replaceInput(producer, input, inputStub)).delta(inputStub);
-			return (CollectionProducer<T>) replaceInput(delta, inputStub, input);
+			// return (CollectionProducer<T>) replaceInput(delta, inputStub, input);
+			return (CollectionProducer) delta;
 		} else {
 			return ((CollectionProducer) producer).delta(input);
 		}
@@ -159,6 +160,11 @@ public interface DeltaFeatures extends MatrixFeatures {
 			@Override
 			public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 				return this;
+			}
+
+			@Override
+			public Evaluable<T> get() {
+				return null;
 			}
 		};
 	}

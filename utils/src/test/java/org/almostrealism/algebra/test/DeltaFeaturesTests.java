@@ -106,4 +106,36 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 			}
 		}
 	}
+
+	@Test
+	public void embeddedRepeat() {
+		// f(x) = x0, x0
+		// g(x) = w * x
+		// f(g(x)) = w0 * (x0), w1 * (x0)
+		int dim = 2;
+
+		PackedCollection<?> w = pack(4, -3);
+		PackedCollection<?> input = pack(3);
+		CollectionProducer<PackedCollection<?>> c =
+				cp(input)
+						.repeat(2)
+						.multiply(cp(w));
+
+		// dy = f'(g(x))
+		//    = w0, w1
+		Producer<PackedCollection<?>> in = matchInput(c, cp(input));
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta(shape(in), (ComputationBase) c, in).get();
+		PackedCollection<?> dout = dy.evaluate();
+		dout.traverse().print();
+
+		for (int j = 0 ; j < dim; j++) {
+			for (int k = 0; k < dim; k++) {
+				if (j == k) {
+					assertEquals(w.toDouble(j), dout.valueAt(j, k));
+				} else {
+					assertEquals(0.0, dout.valueAt(j, k));
+				}
+			}
+		}
+	}
 }

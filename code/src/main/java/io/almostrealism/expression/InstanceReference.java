@@ -93,9 +93,12 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		if (getReferent() instanceof CollectionExpression) {
+//			return ExpressionMatchingCollectionExpression.create(
+//					target, (CollectionExpression) getReferent(),
+//					getIndex(), e(1), e(0));
 			return ExpressionMatchingCollectionExpression.create(
-					target, (CollectionExpression) getReferent(),
-					getIndex(), e(1), e(0));
+					DefaultCollectionExpression.create(target.getShape(), idx -> this),
+					target, e(1), e(0));
 		} else {
 			return DefaultCollectionExpression.create(target.getShape(), idx -> e(0));
 		}
