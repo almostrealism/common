@@ -215,7 +215,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				.enumerate(1, 1)
 				.sum(1)
 				.reshape(3, 3);
-		Evaluable<PackedCollection<?>> dy = cdy.get();
+		Evaluable<? extends PackedCollection<?>> dy = Process.optimized(cdy).get();
 		PackedCollection<?> dout = dy.evaluate();
 		dout.print();
 		assertEquals(7.0, dout.toDouble(0));
@@ -228,6 +228,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProduct() {
+		if (skipLongTests) return;
+
 		matmulEnumerateProduct(false);
 	}
 

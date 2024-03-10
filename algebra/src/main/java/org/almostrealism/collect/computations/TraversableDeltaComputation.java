@@ -41,7 +41,7 @@ import java.util.function.Supplier;
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableOptimization = true;
+	public static boolean enableOptimization = false;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 	private Producer<?> target;
