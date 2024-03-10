@@ -88,6 +88,8 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 
 	@Override
 	public List<Variable<?, ?>> getDependencies() {
+		if (var == null) return super.getDependencies();
+
 		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
 		dependencies.add(var);
 		dependencies.addAll(super.getDependencies());

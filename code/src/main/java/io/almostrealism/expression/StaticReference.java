@@ -59,6 +59,8 @@ public class StaticReference<T> extends Expression<T> {
 
 	@Override
 	public List<Variable<?, ?>> getDependencies() {
+		if (referent == null) return super.getDependencies();
+
 		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
 		dependencies.add(referent);
 		dependencies.addAll(super.getDependencies());
