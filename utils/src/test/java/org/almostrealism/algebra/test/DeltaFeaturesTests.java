@@ -37,7 +37,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 	}
 
 	@Test
-	public void embedded1() {
+	public void embeddedProduct() {
 		int dim = 3;
 		int count = 2;
 
@@ -68,6 +68,40 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 					} else {
 						assertEquals(0.0, dout.toDouble(i * dim * dim + j * dim + k));
 					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void embeddedSum() {
+		// f(x) = x0 + x1, x2 + x3
+		// g(x) = w * x
+		// f(g(x)) = w0 * (x0 + x1), w1 * (x2 + x3)
+		int dim = 2;
+
+		PackedCollection<?> w = pack(4, -3);
+		PackedCollection<?> input =
+				pack(1, 2, 3, 4)
+				.reshape(dim, dim);
+		CollectionProducer<PackedCollection<?>> c =
+				cp(input)
+				.sum(1)
+				.multiply(cp(w));
+
+		// dy = f'(g(x))
+		//    = w0, w1
+		Producer<PackedCollection<?>> in = matchInput(c, cp(input));
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta(shape(in), (ComputationBase) c, in).get();
+		PackedCollection<?> dout = dy.evaluate();
+		dout.traverse().print();
+
+		for (int j = 0 ; j < dim; j++) {
+			for (int k = 0; k < dim; k++) {
+				if (j == k) {
+					assertEquals(w.toDouble(j), dout.valueAt(j, k));
+				} else {
+					assertEquals(0.0, dout.valueAt(j, k));
 				}
 			}
 		}

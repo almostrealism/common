@@ -41,9 +41,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public interface DeltaFeatures extends CollectionFeatures {
+public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableIsolationWarnings = false;
-	boolean enableChainRule = false;
+	boolean enableChainRule = true;
 	boolean enableInputStub = false;
 
 	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,
@@ -59,9 +59,10 @@ public interface DeltaFeatures extends CollectionFeatures {
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
+		TraversalPolicy shape = producer.getShape();
+		TraversalPolicy targetShape = shape(target);
+
 		if (DeltaFeatures.match(producer, target)) {
-			TraversalPolicy shape = producer.getShape();
-			TraversalPolicy targetShape = shape(target);
 			PackedCollection<?> identity =
 					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
 							.identityFill().reshape(shape.append(targetShape));
@@ -71,15 +72,20 @@ public interface DeltaFeatures extends CollectionFeatures {
 		if (enableChainRule) {
 			Producer<T> in = matchInput(producer, target);
 			if (in == target) return null;
+			if (!(in instanceof CollectionProducer)) return null;
 
-			if (in instanceof CollectionProducer) {
-				Producer f = generateIsolatedDelta(shape(in), (ComputationBase) producer, in);
+			Producer f = generateIsolatedDelta(shape(in), (ComputationBase) producer, in);
+			if (f == null) return null;
 
-				if (f != null) {
-					Producer g = ((CollectionProducer<T>) in).delta(target);
-					return multiply(f, g);
-				}
-			}
+			Producer g = ((CollectionProducer<T>) in).delta(target);
+
+			int finalLength = shape.getTotalSize();
+			int outLength = shape(in).getTotalSize();
+			int inLength = shape(target).getTotalSize();
+
+			f = reshape(shape(finalLength, outLength), f);
+			g = reshape(shape(outLength, inLength), g);
+			return (CollectionProducer) matmul(f, g).reshape(shape.append(targetShape));
 		}
 
 		return null;

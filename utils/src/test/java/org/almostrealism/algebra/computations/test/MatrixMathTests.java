@@ -44,46 +44,69 @@ public class MatrixMathTests implements TestFeatures {
 	}
 
 	@Test
+	public void matrix1() {
+		int n = 2;
+		int m = 2;
+		int p = 4;
+
+		PackedCollection<?> a = pack(2, 0, 0, 2).reshape(shape(n, m));
+		PackedCollection<?> b = pack(1, 1, 0, 0, 0, 0, 1, 1).reshape(shape(m, p));
+
+		CollectionProducer<PackedCollection<?>> product = matmul(cp(a), cp(b));
+
+		PackedCollection<?> c = product.get().evaluate();
+		c.traverse().print();
+
+		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
+		multiplyMatrices(n, m, p, a, b, reference);
+		reference.traverse().print();
+
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < p; j++) {
+				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
 	public void matrix2() {
 		int n = 2;
 		int m = 3;
 		int p = 4;
 
-		PackedCollection<?> a = new PackedCollection<>(shape(n, m));
-		PackedCollection<?> b = new PackedCollection<>(shape(m, p));
-		PackedCollection<?> c = new PackedCollection<>(shape(n, p));
-
-		a.fill(pos -> Math.random());
-		b.fill(pos -> Math.random());
+		PackedCollection<?> a = new PackedCollection<>(shape(n, m)).fill(Math::random);
+		PackedCollection<?> b = new PackedCollection<>(shape(m, p)).fill(Math::random);
 
 		CollectionProducer<PackedCollection<?>> product =
 				cp(b).enumerate(1, 1)
 				.reshape(p, m)
 				.traverse(1)
-				.expand(n, v -> v.repeat(n))
+				.repeat(n)
 				.reshape(p, n, m)
 				.traverse(1)
-				.map(v -> multiply(v, cp(a)))
+				.multiply(cp(a).repeat(p))
 				.reshape(p, n, m).sum(2)
 				.enumerate(1, 1)
-				.reshape(n, p)
-				;
+				.reshape(n, p);
 
-		c = product.get().evaluate();
+		PackedCollection<?> c = product.get().evaluate();
 
 		print(n, p, c);
 
 		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);
 
-//		for (int i = 0; i < n; i++) {
-//			for (int j = 0; j < p; j++) {
-//				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
-//			}
-//		}
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < p; j++) {
+				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
+			}
+		}
 	}
 
-	private void multiplyMatrices(int n, int m, int p, PackedCollection<?> matrix1, PackedCollection<?> matrix2, PackedCollection<?> destination) {
+	private void multiplyMatrices(int n, int m, int p,
+								  PackedCollection<?> matrix1,
+								  PackedCollection<?> matrix2,
+								  PackedCollection<?> destination) {
 		int rows1 = n;
 		int cols1 = m;
 		int cols2 = p;
@@ -93,7 +116,7 @@ public class MatrixMathTests implements TestFeatures {
 		for (int i = 0; i < rows1; i++) {
 			for (int j = 0; j < cols2; j++) {
 				for (int k = 0; k < cols1; k++) {
-					result[i * rows1 + j] += matrix1.valueAt(i, k) * matrix2.valueAt(k, j);
+					result[i * cols2 + j] += matrix1.valueAt(i, k) * matrix2.valueAt(k, j);
 				}
 			}
 		}
