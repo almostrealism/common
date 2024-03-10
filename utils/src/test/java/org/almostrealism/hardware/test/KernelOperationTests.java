@@ -58,22 +58,12 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
+		OperationList op = new OperationList();
+		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+		op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
 
-		try {
-			Assignment.enableRelative = false;
-
-			CLOperator.verboseLog(() -> {
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
-				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
-
-				Assert.assertEquals(10, op.getCount());
-				op.get().run();
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
-		}
+		Assert.assertEquals(10, op.getCount());
+		op.get().run();
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
@@ -88,22 +78,12 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(6)).pack().traverse();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
+		OperationList op = new OperationList();
+		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
+		op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
 
-		try {
-			Assignment.enableRelative = false;
-
-			HardwareOperator.verboseLog(() -> {
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
-				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
-
-				Assert.assertEquals(1, op.getCount());
-				op.optimize().get().run();
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
-		}
+		Assert.assertEquals(1, op.getCount());
+		op.optimize().get().run();
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + a.toDouble(i), x.toDouble(i));
@@ -117,29 +97,19 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 	@Test
 	public void doubleAssignmentReduceCount() {
 		PackedCollection<?> x = new PackedCollection<>(shape(1)).traverse();
-		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
-		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+		PackedCollection<?> a = new PackedCollection<>(shape(2048)).fill(Math::random); // tensor(shape(2048)).pack().traverse();
+		PackedCollection<?> b = new PackedCollection<>(shape(2048)).fill(Math::random); // tensor(shape(2048)).pack().traverse();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
+		OperationList op = new OperationList();
+		op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
 
-		try {
-			Assignment.enableRelative = false;
+		Runnable o = op.optimize().get();
+		Assert.assertEquals(2, ((AcceleratedComputationOperation) o).getInputs().size());
 
-			CLOperator.verboseLog(() -> {
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
+		Runnable r = op.get();
+		Assert.assertEquals(3, ((AcceleratedComputationOperation) r).getInputs().size());
 
-				Runnable o = op.optimize().get();
-				Assert.assertEquals(2, ((AcceleratedComputationOperation) o).getInputs().size());
-
-				Runnable r = op.get();
-				Assert.assertEquals(3, ((AcceleratedComputationOperation) r).getInputs().size());
-
-				o.run();
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
-		}
+		o.run();
 
 		double expected = 0;
 		for (int i = 0; i < a.getShape().length(0); i++) {
@@ -177,50 +147,40 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableRelativeAssignment = Assignment.enableRelative;
+		PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
 
-		try {
-			Assignment.enableRelative = false;
+		CollectionProducer<PackedCollection<?>> conv = c(p(input))
+				.enumerate(1, w, s)
+				.enumerate(1, w, s)
+				.traverse(2)
+				.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
+				.traverse()
+				.reduce(v -> v.sum());
+		System.out.println(conv.getShape());
 
-			CLOperator.verboseLog(() -> {
-				PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
+		OperationList op = new OperationList();
+		op.add(a(1, traverse(3, p(output)), conv));
+		op.get().run();
 
-				CollectionProducer<PackedCollection<?>> conv = c(p(input))
-						.enumerate(1, w, s)
-						.enumerate(1, w, s)
-						.traverse(2)
-						.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
-						.traverse()
-						.reduce(v -> v.sum());
-				System.out.println(conv.getShape());
+		output = output.reshape(shape(8, 8, 4));
 
-				OperationList op = new OperationList();
-				op.add(a(1, traverse(3, p(output)), conv));
-				op.get().run();
+		for (int filterIndex = 0; filterIndex < n; filterIndex++) {
+			for (int i = 0; i < r - pad; i++) {
+				for (int j = 0; j < c - pad; j++) {
+					double expected = 0;
 
-				output = output.reshape(shape(8, 8, 4));
-
-				for (int filterIndex = 0; filterIndex < n; filterIndex++) {
-					for (int i = 0; i < r - pad; i++) {
-						for (int j = 0; j < c - pad; j++) {
-							double expected = 0;
-
-							for (int k = 0; k < w; k++) {
-								for (int l = 0; l < w; l++) {
-									expected += input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(filterIndex, k, l));
-								}
-							}
-
-							double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
-
-							System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
-							Assert.assertEquals(expected, actual, 0.0001);
+					for (int k = 0; k < w; k++) {
+						for (int l = 0; l < w; l++) {
+							expected += input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(filterIndex, k, l));
 						}
 					}
+
+					double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
+
+					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
 				}
-			});
-		} finally {
-			Assignment.enableRelative = enableRelativeAssignment;
+			}
 		}
 	}
 }

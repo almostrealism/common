@@ -27,7 +27,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -35,8 +34,6 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
-	public static boolean enableRelative = false;
-
 	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
@@ -54,12 +51,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		super.prepareScope(manager);
 
 		purgeVariables();
-
-		if (enableRelative) {
-			for (int i = 0; i < memLength; i++) {
-				addVariable(getArgument(0, memLength).ref(i).assign(getArgument(1).getValueRelative(i)));
-			}
-		}
 	}
 
 	@Override
@@ -71,31 +62,29 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Scope<Void> getScope() {
 		Scope<Void> scope = super.getScope();
 
-		if (!enableRelative) {
-			ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
-			for (int i = 0; i < memLength; i++) {
-				Expression index = new KernelIndex();
-				if (memLength > 1) index = index.multiply(memLength).add(i);
+		for (int i = 0; i < memLength; i++) {
+			Expression index = new KernelIndex();
+			if (memLength > 1) index = index.multiply(memLength).add(i);
 
-				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
-				Expression<Double> value = exp == null ? null : exp.getValueAt(index);
-				if (value == null) {
-					throw new UnsupportedOperationException();
-				}
-
-				ExpressionAssignment<?> v;
-				TraversableExpression out = TraversableExpression.traverse(output);
-
-				if (out == null) {
-					v = output.ref(i).assign(value);
-				} else {
-					Expression o = out.getValueAt(index);
-					v = o.assign(value);
-				}
-
-				scope.getVariables().add(v);
+			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
+			Expression<Double> value = exp == null ? null : exp.getValueAt(index);
+			if (value == null) {
+				throw new UnsupportedOperationException();
 			}
+
+			ExpressionAssignment<?> v;
+			TraversableExpression out = TraversableExpression.traverse(output);
+
+			if (out == null) {
+				v = output.ref(i).assign(value);
+			} else {
+				Expression o = out.getValueAt(index);
+				v = o.assign(value);
+			}
+
+			scope.getVariables().add(v);
 		}
 
 		return scope;
