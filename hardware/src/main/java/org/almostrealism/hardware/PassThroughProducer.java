@@ -71,7 +71,8 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
-	public int getIndex() { return argIndex; }
+	@Override
+	public int getReferencedArgumentIndex() { return argIndex; }
 
 	@Override
 	public int getMemLength() { return getShape().getSize(); }
@@ -164,11 +165,22 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public int getReferencedArgumentIndex() { return argIndex; }
-
-	@Override
 	public PassThroughProducer<T> generate(List<Process<?, ?>> children) {
 		return this;
+	}
+
+	@Override
+	public int hashCode() {
+		return getReferencedArgumentIndex();
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if ((obj instanceof PassThroughProducer)) {
+			return ((PassThroughProducer) obj).getReferencedArgumentIndex() == getReferencedArgumentIndex();
+		}
+
+		return super.equals(obj);
 	}
 
 	@Override

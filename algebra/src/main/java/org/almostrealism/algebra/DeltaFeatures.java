@@ -218,7 +218,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 		if (Objects.equals(p, q)) {
 			return true;
 		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
-			return ((PassThroughProducer) p).getIndex() == ((PassThroughProducer) q).getIndex();
+			return ((PassThroughProducer) p).getReferencedArgumentIndex() == ((PassThroughProducer) q).getReferencedArgumentIndex();
 		} else if (enableIsolationWarnings &&
 				(p instanceof CollectionProducerComputation.IsolatedProcess ||
 				q instanceof CollectionProducerComputation.IsolatedProcess)) {

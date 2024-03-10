@@ -207,10 +207,12 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
+		if (input == null) return null;
+
 		// Check for argument variables for which the original producer is
 		// the specified input
 		Optional<ArrayVariable> var = vars.stream()
-				.filter(arg -> arg != null && arg.getOriginalProducer() == (Supplier) input)
+				.filter(arg -> arg != null && input.equals(arg.getOriginalProducer()))
 				.findFirst();
 		if (var.isPresent()) return var.get();
 
@@ -219,7 +221,7 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		var = vars.stream()
 				.filter(Objects::nonNull)
 				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
-				.filter(arg -> ((Delegated) arg.getOriginalProducer()).getDelegate() == (Supplier) input)
+				.filter(arg -> input.equals(((Delegated) arg.getOriginalProducer()).getDelegate()))
 				.findFirst();
 		return var.orElse(null);
 	}

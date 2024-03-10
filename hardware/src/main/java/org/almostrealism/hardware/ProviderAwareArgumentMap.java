@@ -39,7 +39,7 @@ public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationAr
 			Optional<ArrayVariable<A>> passThrough = get(v -> {
 				if (!(v instanceof Delegated<?>)) return false;
 				if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
-				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getIndex() == param.getIndex();
+				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
 			}, p);
 
 			if (passThrough.isPresent())
