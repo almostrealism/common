@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -38,7 +36,6 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>

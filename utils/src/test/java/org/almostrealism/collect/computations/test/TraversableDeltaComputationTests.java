@@ -48,6 +48,11 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		// dy = f'(x)
 		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
 		PackedCollection<?> out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+		out.print();
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(1.0, out.toDouble(i));
+		}
 	}
 
 	@Test
@@ -58,12 +63,21 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		// y = f(x)
 		Evaluable<PackedCollection<?>> y = c.get();
 		PackedCollection<?> out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
-		System.out.println(Arrays.toString(out.toArray(0, 5)));
+		out.print();
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(1.0 + 3 * (i + 1) + (i + 1) * (i + 1), out.toDouble(i));
+		}
 
 		// dy = f'(x)
+		//    = 2x + 3
 		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
 		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
-		System.out.println(Arrays.toString(out.toArray(0, 5)));
+		out.print();
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(2 * (i + 1) + 3, out.toDouble(i));
+		}
 	}
 
 	@Test

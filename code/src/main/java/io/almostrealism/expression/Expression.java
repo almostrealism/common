@@ -68,7 +68,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	private Class<T> type;
 	private List<Expression<?>> children;
-	private Variable<T, ?> referent;
 
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
@@ -85,16 +84,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		setType(type);
 		this.children = List.of(children);
-	}
-
-	public Expression(Class<T> type, Variable<T, ?> referent, Expression<?> argument) {
-		if (type == null) {
-			throw new IllegalArgumentException("Type is required");
-		}
-
-		setType(type);
-		this.referent = referent;
-		this.children = argument == null ? Collections.emptyList() : List.of(argument);
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
@@ -256,10 +245,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public List<Variable<?, ?>> getDependencies() {
-		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
-		if (referent != null) dependencies.add(referent);
-		dependencies.addAll(dependencies(getChildren().toArray(new Expression[0])));
-		return dependencies;
+		return new ArrayList<>(dependencies(getChildren().toArray(new Expression[0])));
 	}
 
 	public int getArraySize() { return -1; }

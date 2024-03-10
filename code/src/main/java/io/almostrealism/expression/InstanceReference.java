@@ -28,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
@@ -52,7 +53,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
-		super(referent.getType(), referent, pos);
+		super(referent.getType(), pos);
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;
@@ -86,22 +87,31 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
+	public List<Variable<?, ?>> getDependencies() {
+		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
+		dependencies.add(var);
+		dependencies.addAll(super.getDependencies());
+		return dependencies;
+	}
+
+	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
 		return new ExpressionAssignment<>(this, exp);
 	}
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		if (getReferent() instanceof CollectionExpression) {
+		return ExpressionMatchingCollectionExpression.create(
+				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				target, e(1), e(0));
+
+//		if (getReferent() instanceof CollectionExpression) {
 //			return ExpressionMatchingCollectionExpression.create(
 //					target, (CollectionExpression) getReferent(),
 //					getIndex(), e(1), e(0));
-			return ExpressionMatchingCollectionExpression.create(
-					DefaultCollectionExpression.create(target.getShape(), idx -> this),
-					target, e(1), e(0));
-		} else {
-			return DefaultCollectionExpression.create(target.getShape(), idx -> e(0));
-		}
+//		} else {
+//			return DefaultCollectionExpression.create(target.getShape(), idx -> e(0));
+//		}
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {

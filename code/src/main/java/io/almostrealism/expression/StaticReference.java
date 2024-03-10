@@ -19,11 +19,13 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
 public class StaticReference<T> extends Expression<T> {
 	private String expression;
+	private Variable referent;
 
 	public StaticReference(Class<T> type, String expression) {
 		super(type);
@@ -31,8 +33,9 @@ public class StaticReference<T> extends Expression<T> {
 	}
 
 	public StaticReference(Class<T> type, String expression, Variable referent) {
-		super(type, referent, null);
+		super(type);
 		this.expression = expression;
+		this.referent = referent;
 	}
 
 	public String getName() { return expression; }
@@ -53,6 +56,14 @@ public class StaticReference<T> extends Expression<T> {
 	public String getExpression(LanguageOperations lang) { return expression; }
 
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public List<Variable<?, ?>> getDependencies() {
+		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
+		dependencies.add(referent);
+		dependencies.addAll(super.getDependencies());
+		return dependencies;
+	}
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {

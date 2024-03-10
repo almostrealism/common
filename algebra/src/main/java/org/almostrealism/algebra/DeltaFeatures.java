@@ -26,7 +26,6 @@ import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -50,7 +49,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 																			 ComputationBase<T, T, Evaluable<T>> producer,
 																			 Producer<?> input) {
 		if (enableInputStub) {
-			CollectionProducerComputation<?> inputStub = inputStub(inputShape);
+			CollectionProducerComputation<?> inputStub = inputStub(inputShape, ParallelProcess.isFixedCount(input));
 			ComputationBase delta = (ComputationBase) ((CollectionProducer) replaceInput(producer, input, inputStub)).delta(inputStub);
 			// return (CollectionProducer<T>) replaceInput(delta, inputStub, input);
 			return (CollectionProducer) delta;
@@ -71,6 +70,12 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		if (enableChainRule) {
+			if (!producer.isFixedCount()) {
+				Computation.console.features(DeltaFeatures.class)
+						.warn("Cannot compute partial delta for variable Producer");
+				return null;
+			}
+
 			Producer<T> in = matchInput(producer, target);
 			if (in == target) return null;
 			if (!(in instanceof CollectionProducer)) return null;
@@ -130,8 +135,18 @@ public interface DeltaFeatures extends MatrixFeatures {
 		return null;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> inputStub(TraversalPolicy shape) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> inputStub(TraversalPolicy shape, boolean fixedCount) {
 		return new CollectionProducerComputation<T>() {
+			@Override
+			public int getCount() {
+				return CollectionProducerComputation.super.getCount();
+			}
+
+			@Override
+			public boolean isFixedCount() {
+				return fixedCount;
+			}
+
 			@Override
 			public TraversalPolicy getShape() {
 				return shape;

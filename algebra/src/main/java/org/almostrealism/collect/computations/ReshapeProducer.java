@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -40,8 +41,6 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle {
-	public static boolean enableHardwareEvaluable = true;
-
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -178,39 +177,32 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Evaluable<T> get() {
-		if (enableHardwareEvaluable) {
-			HardwareEvaluable<T> ev = new HardwareEvaluable<>(producer::get, null, null, false);
-			ev.setShortCircuit(args -> {
-				long start = System.nanoTime();
-				Shape<T> out = ev.getKernel().getValue().evaluate(args);
-				AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
+		Evaluable<T> ev = producer.get();
 
-				if (shape == null) {
-					return out.reshape(out.getShape().traverse(traversalAxis));
-				} else {
-					return out.reshape(shape);
-				}
-			});
-			return ev;
-		} else {
-			return new Evaluable<>() {
-				private Evaluable<T> eval;
-
+		if (ev instanceof Provider) {
+			return new Provider<>(null) {
 				@Override
-				public T evaluate(Object... args) {
-					if (eval == null) {
-						eval = producer.get();
-					}
-
-					Shape<T> out = eval.evaluate(args);
-
-					if (shape == null) {
-						return out.reshape(out.getShape().traverse(traversalAxis));
-					} else {
-						return out.reshape(shape);
-					}
+				public T get() {
+					return apply((Shape<T>) ((Provider) ev).get());
 				}
 			};
+		}
+
+		HardwareEvaluable<T> hev = new HardwareEvaluable<>(producer::get, null, null, false);
+		hev.setShortCircuit(args -> {
+			long start = System.nanoTime();
+			Shape<T> out = hev.getKernel().getValue().evaluate(args);
+			AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
+			return apply(out);
+		});
+		return ev;
+	}
+
+	private T apply(Shape<T> in) {
+		if (shape == null) {
+			return in.reshape(in.getShape().traverse(traversalAxis));
+		} else {
+			return in.reshape(shape);
 		}
 	}
 }
