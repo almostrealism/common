@@ -13,8 +13,8 @@ import java.io.OutputStreamWriter;
 import java.util.stream.IntStream;
 
 public class JavaFileGenerator {
-	public static final int start = 499;
-	public static final int count = 500;
+	public static final int start = 999;
+	public static final int count = 1000;
 
 	public static void main(String args[]) {
 		StringBuffer template = new StringBuffer();
@@ -35,8 +35,8 @@ public class JavaFileGenerator {
 		IntStream.range(start, start + count).forEach(i -> {
 			save("src/main/java/org/almostrealism/generated/GeneratedOperation" + i + ".java",
 					template.toString().replaceAll("%KIND%", "Operation").replaceAll("%NUMBER%", String.valueOf(i)));
-			save("src/main/java/org/almostrealism/generated/GeneratedProducer" + i + ".java",
-					template.toString().replaceAll("%KIND%", "Producer").replaceAll("%NUMBER%", String.valueOf(i)));
+//			save("src/main/java/org/almostrealism/generated/GeneratedProducer" + i + ".java",
+//					template.toString().replaceAll("%KIND%", "Producer").replaceAll("%NUMBER%", String.valueOf(i)));
 		});
 	}
 
