@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
@@ -29,6 +31,7 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -40,7 +43,13 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class GradientDescentTests implements TestFeatures {
-	private static double coeff[] = { 0.24, -0.1, 0.36 };
+
+//	static {
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//	}
+
+	private double coeff[] = { 0.24, -0.1, 0.36 };
 
 	private UnaryOperator<PackedCollection<?>> func1 =
 			in -> PackedCollection.of(1.5 * in.valueAt(0));
@@ -84,7 +93,7 @@ public class GradientDescentTests implements TestFeatures {
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 150;
+		int steps = 300;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(2)))
@@ -92,7 +101,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear2", model, data, epochs, steps, 50);
+		optimize("linear2", model, data, epochs, steps, 0.05);
 	}
 
 	@Test
@@ -106,7 +115,7 @@ public class GradientDescentTests implements TestFeatures {
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 150;
+		int steps = 300;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
@@ -114,7 +123,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 3.0);
+		optimize("linear3", model, data, epochs, steps, 0.05);
 	}
 
 	@Test
@@ -135,13 +144,11 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear4", model, data, epochs, steps, 1.5);
+		optimize("linear4", model, data, epochs, steps, 0.05);
 	}
 
 	@Test
 	public void linear5() throws FileNotFoundException {
-		if (skipLongTests) return;
-
 		int inChannels = 3;
 		int hiddenDim = 10;
 		int outLen = 1;
@@ -164,7 +171,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear5", model, data, epochs, steps, 1.5);
+		optimize("linear5", model, data, epochs, steps, 0.5);
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {

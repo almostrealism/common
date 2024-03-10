@@ -56,8 +56,8 @@ public class ModelOptimizer implements CodeFeatures {
 
 	public ModelOptimizer(CompiledModel model, Supplier<Dataset<?>> dataset) {
 		this.model = model;
-		this.dloss = c(2).multiply(x().subtract(y())).get();
-		this.loss = x().subtract(y()).pow(2.0).get();
+		this.dloss = c(2).multiply(cv(model.getOutputShape(), 0).subtract(cv(model.getOutputShape(), 1))).get();
+		this.loss = cv(model.getOutputShape(), 0).subtract(cv(model.getOutputShape(), 1)).pow(2.0).get();
 		this.averageLoss = -1;
 
 		setDataset(dataset);

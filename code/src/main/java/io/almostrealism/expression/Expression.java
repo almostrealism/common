@@ -50,6 +50,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
+	public static int maxDepth = 4096;
 
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
@@ -69,6 +70,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	private Class<T> type;
 	private List<Expression<?>> children;
 
+	private int depth;
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
@@ -84,6 +86,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		setType(type);
 		this.children = List.of(children);
+		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
+
+		if (depth > maxDepth) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
