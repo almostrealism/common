@@ -195,7 +195,7 @@ public class ReshapeProducer<T extends Shape<T>>
 			AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
 			return apply(out);
 		});
-		return ev;
+		return hev;
 	}
 
 	private T apply(Shape<T> in) {

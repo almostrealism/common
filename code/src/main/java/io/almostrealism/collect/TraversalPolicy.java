@@ -273,9 +273,21 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	public int getTraversalAxis() { return traversalAxis; }
 
-	public int getSize() { return size(traversalAxis); }
+	public int getSize() {
+		if (traversalAxis > dims.length) {
+			throw new IllegalArgumentException("Traversal axis is greater than the number of dimensions");
+		}
 
-	public long getSizeLong() { return sizeLong(traversalAxis); }
+		return size(traversalAxis);
+	}
+
+	public long getSizeLong() {
+		if (traversalAxis > dims.length) {
+			throw new IllegalArgumentException("Traversal axis is greater than the number of dimensions");
+		}
+
+		return sizeLong(traversalAxis);
+	}
 
 	public int getTotalSize() { return size(0); }
 
