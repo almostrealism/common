@@ -405,9 +405,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		int count = 1;
 		int dim = 2;
 
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
-
 		PackedCollection<?> v = pack(2.0, 3.0, 2.0, 3.0)
 				.reshape(count, 1, dim, dim).traverse();
 		PackedCollection<?> f = pack(4.0, -3.0, 2.0, 1.5)
@@ -448,9 +445,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		boolean enableSum = true;
 		int count = 1;
 		int dim = 2;
-
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
 
 		ParallelProcess.explicitIsolationTargets.add(operationFilter("Enumerate"));
 

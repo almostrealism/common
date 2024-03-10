@@ -361,8 +361,6 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void max2d() {
-		NativeCompiler.enableInstructionSetMonitoring = true;
-
 		PackedCollection<?> value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
 
 		PackedCollection<?> m = max(cp(value)).get().evaluate();
@@ -373,8 +371,6 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void indexOfMax2d() {
-		NativeCompiler.enableInstructionSetMonitoring = true;
-
 		PackedCollection<?> value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
 
 		PackedCollection<?> m = cp(value).indexOfMax().get().evaluate();
