@@ -381,6 +381,31 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void max3d() {
+		PackedCollection<?> value = new PackedCollection<>(shape(2, 3, 2))
+				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
+				.traverse(2);
+		value.print();
+		System.out.println("--");
+
+		PackedCollection<?> m = max(cp(value)).get().evaluate();
+		System.out.println(m.getShape());
+		m.print();
+
+		Assert.assertEquals(3, m.getShape().getDimensions());
+		Assert.assertEquals(2, m.getShape().length(0));
+		Assert.assertEquals(3, m.getShape().length(1));
+		Assert.assertEquals(1, m.getShape().length(2));
+
+		assertEquals(-0.35, m.toDouble(0));
+		assertEquals(0.85, m.toDouble(1));
+		assertEquals(-0.35, m.toDouble(2));
+		assertEquals(-0.7, m.toDouble(3));
+		assertEquals(1.7, m.toDouble(4));
+		assertEquals(-0.7, m.toDouble(5));
+	}
+
+	@Test
 	public void collectionMaxTwoSeries() {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);

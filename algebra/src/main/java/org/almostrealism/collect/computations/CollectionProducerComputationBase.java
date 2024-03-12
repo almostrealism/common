@@ -61,11 +61,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 														ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
-	static {
-		// TODO  This should not be necessary
-		// ExpressionMatchingCollectionExpression.matcher = DeltaFeatures::match;
-	}
-
 	private String name;
 	private TraversalPolicy shape;
 	private BiFunction<MemoryData, Integer, O> postprocessor;

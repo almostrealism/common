@@ -700,10 +700,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
 		if (enableIndexProjection) {
-			TraversalPolicy shape = shape(input).flatten(true);
-
 			DynamicIndexProjectionProducerComputation<T> c =
-					new DynamicIndexProjectionProducerComputation<>(shape(shape.getCount()).traverse(),
+					new DynamicIndexProjectionProducerComputation<>(shape(input).replace(shape(1)),
 							(args, idx) -> args[2].getValueAt(idx),
 							true, input, indexOfMax(input));
 

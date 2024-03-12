@@ -76,7 +76,11 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	}
 
 	public InstanceReference<?> ref() {
-		return new InstanceReference<>(this);
+		if (getDelegate() == null) {
+			return new InstanceReference<>(this);
+		} else {
+			return getDelegate().ref();
+		}
 	}
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }

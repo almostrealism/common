@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableIsolationWarnings = false;
-	boolean enableChainRule = true;
+	boolean enableChainRule = false;
 	boolean enableInputStub = true;
 
 	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,

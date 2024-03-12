@@ -68,15 +68,19 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		if (var instanceof ArrayVariable) {
 			ArrayVariable v = (ArrayVariable) var;
 
-			if (pos == null) {
-				// Reference to the whole array
-				return var.getName();
-			} else if (v.isDisableOffset()) {
-				// Reference to a specific element
-				return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
-			} else {
-				// Reference to a specific element, with offset
-				return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
+			if (v.getDelegate() == null) {
+				if (pos == null) {
+					// Reference to the whole array
+					return var.getName();
+				} else if (v.isDisableOffset()) {
+					// Reference to a specific element
+					return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
+				} else {
+					// Reference to a specific element, with offset
+					return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
+				}
+			 } else {
+				throw new UnsupportedOperationException();
 			}
 		} else {
 			// warn("Reference to value which is not an ArrayVariable");

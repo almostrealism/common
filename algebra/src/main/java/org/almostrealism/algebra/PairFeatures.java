@@ -119,7 +119,7 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 								Sum.of(Product.of(p, r), new Minus(Product.of(q, s))),
 								Sum.of(Product.of(p, s), Product.of(q, r)));
 					},
-					(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.postprocessor());
+					(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 		} else {
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 			IntStream.range(0, 2).forEach(i -> comp.add(args -> {
