@@ -79,7 +79,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear1", model, data, epochs, steps, 1.0);
+		optimize("linear1", model, data, epochs, steps, 0.1);
 	}
 
 	@Test
@@ -89,7 +89,7 @@ public class GradientDescentTests implements TestFeatures {
 		SequentialBlock block = new SequentialBlock(shape(2));
 		block.add(dense);
 
-		Model model = new Model(shape(2), 1e-4);
+		Model model = new Model(shape(2));
 		model.addBlock(block);
 
 		int epochs = 300;
@@ -101,7 +101,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear2", model, data, epochs, steps, 0.01);
+		optimize("linear2", model, data, epochs, steps, 0.5);
 	}
 
 	@Test
@@ -123,7 +123,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 0.01);
+		optimize("linear3", model, data, epochs, steps, 0.1);
 	}
 
 	@Test

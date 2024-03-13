@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -211,10 +212,13 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 
 		// Check for argument variables for which the original producer is
 		// the specified input
-		Optional<ArrayVariable> var = vars.stream()
+		Set<ArrayVariable> var = vars.stream()
 				.filter(arg -> arg != null && input.equals(arg.getOriginalProducer()))
-				.findFirst();
-		if (var.isPresent()) return var.get();
+				.collect(Collectors.toSet());
+		if (var.size() == 1) return var.iterator().next();
+		if (var.size() > 1) {
+			throw new IllegalArgumentException("Multiple arguments match input");
+		}
 
 		// Additionally, check for variables for which the original producer
 		// delegates to the specified input
@@ -222,8 +226,13 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 				.filter(Objects::nonNull)
 				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
 				.filter(arg -> input.equals(((Delegated) arg.getOriginalProducer()).getDelegate()))
-				.findFirst();
-		return var.orElse(null);
+				.collect(Collectors.toSet());
+		if (var.size() == 1) return var.iterator().next();
+		if (var.size() > 1) {
+			throw new IllegalArgumentException("Multiple arguments match input");
+		}
+
+		return null;
 	}
 
 	protected static String functionName(Class c) {

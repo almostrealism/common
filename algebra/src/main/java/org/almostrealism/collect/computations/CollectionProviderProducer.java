@@ -73,7 +73,8 @@ public class CollectionProviderProducer<T extends Shape>
 	public boolean equals(Object obj) {
 		if (super.equals(obj)) return true;
 		if (!(obj instanceof  CollectionProviderProducer)) return false;
-		return Objects.equals(((CollectionProviderProducer) obj).value, value);
+//		return Objects.equals(((CollectionProviderProducer) obj).value, value);
+		return ((CollectionProviderProducer) obj).value == value;
 	}
 
 	@Override

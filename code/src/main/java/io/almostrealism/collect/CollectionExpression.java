@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.Array;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
@@ -32,6 +33,7 @@ import java.util.stream.Stream;
 
 // TODO  Shouldn't this implement Shape?
 public interface CollectionExpression extends TraversableExpression<Double> {
+	boolean enableArrayTraversal = false;
 
 	TraversalPolicy getShape();
 
@@ -100,7 +102,23 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 
 	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {
 		TraversableExpression exp = TraversableExpression.traverse(o);
-		if (exp == null) return null;
+		if (exp == null) {
+			if (enableArrayTraversal && o instanceof Array) {
+				return new TraversableExpression() {
+					@Override
+					public Expression getValue(Expression[] pos) {
+						throw new UnsupportedOperationException();
+					}
+
+					@Override
+					public Expression getValueAt(Expression index) {
+						return ((Array) o).valueAt(index);
+					}
+				};
+			}
+
+			return null;
+		}
 
 		if (exp instanceof Shape) {
 			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, offset);
