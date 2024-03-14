@@ -74,7 +74,8 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableAxisAlignment = false;
-	boolean enableIndexProjection = true;
+	boolean enableIndexProjection = false;
+	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
 
 	Console console = Computation.console.child();
@@ -722,23 +723,25 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-//		return new ConstantRepeatedProducerComputation<>(shape.replace(shape(1)), size,
-//				(args, index) -> e(0),
-//				(args, index) -> {
-//					Expression<?> currentIndex = args[0].getValueRelative(e(0));
-//					return conditional(args[1].getValueRelative(index)
-//									.greaterThan(args[1].getValueRelative(currentIndex)),
-//							index, currentIndex);
-//				},
-//				(Supplier) input);
-
-		return new TraversableRepeatedProducerComputation<>(shape.replace(shape(1)), size,
-				(args, index) -> e(0),
-				(args, currentIndex) -> index ->
-					conditional(args[1].getValueRelative(index)
-									.greaterThan(args[1].getValueRelative(currentIndex)),
-							index, currentIndex),
-				(Supplier) input);
+		if (enableTraversableRepeated) {
+			return new TraversableRepeatedProducerComputation<>(shape.replace(shape(1)), size,
+					(args, index) -> e(0),
+					(args, currentIndex) -> index ->
+							conditional(args[1].getValueRelative(index)
+											.greaterThan(args[1].getValueRelative(currentIndex)),
+									index, currentIndex),
+					(Supplier) input);
+		} else {
+			return new ConstantRepeatedProducerComputation<>(shape.replace(shape(1)), size,
+					(args, index) -> e(0),
+					(args, index) -> {
+						Expression<?> currentIndex = args[0].getValueRelative(e(0));
+						return conditional(args[1].getValueRelative(index)
+										.greaterThan(args[1].getValueRelative(currentIndex)),
+								index, currentIndex);
+					},
+					(Supplier) input);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(Producer<T> input) {
