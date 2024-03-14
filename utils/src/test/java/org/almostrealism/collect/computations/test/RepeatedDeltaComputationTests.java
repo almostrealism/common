@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Process;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -66,7 +68,10 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	public void productSumEnumerate() {
 		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection<?> in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
-		PackedCollection<?> out = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1).evaluate();
+
+		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1);
+		// PackedCollection<?> out = c.evaluate();
+		PackedCollection<?> out = Process.optimized(c).get().evaluate();
 		out.traverse(1).print();
 
 		assertEquals(4.0, out.valueAt(0, 0));

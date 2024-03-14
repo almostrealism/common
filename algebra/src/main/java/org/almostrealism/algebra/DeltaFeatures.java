@@ -42,8 +42,11 @@ import java.util.function.Supplier;
 
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableIsolationWarnings = false;
-	boolean enableChainRule = false;
 	boolean enableInputStub = true;
+
+	default boolean isChainRuleSupported() {
+		return false;
+	}
 
 	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,
 																			 ComputationBase<T, T, Evaluable<T>> producer,
@@ -69,7 +72,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			return (CollectionProducer) c(identity);
 		}
 
-		if (enableChainRule) {
+		if (isChainRuleSupported()) {
 			if (!producer.isFixedCount()) {
 				Computation.console.features(DeltaFeatures.class)
 						.warn("Cannot compute partial delta for variable Producer");

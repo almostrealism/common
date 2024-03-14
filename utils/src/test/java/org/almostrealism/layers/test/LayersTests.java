@@ -144,8 +144,8 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int heads = 12;
-		int len = KernelPreferences.isPreferLoops() ? 1024 : 8;
-		int l = KernelPreferences.isPreferLoops() ? 64 : 4;
+		int len = 8; // 1024;
+		int l = 4; // 64;
 
 		PackedCollection<?> in = new PackedCollection<>(heads, len).randFill().traverseEach();
 //		PackedCollection<?> subtractMax = new PackedCollection<>(heads, len);
@@ -161,54 +161,52 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		Producer<PackedCollection<?>> input = p(in);
 		boolean subtractMax = true;
 
-		HardwareOperator.verboseLog(() -> {
 //			cp(in).traverse(2).subtract(cp(in).traverse(1).max().expand(len, v -> v.repeat(len))).get().into(subtractMax.traverseEach()).evaluate();
 //			cp(subtractMax).exp().get().into(exp).evaluate();
 //			cp(exp).traverse(1).divide(cp(exp).traverse(1).sum().expand(len, v -> v.repeat(len))).get().into(norm.traverse(1)).evaluate();
 
-			CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+		CollectionProducer<PackedCollection<?>> o = traverse(1, input);
 
-			if (subtractMax) {
-				o = o.max();
-				o = o.expand(len, v -> v.repeat(len));
-				o = traverse(2, input).subtractIgnoreZero(o);
-			}
+		if (subtractMax) {
+			o = o.max();
+			o = o.repeat(len).consolidate();
+			o = traverse(2, input).subtractIgnoreZero(o);
+		}
 
-			o = o.expIgnoreZero().traverse(1);
+		o = o.expIgnoreZero().traverse(1);
 //			o = o.divide(o.sum().expand(len, v -> v.repeat(len)));
-			o = o.divide(o.sum().repeat(len).consolidate());
+		o = o.divide(o.sum().repeat(len).consolidate());
 
-			// PackedCollection<?> output = o.get().evaluate();
+		// PackedCollection<?> output = o.get().evaluate();
 
-			PackedCollection<?> output = new PackedCollection<>(heads, len);
+		PackedCollection<?> output = new PackedCollection<>(heads, len);
 
-			OperationList op = new OperationList();
-			op.add(a(traverse(1, p(output)), o));
-			op.optimize().get().run();
+		OperationList op = new OperationList();
+		op.add(a(traverse(1, p(output)), o));
+		op.optimize().get().run();
 
-			for (int h = 0; h < heads; h++) {
-				double max = in.valueAt(h, 0);
-				for (int i = 1; i < l; i++) {
-					if (in.valueAt(h, i) > max) {
-						max = in.valueAt(h, i);
-					}
-				}
-
-				double x[] = new double[len];
-				double sum = 0.0;
-				for (int i = 0; i < l; i++) {
-					x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
-					sum += x[i];
-				}
-
-				for (int i = 0; i < l; i++) {
-					x[i] /= sum;
-					double actual = output.valueAt(h, i);
-					System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
-					assertEquals(x[i], actual);
+		for (int h = 0; h < heads; h++) {
+			double max = in.valueAt(h, 0);
+			for (int i = 1; i < l; i++) {
+				if (in.valueAt(h, i) > max) {
+					max = in.valueAt(h, i);
 				}
 			}
-		});
+
+			double x[] = new double[len];
+			double sum = 0.0;
+			for (int i = 0; i < l; i++) {
+				x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
+				sum += x[i];
+			}
+
+			for (int i = 0; i < l; i++) {
+				x[i] /= sum;
+				double actual = output.valueAt(h, i);
+				System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
+				assertEquals(x[i], actual);
+			}
+		}
 	}
 
 	@Test

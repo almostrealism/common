@@ -41,6 +41,8 @@ import java.util.stream.Stream;
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
+	public static boolean enableChainRule = false;
+
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
 	@SafeVarargs
@@ -61,6 +63,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index));
+	}
+
+	@Override
+	public boolean isChainRuleSupported() {
+		return enableChainRule || super.isChainRuleSupported();
 	}
 
 	@Override
