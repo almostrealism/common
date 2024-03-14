@@ -33,8 +33,7 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class AggregatedProducerComputation<T extends PackedCollection<?>>
-		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
@@ -46,16 +45,6 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>>
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
-
-		setExpression((args, index) ->
-				expression.apply(
-						((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0)),
-						args[1].getValueRelative(index)));
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return getValueAt(getShape().index(pos));
 	}
 
 	@Override
@@ -70,6 +59,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>>
 		}
 
 		return value;
+	}
+
+	@Override
+	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
+		TraversableExpression[] args = getTraversableArguments(globalIndex);
+		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
+									.referenceRelative(new IntegerConstant(0));
+		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
 	}
 
 	@Override

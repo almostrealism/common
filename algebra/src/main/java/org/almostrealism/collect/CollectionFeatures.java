@@ -57,6 +57,7 @@ import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
@@ -721,14 +722,22 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new ConstantRepeatedProducerComputation<>(shape.replace(shape(1)), size,
+//		return new ConstantRepeatedProducerComputation<>(shape.replace(shape(1)), size,
+//				(args, index) -> e(0),
+//				(args, index) -> {
+//					Expression<?> currentIndex = args[0].getValueRelative(e(0));
+//					return conditional(args[1].getValueRelative(index)
+//									.greaterThan(args[1].getValueRelative(currentIndex)),
+//							index, currentIndex);
+//				},
+//				(Supplier) input);
+
+		return new TraversableRepeatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> e(0),
-				(args, index) -> {
-					Expression<?> currentIndex = args[0].getValueRelative(e(0));
-					return conditional(args[1].getValueRelative(index)
+				(args, currentIndex) -> index ->
+					conditional(args[1].getValueRelative(index)
 									.greaterThan(args[1].getValueRelative(currentIndex)),
-							index, currentIndex);
-				},
+							index, currentIndex),
 				(Supplier) input);
 	}
 

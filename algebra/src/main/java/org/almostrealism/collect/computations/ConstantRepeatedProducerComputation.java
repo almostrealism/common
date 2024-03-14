@@ -31,7 +31,8 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>> extends RepeatedProducerComputation<T> {
+public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
+		extends RepeatedProducerComputation<T> {
 	protected int count;
 
 	@SafeVarargs

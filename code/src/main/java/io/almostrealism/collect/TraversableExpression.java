@@ -27,7 +27,9 @@ import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
 
-	Expression<T> getValue(Expression... pos);
+	default Expression<T> getValue(Expression... pos) {
+		throw new UnsupportedOperationException();
+	}
 
 	Expression<T> getValueAt(Expression index);
 
