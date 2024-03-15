@@ -41,7 +41,7 @@ import java.util.function.Supplier;
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableOptimization = false;
+	public static boolean enableOptimization = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 	private Producer<?> target;
@@ -77,6 +77,18 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		if (matchInput(this, target) == process) return process;
+		return super.optimize(ctx, process);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		if (matchInput(this, target) == process) return process;
+		return super.isolate(process);
 	}
 
 	@Override
