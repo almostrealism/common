@@ -62,8 +62,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
-	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
-		TraversableExpression[] args = getTraversableArguments(globalIndex);
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression localIndex) {
 		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
 									.referenceRelative(new IntegerConstant(0));
 		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
@@ -71,11 +70,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
+		CollectionProducer<?> delta = attemptDelta(this, target);
+		if (delta != null) return (CollectionProducer) delta;
+
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
 			int outLength = ((CollectionProducer<T>) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
-			CollectionProducer<?> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+			delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 			delta = delta.reshape(outLength, inLength);
 			delta = delta.enumerate(1, 1);
 			delta = delta.enumerate(1, count).traverse(2);
@@ -83,7 +85,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 						count, initial, expression, (Supplier) delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
-			CollectionProducer<T> delta = super.delta(target);
+			delta = super.delta(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
 				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
@@ -92,7 +94,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 				((ConstantRepeatedDeltaComputation) delta).setFallback(traversable);
 			}
 
-			return delta;
+			return (CollectionProducer) delta;
 		}
 	}
 

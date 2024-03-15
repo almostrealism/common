@@ -701,22 +701,24 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
+		DynamicIndexProjectionProducerComputation<T> projection =
+				new DynamicIndexProjectionProducerComputation<>(shape(input).replace(shape(1)),
+						(args, idx) -> args[2].getValueAt(idx),
+						true, input, indexOfMax(input));
+		
 		if (enableIndexProjection) {
-			DynamicIndexProjectionProducerComputation<T> c =
-					new DynamicIndexProjectionProducerComputation<>(shape(input).replace(shape(1)),
-							(args, idx) -> args[2].getValueAt(idx),
-							true, input, indexOfMax(input));
-
-			return (CollectionProducerComputationBase<T, T>) c;
+			return (CollectionProducerComputationBase<T, T>) projection;
 		}
 
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
+		AggregatedProducerComputation c = new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> minValue(),
 				(out, arg) -> new Max(out, arg),
 				(Supplier) input);
+		c.setDeltaAlternate(projection);
+		return c;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {

@@ -140,6 +140,14 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (children.isEmpty()) return new IntegerConstant(1);
 		if (children.size() == 1) return children.get(0);
 
+		if (children.get(0) instanceof Index && children.size() == 2) {
+			OptionalInt divisor = children.get(1).intValue();
+			OptionalInt max = ((Index) children.get(0)).getLimit();
+			if (divisor.isPresent() && max.isPresent() && max.getAsInt() <= divisor.getAsInt()) {
+				return new IntegerConstant(0);
+			}
+		}
+
 		if (children.get(0).intValue().isPresent()) {
 			int numerator = children.get(0).intValue().getAsInt();
 			if (numerator == 0) return new IntegerConstant(0).toInt();

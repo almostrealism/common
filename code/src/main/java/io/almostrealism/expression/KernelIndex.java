@@ -24,6 +24,8 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.OptionalInt;
 
 public class KernelIndex extends DefaultIndex {
+	public static boolean enableSimplification = true;
+
 	private static IndexSequence kernelSeq;
 
 	private int axis;
@@ -90,6 +92,15 @@ public class KernelIndex extends DefaultIndex {
 		}
 
 		return kernelSeq.subset(len);
+	}
+
+	@Override
+	public Expression<Integer> simplify(KernelStructureContext context) {
+		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsInt() == 1) {
+			return new IntegerConstant(0);
+		}
+
+		return super.simplify(context);
 	}
 
 	protected synchronized static void updateKernelSeq(int len) {

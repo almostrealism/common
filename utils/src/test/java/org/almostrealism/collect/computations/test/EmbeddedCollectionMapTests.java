@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
@@ -25,6 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -115,21 +118,100 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 	}
 
 	@Test
-	public void singleEnumerateReduceMax() {
+	public void singleEnumerate() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
 		int c = 16;
 		int d = 1;
-		int w = 2;
 
 		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
-		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		CollectionProducer<PackedCollection<?>> pool = enumerate(shape(1, c, d), cp(input));
+		System.out.println(pool.getShape());
+		input.print();
+
+		PackedCollection<?> output = pool.get().evaluate();
+		System.out.println(output.getShape());
+
+		for (int copy = 0; copy < d; copy++) {
+			for (int j = 0; j < c; j++) {
+				double expected = input.valueAt(0, j, copy);
+				double actual = output.valueAt(0, 0, j, copy);
+				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		}
+	}
+
+	@Test
+	public void singleEnumerateMax() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		boolean kernelSimplification = KernelIndex.enableSimplification;
+
+		try {
+			KernelIndex.enableSimplification = false;
+
+			int c = 16;
+			int d = 1;
+
+			PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+
+			for (int i = 0; i < 10; i++) {
+				input.fill(pos -> Math.random());
+
+				CollectionProducer<PackedCollection<?>> pool =
+						enumerate(shape(1, c, d), cp(input)).traverse(1).max();
+				System.out.println(pool.getShape());
+				input.print();
+
+				PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
+				System.out.println(output.getShape());
+
+				input.print();
+
+				for (int copy = 0; copy < d; copy++) {
+					double expected = -Math.pow(10, 5);
+
+					for (int j = 0; j < c; j++) {
+						expected = Math.max(expected, input.valueAt(0, j, copy));
+					}
+
+					double actual = output.valueAt(copy, 0);
+
+					System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		} finally {
+			KernelIndex.enableSimplification = kernelSimplification;
+		}
+	}
+
+	@Test
+	public void singleEnumerateReduceMax() {
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		int c = 16;
+		int d = 1;
+
+		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+
+		for (int i = 0; i < 10; i++) {
+			input.fill(pos -> Math.random());
+
 			CollectionProducer<PackedCollection<?>> pool =
-					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
+//					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
+					enumerate(shape(1, c, d), cp(input)).traverse(1).reduce(slice -> max(slice));
 			System.out.println(pool.getShape());
+			input.print();
 
 			PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
 			System.out.println(output.getShape());
+
+			input.print();
 
 			for (int copy = 0; copy < d; copy++) {
 				double expected = -Math.pow(10, 5);
@@ -143,7 +225,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
-		});
+		}
 	}
 
 	@Test

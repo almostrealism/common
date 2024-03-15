@@ -19,6 +19,8 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
@@ -66,12 +68,27 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSumEnumerate() {
+		productSumEnumerate(false);
+	}
+
+	@Test
+	public void productSumEnumerateOptimized() {
+		boolean chainRule = AggregatedProducerComputation.enableTransitiveDelta;
+
+		try {
+			AggregatedProducerComputation.enableTransitiveDelta = false;
+			productSumEnumerate(true);
+		} finally {
+			AggregatedProducerComputation.enableTransitiveDelta = chainRule;
+		}
+	}
+
+	public void productSumEnumerate(boolean optimize) {
 		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection<?> in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
 
 		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in)).reshape(2, 4).enumerate(1, 1);
-		// PackedCollection<?> out = c.evaluate();
-		PackedCollection<?> out = Process.optimized(c).get().evaluate();
+		PackedCollection<?> out = optimize ? Process.optimized(c).get().evaluate() : c.evaluate();
 		out.traverse(1).print();
 
 		assertEquals(4.0, out.valueAt(0, 0));

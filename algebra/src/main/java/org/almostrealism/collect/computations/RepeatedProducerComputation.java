@@ -30,6 +30,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.algebra.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -38,12 +39,14 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> implements DeltaAlternate<T> {
 
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
 	protected BiFunction<TraversableExpression[], Expression, Expression> expression;
 	private int memLength;
+
+	private CollectionProducer<T> deltaAlternate;
 
 	@SafeVarargs
 	public RepeatedProducerComputation(TraversalPolicy shape,
@@ -77,6 +80,15 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 
 	protected void setExpression(BiFunction<TraversableExpression[], Expression, Expression> expression) {
 		this.expression = expression;
+	}
+
+	@Override
+	public CollectionProducer<T> getDeltaAlternate() {
+		return deltaAlternate;
+	}
+
+	public void setDeltaAlternate(CollectionProducer<T> deltaAlternate) {
+		this.deltaAlternate = deltaAlternate;
 	}
 
 	@Override
@@ -134,7 +146,11 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	}
 
 	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
-		return expression.apply(getTraversableArguments(globalIndex), localIndex);
+		return getExpression(getTraversableArguments(globalIndex), localIndex);
+	}
+
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression localIndex) {
+		return expression.apply(args, localIndex);
 	}
 
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{

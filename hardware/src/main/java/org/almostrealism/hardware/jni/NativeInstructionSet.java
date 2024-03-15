@@ -92,7 +92,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 				throw new NullPointerException("Argument " + i + " is null");
 			}
 
-//			TODO  This is useful validation, but it can prevent the exectuion of operations
+//			TODO  This is useful validation, but it can prevent the execution of operations
 //			TODO  which depart from expected sizing via the use of TraversalOrdering
 //			if (bytes * (globalId * dim0[i] + offsets[i]) > args[i].getSize()) {
 //				throw new IllegalArgumentException("Positions in argument " + i + " will run beyond its size");
