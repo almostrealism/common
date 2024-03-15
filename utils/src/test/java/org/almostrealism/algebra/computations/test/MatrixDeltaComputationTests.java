@@ -226,8 +226,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProduct() {
-		if (skipLongTests) return;
-
 		matmulEnumerateProduct(false);
 	}
 
