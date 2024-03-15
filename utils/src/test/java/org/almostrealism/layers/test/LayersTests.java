@@ -141,16 +141,11 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void softmaxComputation() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int heads = 12;
 		int len = 8; // 1024;
 		int l = 4; // 64;
 
 		PackedCollection<?> in = new PackedCollection<>(heads, len).randFill().traverseEach();
-//		PackedCollection<?> subtractMax = new PackedCollection<>(heads, len);
-//		PackedCollection<?> exp = new PackedCollection<>(heads, len);
-//		PackedCollection<?> norm = new PackedCollection<>(heads, len);
 
 		for (int h = 0; h < heads; h++) {
 			for (int i = l; i < len; i++) {
@@ -158,13 +153,8 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 			}
 		}
 
-		Producer<PackedCollection<?>> input = p(in);
 		boolean subtractMax = true;
-
-//			cp(in).traverse(2).subtract(cp(in).traverse(1).max().expand(len, v -> v.repeat(len))).get().into(subtractMax.traverseEach()).evaluate();
-//			cp(subtractMax).exp().get().into(exp).evaluate();
-//			cp(exp).traverse(1).divide(cp(exp).traverse(1).sum().expand(len, v -> v.repeat(len))).get().into(norm.traverse(1)).evaluate();
-
+		Producer<PackedCollection<?>> input = p(in);
 		CollectionProducer<PackedCollection<?>> o = traverse(1, input);
 
 		if (subtractMax) {

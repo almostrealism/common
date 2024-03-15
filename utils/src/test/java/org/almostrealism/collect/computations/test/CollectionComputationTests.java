@@ -499,8 +499,6 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void dynamicProjection() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 
 		TraversalPolicy shape = shape(in).flatten(true);
