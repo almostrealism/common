@@ -118,8 +118,9 @@ public class CollectionComputationTests implements TestFeatures {
 		integersIndexAssignment(false);
 	}
 
-	// @Test
+	@Test
 	public void integersIndexAssignmentOptimized() {
+		if (skipKnownIssues) return;
 		integersIndexAssignment(true);
 	}
 

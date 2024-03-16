@@ -48,7 +48,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> d = empty(shape(m)).fill(Math::random);
 		Supplier<CollectionProducerComputation<PackedCollection<?>>> product =
 				() -> cp(c).each().map(shape(m), v ->
-						v.mul(cp(d)));
+						v.repeat(2).mul(cp(d)));
 
 		Consumer<PackedCollection<?>> valid = output -> {
 			Assert.assertEquals(5, output.getShape().length(0));

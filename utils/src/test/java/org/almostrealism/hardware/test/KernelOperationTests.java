@@ -97,8 +97,8 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 	@Test
 	public void doubleAssignmentReduceCount() {
 		PackedCollection<?> x = new PackedCollection<>(shape(1)).traverse();
-		PackedCollection<?> a = new PackedCollection<>(shape(2048)).fill(Math::random); // tensor(shape(2048)).pack().traverse();
-		PackedCollection<?> b = new PackedCollection<>(shape(2048)).fill(Math::random); // tensor(shape(2048)).pack().traverse();
+		PackedCollection<?> a = new PackedCollection<>(shape(2048)).fill(Math::random);
+		PackedCollection<?> b = new PackedCollection<>(shape(2048)).fill(Math::random);
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));

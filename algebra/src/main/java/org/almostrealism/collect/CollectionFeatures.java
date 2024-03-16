@@ -63,6 +63,7 @@ import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.Console;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -73,7 +74,7 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableAxisAlignment = false;
+	boolean enableAxisAlignment = true;
 	boolean enableIndexProjection = false;
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
@@ -341,7 +342,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 						producers.stream().map(this::shape).collect(Collectors.toList()),
 						producers,
 						(i, p) -> traverse(i, (Producer) p),
+						(i, p) -> (Producer) repeat(i, (Producer) p),
 						processor);
+	}
+
+	default <T> TraversalPolicy largestTotalSize(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
@@ -534,8 +540,15 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
 		if (enableAxisAlignment) {
+//			TraversalPolicy shapeA = shape(a);
+//			TraversalPolicy shapeB = shape(b);
+//			TraversalPolicy oldShape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
+//			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
+//
+//			System.out.println("Shape would have been " + oldShape.toStringDetail());
+
 			return (CollectionProducerComputationBase) alignTraversalAxes(List.of(a, b),
-					(shape, arguments) -> new TraversableExpressionComputation(shape,
+					(shape, arguments) -> new TraversableExpressionComputation(largestTotalSize(arguments),
 							(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
 									Product.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 							arguments.toArray(Supplier[]::new)).setShortCircuit(shortCircuit));

@@ -18,11 +18,61 @@ package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
+	@Test
+	public void broadcastProduct() {
+		PackedCollection<?> a = new PackedCollection<>(shape(10));
+		a.fill(pos -> Math.random());
+
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
+			System.out.println(result.getShape().toStringDetail());
+			Assert.assertEquals(1, result.getShape().getTraversalAxis());
+
+			for (int i = 0; i < 10; i++) {
+				assertEquals(a.valueAt(i) * 2.0, result.valueAt(i));
+			}
+		});
+	}
+
+	@Test
+	public void traverseProduct() {
+		PackedCollection<?> a = new PackedCollection<>(shape(10)).randFill();
+		PackedCollection<?> b = new PackedCollection<>(shape(10)).randFill();
+
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
+			System.out.println(result.getShape().toStringDetail());
+			Assert.assertEquals(1, result.getShape().getTraversalAxis());
+
+			for (int i = 0; i < 10; i++) {
+				assertEquals(a.valueAt(i) * b.valueAt(i), result.valueAt(i));
+			}
+		});
+	}
+
+	@Test
+	public void repeatProduct() {
+		PackedCollection<?> a = new PackedCollection<>(shape(2, 5)).randFill();
+		PackedCollection<?> b = new PackedCollection<>(shape(2)).randFill();
+
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> result = cp(a).multiply(cp(b)).get().evaluate();
+			System.out.println(result.getShape().toStringDetail());
+
+			for (int i = 0; i < 2; i++) {
+				for (int j = 0; j < 5; j++) {
+					assertEquals(a.valueAt(i, j) * b.valueAt(i), result.valueAt(i, j));
+				}
+			}
+		});
+	}
+
 	@Test
 	public void sum() {
 		int size = 768;
@@ -136,7 +186,7 @@ public class CollectionMathTests implements TestFeatures {
 				}, false, false, true);
 	}
 
-	// @Test
+	@Test
 	public void addInPlace() {
 		int size = 10;
 

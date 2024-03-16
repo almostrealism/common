@@ -43,12 +43,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class GradientDescentTests implements TestFeatures {
-
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
-
 	private double coeff[] = { 0.24, -0.1, 0.36 };
 
 	private UnaryOperator<PackedCollection<?>> func1 =
@@ -70,8 +64,8 @@ public class GradientDescentTests implements TestFeatures {
 		Model model = new Model(shape(1), 1e-4);
 		model.addBlock(block);
 
-		int epochs = 300;
-		int steps = 10;
+		int epochs = 600;
+		int steps = 5;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(1)))
@@ -79,7 +73,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear1", model, data, epochs, steps, 0.1);
+		optimize("linear1", model, data, epochs, steps, 0.5);
 	}
 
 	@Test

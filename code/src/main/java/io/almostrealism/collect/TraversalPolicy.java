@@ -378,6 +378,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
 											  BiFunction<Integer, V, V> traversalFunction,
+											  BiFunction<Integer, V, V> expandFunction,
 											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
 		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
 		sortedShapes.addAll(shapes);
@@ -385,13 +386,41 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		s: for (TraversalPolicy shape : sortedShapes) {
 			int[] compatibleAxes =
 					IntStream.range(0, values.size())
-							.map(i -> compatibleAxis(shape, shapes.get(i)))
+							.map(i -> compatibleAxis(shapes.get(i), shape))
 							.filter(i -> i >= 0).toArray();
 			if (compatibleAxes.length != values.size()) continue s;
 
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
 				vals.add(traversalFunction.apply(compatibleAxes[i], values.get(i)));
+			}
+
+			return resultProcessor.apply(shape, vals);
+		}
+
+		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSize).reversed());
+		sortedShapes.addAll(shapes);
+
+		int largest = sortedShapes.iterator().next().getTotalSize();
+
+		s: for (TraversalPolicy shape : sortedShapes) {
+			if (shape.getTotalSize() < largest) {
+				break s;
+			}
+
+			int[] matchDepths =
+					IntStream.range(0, values.size())
+							.map(i -> matchDepth(shapes.get(i), shape))
+							.filter(i -> i > 0).toArray();
+			if (matchDepths.length != values.size()) continue s;
+
+			List<V> vals = new ArrayList<>();
+			for (int i = 0; i < values.size(); i++) {
+				int repeat = shape.getTotalSize() / shapes.get(i).getTotalSize();
+
+				V v = traversalFunction.apply(matchDepths[i], values.get(i));
+				if (repeat > 1) v = expandFunction.apply(repeat, v);
+				vals.add(v);
 			}
 
 			return resultProcessor.apply(shape, vals);
@@ -408,5 +437,17 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		}
 
 		return -1;
+	}
+
+	public static int matchDepth(TraversalPolicy shape, TraversalPolicy target) {
+		int i;
+
+		i: for (i = 0; i < shape.getDimensions(); i++) {
+			if (target.getDimensions() <= i || shape.length(i) != target.length(i)) {
+				break i;
+			}
+		}
+
+		return i;
 	}
 }

@@ -99,9 +99,9 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		for (int j = 0 ; j < dim; j++) {
 			for (int k = 0; k < dim; k++) {
 				if (j == k) {
-					assertEquals(w.toDouble(j), dout.valueAt(j, k));
+					assertEquals(w.toDouble(j), dout.valueAt(j, 0, k, 0));
 				} else {
-					assertEquals(0.0, dout.valueAt(j, k));
+					assertEquals(0.0, dout.valueAt(j, 0, k, 0));
 				}
 			}
 		}
@@ -131,9 +131,9 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		for (int j = 0 ; j < dim; j++) {
 			for (int k = 0; k < dim; k++) {
 				if (j == k) {
-					assertEquals(w.toDouble(j), dout.valueAt(j, k));
+					assertEquals(w.toDouble(j), dout.valueAt(j, 0, k, 0));
 				} else {
-					assertEquals(0.0, dout.valueAt(j, k));
+					assertEquals(0.0, dout.valueAt(j, 0, k, 0));
 				}
 			}
 		}

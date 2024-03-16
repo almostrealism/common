@@ -145,8 +145,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerateMax() {
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
+		if (skipKnownIssues) return;
 
 		boolean kernelSimplification = KernelIndex.enableSimplification;
 

@@ -25,16 +25,12 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.algebra.DeltaFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -256,12 +252,24 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public Evaluable<O> get() {
 		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
-		ev.setDestinationValidation(destination -> {
+		ev.setDestinationProcessor(destination -> {
 			if (destination instanceof Shape) {
 				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
 					throw new IllegalArgumentException();
 				}
+
+				if (getShape().getCount() > 1) {
+					Shape out = (Shape) destination;
+
+					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
+						if (out.getShape().traverse(axis).getCount() == getShape().getCount()) {
+							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
+						}
+					}
+				}
 			}
+
+			return destination;
 		});
 		return ev;
 	}
