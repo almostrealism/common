@@ -20,6 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -39,7 +41,7 @@ public class SwitchTest implements TestFeatures {
 		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
-		return new Switch((ProducerComputation) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
+		return new Switch((CollectionProducer) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test

@@ -167,7 +167,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		}
 	}
 
-	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
+	default <T> Switch choice(CollectionProducer<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
