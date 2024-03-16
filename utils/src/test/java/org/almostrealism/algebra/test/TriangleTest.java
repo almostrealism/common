@@ -91,14 +91,12 @@ public class TriangleTest implements TestFeatures {
 
 	protected Producer<Vector> originPointProducer() {
 		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
-//		return (Producer<Vector>) ((OperationAdapter) origin).getInputs().get(1);
-		return vector((CollectionProducerComputationBase<?, ?>) ((OperationAdapter) origin).getInputs().get(1));
+		return vector((Producer) ((OperationAdapter) origin).getInputs().get(1));
 	}
 
 	protected Producer<Vector> originDirectionProducer() {
 		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
-//		return (ExpressionComputation<Vector>) ((OperationAdapter) origin).getInputs().get(2);
-		return vector((CollectionProducerComputationBase<?, ?>) ((OperationAdapter) origin).getInputs().get(2));
+		return vector((Producer) ((OperationAdapter) origin).getInputs().get(2));
 	}
 
 	@Test

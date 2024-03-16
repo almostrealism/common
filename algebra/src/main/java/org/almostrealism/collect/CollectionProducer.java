@@ -25,7 +25,6 @@ import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.TraversableDeltaComputation;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -81,11 +80,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return expand(repeat, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> add(Producer<V> value) {
 		return add((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(double value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> add(double value) {
 		return add((Producer) this, c(value));
 	}
 
@@ -94,7 +93,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return relativeAdd((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(Producer<V> value) {
 		return subtract((Producer) this, value);
 	}
 

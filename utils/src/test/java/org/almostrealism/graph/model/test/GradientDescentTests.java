@@ -61,7 +61,7 @@ public class GradientDescentTests implements TestFeatures {
 		SequentialBlock block = new SequentialBlock(shape(1));
 		block.add(dense);
 
-		Model model = new Model(shape(1), 1e-4);
+		Model model = new Model(shape(1), 1e-5);
 		model.addBlock(block);
 
 		int epochs = 600;

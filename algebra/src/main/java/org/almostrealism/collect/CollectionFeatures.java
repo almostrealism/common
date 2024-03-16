@@ -490,27 +490,31 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(args, idx) -> Sum.of(new DoubleConstant((double) from), idx));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {
-		TraversalPolicy shape = shape(a);
-		int size = shape(b).getSize();
+	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
+		if (enableAxisAlignment) {
+			return compute((args, index) -> Sum.of(args[1].getValueAt(index), args[2].getValueAt(index)), null, a, b);
+		} else {
+			TraversalPolicy shape = shape(a);
+			int size = shape(b).getSize();
 
-		if (shape.getSize() != size) {
-			if (shape.getSize() == 1) {
-				return add(a, traverseEach((Producer) b));
-			} else if (size == 1) {
-				return add(traverseEach((Producer) a), b);
+			if (shape.getSize() != size) {
+				if (shape.getSize() == 1) {
+					return add(a, traverseEach((Producer) b));
+				} else if (size == 1) {
+					return add(traverseEach((Producer) a), b);
+				}
+
+				throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
+						" with a collection of size " + size);
 			}
 
-			throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
-					" with a collection of size " + size);
+			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, index ->
+							Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(Supplier) a, (Supplier) b);
+			// exp.setShortCircuit(shortCircuit);
+			return exp;
 		}
-
-		TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index ->
-						Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(Supplier) a, (Supplier) b);
-		// exp.setShortCircuit(shortCircuit);
-		return exp;
 	}
 
 	@Deprecated
@@ -527,7 +531,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(expressions), (Supplier) a, (Supplier) b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtract(Producer<T> a, Producer<T> b) {
 		return add(a, minus(b));
 	}
 

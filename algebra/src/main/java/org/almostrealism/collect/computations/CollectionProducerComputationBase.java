@@ -254,18 +254,18 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
 		ev.setDestinationProcessor(destination -> {
 			if (destination instanceof Shape) {
-				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
-					throw new IllegalArgumentException();
-				}
+				Shape out = (Shape) destination;
 
-				if (getShape().getCount() > 1) {
-					Shape out = (Shape) destination;
-
+				if (getCount() > 1 || isFixedCount() || (out.getShape().getCount() > 1 && getCount() == 1)) {
 					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
-						if (out.getShape().traverse(axis).getCount() == getShape().getCount()) {
+						if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
 							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
 						}
 					}
+				}
+
+				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+					throw new IllegalArgumentException();
 				}
 			}
 

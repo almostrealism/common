@@ -1,5 +1,6 @@
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
@@ -24,7 +25,7 @@ public class AcceleratedComputationOperationTest implements HardwareFeatures, Te
 		Producer<Vector> v = vector(1.0, 2.0, 3.0);
 		Producer<Vector> in = Input.value(Vector.shape(), 0);
 
-		Evaluable<Vector> s = compileProducer(add(v, in));
+		Evaluable<Vector> s = compileProducer((Computation) add(v, in));
 	}
 
 	@Test
