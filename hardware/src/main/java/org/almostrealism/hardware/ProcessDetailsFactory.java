@@ -39,7 +39,7 @@ import java.util.stream.Stream;
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails> {
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelDestination = true;
-	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
+	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;
 	private boolean fixedCount;
