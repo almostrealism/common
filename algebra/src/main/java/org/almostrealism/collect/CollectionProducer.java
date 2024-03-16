@@ -34,31 +34,34 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducerBase<T, CollectionProducer<T>>,
 		Shape<CollectionProducer<T>>, DeltaFeatures {
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat) {
+	@Override
+	CollectionProducer<T> traverse(int axis);
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int repeat) {
 		return repeat(repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int len) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int len) {
 		return enumerate(0, len, len, 1);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len) {
 		return enumerate(axis, len, len, 1);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, 1);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
@@ -70,11 +73,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	 * @deprecated Use {@link #repeat(int)}
 	 */
 	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducer<T> expand(int repeat) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> expand(int repeat) {
 		return expand(repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}
 
@@ -104,19 +107,19 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return relativeSubtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(double value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> mul(double value) {
 		return multiply(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(double value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double value) {
 		return multiply((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> mul(Producer<T> value) {
 		return multiply(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
 
@@ -125,27 +128,27 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return relativeMultiply((Supplier) this, (Supplier) value, null);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> div(double value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> div(double value) {
 		return divide(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(double value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> divide(double value) {
 		return divide((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> value) {
 		return divide((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sqrt() {
+	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt() {
 		return sqrt((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(double value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> pow(double value) {
 		return pow((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
 	}
 
@@ -161,11 +164,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return expIgnoreZero((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq() {
+	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
 		return sq((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> magnitude() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
 		return magnitude((Producer) this);
 	}
 
@@ -194,7 +197,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return sum((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sigmoid() {
+	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid() {
 		return sigmoid((Producer) this);
 	}
 

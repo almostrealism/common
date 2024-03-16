@@ -65,11 +65,11 @@ public class GradientDescentTests implements TestFeatures {
 		model.addBlock(block);
 
 		int epochs = 600;
-		int steps = 5;
+		int steps = 30;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(1)))
-				.map(input -> input.fill(pos -> 2.0))
+				.map(input -> input.fill(pos -> 2.0 + Math.random()))
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 

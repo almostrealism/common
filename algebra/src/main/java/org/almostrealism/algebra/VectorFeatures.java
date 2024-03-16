@@ -167,7 +167,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				z(p).multiply(oneOverLength));
 	}
 
-	default <T extends PackedCollection<?>>CollectionProducerComputationBase<T, T> _length(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _length(Producer<T> value) {
 		return sqrt(_lengthSq(value));
 	}
 
@@ -175,7 +175,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return multiply(value, value).sum();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _normalize(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _normalize(Producer<T> value) {
 		return multiply(value, _length(value).pow(-1.0));
 	}
 
