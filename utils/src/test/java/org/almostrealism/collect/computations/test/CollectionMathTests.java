@@ -32,7 +32,6 @@ public class CollectionMathTests implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
-			Assert.assertEquals(1, result.getShape().getTraversalAxis());
 
 			for (int i = 0; i < 10; i++) {
 				assertEquals(a.valueAt(i) * 2.0, result.valueAt(i));

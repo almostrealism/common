@@ -139,10 +139,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(double... values) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
 		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
 		c.setMem(0, values);
-		return (CollectionProducerComputation<T>) c(c);
+		return (CollectionProducer<T>) c(c);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape, double... values) {
@@ -354,6 +354,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).min().getAsInt();
 	}
 
+	default <T> int highestCount(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).max().getAsInt();
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
 		return new ReshapeProducer(axis, producer);
 	}
@@ -461,7 +465,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 							largestTotalSize(args), expression,
 							args.toArray(Supplier[]::new))
 						.setShortCircuit(shortCircuit));
-		int count = lowestCount(List.of(arguments));
+		int count = highestCount(List.of(arguments));
 
 		if (c.getShape().getCount() != count) {
 			for (int i = 0; i <= c.getShape().getDimensions(); i++) {
