@@ -35,6 +35,7 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
+import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -44,7 +45,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class LayersTests implements LayerFeatures, TestFeatures {
+public class LayersTests implements LayerFeatures, DistributionFeatures, TestFeatures {
 	private static final int SIZE = 768;
 
 	private float cpuOut[];
@@ -155,6 +156,10 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 
 		boolean subtractMax = true;
 		Producer<PackedCollection<?>> input = p(in);
+
+		CollectionProducer<PackedCollection<?>> o = softmax(traverse(1, input));
+
+		/*
 		CollectionProducer<PackedCollection<?>> o = traverse(1, input);
 
 		if (subtractMax) {
@@ -164,10 +169,10 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 		}
 
 		o = o.expIgnoreZero().traverse(1);
-//			o = o.divide(o.sum().expand(len, v -> v.repeat(len)));
 		o = o.divide(o.sum().repeat(len).consolidate());
 
 		// PackedCollection<?> output = o.get().evaluate();
+		 */
 
 		PackedCollection<?> output = new PackedCollection<>(heads, len);
 

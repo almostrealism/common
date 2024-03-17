@@ -107,11 +107,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new DynamicProducer<>(function);
 	}
 
-	default Producer<Scalar> value(double value) { return scalar(value); }
-
 	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-//		return new TemporalScalarFromScalars(time, value);
-
 		return new TemporalScalarExpressionComputation(
 				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
 					(Supplier) time, (Supplier) value);

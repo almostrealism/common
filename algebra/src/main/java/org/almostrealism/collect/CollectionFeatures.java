@@ -185,7 +185,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> cp(T value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> cp(V value) {
 		return c(p(value));
 	}
 

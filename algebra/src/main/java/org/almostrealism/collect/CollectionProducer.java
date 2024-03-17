@@ -36,6 +36,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	@Override
 	CollectionProducer<T> traverse(int axis);
 
+	@Override
+	default CollectionProducer<T> consolidate() {
+		return CollectionProducerBase.super.consolidate();
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int repeat) {
 		return repeat(repeat, this);
 	}
@@ -135,7 +140,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return divide((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> divide(Producer<V> value) {
 		return divide((Producer) this, value);
 	}
 
