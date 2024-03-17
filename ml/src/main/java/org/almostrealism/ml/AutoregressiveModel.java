@@ -54,13 +54,11 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 		this.softmax = Process.optimized(softmax(x(vocabSize))).get();
 	}
 
-	public void setCurrentToken(int currentToken) {
-		this.currentToken = currentToken;
-	}
+	public int getCurrentStep() { return currentStep; }
+	public void setCurrentStep(int currentStep) { this.currentStep = currentStep; }
 
-	public int getCurrentToken() {
-		return currentToken;
-	}
+	public int getCurrentToken() { return currentToken; }
+	public void setCurrentToken(int currentToken) { this.currentToken = currentToken; }
 
 	public double getTemperature() {
 		return temperature.toDouble(0);
