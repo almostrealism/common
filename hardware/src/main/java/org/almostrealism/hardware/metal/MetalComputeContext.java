@@ -36,6 +36,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 									"using metal::fmod;\n" +
 									"using metal::floor;\n" +
 									"using metal::ceil;\n" +
+									"using metal::abs;\n" +
 									"using metal::pow;\n" +
 									"using metal::exp;\n" +
 									"using metal::sin;\n" +

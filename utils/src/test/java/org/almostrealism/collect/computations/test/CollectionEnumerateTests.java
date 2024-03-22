@@ -79,7 +79,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			PackedCollection<?> output = enumerated.get().evaluate();
 			System.out.println(output.getShape());
@@ -99,6 +99,37 @@ public class CollectionEnumerateTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void dynamicSum() {
+		if (skipKnownIssues) return;
+
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(count, r, c, 1)).randFill();
+		PackedCollection<?> output = new PackedCollection<>(shape(count, r, 1));
+
+		Evaluable<PackedCollection<?>> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+//		PackedCollection<?> output = sum.evaluate(input.traverse(1));
+		sum.into(output.traverse(2)).evaluate(input.traverse(1));
+
+		Assert.assertEquals(count, output.getShape().length(0));
+		Assert.assertEquals(r, output.getShape().length(1));
+		Assert.assertEquals(1, output.getShape().length(2));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double total = 0.0;
+				for (int k = 0; k < c; k++) {
+					total += input.valueAt(i, j, k, 0);
+				}
+
+				assertEquals(total, output.valueAt(i, j, 0));
+			}
+		}
 	}
 
 	@Test

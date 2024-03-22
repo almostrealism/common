@@ -23,6 +23,7 @@ import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Absolute;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exp;
@@ -747,8 +748,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return min(max(a, c(min)), c(max));
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducer<T> abs(Producer<T> value) {
+		return new TraversableExpressionComputation<>(
+				shape(value), (args, index) -> new Absolute(args[1].getValueAt(index)), (Supplier) value);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> magnitude(Producer<T> vector) {
-		return sq(vector).sum().sqrt();
+		if (shape(vector).getSize() == 1) {
+			return abs(vector);
+		} else {
+			return sq(vector).sum().sqrt();
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
