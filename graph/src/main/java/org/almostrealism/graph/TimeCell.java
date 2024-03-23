@@ -103,7 +103,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 			tick.add(a(2, p(time), concat(left, right)));
 		} else {
 			Producer<Scalar> left = l(p(time));
-			left = scalarGreaterThan(loopDuration, v(0.0),
+			left = scalarGreaterThan(loopDuration, scalar(0.0),
 					scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 

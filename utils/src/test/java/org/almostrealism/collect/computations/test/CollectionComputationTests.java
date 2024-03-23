@@ -38,7 +38,6 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -492,7 +491,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection collection = values.pack();
 
-		Producer<Scalar> scalar = scalar(collection.getShape().traverse(1), p(collection), v(1));
+		Producer<Scalar> scalar = scalar(collection.getShape().traverse(1), p(collection), scalar(1));
 		Scalar output = scalar.get().evaluate();
 		assertEquals(2.0, output);
 		assertEquals(1.0, output.toDouble(1));

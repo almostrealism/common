@@ -69,7 +69,7 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors2() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		Producer<Scalar> s = y(a).multiply(z(b)).add(v(1));
+		Producer<Scalar> s = y(a).multiply(z(b)).add(scalar(1));
 		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
@@ -78,7 +78,7 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors3() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		Producer<Scalar> s = y(a).multiply(z(b)).subtract(v(1));
+		Producer<Scalar> s = y(a).multiply(z(b)).subtract(scalar(1));
 		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}

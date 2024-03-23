@@ -29,7 +29,7 @@ import org.junit.Test;
 public class StandardMathTests implements TestFeatures {
 	@Test
 	public void add() {
-		CollectionProducer<Scalar> sum = scalarAdd(v(1.0), v(2.0));
+		CollectionProducer<Scalar> sum = scalarAdd(scalar(1.0), scalar(2.0));
 		Evaluable ev = sum.get();
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, (Scalar) ev.evaluate());

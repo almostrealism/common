@@ -10,9 +10,9 @@ import org.junit.Test;
 public class MinMaxTests implements TestFeatures {
 	@Test
 	public void min() {
-		assertEquals(1.0, scalarMin(v(1.0), v(6.0)).get().evaluate());
-		assertEquals(1.0, scalarMin(v(6.0), v(1.0)).get().evaluate());
-		assertEquals(0.5, scalarMin(v(0.5), v(0.7)).get().evaluate());
+		assertEquals(1.0, scalarMin(scalar(1.0), scalar(6.0)).get().evaluate());
+		assertEquals(1.0, scalarMin(scalar(6.0), scalar(1.0)).get().evaluate());
+		assertEquals(0.5, scalarMin(scalar(0.5), scalar(0.7)).get().evaluate());
 	}
 
 	@Test

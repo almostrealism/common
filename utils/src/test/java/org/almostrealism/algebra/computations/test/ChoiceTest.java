@@ -31,7 +31,7 @@ public class ChoiceTest implements TestFeatures {
 			PackedCollection<Scalar> bank = Scalar.scalarBank(2);
 			bank.set(0, 1.0);
 			bank.set(1, 2.0);
-			ScalarChoice choice = new ScalarChoice(2, v(0.7), v(bank));
+			ScalarChoice choice = new ScalarChoice(2, scalar(0.7), v(bank));
 			Evaluable<Scalar> ev = choice.get();
 			assertEquals(2.0, ev.evaluate());
 		} catch (HardwareException e) {
