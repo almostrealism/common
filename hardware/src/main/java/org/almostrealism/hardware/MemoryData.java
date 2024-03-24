@@ -82,6 +82,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	default int getOffset() {
 		if (getDelegate() == null) {
 			return getDelegateOffset();
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
 			return getDelegateOffset() + getDelegate().getOffset();
 		}
@@ -110,7 +112,13 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * to skip over to get to the location in the {@link Memory} where data should be
 	 * kept.
 	 */
-	default void setDelegate(MemoryData m, int offset) {setDelegate(m, offset, null);}
+	default void setDelegate(MemoryData m, int offset) {
+		if (m == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
+		}
+
+		setDelegate(m, offset, null);
+	}
 
 	/**
 	 * If a delegate is set using this method, then the {@link Memory} for the delegate

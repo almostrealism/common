@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 public class Console {
 	public static Console root = new Console();
@@ -30,6 +31,7 @@ public class Console {
 
 	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
+	private List<UnaryOperator<String>> filters = new ArrayList<>();
 	private boolean flag;
 
 	private DateTimeFormatter format;
@@ -50,6 +52,7 @@ public class Console {
 	public void print(String s) {
 		String orig = s;
 		s = prep(s);
+		if (s == null) return;
 		
 		append(s);
 		lastLine.append(s);
@@ -64,6 +67,7 @@ public class Console {
 	public void println(String s) {
 		String orig = s;
 		s = prep(s);
+		if (s == null) return;
 
 		append(s);
 		append("\n");
@@ -112,6 +116,12 @@ public class Console {
 	}
 
 	protected String prep(String s) {
+		for (UnaryOperator<String> filter : filters) {
+			s = filter.apply(s);
+		}
+
+		if (s == null) return s;
+
 		if (resetLastLine) {
 			lastLine = new StringBuffer();
 			s = pre() + s;
@@ -121,8 +131,14 @@ public class Console {
 		return s;
 	}
 
-	public void addListener(Consumer<String> listener) {
+	public Console addListener(Consumer<String> listener) {
 		listeners.add(listener);
+		return this;
+	}
+
+	public Console addFilter(UnaryOperator<String> filter) {
+		filters.add(filter);
+		return this;
 	}
 
 	public void warn(String message) { warn(message, null); }

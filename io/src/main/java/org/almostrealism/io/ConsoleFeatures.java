@@ -16,6 +16,8 @@
 
 package org.almostrealism.io;
 
+import java.util.function.UnaryOperator;
+
 public interface ConsoleFeatures {
 	default Class getLogClass() {
 		return getClass();
@@ -39,5 +41,25 @@ public interface ConsoleFeatures {
 
 	default Console console() {
 		return Console.root();
+	}
+
+	static UnaryOperator<String> duplicateFilter(long interval) {
+		return new UnaryOperator<>() {
+			private String lastMessage = null;
+			private long lastTime = 0;
+
+			@Override
+			public String apply(String message) {
+				long now = System.currentTimeMillis();
+				long diff = now - lastTime;
+				if (diff < interval && message.equals(lastMessage)) {
+					return null;
+				}
+
+				lastMessage = message;
+				lastTime = now;
+				return message;
+			}
+		};
 	}
 }

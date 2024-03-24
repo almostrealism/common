@@ -236,7 +236,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
 
-		return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
+			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		} else {
+			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
+		}
 	}
 
 	public PackedCollection<T> value(int pos) {

@@ -176,6 +176,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			return new PackedCollection<>(shape);
 		}
 
+		if (((PackedCollection<?>) existing).getShape().equals(shape))
+			return existing;
+
 		return ((PackedCollection) existing).range(shape);
 	}
 

@@ -67,6 +67,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			if (shape.getTotalSize() != outputShape.getTotalSize()) {
 				throw new IllegalArgumentException("Output is not compatible with expected shape");
 			}
+
+			if (offset == 0 && shape.equals(((Shape) output).getShape())) {
+				return (T) output;
+			}
 		}
 
 		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);

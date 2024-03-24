@@ -115,7 +115,11 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		this.delegateOrder = order;
 
 		if (m != null) {
-			if (offset >= m.getMemLength()) {
+			if (m == this) {
+				throw new IllegalArgumentException("Circular delegate reference");
+			} else if (m.getDelegateDepth() > 25) {
+				throw new IllegalStateException("Delegation depth exceeded");
+			} else if (offset >= m.getMemLength()) {
 				throw new HardwareException("Delegate offset is out of bounds");
 			} else if (offset + getDelegatedLength() > m.getMemLength()) {
 				throw new HardwareException("MemoryData extends beyond the length of the delegate");

@@ -32,6 +32,7 @@ import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.nio.NativeBufferMemoryProvider;
 
@@ -48,7 +49,8 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static boolean defaultKernelFriendly = true;
 
-	public static Console console = Console.root().child();
+	public static Console console = Console.root().child()
+			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
 
 	protected static final int MEMORY_SCALE;
 
