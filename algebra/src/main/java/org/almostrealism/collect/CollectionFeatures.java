@@ -480,7 +480,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers() {
-		return new TraversableExpressionComputation<>(shape(1), (args, idx) -> idx);
+		return new TraversableExpressionComputation<>(shape(1), (args, idx) -> idx) {
+			@Override
+			public boolean isFixedCount() {
+				return false;
+			}
+		};
 	}
 
 
