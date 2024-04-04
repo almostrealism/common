@@ -20,9 +20,11 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.stats.DistributionFeatures;
 
 import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
@@ -91,5 +93,15 @@ public class AutoregressiveModel implements DistributionFeatures, CodeFeatures {
 
 		currentStep++;
 		return currentToken;
+	}
+
+	public static AutoregressiveModel of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection<?>> tokenEmbed) {
+		PackedCollection<?> in = new PackedCollection<>(model.getInputShape());
+		return new AutoregressiveModel(
+				step,
+				t ->
+						in.setMem(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
+				() -> model.forward(in),
+				model.getOutputShape().getTotalSize());
 	}
 }

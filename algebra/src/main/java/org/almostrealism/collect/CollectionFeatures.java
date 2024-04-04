@@ -126,6 +126,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return PackedCollection.of(values);
 	}
 
+	default PackedCollection<?> pack(float... values) {
+		return PackedCollection.of(IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray());
+	}
+
 	default PackedCollection<?> empty(TraversalPolicy shape) {
 		return new PackedCollection<>(shape);
 	}

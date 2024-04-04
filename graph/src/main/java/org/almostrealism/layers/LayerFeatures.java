@@ -24,6 +24,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
@@ -80,6 +81,14 @@ public interface LayerFeatures extends MatrixFeatures {
 		layer.init(inputShape, ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
+	}
+
+	default CollectionReceptor into(PackedCollection<?> dest) {
+		return new CollectionReceptor(dest);
+	}
+
+	default CollectionReceptor into(PackedCollection<?> dest, Producer<PackedCollection<?>> pos) {
+		return new CollectionReceptor(dest, pos);
 	}
 
 	default Function<TraversalPolicy, Block> flatten() {

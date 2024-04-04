@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,19 +17,15 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.SequentialBlock;
 
-public interface AttentionFeatures extends LayerFeatures {
+public interface AttentionFeatures extends RotationFeatures {
 
 	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
 										Producer<PackedCollection<?>> position,
@@ -84,6 +80,94 @@ public interface AttentionFeatures extends LayerFeatures {
 			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			return o.reshape(shape(dim).traverseEach());
 		}, requirements);
+	}
+
+	default Block attention(int heads,
+							PackedCollection<?> rmsAttWeight,
+							PackedCollection<?> wk, PackedCollection<?> wv,
+							PackedCollection<?> wq, PackedCollection<?> wo,
+							PackedCollection<?> freqCis,
+							Producer<PackedCollection<?>> position,
+							ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+		int headSize = freqCis.getShape().size(1);
+		int seqLen = freqCis.getShape().length(0);
+
+		SequentialBlock attention = new SequentialBlock(shape(dim));
+
+		PackedCollection<?> keyCache = new PackedCollection<>(seqLen, heads, headSize);
+		PackedCollection<?> valueCache = new PackedCollection<>(seqLen, heads, headSize);
+
+		attention.add(rmsnorm(rmsAttWeight, requirements));
+
+		SequentialBlock keys = attention.branch();
+		SequentialBlock values = attention.branch();
+
+		TraversalPolicy headShapeComplex = shape(heads, headSize / 2, 2);
+
+		/* KEYS **/
+		keys.add(dense(wk));
+		keys.add(reshape(shape(dim), headShapeComplex));
+		keys.add(ropeRotation(headShapeComplex, freqCis, position));
+		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
+		/* ---- **/
+
+		/* VALUES **/
+		values.add(dense(wv));
+		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
+		/* ---- **/
+
+		/* QUERY **/
+		TraversalPolicy headShape = shape(heads, headSize);
+		TraversalPolicy attentionShape = shape(heads, seqLen);
+
+		attention.add(dense(wq));
+		attention.add(reshape(shape(dim), headShapeComplex));
+		attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		attention.add(reshape(headShapeComplex, headShape));
+		attention.add(attentionKeys(headShape, p(keyCache), position));
+		attention.add(softmax2d(attentionShape, true));
+		attention.add(attentionValues(attentionShape, p(valueCache), position));
+		attention.add(dense(wo));
+		/* ---- **/
+
+		return attention;
+	}
+
+	default Block feedForward(
+			PackedCollection<?> rms,
+			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+			ComputeRequirement... requirements) {
+		int dim = w2.getShape().length(0);
+		int hiddenDim = w1.getShape().length(0);
+
+		SequentialBlock feedForward = new SequentialBlock(shape(dim));
+		feedForward.add(rmsnorm(rms, requirements));
+
+		SequentialBlock hidden = new SequentialBlock(shape(dim));
+		hidden.add(dense(w1));
+		hidden.add(silu(shape(hiddenDim)));
+
+		feedForward.product(dense(w3), hidden);
+		feedForward.add(dense(w2));
+		return feedForward;
+	}
+
+	default Block transformer(int heads,
+							  PackedCollection<?> rmsAttWeight,
+							  PackedCollection<?> wk, PackedCollection<?> wv,
+							  PackedCollection<?> wq, PackedCollection<?> wo,
+							  PackedCollection<?> freqCis,
+							  PackedCollection<?> rmsFfnWeight,
+							  PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+							  Producer<PackedCollection<?>> position,
+							  ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+		SequentialBlock transformer = new SequentialBlock(shape(dim));
+		transformer.accum(attention(heads, rmsAttWeight, wk, wv, wq, wo, freqCis,
+				position, requirements), requirements);
+		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
+		return transformer;
 	}
 
 	static AttentionFeatures getInstance() {
