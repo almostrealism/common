@@ -25,6 +25,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Conditional<T extends Number> extends Expression<T> {
+	public static boolean enableSimplification = false;
 
 	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -79,6 +80,8 @@ public class Conditional<T extends Number> extends Expression<T> {
 		OptionalDouble rd = negative.doubleValue();
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
+
+		if (!enableSimplification) return Conditional.of(condition, positive, negative);
 
 		boolean replaceCondition = false;
 		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {

@@ -16,10 +16,13 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
+import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -64,6 +67,111 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(0.0, out.valueAt(1, 0, 0, 1));
 		assertEquals(2.0, out.valueAt(1, 0, 1, 0));
 		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
+	}
+
+	@Test
+	public void productSumIndex() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+
+		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
+				.reshape(2, 4);
+		c = new IndexProjectionProducerComputation<>(c.getShape().traverseEach(), index -> index, c) {
+			@Override
+			public int getMemLength() { return 1; }
+		};
+
+		PackedCollection<?> out = c.evaluate();
+		out.print();
+
+		assertEquals(4.0, out.valueAt(0, 0));
+		assertEquals(3.0, out.valueAt(0, 1));
+		assertEquals(0.0, out.valueAt(0, 2));
+		assertEquals(0.0, out.valueAt(0, 3));
+		assertEquals(0.0, out.valueAt(1, 0));
+		assertEquals(0.0, out.valueAt(1, 1));
+		assertEquals(2.0, out.valueAt(1, 2));
+		assertEquals(1.0, out.valueAt(1, 3));
+	}
+
+	@Test
+	public void productSumIndex2() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2)
+			.traverse(1);
+		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2)
+			.traverse(1);
+
+		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
+				.reshape(2, 4);
+		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), shape(0, 1).traverse(), c) {
+			@Override
+			public Expression getValueAt(Expression index) {
+				return getTraversableArguments(index)[1].getValueAt(index.imod(2).multiply(4).add(index.divide(2)));
+			}
+		};
+
+		PackedCollection<?> out = c.evaluate();
+		out.traverse(1).print();
+
+		assertEquals(4.0, out.valueAt(0, 0));
+		assertEquals(3.0, out.valueAt(1, 0));
+		assertEquals(0.0, out.valueAt(2, 0));
+		assertEquals(0.0, out.valueAt(3, 0));
+		assertEquals(0.0, out.valueAt(0, 1));
+		assertEquals(0.0, out.valueAt(1, 1));
+		assertEquals(2.0, out.valueAt(2, 1));
+		assertEquals(1.0, out.valueAt(3, 1));
+	}
+
+	@Test
+	public void productEnumerate() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
+		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
+
+		CollectionProducer<PackedCollection<?>> c = cp(in)
+				.multiply(cp(multiplier)).delta(cp(in))
+				.reshape(4, 4)
+				.enumerate(1, 1);
+
+		PackedCollection<?> out = c.evaluate().reshape(4, 4);
+		out.traverse(1).print();
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				assertEquals(i == j ? multiplier.toDouble(i) : 0.0, out.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void productEnumerateLarge() {
+		PackedCollection<?> multiplier = new PackedCollection<>(10).fill(pos -> pos[0] + 1.0);
+		PackedCollection<?> in = new PackedCollection<>(10);
+
+		CollectionProducer<PackedCollection<?>> id = cp(new PackedCollection<>(10, 10));
+		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), shape(0, 1).traverse(), id) {
+			@Override
+			public Expression getValueAt(Expression index) {
+				// return super.getValueAt(index);
+				return projectIndex(index);
+			}
+		};
+
+		id.evaluate().reshape(10, 10).traverse(1).print();
+
+		CollectionProducer<PackedCollection<?>> c = cp(in)
+				.multiply(cp(multiplier)).delta(cp(in))
+				.reshape(10, 10)
+				.enumerate(1, 1);
+
+		PackedCollection<?> out = c.evaluate().reshape(10, 10);
+		out.traverse(1).print();
+
+		for (int i = 0; i < 10; i++) {
+			for (int j = 0; j < 10; j++) {
+				assertEquals(i == j ? multiplier.toDouble(i) : 0.0, out.valueAt(i, j));
+			}
+		}
 	}
 
 	@Test

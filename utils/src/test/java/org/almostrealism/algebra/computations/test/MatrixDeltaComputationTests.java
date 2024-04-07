@@ -23,6 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -188,9 +189,85 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				30.0, 300.0)
 				.reshape(shape(rows, cols));
 		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+		System.out.println(v.getShape().toStringDetail());
+		v.print();
 
 		PackedCollection<?> out = c.delta(cp(w)).get().evaluate();
+		System.out.println(out.getShape().toStringDetail());
 		out.print();
+
+		for (int i = 0; i < rows; i++) {
+			for (int j = 0; j < rows; j++) {
+				for (int k = 0; k < cols; k++) {
+					if (i == j) {
+						assertEquals(v.valueAt(k), out.valueAt(i, 0, j, k));
+					} else {
+						assertEquals(0.0, out.valueAt(i, 0, j, k));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void matmulSum() {
+		int size = 8;
+		int nodes = 3;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
+		PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
+		PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
+		PackedCollection<?> out;
+
+		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+
+		try {
+			TraversableExpressionComputation.enableChainRule = true;
+
+			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
+			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
+
+			out = d.get().evaluate();
+		} finally {
+			TraversableExpressionComputation.enableChainRule = chainRule;
+		}
+		
+		System.out.println(out.getShape().toStringDetail());
+
+		for (int i = 0; i < nodes; i++) {
+			for (int j = 0; j < nodes; j++) {
+				for (int k = 0; k < size; k++) {
+					if (i == j) {
+						log("[" + i + ", " + j + ", " + k + "] = " + out.valueAt(i, 0, j, k));
+						assertEquals(v.valueAt(k), out.valueAt(i, 0, j, k));
+					} else {
+						assertEquals(0.0, out.valueAt(i, 0, j, k));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void matmulLarge() {
+		int size = 392;
+		int nodes = 10;
+
+		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+
+		try {
+			TraversableExpressionComputation.enableChainRule = true;
+
+			PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
+			PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
+			PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
+			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
+			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
+
+			d.get().evaluate();
+		} finally {
+			TraversableExpressionComputation.enableChainRule = chainRule;
+		}
 	}
 
 	@Test

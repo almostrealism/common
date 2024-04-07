@@ -41,7 +41,7 @@ import java.util.stream.Stream;
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableChainRule = false;
+	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
