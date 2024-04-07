@@ -47,7 +47,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		PackedCollection<Pair<?>> out = Pair.bank(1);
 
 		PackedCollection<Pair<?>> conf = Pair.bank(1);
-		conf.set(0, new Pair(getCount(), Intersection.e));
+		conf.set(0, new Pair(getCountLong(), Intersection.e));
 
 		in.set(0, ray.evaluate(args));
 		Triangle.intersectAt.into(distances).evaluate(in, this);
@@ -58,7 +58,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
-		for (int i = 0; i < result.getCount(); i++) {
+		for (int i = 0; i < result.getCountLong(); i++) {
 			destination.get(i).setMem(result.get(i).getA(), 1.0);
 		}
 	}
@@ -88,7 +88,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 				destination.set(i, out.get(0));
 			}
 
-			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCount() + " intersection kernels evaluated");
+			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
 			PackedCollection<Scalar> distances = Scalar.scalarBank(this.getCount() * rays.getCount());
 

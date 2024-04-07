@@ -23,7 +23,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -39,12 +38,12 @@ public class CollectionKernelTests implements TestFeatures {
 						.get().evaluate(args));
 		PackedCollection<?> out = a.traverse(1).get().evaluate();
 		System.out.println("CollectionKernelTests.func: Out shape = " + out.getShape());
-		System.out.println("CollectionKernelTests.func: Out count = " + out.getCount());
+		System.out.println("CollectionKernelTests.func: Out count = " + out.getCountLong());
 		System.out.println("CollectionKernelTests.func: Out atomic length = " + out.getAtomicMemLength());
 
 		Assert.assertEquals(2, out.getShape().length(0));
 		Assert.assertEquals(5, out.getShape().length(1));
-		Assert.assertEquals(2, out.getCount());
+		Assert.assertEquals(2, out.getCountLong());
 	}
 
 	@Test
@@ -64,11 +63,11 @@ public class CollectionKernelTests implements TestFeatures {
 			PackedCollection<?> out = eval.evaluate();
 
 			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
-			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCount());
+			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCountLong());
 
 			Assert.assertEquals(2, out.getShape().length(0));
 			Assert.assertEquals(5, out.getShape().length(1));
-			Assert.assertEquals(2, out.getCount());
+			Assert.assertEquals(2, out.getCountLong());
 
 			double values[] = out.toArray(0, 10);
 			System.out.println(Arrays.toString(values));
@@ -97,7 +96,7 @@ public class CollectionKernelTests implements TestFeatures {
 			PackedCollection<?> out = eval.evaluate();
 
 			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
-			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCount());
+			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCountLong());
 
 			Assert.assertEquals(2, out.getShape().length(0));
 			Assert.assertEquals(5, out.getShape().length(1));

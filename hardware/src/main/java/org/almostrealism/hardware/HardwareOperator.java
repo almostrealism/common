@@ -129,7 +129,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		long start = System.nanoTime();
 
 		try {
-			int sizes[] = new int[args.length];
+			long sizes[] = new long[args.length];
 
 			for (int i = 0; i < getArgCount(); i++) {
 				if (args[i] == null) {
@@ -143,9 +143,9 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 				}
 
 				if (args[i] instanceof MemoryBank) {
-					sizes[i] = ((MemoryBank) args[i]).getCount();
+					sizes[i] = ((MemoryBank) args[i]).getCountLong();
 				} else if (args[i] instanceof Bytes) {
-					sizes[i] = ((Bytes) args[i]).getCount();
+					sizes[i] = ((Bytes) args[i]).getCountLong();
 				} else {
 					sizes[i] = ((MemoryData) args[i]).getMemLength();
 				}

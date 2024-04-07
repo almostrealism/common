@@ -294,12 +294,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	public long getTotalSizeLong() { return sizeLong(0); }
 
 	@Override
-	public int getCount() {
+	public long getCountLong() {
 		if (getSizeLong() == 0) {
 			throw new UnsupportedOperationException();
 		}
 
-		return Math.toIntExact(getTotalSizeLong() / getSizeLong());
+		return getTotalSizeLong() / getSizeLong();
 	}
 
 	public int getDimensions() { return dims.length; }
@@ -343,7 +343,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public String toStringDetail() {
-		return this + "[axis=" + getTraversalAxis() + "|" + getCount() + "x" + getSize() + "]";
+		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSize() + "]";
 	}
 
 	@Override
@@ -431,7 +431,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
 		for (int i = 0; i < shape.getDimensions() + 1; i++) {
-			if (shape.size(i) == target.getSize()) {
+			if (shape.sizeLong(i) == target.getSizeLong()) {
 				return i;
 			}
 		}

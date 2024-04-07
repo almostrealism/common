@@ -50,7 +50,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	}
 
 	@Override
-	public int getCount() { return 1; }
+	public long getCountLong() { return 1; }
 
 	public IntFunction<MemoryBank<T>> getDestinationFactory() { return destination; }
 

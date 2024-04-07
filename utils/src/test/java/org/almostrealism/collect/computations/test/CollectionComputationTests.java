@@ -321,7 +321,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
-		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCount());
+		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCountLong());
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
 
@@ -435,7 +435,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCount() + " series");
+		System.out.println(series.traverse(1).getCountLong() + " series");
 
 		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(10, 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
@@ -449,7 +449,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void collectionMax() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCount() + " series");
+		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(shape(10), 0));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
@@ -466,7 +466,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void greaterThanMax() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCount() + " series");
+		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		PackedCollection<?> dest = new PackedCollection(1);
 		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();

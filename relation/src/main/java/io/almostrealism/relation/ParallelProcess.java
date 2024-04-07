@@ -19,10 +19,10 @@ package io.almostrealism.relation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
 	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
@@ -77,25 +77,25 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 					.collect(Collectors.toList()));
 		}
 
-		int counts[] = children.stream().mapToInt(ParallelProcess::count).filter(v -> v != 0).distinct().toArray();
-		long cn = getCount();
+		long counts[] = children.stream().mapToLong(ParallelProcess::countLong).filter(v -> v != 0).distinct().toArray();
+		long cn = getCountLong();
 		long p = counts.length;
-		long tot = IntStream.of(counts).sum();
-		long max = IntStream.of(counts).max().orElse(0);
+		long tot = LongStream.of(counts).sum();
+		long max = LongStream.of(counts).max().orElse(0);
 
 		if ((p <= 1 && tot == cn) || cn >= max) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
-		} else if (enableContextualCount && max <= context.getCount()) {
+		} else if (enableContextualCount && max <= context.getCountLong()) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		} else if (max > maxCount) {
-			if (cn < minCount && context.getCount() < minCount) {
+			if (cn < minCount && context.getCountLong() < minCount) {
 				System.out.println("WARN: Count " + max + " is too high to isolate, " +
 						"but the resulting process will have a count of only " + cn +
-						" (ctx " + context.getCount() + ")");
+						" (ctx " + context.getCountLong() + ")");
 			}
 
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
-		} else if (enableNarrowMax && max > targetCount && context.getCount() >= minCount) {
+		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 
@@ -103,13 +103,17 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 	}
 
 	default boolean isUniform() {
-		long p = getChildren().stream().mapToInt(ParallelProcess::count).distinct().count();
+		long p = getChildren().stream().mapToLong(ParallelProcess::countLong).distinct().count();
 		return p == 1;
 	}
 
 	static <T> int count(T c) {
+		return Math.toIntExact(countLong(c));
+	}
+
+	static <T> long countLong(T c) {
 		if (c instanceof Countable) {
-			return ((Countable) c).getCount();
+			return ((Countable) c).getCountLong();
 		}
 
 		return 1;

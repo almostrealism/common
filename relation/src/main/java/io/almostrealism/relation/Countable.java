@@ -17,7 +17,11 @@
 package io.almostrealism.relation;
 
 public interface Countable {
-	int getCount();
+	default int getCount() {
+		return Math.toIntExact(getCountLong());
+	}
+
+	long getCountLong();
 
 	default boolean isFixedCount() {
 		return true;

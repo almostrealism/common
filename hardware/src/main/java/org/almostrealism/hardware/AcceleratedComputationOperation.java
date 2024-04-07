@@ -83,8 +83,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public int getCount() {
-		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCount() : 1;
+	public long getCountLong() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCountLong() : 1;
 	}
 
 	@Override

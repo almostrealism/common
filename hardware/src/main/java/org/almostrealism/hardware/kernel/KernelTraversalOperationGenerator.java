@@ -123,7 +123,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		public int getMemLength() { return expressions.size(); }
 
 		@Override
-		public int getCount() { return 1; }
+		public long getCountLong() { return 1; }
 
 		@Override
 		public boolean isFixedCount() { return true; }

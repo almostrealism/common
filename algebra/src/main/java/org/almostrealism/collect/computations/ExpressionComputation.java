@@ -27,11 +27,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -143,15 +141,15 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		TraversalPolicy shape = new TraversalPolicy(size);
 		if (!enableInferShape) return shape;
 
-		Set<Integer> count = Stream.of(args)
+		Set<Long> count = Stream.of(args)
 				.map(CollectionFeatures.getInstance()::shape)
-				.map(TraversalPolicy::getCount)
+				.map(TraversalPolicy::getCountLong)
 				.filter(i -> i > 1)
 				.collect(Collectors.toSet());
 		if (count.isEmpty()) {
 			return shape;
 		} else if (count.size() == 1) {
-			return shape.prependDimension(count.iterator().next());
+			return shape.prependDimension(Math.toIntExact(count.iterator().next()));
 		} else {
 			throw new IllegalArgumentException("Unable to infer shape from arguments");
 		}

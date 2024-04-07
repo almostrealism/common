@@ -249,13 +249,27 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void matmulLarge() {
-		int size = 392;
-		int nodes = 10;
+	public void matmulSmall() {
+		matmal(24, 8);
+	}
 
+	@Test
+	public void matmulMedium() {
+		if (skipLongTests) return;
+		matmal(48, 10);
+	}
+
+	@Test
+	public void matmulLarge() {
+		if (skipLongTests) return;
+		matmal(392, 10);
+	}
+
+	public void matmal(int size, int nodes) {
 		boolean chainRule = TraversableExpressionComputation.enableChainRule;
 
 		try {
+			initKernelMetrics();
 			TraversableExpressionComputation.enableChainRule = true;
 
 			PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
@@ -267,6 +281,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			d.get().evaluate();
 		} finally {
 			TraversableExpressionComputation.enableChainRule = chainRule;
+			logKernelMetrics();
 		}
 	}
 

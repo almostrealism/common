@@ -68,8 +68,8 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	public int getMemLength() { return 1; }
 
 	@Override
-	public int getCount() {
-		return getShape().traverseEach().getCount();
+	public long getCountLong() {
+		return getShape().traverseEach().getCountLong();
 	}
 
 	// TODO  This custom destination creation should not be necessary
@@ -123,6 +123,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 
 		@Override
-		public int getCount() { return getShape().getTotalSize(); }
+		public long getCountLong() { return getShape().getTotalSize(); }
 	}
 }

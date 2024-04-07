@@ -17,7 +17,6 @@
 package org.almostrealism.util;
 
 import io.almostrealism.relation.ProducerWithRank;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
@@ -184,7 +183,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 									new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count) };
 
 		for (int i = 0; i < input.length; i++) {
-			for (int j = 0; j < input[i].getCount(); j++) {
+			for (int j = 0; j < input[i].getCountLong(); j++) {
 				input[i].set(j, 2 * Math.random() - 1, 1);
 			}
 		}
@@ -196,7 +195,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 		boolean failed = false;
 
 		System.out.println("RankedChoiceProducerTest: Comparing...");
-		for (int i = 0; i < output.getCount(); i++) {
+		for (int i = 0; i < output.getCountLong(); i++) {
 			Scalar value = acc.evaluate(input[0].get(i), input[1].get(i), input[2].get(i),
 										input[3].get(i), input[4].get(i), input[5].get(i));
 			if (Math.abs(value.getValue() - output.get(i).getValue()) > gap) {

@@ -54,7 +54,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat) {
-		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCount()));
+		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -111,7 +111,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(data, wav, sampleRate, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCount()));
+		this(data, wav, sampleRate, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -172,9 +172,9 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 		TraversalPolicy shape = ((Shape) wav).getShape();
 
-		if (shape.getCount() == 0) {
+		if (shape.getCountLong() == 0) {
 			throw new IllegalArgumentException("Wave must have at least one sample");
-		} else if (shape.getCount() == 1) {
+		} else if (shape.getCountLong() == 1) {
 			System.out.println("WARN: Wave has only one sample");
 		}
 

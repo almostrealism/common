@@ -197,8 +197,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public int getCount() {
-		return getShape().getCount();
+	public long getCountLong() {
+		return getShape().getCountLong();
 	}
 
 	@Override
@@ -259,7 +259,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			if (destination instanceof Shape) {
 				Shape out = (Shape) destination;
 
-				if (getCount() > 1 || isFixedCount() || (out.getShape().getCount() > 1 && getCount() == 1)) {
+				if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
 					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
 						if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
 							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);

@@ -19,18 +19,13 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.DefaultIndex;
-import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.OperationComputationAdapter;
-
-import java.util.Collection;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
@@ -63,8 +58,8 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public int getCount() {
-		return atom instanceof Countable ? ((Countable) atom).getCount() : 1;
+	public long getCountLong() {
+		return atom instanceof Countable ? ((Countable) atom).getCountLong() : 1;
 	}
 
 	@Override

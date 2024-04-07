@@ -19,7 +19,6 @@ package org.almostrealism.time.computations.test;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.util.TestFeatures;
@@ -33,11 +32,11 @@ public class InterpolateTest implements TestFeatures {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCount() + " series");
+		System.out.println(series.traverse(1).getCountLong() + " series");
 
 		PackedCollection<?> cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 3.5);
-		System.out.println(cursors.traverse(1).getCount() + " cursors");
+		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
 
 		PackedCollection<?> rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
@@ -59,11 +58,11 @@ public class InterpolateTest implements TestFeatures {
 	public void interpolateKernel() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCount() + " series");
+		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		PackedCollection<?> cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 6.5);
-		System.out.println(cursors.traverse(1).getCount() + " cursors");
+		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
 
 		PackedCollection<?> rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);

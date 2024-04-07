@@ -46,6 +46,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 		}
 	}
 
+	// TODO  This duplicates code in CollectionProducerComputationBase::shapeForLength
 	@Override
 	public T createDestination(int len) {
 		TraversalPolicy shape;

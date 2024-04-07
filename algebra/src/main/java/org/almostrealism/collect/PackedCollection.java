@@ -48,7 +48,6 @@ import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -130,8 +129,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
-	public int getCount() {
-		return shape.getCount();
+	public long getCountLong() {
+		return shape.getCountLong();
 	}
 
 	@Override

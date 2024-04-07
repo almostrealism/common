@@ -79,7 +79,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public TraversalPolicy getShape() { return new TraversalPolicy(memLength); }
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	/**
 	 * @return  GLOBAL

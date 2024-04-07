@@ -18,7 +18,6 @@ package org.almostrealism.time;
 
 import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -54,7 +53,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 	public boolean isEmpty() { return getLength() == 0; }
 
 	public void add(TemporalScalar value) {
-		if (getEndCursorIndex() >= (getCount() - 1)) {
+		if (getEndCursorIndex() >= (getCountLong() - 1)) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
@@ -64,7 +63,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 
 	@Deprecated
 	public void add(double time, double value) {
-		if (getEndCursorIndex() >= getCount() - 1) {
+		if (getEndCursorIndex() >= getCountLong() - 1) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 

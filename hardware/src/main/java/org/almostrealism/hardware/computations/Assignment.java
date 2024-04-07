@@ -54,8 +54,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
-	public int getCount() {
-		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCount() : 1;
+	public long getCountLong() {
+		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCountLong() : 1;
 	}
 
 	@Override

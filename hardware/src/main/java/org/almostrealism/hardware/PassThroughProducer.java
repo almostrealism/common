@@ -78,7 +78,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public int getMemLength() { return getShape().getSize(); }
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public boolean isFixedCount() { return false; }

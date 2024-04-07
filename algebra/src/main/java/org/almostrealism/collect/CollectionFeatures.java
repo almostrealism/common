@@ -209,8 +209,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
-				console.warn("Assignment destination (" + resultShape.getCount() +
-						") adjusted to match source (" + valueShape.getCount() + ")");
+				console.warn("Assignment destination (" + resultShape.getCountLong() +
+						") adjusted to match source (" + valueShape.getCountLong() + ")");
 			}
 
 			return a(traverse(axis, (Producer) result), value);
@@ -355,12 +355,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
-	default <T> int lowestCount(List<Producer<T>> producers) {
-		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).min().getAsInt();
+	default <T> long lowestCount(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
 
-	default <T> int highestCount(List<Producer<T>> producers) {
-		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).max().getAsInt();
+	default <T> long highestCount(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
@@ -470,11 +470,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 							largestTotalSize(args), expression,
 							args.toArray(Supplier[]::new))
 						.setShortCircuit(shortCircuit));
-		int count = highestCount(List.of(arguments));
+		long count = highestCount(List.of(arguments));
 
-		if (c.getShape().getCount() != count) {
+		if (c.getShape().getCountLong() != count) {
 			for (int i = 0; i <= c.getShape().getDimensions(); i++) {
-				if (c.getShape().traverse(i).getCount() == count) {
+				if (c.getShape().traverse(i).getCountLong() == count) {
 					return c.traverse(i);
 				}
 			}
@@ -652,7 +652,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 						" by a collection of size " + size);
 			}
 
-			if (shape(b).getCount() > shape(a).getCount()) shape = shape(b);
+			if (shape(b).getCountLong() > shape(a).getCountLong()) shape = shape(b);
 
 			return new TraversableExpressionComputation<>(shape,
 					(args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)),

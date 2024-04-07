@@ -21,5 +21,5 @@ import io.almostrealism.relation.Producer;
 
 public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P>, Countable {
 	@Override
-	default int getCount() { return getShape().getCount(); }
+	default long getCountLong() { return getShape().getCountLong(); }
 }

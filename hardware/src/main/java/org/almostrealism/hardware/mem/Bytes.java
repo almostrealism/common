@@ -69,7 +69,7 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	}
 
 	@Override
-	public int getCount() { return getMemLength() / getAtomicMemLength(); }
+	public long getCountLong() { return getMemLength() / getAtomicMemLength(); }
 
 	@Override
 	public int getAtomicMemLength() { return atomicLength; }

@@ -146,8 +146,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> inputStub(TraversalPolicy shape, boolean fixedCount) {
 		return new CollectionProducerComputation<T>() {
 			@Override
-			public int getCount() {
-				return CollectionProducerComputation.super.getCount();
+			public long getCountLong() {
+				return CollectionProducerComputation.super.getCountLong();
 			}
 
 			@Override

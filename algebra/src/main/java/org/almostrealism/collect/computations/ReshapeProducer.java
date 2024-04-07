@@ -70,7 +70,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public boolean isFixedCount() {

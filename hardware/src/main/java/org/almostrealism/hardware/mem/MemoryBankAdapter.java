@@ -154,8 +154,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public T get(int index) {
-		if (index >= getCount()) {
-			throw new IllegalArgumentException(index + " is beyond the range of this bank (" + getCount() + ")");
+		if (index >= getCountLong()) {
+			throw new IllegalArgumentException(index + " is beyond the range of this bank (" + getCountLong() + ")");
 		}
 
 		if (cacheLevel == CacheLevel.ALL) {
@@ -190,7 +190,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	public int getAtomicMemLength() { return memLength; }
 
 	@Override
-	public int getCount() { return count; }
+	public long getCountLong() { return count; }
 
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);

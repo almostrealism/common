@@ -132,7 +132,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public int getCount() { return -1; }
+	public long getCountLong() { return -1; }
 
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
 		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));

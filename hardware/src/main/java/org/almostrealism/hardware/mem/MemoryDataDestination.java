@@ -65,12 +65,12 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	public Countable getDelegate() { return process; }
 
 	@Override
-	public int getCount() {
+	public long getCountLong() {
 		if (process != null) {
-			return process.getCount();
+			return process.getCountLong();
 		}
 
-		return super.getCount();
+		return super.getCountLong();
 	}
 
 	@Override

@@ -263,7 +263,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 		if (v instanceof ArrayVariable) {
 			if (v.getProducer() instanceof ParallelProcess
-					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
+					&& ((ParallelProcess) v.getProducer()).getCountLong() > 1) {
 				String kernelOffset = getKernelIndex((ArrayVariable) v, kernelIndex);
 
 				if (pos.equals("0") || pos.equals("(0)")) {

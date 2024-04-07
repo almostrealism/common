@@ -65,7 +65,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {

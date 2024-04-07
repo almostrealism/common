@@ -67,7 +67,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	private boolean enableCompilation;
 	private String functionName;
-	private Integer count;
+	private Long count;
 
 	private OperationMetadata metadata;
 	private OperationProfile profile;
@@ -116,14 +116,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public int getCount() {
+	public long getCountLong() {
 		if (count == null) {
 			if (isEmpty()) {
-				count = 0;
+				count = 0L;
 			} else if (isUniform() && get(0) instanceof Countable) {
-				count = ((Countable) get(0)).getCount();
+				count = ((Countable) get(0)).getCountLong();
 			} else {
-				count = 1;
+				count = 1L;
 			}
 		}
 
@@ -275,16 +275,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
 		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
 
-		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
+		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.countLong(get(i - 1)) == ParallelProcess.countLong(get(i)));
 		if (!match) return ParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
-		int currentCount = -1;
+		long currentCount = -1;
 
 		for (int i = 0; i < size(); i++) {
 			Supplier<Runnable> o = get(i);
-			int count = ParallelProcess.count(o);
+			long count = ParallelProcess.countLong(o);
 
 			if (currentCount == -1 || currentCount == count) {
 				current.add(o);

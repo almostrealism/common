@@ -22,18 +22,14 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
-import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Stack;
-import java.util.function.Function;
 
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private Hardware hardware;
@@ -47,7 +43,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	@Override
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
-		int count = ParallelProcess.count(c);
+		long count = ParallelProcess.countLong(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);
 		boolean sequential = fixed && count == 1;
 		boolean accelerator = !fixed || count > 128;

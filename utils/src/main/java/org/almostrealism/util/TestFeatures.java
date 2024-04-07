@@ -25,15 +25,12 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -112,7 +109,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				Producer<PackedCollection<?>> p = supply.get();
 				PackedCollection<?> output = p.get().evaluate();
 				System.out.println("TestFeatures: Output Shape = " + output.getShape() +
-						" [" + output.getShape().getCount() + "x" + output.getShape().getSize() + "]");
+						" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
 				System.out.println("TestFeatures: Validating kernel output...");
 				validate.accept(output);
 				outputRef.set(output);

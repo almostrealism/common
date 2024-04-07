@@ -61,7 +61,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 		return args -> {
 			cache = Pair.bank(destination.getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
-			for (int i = 0; i < cache.getCount(); i++) {
+			for (int i = 0; i < cache.getCountLong(); i++) {
 				((MemoryData) destination.get(i)).setMem(new double[] { cache.get(i).getA(), 1.0 });
 			}
 
