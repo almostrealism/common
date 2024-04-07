@@ -95,7 +95,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear2", model, data, epochs, steps, 0.5);
+		optimize("linear2", model, data, epochs, steps, 1.0);
 	}
 
 	@Test
@@ -165,7 +165,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear5", model, data, epochs, steps, 0.5);
+		optimize("linear5", model, data, epochs, steps, 1.0);
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {

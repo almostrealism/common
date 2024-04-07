@@ -17,13 +17,34 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
 public interface MatrixFeatures extends CollectionFeatures {
+	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
+		return identity(shape(size, size));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> identity(TraversalPolicy shape) {
+		if (shape.getDimensions() != 2) {
+			throw new IllegalArgumentException();
+		}
+
+		return new TraversableExpressionComputation<>(shape.traverseEach(),
+				(args, idx) -> {
+					Expression pos[] = shape.position(idx);
+					return conditional(pos[0].eq(pos[1]), e(1), e(0));
+				});
+	}
+
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);

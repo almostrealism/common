@@ -39,10 +39,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+@Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends RelativeTraversableProducerComputation<T, T> {
 
-	public static boolean enableTraversableFixed = false;
+	public static boolean enableTraversableFixed = true;
 	public static boolean enableInferShape = false;
 	public static boolean enableWarnings = false;
 

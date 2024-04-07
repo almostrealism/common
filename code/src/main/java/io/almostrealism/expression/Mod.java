@@ -25,7 +25,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
-	public static boolean enableMod2Optimization = true;
+	public static boolean enableMod2Optimization = false;
 
 	private boolean fp;
 

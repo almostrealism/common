@@ -34,7 +34,7 @@ import java.util.OptionalDouble;
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	public static boolean enableTraverseEach = false;
-	public static boolean enableItem = true;
+	public static boolean enableSliceShortCircuit = false;
 	public static boolean enableInputIsolation = true;
 
 	private TraversalPolicy subsetShape;
@@ -61,59 +61,35 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public int getMemLength() { return enableItem ? super.getMemLength() : 1; }
-
-	@Override
-	public int getCount() {
-		return enableItem ? super.getCount() : getShape().traverseEach().getCount();
-	}
-
-	@Override
 	protected Expression projectIndex(Expression index) {
-		if (!enableItem) {
-			// Identify the slice
-			Expression slice;
+		Expression slice;
+		Expression offset;
 
-			if (sliceShape.getTotalSize() == 1) {
-				slice = index;
-			} else if (index.getType() == Integer.class ||
-					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-				slice = index.divide(e(sliceShape.getTotalSize()));
-			} else {
-				slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
-			}
-
-			// Find the index in that slice
-			Expression offset = index.toInt().imod(subsetShape.getTotalSize());
-
-			// Position the offset relative to the slice
-			offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
-
-			return offset;
-		} else {
+		if (!enableSliceShortCircuit || !isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
 			// Identify the output slice
-			Expression slice;
-
-			if (sliceShape.getTotalSize() == 1) {
+			if (sliceShape.getTotalSizeLong() == 1) {
 				slice = index;
-			} else if (index.getType() == Integer.class ||
-					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+			} else if (index.getType() == Integer.class && sliceShape.getTotalSizeLong() < Integer.MAX_VALUE) {
 				slice = index.divide(e(sliceShape.getTotalSize()));
 			} else {
-				slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+				slice = index.divide(e((double) sliceShape.getTotalSizeLong())).floor();
 			}
 
 			// Find the index in the output slice
-			Expression offset = index.toInt().imod(sliceShape.getTotalSize());
-
-			// Find the index in the input slice
-			offset = offset.imod(subsetShape.getTotalSize());
-
-			// Position the offset relative to the slice
-			offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
-
-			return offset;
+			offset = index.toInt().imod(sliceShape.getTotalSize());
+		} else {
+			// There is only one slice
+			slice = e(0);
+			offset = index;
 		}
+
+		// Find the index in the input slice
+		offset = offset.imod(subsetShape.getTotalSize());
+
+		// Position the offset relative to the slice
+		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+
+		return offset;
 	}
 
 	@Override

@@ -71,10 +71,13 @@ public interface DeltaFeatures extends MatrixFeatures {
 		TraversalPolicy targetShape = shape(target);
 
 		if (DeltaFeatures.match(producer, target)) {
-			PackedCollection<?> identity =
-					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-							.identityFill().reshape(shape.append(targetShape));
-			return (CollectionProducer) c(identity);
+//			PackedCollection<?> identity =
+//					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+//							.identityFill().reshape(shape.append(targetShape));
+//			return (CollectionProducer) c(identity);
+			return (CollectionProducer)
+					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+						.reshape(shape.append(targetShape));
 		}
 
 		if (isChainRuleSupported()) {
