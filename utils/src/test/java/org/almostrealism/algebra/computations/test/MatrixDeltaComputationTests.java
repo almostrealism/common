@@ -256,7 +256,15 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	@Test
 	public void matmulMedium() {
 		if (skipLongTests) return;
-		matmal(48, 10);
+
+		try {
+			ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_36"));
+			ParallelProcess.isolationFlags.add(operationFilter("AggregatedProducerComputation"));
+
+			matmal(48, 10);
+		} finally {
+			ParallelProcess.isolationFlags.clear();
+		}
 	}
 
 	@Test
@@ -318,11 +326,13 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProduct() {
+		if (skipLongTests) return;
 		matmulEnumerateProduct(false);
 	}
 
 	@Test
 	public void matmulEnumerateProductOptimized() {
+		if (skipLongTests) return;
 		matmulEnumerateProduct(true);
 	}
 

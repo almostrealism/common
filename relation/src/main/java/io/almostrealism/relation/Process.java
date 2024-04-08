@@ -32,6 +32,10 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 		return Process.of(this);
 	}
 
+	default boolean isIsolationTarget() {
+		return false;
+	}
+
 	static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
 		return new Process<>() {
 			@Override

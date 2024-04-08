@@ -136,5 +136,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		public Producer<T> reshape(TraversalPolicy shape) {
 			throw new UnsupportedOperationException();
 		}
+
+		@Override
+		public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+			return this;
+		}
 	}
 }
