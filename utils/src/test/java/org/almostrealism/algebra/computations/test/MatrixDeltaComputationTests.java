@@ -250,18 +250,16 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulSmall() {
-		matmal(24, 8);
+		matmal(24, 8, false);
 	}
 
 	@Test
 	public void matmulMedium() {
-		if (skipLongTests) return;
-
 		try {
 			ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_36"));
 			ParallelProcess.isolationFlags.add(operationFilter("AggregatedProducerComputation"));
 
-			matmal(48, 10);
+			matmal(48, 10, false);
 		} finally {
 			ParallelProcess.isolationFlags.clear();
 		}
@@ -270,10 +268,10 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	@Test
 	public void matmulLarge() {
 		if (skipLongTests) return;
-		matmal(392, 10);
+		matmal(392, 10, true);
 	}
 
-	public void matmal(int size, int nodes) {
+	public void matmal(int size, int nodes, boolean dIn) {
 		boolean chainRule = TraversableExpressionComputation.enableChainRule;
 
 		try {
@@ -284,7 +282,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
 			PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
 			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
-			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
+			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(dIn ? c.delta(cp(v)) : c.delta(cp(w)));
 
 			d.get().evaluate();
 		} finally {

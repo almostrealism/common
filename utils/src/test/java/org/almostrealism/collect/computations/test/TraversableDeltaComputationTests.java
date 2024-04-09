@@ -350,6 +350,50 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void multiply() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+
+		CollectionProducer cdy = cp(v).multiply(p(f))
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		dout.traverse().print();
+
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(f.valueAt(j), dout.valueAt(i, j));
+				} else {
+					assertEquals(0.0, dout.valueAt(i, j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void multiplySum() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+
+		CollectionProducer cdy = cp(v).multiply(p(f))
+				.delta(p(v))
+				.sum(1);
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		System.out.println(dout.getShape().toStringDetail());
+		dout.print();
+
+		for (int n = 0; n < dim; n++) {
+			assertEquals(f.toDouble(n), dout.toDouble(n));
+		}
+	}
+
+	@Test
 	public void multiplyEnumerate() {
 		int dim = 2;
 

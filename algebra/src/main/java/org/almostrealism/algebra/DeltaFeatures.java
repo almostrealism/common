@@ -88,7 +88,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			}
 
 			Producer<T> in = matchInput(producer, target);
-			if (in == target) return null;
+			if (match(in, target)) return null;
 			if (!(in instanceof CollectionProducer)) return null;
 
 			Producer f = generateIsolatedDelta(shape(in), (ComputationBase) producer, in);
