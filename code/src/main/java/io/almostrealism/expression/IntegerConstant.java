@@ -22,7 +22,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
-import java.util.stream.IntStream;
+import java.util.OptionalLong;
 
 public class IntegerConstant extends Constant<Integer> {
 	private int value;
@@ -43,7 +43,7 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) { return OptionalInt.of(value); }
+	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
 
 	@Override
 	public boolean isKernelValue(IndexValues values) { return true; }

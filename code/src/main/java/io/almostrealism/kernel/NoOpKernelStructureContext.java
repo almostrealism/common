@@ -17,16 +17,17 @@
 package io.almostrealism.kernel;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class NoOpKernelStructureContext implements KernelStructureContext {
-	private OptionalInt kernelMaximum;
+	private OptionalLong kernelMaximum;
 
-	public NoOpKernelStructureContext() { this.kernelMaximum = OptionalInt.empty(); }
+	public NoOpKernelStructureContext() { this.kernelMaximum = OptionalLong.empty(); }
 
-	public NoOpKernelStructureContext(int kernelMaximum) { this.kernelMaximum = OptionalInt.of(kernelMaximum); }
+	public NoOpKernelStructureContext(long kernelMaximum) { this.kernelMaximum = OptionalLong.of(kernelMaximum); }
 
 	@Override
-	public OptionalInt getKernelMaximum() { return kernelMaximum; }
+	public OptionalLong getKernelMaximum() { return kernelMaximum; }
 
 	@Override
 	public KernelSeriesProvider getSeriesProvider() { return null; }

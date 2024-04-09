@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
@@ -32,8 +33,8 @@ public class Cosine extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of(1);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of(1);
 	}
 
 	@Override

@@ -19,9 +19,10 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public interface KernelStructureContext {
-	OptionalInt getKernelMaximum();
+	OptionalLong getKernelMaximum();
 
 	KernelSeriesProvider getSeriesProvider();
 	KernelTraversalProvider getTraversalProvider();

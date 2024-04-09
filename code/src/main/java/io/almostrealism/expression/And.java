@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class And extends BinaryExpression<Integer> {
 
@@ -50,7 +51,7 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		return getChildren().get(1).upperBound(context);
 	}
 

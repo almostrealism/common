@@ -40,6 +40,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -139,14 +140,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
-		if (i.isPresent()) return i;
+		if (i.isPresent()) return OptionalLong.of(i.getAsInt());
 
 		OptionalDouble d = doubleValue();
-		if (d.isPresent()) return OptionalInt.of((int) Math.ceil(d.getAsDouble()));
+		if (d.isPresent()) return OptionalLong.of((long) Math.ceil(d.getAsDouble()));
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	public Number evaluate(Number... children) {
@@ -302,6 +303,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Mod mod(Expression<?> operand, boolean fp) { return new Mod(this, operand, fp); }
 	public Mod<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
 	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
+	public Expression<Integer> imod(long operand) {
+		if (operand > Integer.MAX_VALUE) {
+			return mod(new DoubleConstant((double) operand), true).toInt();
+		} else {
+			return imod((int) operand);
+		}
+	}
 
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }

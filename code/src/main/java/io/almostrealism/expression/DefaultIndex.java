@@ -20,9 +20,10 @@ import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class DefaultIndex extends StaticReference<Integer> implements Index {
-	private OptionalInt limit;
+	private OptionalLong limit;
 
 	public DefaultIndex(String name) {
 		this(name, null);
@@ -30,16 +31,16 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 
 	public DefaultIndex(String name, Integer limit) {
 		super(Integer.class, name);
-		this.limit = limit == null ? OptionalInt.empty() : OptionalInt.of(limit);
+		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
 	}
 
-	public void setLimit(int limit) { this.limit = OptionalInt.of(limit); }
+	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
 
 	@Override
-	public OptionalInt getLimit() { return limit; }
+	public OptionalLong getLimit() { return limit; }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		return limit.stream().map(i -> i - 1).findFirst();
 	}
 

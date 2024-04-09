@@ -51,6 +51,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
+
+//		if (sliceShape.getTotalSizeLong() > Integer.MAX_VALUE) {
+//			throw new UnsupportedOperationException();
+//		}
 	}
 
 	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
@@ -65,7 +69,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		Expression slice;
 		Expression offset;
 
-		if (!enableSliceShortCircuit || !isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
+		boolean shortcut = enableSliceShortCircuit ||
+				index.upperBound(null).orElse(sliceShape.getTotalSizeLong()) < sliceShape.getTotalSizeLong();
+
+		if (!shortcut || !isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
 			// Identify the output slice
 			if (sliceShape.getTotalSizeLong() == 1) {
 				slice = index;
@@ -76,7 +83,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 			}
 
 			// Find the index in the output slice
-			offset = index.toInt().imod(sliceShape.getTotalSize());
+			offset = index.toInt().imod(sliceShape.getTotalSizeLong());
 		} else {
 			// There is only one slice
 			slice = e(0);

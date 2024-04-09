@@ -63,7 +63,7 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 		Index index = indices.iterator().next();
 		indices = indices.stream().filter(i -> !Objects.equals(i, index)).collect(Collectors.toSet());
 
-		int max = index.getLimit().orElseThrow();
+		int max = Math.toIntExact(index.getLimit().orElseThrow());
 
 		KernelSequenceNode children[] = new KernelSequenceNode[max];
 		for (int i = 0; i < max; i++) {

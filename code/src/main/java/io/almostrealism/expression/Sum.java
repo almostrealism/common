@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -44,13 +45,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		List<OptionalInt> values = getChildren().stream()
+	public OptionalLong upperBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size())
-			return OptionalInt.empty();
-		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(0, (a, b) -> a + b));
+			return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(0L, (a, b) -> a + b));
 	}
 
 	@Override
@@ -209,10 +210,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			OptionalInt v = k.intValue();
 			if (!v.isPresent()) break i;
 
-			OptionalInt r = idx.getLimit();
+			OptionalLong r = idx.getLimit();
 			if (!r.isPresent()) break i;
 
-			if (v.getAsInt() == r.getAsInt()) {
+			if (v.getAsInt() == r.getAsLong()) {
 				return (Expression) new KernelIndexChild(((KernelIndex) args.get(index[0])).getContext(), idx);
 			}
 		}

@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Min extends BinaryExpression<Double> {
 	public Min(Expression<Double> a, Expression<Double> b) {
@@ -35,14 +36,14 @@ public class Min extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt l = getChildren().get(0).upperBound(context);
-		OptionalInt r = getChildren().get(1).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong l = getChildren().get(0).upperBound(context);
+		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
-			return OptionalInt.of(Math.min(l.getAsInt(), r.getAsInt()));
+			return OptionalLong.of(Math.min(l.getAsLong(), r.getAsLong()));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override

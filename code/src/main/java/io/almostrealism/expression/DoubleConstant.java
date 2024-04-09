@@ -23,7 +23,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
-import java.util.stream.IntStream;
+import java.util.OptionalLong;
 
 public class DoubleConstant extends Constant<Double> {
 	private double value;
@@ -60,8 +60,8 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of((int) Math.ceil(value));
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of((long) Math.ceil(value));
 	}
 
 	@Override

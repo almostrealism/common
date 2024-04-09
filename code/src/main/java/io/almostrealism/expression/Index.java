@@ -19,9 +19,10 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.SequenceGenerator;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public interface Index extends SequenceGenerator {
 	String getName();
 
-	OptionalInt getLimit();
+	OptionalLong getLimit();
 }

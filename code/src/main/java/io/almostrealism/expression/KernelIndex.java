@@ -21,7 +21,7 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class KernelIndex extends DefaultIndex {
 	public static boolean enableSimplification = true;
@@ -60,8 +60,9 @@ public class KernelIndex extends DefaultIndex {
 	public int getKernelAxis() { return axis; }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		if (context == null) context = this.context;
+		if (context == null) return OptionalLong.empty();
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
 	}
 
@@ -107,7 +108,7 @@ public class KernelIndex extends DefaultIndex {
 
 	@Override
 	public Expression<Integer> simplify(KernelStructureContext context) {
-		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsInt() == 1) {
+		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
 			return new IntegerConstant(0);
 		}
 

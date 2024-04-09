@@ -19,10 +19,10 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public interface SequenceGenerator {
-	OptionalInt upperBound(KernelStructureContext context);
+	OptionalLong upperBound(KernelStructureContext context);
 
 	Number value(IndexValues indexValues);
 

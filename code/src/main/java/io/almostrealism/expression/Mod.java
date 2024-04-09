@@ -23,6 +23,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = true;
@@ -77,7 +78,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		return getChildren().get(1).upperBound(context);
 	}
 
@@ -116,8 +117,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			int m = mod.intValue().getAsInt();
 			if (m == 1) return new IntegerConstant(0);
 
-			OptionalInt u = input.upperBound(context);
-			if (u.isPresent() && u.getAsInt() < m) {
+			OptionalLong u = input.upperBound(context);
+			if (u.isPresent() && u.getAsLong() < m) {
 				return input;
 			} else if (enableMod2Optimization && isPowerOf2(m)) {
 				return new And(input, new IntegerConstant(m - 1));

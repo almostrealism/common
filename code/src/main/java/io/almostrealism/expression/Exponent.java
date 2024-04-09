@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
@@ -38,14 +39,14 @@ public class Exponent extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt l = getChildren().get(0).upperBound(context);
-		OptionalInt r = getChildren().get(1).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong l = getChildren().get(0).upperBound(context);
+		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
-			return OptionalInt.of((int) Math.pow(l.getAsInt(), r.getAsInt()));
+			return OptionalLong.of((long) Math.pow(l.getAsLong(), r.getAsLong()));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override

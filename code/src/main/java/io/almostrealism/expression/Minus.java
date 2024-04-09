@@ -21,6 +21,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Minus<T extends Number> extends UnaryExpression<T> {
 	public Minus(Expression<? extends Number> value) {
@@ -47,12 +48,12 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt i = getChildren().get(0).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong i = getChildren().get(0).upperBound(context);
 		if (i.isPresent()) {
-			int value = i.getAsInt();
-			if (value > 0) return OptionalInt.of(0);
-			return OptionalInt.of(-value);
+			long value = i.getAsLong();
+			if (value > 0) return OptionalLong.of(0);
+			return OptionalLong.of(-value);
 		}
 
 		return super.upperBound(context);

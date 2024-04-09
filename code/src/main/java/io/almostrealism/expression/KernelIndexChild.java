@@ -19,7 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class KernelIndexChild extends Sum<Integer> implements Index {
 	private KernelStructureContext context;
@@ -29,7 +29,7 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	public KernelIndexChild(KernelStructureContext context, DefaultIndex childIndex) {
 		super((Expression)
 						Product.of(new KernelIndex(context),
-							new IntegerConstant(childIndex.getLimit().getAsInt())),
+							new IntegerConstant(Math.toIntExact(childIndex.getLimit().getAsLong()))),
 				childIndex);
 		this.context = context;
 		this.childIndex = childIndex;
@@ -50,25 +50,24 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalInt getLimit() { return OptionalInt.empty(); }
+	public OptionalLong getLimit() { return OptionalLong.empty(); }
 
 	public int kernelIndex(int index) {
-		return index / childIndex.getLimit().getAsInt();
+		return Math.toIntExact(index / childIndex.getLimit().getAsLong());
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		if (context == null) context = this.context;
-		if (context == null)
-			return OptionalInt.empty();
+		if (context == null) return OptionalLong.empty();
 
-		OptionalInt max = context.getKernelMaximum();
-		if (!max.isPresent()) return OptionalInt.empty();
+		OptionalLong max = context.getKernelMaximum();
+		if (!max.isPresent()) return OptionalLong.empty();
 
-		OptionalInt limit = childIndex.getLimit();
-		if (!limit.isPresent()) return OptionalInt.empty();
+		OptionalLong limit = childIndex.getLimit();
+		if (!limit.isPresent()) return OptionalLong.empty();
 
-		return OptionalInt.of(max.getAsInt() * limit.getAsInt() - 1);
+		return OptionalLong.of(max.getAsLong() * limit.getAsLong() - 1);
 	}
 
 	@Override

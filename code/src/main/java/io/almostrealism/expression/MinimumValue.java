@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class MinimumValue extends StaticReference<Double> {
 
@@ -30,8 +31,8 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of(0);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of(0);
 	}
 
 	@Override

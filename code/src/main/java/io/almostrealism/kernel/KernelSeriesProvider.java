@@ -31,6 +31,7 @@ import org.almostrealism.io.TimingMetric;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -55,7 +56,7 @@ public interface KernelSeriesProvider {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 		if (!(index instanceof Expression)) return exp;
 
-		OptionalInt len = index.getLimit();
+		OptionalLong len = index.getLimit();
 
 		if (!len.isPresent()) {
 			len = index.upperBound(
@@ -72,7 +73,7 @@ public interface KernelSeriesProvider {
 		try {
 			if (exp.isKernelValue(new IndexValues().put(index, 0))) {
 				CachedValue<IndexSequence> seq = new CachedValue<>(args -> exp.sequence(index, ((Integer) args[0]).intValue()));
-				int l = len.getAsInt();
+				int l = Math.toIntExact(len.getAsLong());
 
 				if (exp.getType() == Boolean.class) {
 					result = getSeries((Expression) index,

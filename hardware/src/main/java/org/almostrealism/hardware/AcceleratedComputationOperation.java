@@ -46,6 +46,7 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
@@ -118,8 +119,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public boolean isKernelStructureSupported() { return kernelStructureSupported; }
 
 	@Override
-	public OptionalInt getKernelMaximum() {
-		return isFixedCount() ? OptionalInt.of(getCount()) : OptionalInt.empty();
+	public OptionalLong getKernelMaximum() {
+		return isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
 	}
 
 	@Override
@@ -235,7 +236,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 		if ((getKernelMaximum().isPresent() && process.getKernelSize() !=
-					getKernelMaximum().getAsInt()) ||
+					getKernelMaximum().getAsLong()) ||
 				(kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
 					kernelSeriesCache.getMaximumLength().getAsInt())) {
 			throw new UnsupportedOperationException();

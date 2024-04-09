@@ -23,6 +23,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
@@ -50,17 +51,17 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
-		OptionalInt l = getChildren().get(0).upperBound(context);
-		OptionalInt r = getChildren().get(1).upperBound(context);
+		OptionalLong l = getChildren().get(0).upperBound(context);
+		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
-			return OptionalInt.of((int) Math.ceil(l.getAsInt() / (double) r.getAsInt()));
+			return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override
@@ -142,8 +143,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		if (children.get(0) instanceof Index && children.size() == 2) {
 			OptionalInt divisor = children.get(1).intValue();
-			OptionalInt max = ((Index) children.get(0)).getLimit();
-			if (divisor.isPresent() && max.isPresent() && max.getAsInt() <= divisor.getAsInt()) {
+			OptionalLong max = ((Index) children.get(0)).getLimit();
+			if (divisor.isPresent() && max.isPresent() && max.getAsLong() <= divisor.getAsInt()) {
 				return new IntegerConstant(0);
 			}
 		}

@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,12 +61,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		List<OptionalInt> values = getChildren().stream()
+	public OptionalLong upperBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalInt.empty();
-		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(1, (a, b) -> a * b));
+		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
 	}
 
 	@Override
