@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -85,8 +86,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Scope<T> getScope() {
-		Scope<T> scope = super.getScope();
+	public Scope<T> getScope(KernelStructureContext context) {
+		Scope<T> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 

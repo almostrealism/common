@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -42,6 +44,18 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	@Override
 	public boolean isKernelValue(IndexValues values) {
 		return getChildren().get(0).isKernelValue(values);
+	}
+
+	@Override
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt i = getChildren().get(0).upperBound(context);
+		if (i.isPresent()) {
+			int value = i.getAsInt();
+			if (value > 0) return OptionalInt.of(0);
+			return OptionalInt.of(-value);
+		}
+
+		return super.upperBound(context);
 	}
 
 	@Override

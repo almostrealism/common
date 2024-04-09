@@ -22,14 +22,16 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.OptionalInt;
 
 public class KernelIndexChild extends Sum<Integer> implements Index {
+	private KernelStructureContext context;
 	private DefaultIndex childIndex;
 	private boolean renderAlias;
 
-	public KernelIndexChild(DefaultIndex childIndex) {
+	public KernelIndexChild(KernelStructureContext context, DefaultIndex childIndex) {
 		super((Expression)
-						Product.of(new KernelIndex(),
+						Product.of(new KernelIndex(context),
 							new IntegerConstant(childIndex.getLimit().getAsInt())),
 				childIndex);
+		this.context = context;
 		this.childIndex = childIndex;
 	}
 
@@ -44,7 +46,7 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 
 	public KernelIndexChild renderAlias() {
 		setRenderAlias(true);
-		return new KernelIndexChild(childIndex);
+		return new KernelIndexChild(context, childIndex);
 	}
 
 	@Override
@@ -56,6 +58,10 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 
 	@Override
 	public OptionalInt upperBound(KernelStructureContext context) {
+		if (context == null) context = this.context;
+		if (context == null)
+			return OptionalInt.empty();
+
 		OptionalInt max = context.getKernelMaximum();
 		if (!max.isPresent()) return OptionalInt.empty();
 

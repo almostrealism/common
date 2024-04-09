@@ -198,7 +198,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		long start = System.nanoTime();
 		// TODO  Should simplify be after converting arguments to required scopes?
-		scope = c.getScope().simplify(this);
+		scope = c.getScope(this).simplify(this);
 		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
 		scope.convertArgumentsToRequiredScopes();
 		postCompile();

@@ -19,6 +19,7 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
@@ -63,17 +64,17 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		if (enableRepeated) {
 			Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
 			Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
 			scope.setInterval(e(1));
 			scope.setIndex(i);
 			scope.setCondition(i.ref().lessThan(e(iterations)));
-			scope.add(atom.getScope());
+			scope.add(atom.getScope(null));
 			return scope;
 		} else {
-			Scope<Void> atomScope = atom.getScope();
+			Scope<Void> atomScope = atom.getScope(null);
 			atomScope.convertArgumentsToRequiredScopes();
 
 			HybridScope<Void> scope = new HybridScope<>(this);

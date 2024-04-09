@@ -17,11 +17,9 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
@@ -110,7 +108,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		throw new UnsupportedOperationException();
 	}
 

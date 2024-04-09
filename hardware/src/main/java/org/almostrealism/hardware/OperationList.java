@@ -23,6 +23,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -202,7 +203,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		if (!isComputation()) {
 			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
 		}
@@ -212,9 +213,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		if (getDepth() > abortableDepth) {
 			stream().flatMap(c -> Stream.of(c, abort))
-					.map(o -> ((Computation) o).getScope()).forEach(scope::add);
+					.map(o -> ((Computation) o).getScope(null)).forEach(scope::add);
 		} else {
-			stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
+			stream().map(o -> ((Computation) o).getScope(null)).forEach(scope::add);
 		}
 
 		return scope;

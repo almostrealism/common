@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
@@ -129,8 +130,8 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		public boolean isFixedCount() { return true; }
 
 		@Override
-		public Scope<T> getScope() {
-			Scope<T> scope = super.getScope();
+		public Scope<T> getScope(KernelStructureContext context) {
+			Scope<T> scope = super.getScope(context);
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 			for (int i = 0; i < getMemLength(); i++) {

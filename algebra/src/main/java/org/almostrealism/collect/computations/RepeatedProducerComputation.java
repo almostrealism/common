@@ -16,10 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.DefaultIndex;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.relation.Producer;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.TraversableExpression;
@@ -107,7 +106,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	}
 
 	@Override
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		Repeated<T> scope = new Repeated<>(getFunctionName(), getMetadata());
 		scope.setInterval(e(getMemLength()));
 
@@ -118,12 +117,12 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 		getIndexLimit().ifPresent(ref::setLimit);
 		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
 
-		Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
+		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
 		if (initial != null) {
 			for (int j = 0; j < getMemLength(); j++) {
 //				Expression<?> out = getDestination(index, e(0), e(j));
-				Expression<?> out = getDestination(new KernelIndex(), e(0), e(j));
+				Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
 				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
 				scope.getStatements().add(out.assign(val));
 			}
@@ -136,7 +135,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
 //			Expression<?> out = getDestination(index, ref, e(j));
-			Expression<?> out = getDestination(new KernelIndex(), ref, e(j));
+			Expression<?> out = getDestination(new KernelIndex(context), ref, e(j));
 			Expression<?> val = getExpression(index, ref.add(j));
 			body.getStatements().add(out.assign(val));
 		}

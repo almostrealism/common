@@ -21,6 +21,7 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -59,8 +60,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
-	public Scope<Void> getScope() {
-		Scope<Void> scope = super.getScope();
+	public Scope<Void> getScope(KernelStructureContext context) {
+		Scope<Void> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 

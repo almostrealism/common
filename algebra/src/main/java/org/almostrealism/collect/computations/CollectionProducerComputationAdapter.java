@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
@@ -39,8 +40,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	@Override
-	public Scope<O> getScope() {
-		Scope<O> scope = super.getScope();
+	public Scope<O> getScope(KernelStructureContext context) {
+		Scope<O> scope = super.getScope(context);
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {

@@ -18,6 +18,7 @@ package org.almostrealism.graph.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -58,7 +59,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 	}
 
 	@Override
-	public Scope getScope() { return scope; }
+	public Scope getScope(KernelStructureContext context) { return scope; }
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {

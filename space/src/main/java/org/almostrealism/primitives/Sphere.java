@@ -16,6 +16,7 @@
 
 package org.almostrealism.primitives;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
@@ -205,7 +206,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			}
 
 			@Override
-			public Scope<Scalar> getScope() {
+			public Scope<Scalar> getScope(KernelStructureContext context) {
 				Scope<Scalar> s = new Scope();
 
 				// TODO  This is not correct

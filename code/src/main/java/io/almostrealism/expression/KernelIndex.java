@@ -28,14 +28,20 @@ public class KernelIndex extends DefaultIndex {
 
 	private static IndexSequence kernelSeq;
 
+	private KernelStructureContext context;
 	private int axis;
 
 	public KernelIndex() {
-		this(0);
+		this(null);
 	}
 
-	public KernelIndex(int axis) {
+	public KernelIndex(KernelStructureContext context) {
+		this(context, 0);
+	}
+
+	public KernelIndex(KernelStructureContext context, int axis) {
 		super(null);
+		this.context = context;
 		this.axis = axis;
 	}
 
@@ -47,10 +53,15 @@ public class KernelIndex extends DefaultIndex {
 		return lang.kernelIndex(axis);
 	}
 
+	public KernelStructureContext getContext() {
+		return context;
+	}
+
 	public int getKernelAxis() { return axis; }
 
 	@Override
 	public OptionalInt upperBound(KernelStructureContext context) {
+		if (context == null) context = this.context;
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
 	}
 

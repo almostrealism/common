@@ -20,14 +20,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import org.almostrealism.algebra.PolynomialTerm;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import io.almostrealism.code.Constant;
@@ -479,7 +476,7 @@ public class Polynomial extends AbstractSurface {
 			}
 
 			@Override
-			public Scope<Scalar> getScope() {
+			public Scope<Scalar> getScope(KernelStructureContext context) {
 				Scope<Scalar> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));

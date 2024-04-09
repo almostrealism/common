@@ -39,7 +39,9 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	public OptionalInt getLimit() { return limit; }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) { return limit.stream().map(i -> i - 1).findFirst(); }
+	public OptionalInt upperBound(KernelStructureContext context) {
+		return limit.stream().map(i -> i - 1).findFirst();
+	}
 
 	@Override
 	public boolean isKernelValue(IndexValues values) {

@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
@@ -100,7 +101,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	// TODO  They can be extracted from getTrueValueExpression and getFalseValueExpression
 	// TODO  and passed to the HybridScope directly.
 	@Override
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 

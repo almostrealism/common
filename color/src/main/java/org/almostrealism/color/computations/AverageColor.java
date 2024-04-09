@@ -17,11 +17,11 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -71,7 +71,7 @@ public class AverageColor implements ProducerComputation<RGB> {
 	}
 
 	@Override
-	public Scope<RGB> getScope() {
+	public Scope<RGB> getScope(KernelStructureContext context) {
 		throw new RuntimeException("Not implemented");
 	}
 }

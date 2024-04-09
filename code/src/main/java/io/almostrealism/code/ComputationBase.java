@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
@@ -132,7 +133,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	public Variable getOutputVariable() { return null; }
 
 	@Override
-	public Scope<O> getScope() {
+	public Scope<O> getScope(KernelStructureContext context) {
 		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
 		scope.getVariables().addAll(getVariables());
 		return scope;

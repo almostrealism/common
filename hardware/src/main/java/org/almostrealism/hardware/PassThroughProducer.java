@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
@@ -113,8 +114,8 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public Scope<T> getScope() {
-		Scope<T> scope = super.getScope();
+	public Scope<T> getScope(KernelStructureContext context) {
+		Scope<T> scope = super.getScope(context);
 		for (int i = 0; i < getMemLength(); i++) {
 			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i))));
 		}

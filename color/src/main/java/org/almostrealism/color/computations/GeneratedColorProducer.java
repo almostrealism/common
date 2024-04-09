@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -87,7 +88,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
+	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(null); }
 
 	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }

@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Exponent;
@@ -57,7 +58,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope() {
+	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 

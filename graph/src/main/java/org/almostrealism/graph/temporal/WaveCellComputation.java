@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -62,5 +63,5 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	public ArrayVariable getDuration() { return getArgument(7, 2); }
 
 	@Override
-	public Scope getScope() { return scope == null ? super.getScope() : scope; }
+	public Scope getScope(KernelStructureContext context) { return scope == null ? super.getScope(context) : scope; }
 }

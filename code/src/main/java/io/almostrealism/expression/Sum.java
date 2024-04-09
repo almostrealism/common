@@ -48,7 +48,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		List<OptionalInt> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalInt.empty();
+		if (values.size() != getChildren().size())
+			return OptionalInt.empty();
 		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(0, (a, b) -> a + b));
 	}
 
@@ -212,7 +213,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			if (!r.isPresent()) break i;
 
 			if (v.getAsInt() == r.getAsInt()) {
-				return (Expression) new KernelIndexChild(idx);
+				return (Expression) new KernelIndexChild(((KernelIndex) args.get(index[0])).getContext(), idx);
 			}
 		}
 

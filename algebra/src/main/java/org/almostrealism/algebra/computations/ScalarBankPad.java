@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
@@ -42,7 +43,7 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	}
 
 	@Override
-	public Scope<PackedCollection<Scalar>> getScope() {
+	public Scope<PackedCollection<Scalar>> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection<Scalar>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 

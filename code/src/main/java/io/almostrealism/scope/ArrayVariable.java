@@ -19,7 +19,6 @@ package io.almostrealism.scope;
 import io.almostrealism.code.Array;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
@@ -193,7 +192,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {
-			KernelIndex idx = new KernelIndex(kernelIndex);
+			KernelIndex idx = new KernelIndex(null, kernelIndex);
 			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);

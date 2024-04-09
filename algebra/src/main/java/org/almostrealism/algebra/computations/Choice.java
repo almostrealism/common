@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -41,7 +42,7 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		this.choiceCount = choiceCount;
 	}
 
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 		Consumer<String> code = scope.code();

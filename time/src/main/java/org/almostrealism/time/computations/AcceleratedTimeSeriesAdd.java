@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -46,7 +47,7 @@ public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<Accele
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression<?> bank1 = getArgument(0).valueAt(1);

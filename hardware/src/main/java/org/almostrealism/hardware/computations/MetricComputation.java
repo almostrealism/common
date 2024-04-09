@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Metric;
@@ -39,8 +40,8 @@ public class MetricComputation<T> extends OperationComputationAdapter<T> {
 	}
 
 	@Override
-	public Scope<Void> getScope() {
-		Scope<Void> scope = super.getScope();
+	public Scope<Void> getScope(KernelStructureContext context) {
+		Scope<Void> scope = super.getScope(context);
 		Metric metric = new Metric(getArgument(0, 1).ref(0), logFrequency);
 		metric.addMonitoredVariable(message, getArgument(1, memLength).ref(pos));
 		scope.getMetrics().add(metric);

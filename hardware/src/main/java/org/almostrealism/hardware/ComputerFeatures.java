@@ -43,7 +43,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 
 		if (v.getProducer() instanceof Countable ||
 				(v.getProducer() instanceof KernelSupport)) {
-			KernelIndex idx = new KernelIndex(kernelIndex);
+			KernelIndex idx = new KernelIndex(null, kernelIndex);
 			Expression dim = new StaticReference(Integer.class, getVariableDimName(v, kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);

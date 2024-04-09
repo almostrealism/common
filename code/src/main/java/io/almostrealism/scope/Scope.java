@@ -414,7 +414,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 						return Collections.singletonList(arg);
 					}
 
-					Scope s = computation.getScope();
+					Scope s = computation.getScope(null);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);
 					}

@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Parent;
@@ -174,7 +175,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			}
 
 			@Override
-			public Scope<T> getScope() {
+			public Scope<T> getScope(KernelStructureContext context) {
 				throw new UnsupportedOperationException();
 			}
 
