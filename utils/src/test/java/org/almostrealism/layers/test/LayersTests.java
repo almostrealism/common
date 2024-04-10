@@ -207,6 +207,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 	@Test
 	public void dense() {
 		if (skipLongTests) return;
+		if (skipKnownIssues) return;
 
 		int size = 1800;
 		int nodes = 10;

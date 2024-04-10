@@ -22,7 +22,7 @@ public interface TestSettings {
 	boolean enableArgumentCountAssertions = false;
 
 	boolean skipLongTests = TestUtils.getSkipLongTests();
-	boolean skipKnownIssues = TestUtils.getSkipLongTests();
+	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
 	boolean trainingTests = TestUtils.getTrainTests();
 
 	default boolean testProfileIs(String profile) {

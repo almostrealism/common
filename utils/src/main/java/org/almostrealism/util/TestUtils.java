@@ -38,6 +38,12 @@ public class TestUtils implements TestSettings {
 		return !SystemUtils.isEnabled("AR_LONG_TESTS").orElse(true);
 	}
 
+	public static boolean getSkipKnownIssues() {
+		if (Objects.equals(getTestProfile(), PIPELINE)) return true;
+
+		return !SystemUtils.isEnabled("AR_KNOWN_ISSUES").orElse(true);
+	}
+
 	public static boolean getTrainTests() {
 		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
 

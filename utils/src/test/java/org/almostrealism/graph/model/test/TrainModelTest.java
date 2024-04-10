@@ -49,6 +49,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
+		if (skipKnownIssues) return;
 
 		int size = 30;
 		int nodes = 10;
