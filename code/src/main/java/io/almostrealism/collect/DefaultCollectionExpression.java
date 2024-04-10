@@ -17,6 +17,8 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
+import io.almostrealism.kernel.ExpressionMatrix;
 
 import java.util.function.Function;
 
@@ -41,6 +43,21 @@ public class DefaultCollectionExpression extends CollectionExpressionBase {
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return (Expression) valueAt.apply(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		Expression<?> column[] = indices.allColumnsMatch();
+		if (column != null) {
+			// TODO
+			throw new RuntimeException("localIndex is irrelevant");
+		}
+
+		ExpressionMatrix<Double> values = indices.apply(globalIndex, localIndex, this::getValueAt);
+		Expression<?> result = values.uniqueNonZeroIndex(globalIndex);
+
+		return result;
 	}
 
 	public static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {

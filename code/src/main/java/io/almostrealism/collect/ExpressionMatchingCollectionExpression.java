@@ -19,10 +19,13 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.scope.Variable;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -53,6 +56,27 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	public Expression<Double> getValueAt(Expression index) {
 		Expression<Boolean> comparison = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
 		return conditional(comparison, positive.getValueAt(index), negative.getValueAt(index));
+	}
+
+	@Override
+	public Expression<Integer> uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		ExpressionMatrix<Boolean> comparison = indices.apply(i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
+
+		Expression<Boolean> allMatch = comparison.allMatch();
+		if (allMatch != null) {
+			Optional<Boolean> alt = allMatch.booleanValue();
+
+			if (alt.isPresent()) {
+				if (alt.get()) {
+					return positive.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+				} else {
+					return negative.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+				}
+			}
+		}
+
+		return null;
 	}
 
 	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {

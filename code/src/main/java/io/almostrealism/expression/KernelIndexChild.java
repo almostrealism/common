@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+// TODO  Move to kernel package
 public class KernelIndexChild extends Sum<Integer> implements Index {
 	private KernelStructureContext context;
 	private DefaultIndex childIndex;

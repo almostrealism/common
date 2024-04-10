@@ -19,6 +19,7 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IndexValues;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.util.ArrayItem;
 
@@ -100,6 +101,16 @@ public class IndexSequence extends ArrayItem<Number> {
 		}
 
 		return granularity;
+	}
+
+	public Expression<? extends Number> getExpression(Index index) {
+		if (isConstant()) {
+			return new IntegerConstant(single().intValue());
+		} else if (index instanceof Expression && IntStream.range(0, length()).allMatch(i -> valueAt(i).doubleValue() == i)) {
+			return (Expression<? extends Number>) index;
+		} else {
+			return null;
+		}
 	}
 
 	public String signature() {

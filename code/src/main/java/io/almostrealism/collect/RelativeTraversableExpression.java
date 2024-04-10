@@ -17,13 +17,16 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 
+import java.util.List;
 import java.util.function.IntFunction;
+import java.util.stream.Collectors;
 
 public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
 	private final TraversalPolicy shape;
 	private final TraversableExpression<T> expression;
-	private final Expression offset;
+	private final Expression<?> offset;
 
 	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression,
 										 IntFunction<Expression> offset) {
@@ -71,6 +74,30 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 			return expression.getValueRelative(index);
 		} else {
 			return expression.getValueAt(offset.add(index));
+		}
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return expression.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression targetIndex) {
+		if (expression.isRelative()) {
+			return expression.uniqueNonZeroIndexRelative(localIndex, targetIndex);
+		} else {
+			List<Index> indices = offset.children()
+					.filter(c -> c instanceof Index)
+					.map(c -> (Index) c)
+					.collect(Collectors.toList());
+			if (indices.isEmpty()) {
+				return null;
+			} else if (indices.size() > 1) {
+				throw new UnsupportedOperationException();
+			}
+
+			return expression.uniqueNonZeroIndex(indices.get(0), localIndex, offset.add(targetIndex));
 		}
 	}
 

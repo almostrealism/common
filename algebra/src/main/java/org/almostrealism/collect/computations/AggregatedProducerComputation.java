@@ -21,11 +21,15 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.DefaultIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -37,6 +41,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public static boolean enableTransitiveDelta = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
+	private boolean replaceLoop;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
@@ -45,6 +50,37 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
+	}
+
+	public boolean isReplaceLoop() {
+		return replaceLoop;
+	}
+
+	public void setReplaceLoop(boolean replaceLoop) {
+		this.replaceLoop = replaceLoop;
+	}
+
+	@Override
+	public Scope<T> getScope(KernelStructureContext context) {
+		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty()) return super.getScope(context);
+
+		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
+
+		DefaultIndex ref = new DefaultIndex(getVariablePrefix() + "_i");
+		getIndexLimit().ifPresent(ref::setLimit);
+
+		Expression index = new KernelIndex(context)
+				.divide(e(getShape().getSize()))
+				.multiply(e(getShape().getSize()));
+
+		TraversableExpression arg = getTraversableArguments(index)[1];
+		Expression uniqueIndex = arg.uniqueNonZeroIndexRelative(ref, ref);
+		if (uniqueIndex == null) return super.getScope(context);
+
+		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
+		Expression<?> val = arg.getValueAt(uniqueIndex);
+		scope.getStatements().add(out.assign(val));
+		return scope;
 	}
 
 	@Override

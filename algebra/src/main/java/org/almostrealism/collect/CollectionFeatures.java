@@ -820,10 +820,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
+		AggregatedProducerComputation<T> sum = new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> e(0.0),
 				(out, arg) -> out.add(arg),
 				(Supplier) input);
+		sum.setReplaceLoop(true);
+		return sum;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid(Producer<T> input) {

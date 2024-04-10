@@ -21,6 +21,7 @@ import io.almostrealism.kernel.SequenceGenerator;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+// TODO  Move to kernel package
 public interface Index extends SequenceGenerator {
 	String getName();
 

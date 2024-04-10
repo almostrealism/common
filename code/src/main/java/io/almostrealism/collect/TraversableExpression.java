@@ -18,7 +18,9 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -35,6 +37,14 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 
 	default Expression<T> getValueRelative(Expression index) {
 		return getValueAt(index);
+	}
+
+	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return null;
+	}
+
+	default Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return uniqueNonZeroIndex(new KernelIndex(), localIndex, targetIndex);
 	}
 
 	default boolean isTraversable() {

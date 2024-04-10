@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+// TODO  Move to kernel package
 public class IndexValues {
 	private Integer kernelIndex;
 	private Map<String, Integer> values;

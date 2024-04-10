@@ -23,6 +23,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+// TODO  Move to kernel package
 public class KernelIndex extends DefaultIndex {
 	public static boolean enableSimplification = true;
 

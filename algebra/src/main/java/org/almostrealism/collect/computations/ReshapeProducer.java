@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -43,7 +44,7 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle {
-	public static boolean enableOptimization = true;
+	public static boolean enableOptimization = false;
 
 	private TraversalPolicy shape;
 	private int traversalAxis;
@@ -158,6 +159,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return producer instanceof TraversableExpression ?
+				((TraversableExpression) producer).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex) :
+				TraversableExpression.super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return producer instanceof TraversableExpression ?
+				((TraversableExpression) producer).uniqueNonZeroIndexRelative(localIndex, targetIndex) :
+				TraversableExpression.super.uniqueNonZeroIndexRelative(localIndex, targetIndex);
 	}
 
 	@Override

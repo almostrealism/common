@@ -121,7 +121,6 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 
 		if (initial != null) {
 			for (int j = 0; j < getMemLength(); j++) {
-//				Expression<?> out = getDestination(index, e(0), e(j));
 				Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
 				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
 				scope.getStatements().add(out.assign(val));
@@ -134,7 +133,6 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 
 		Scope<T> body = new Scope<>(getFunctionName() + "_body", bodyMetadata);
 		for (int j = 0; j < getMemLength(); j++) {
-//			Expression<?> out = getDestination(index, ref, e(j));
 			Expression<?> out = getDestination(new KernelIndex(context), ref, e(j));
 			Expression<?> val = getExpression(index, ref.add(j));
 			body.getStatements().add(out.assign(val));

@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+// TODO  Move to kernel package
 public class DefaultIndex extends StaticReference<Integer> implements Index {
 	private OptionalLong limit;
 
@@ -37,7 +38,18 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
 
 	@Override
-	public OptionalLong getLimit() { return limit; }
+	public OptionalLong getLimit() {
+		if (limit.isPresent()) {
+			return limit;
+		}
+
+		OptionalLong upperBound = upperBound(null);
+		if (upperBound.isPresent()) {
+			return OptionalLong.of(upperBound.getAsLong() + 1);
+		}
+
+		return OptionalLong.empty();
+	}
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {

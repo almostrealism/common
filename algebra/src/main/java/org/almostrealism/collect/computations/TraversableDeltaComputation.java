@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.expression.Index;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -118,6 +119,16 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return getExpression(new IntegerConstant(0)).uniqueNonZeroIndexRelative(localIndex, targetIndex);
 	}
 
 	@Override
