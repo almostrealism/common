@@ -20,6 +20,7 @@ import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
@@ -109,16 +110,8 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return ExpressionMatchingCollectionExpression.create(
-				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				new ConstantCollectionExpression(target.getShape(), this),
 				target, e(1), e(0));
-
-//		if (getReferent() instanceof CollectionExpression) {
-//			return ExpressionMatchingCollectionExpression.create(
-//					target, (CollectionExpression) getReferent(),
-//					getIndex(), e(1), e(0));
-//		} else {
-//			return DefaultCollectionExpression.create(target.getShape(), idx -> e(0));
-//		}
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {
