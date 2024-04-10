@@ -17,25 +17,25 @@
 package io.almostrealism.relation;
 
 public class ParallelProcessContext implements ProcessContext, Countable {
-	private long count;
+	private long parallelism;
 	private boolean fixed;
 
-	protected ParallelProcessContext(long count, boolean fixed) {
-		this.count = count;
+	protected ParallelProcessContext(long parallelism, boolean fixed) {
+		this.parallelism = parallelism;
 		this.fixed = fixed;
 	}
 
 	@Override
-	public long getCountLong() { return count; }
+	public long getCountLong() { return parallelism; }
 
 	@Override
 	public boolean isFixedCount() { return fixed; }
 
-	public static ParallelProcessContext of(Countable c) {
-		return new ParallelProcessContext(c.getCountLong(), c.isFixedCount());
+	public static ParallelProcessContext of(ParallelProcess c) {
+		return new ParallelProcessContext(c.getParallelism(), c.isFixedCount());
 	}
 
-	public static ParallelProcessContext of(ProcessContext ctx, Countable c) {
+	public static ParallelProcessContext of(ProcessContext ctx, ParallelProcess c) {
 		if (ctx instanceof ParallelProcessContext) {
 			ParallelProcessContext pctx = (ParallelProcessContext) ctx;
 

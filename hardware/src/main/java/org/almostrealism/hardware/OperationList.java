@@ -276,7 +276,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
 		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
 
-		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.countLong(get(i - 1)) == ParallelProcess.countLong(get(i)));
+		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
 		if (!match) return ParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
@@ -285,7 +285,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		for (int i = 0; i < size(); i++) {
 			Supplier<Runnable> o = get(i);
-			long count = ParallelProcess.countLong(o);
+			long count = Countable.countLong(o);
 
 			if (currentCount == -1 || currentCount == count) {
 				current.add(o);

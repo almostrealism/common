@@ -26,4 +26,24 @@ public interface Countable {
 	default boolean isFixedCount() {
 		return true;
 	}
+
+	static <T> int count(T c) {
+		return Math.toIntExact(countLong(c));
+	}
+
+	static <T> long countLong(T c) {
+		if (c instanceof Countable) {
+			return ((Countable) c).getCountLong();
+		}
+
+		return 1;
+	}
+
+	static <T> boolean isFixedCount(T c) {
+		if (c instanceof Countable) {
+			return ((Countable) c).isFixedCount();
+		}
+
+		return true;
+	}
 }

@@ -24,6 +24,7 @@ import io.almostrealism.expression.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.util.FrequencyCache;
@@ -164,8 +165,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	public Console console() { return Hardware.console; }
 
 	public static KernelSeriesCache create(Computation<?> c, Function<MemoryData, ArrayVariable<?>> variableFactory) {
-		int count = ParallelProcess.count(c);
-		boolean fixed = ParallelProcess.isFixedCount(c);
+		int count = Countable.count(c);
+		boolean fixed = Countable.isFixedCount(c);
 		return new KernelSeriesCache(count, fixed,
 				(enableCache && fixed && count < maxCount) ?
 						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);

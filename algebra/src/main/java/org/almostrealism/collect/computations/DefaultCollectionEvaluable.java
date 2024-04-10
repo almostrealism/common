@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.collect.CollectionEvaluable;
 import org.almostrealism.collect.PackedCollection;
@@ -51,7 +52,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 	public T createDestination(int len) {
 		TraversalPolicy shape;
 
-		if (ParallelProcess.isFixedCount(getComputation())) {
+		if (Countable.isFixedCount(getComputation())) {
 			shape = this.shape;
 		} else {
 			int count = len / this.shape.getCount();

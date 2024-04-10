@@ -80,7 +80,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 					.collect(Collectors.toList()));
 		}
 
-		long counts[] = children.stream().mapToLong(ParallelProcess::countLong).filter(v -> v != 0).distinct().toArray();
+		long counts[] = children.stream().mapToLong(ParallelProcess::parallelism).filter(v -> v != 0).distinct().toArray();
 		long cn = getCountLong();
 		long p = counts.length;
 		long tot = LongStream.of(counts).sum();
@@ -105,28 +105,20 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
 	}
 
+	default long getParallelism() {
+		return getCountLong();
+	}
+
 	default boolean isUniform() {
-		long p = getChildren().stream().mapToLong(ParallelProcess::countLong).distinct().count();
+		long p = getChildren().stream().mapToLong(ParallelProcess::parallelism).distinct().count();
 		return p == 1;
 	}
 
-	static <T> int count(T c) {
-		return Math.toIntExact(countLong(c));
-	}
-
-	static <T> long countLong(T c) {
-		if (c instanceof Countable) {
-			return ((Countable) c).getCountLong();
+	static <T> long parallelism(T c) {
+		if (c instanceof ParallelProcess) {
+			return ((ParallelProcess) c).getParallelism();
 		}
 
 		return 1;
-	}
-
-	static <T> boolean isFixedCount(T c) {
-		if (c instanceof Countable) {
-			return ((Countable) c).isFixedCount();
-		}
-
-		return true;
 	}
 }

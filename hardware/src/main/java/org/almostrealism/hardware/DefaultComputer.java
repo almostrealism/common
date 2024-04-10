@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.mem.Heap;
@@ -43,8 +44,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	@Override
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
-		long count = ParallelProcess.countLong(c);
-		boolean fixed = ParallelProcess.isFixedCount(c);
+		long count = Countable.countLong(c);
+		boolean fixed = Countable.isFixedCount(c);
 		boolean sequential = fixed && count == 1;
 		boolean accelerator = !fixed || count > 128;
 		List<ComputeContext<MemoryData>> contexts = hardware

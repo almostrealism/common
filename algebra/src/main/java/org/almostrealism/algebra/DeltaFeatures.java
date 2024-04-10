@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Parent;
@@ -53,7 +54,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 																			 ComputationBase<T, T, Evaluable<T>> producer,
 																			 Producer<?> input) {
 		if (enableInputStub) {
-			CollectionProducerComputation<?> inputStub = inputStub(inputShape, ParallelProcess.isFixedCount(input));
+			CollectionProducerComputation<?> inputStub = inputStub(inputShape, Countable.isFixedCount(input));
 			ComputationBase delta = (ComputationBase) ((CollectionProducer) replaceInput(producer, input, inputStub)).delta(inputStub);
 			// return (CollectionProducer<T>) replaceInput(delta, inputStub, input);
 			return (CollectionProducer) delta;

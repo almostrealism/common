@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
@@ -76,7 +77,7 @@ public class OperationOptimizationTests implements TestFeatures {
 		matrix.fill(pos -> Math.random());
 
 		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
-		System.out.println(ParallelProcess.count(loop));
+		System.out.println(Countable.count(loop));
 	}
 
 	@Test

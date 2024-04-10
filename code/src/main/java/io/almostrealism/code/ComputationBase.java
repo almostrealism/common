@@ -42,10 +42,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 	@Override
 	public long getCountLong() {
-		long p = getInputs().stream().mapToLong(ParallelProcess::countLong).distinct().count();
+		long p = getInputs().stream().mapToLong(Countable::countLong).distinct().count();
 
 		if (p == 1) {
-			return getInputs().stream().mapToLong(ParallelProcess::countLong).distinct().sum();
+			return getInputs().stream().mapToLong(Countable::countLong).distinct().sum();
 		}
 
 		throw new UnsupportedOperationException();

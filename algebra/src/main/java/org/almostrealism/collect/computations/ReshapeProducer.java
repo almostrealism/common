@@ -20,9 +20,11 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducer;
@@ -41,6 +43,8 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle {
+	public static boolean enableOptimization = true;
+
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -70,11 +74,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public long getParallelism() {
+		if (producer instanceof ParallelProcess) {
+			return ((ParallelProcess) producer).getParallelism();
+		}
+
+		return 1;
+	}
+
+	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public boolean isFixedCount() {
-		return ParallelProcess.isFixedCount(producer);
+		return Countable.isFixedCount(producer);
 	}
 
 	@Override
@@ -89,6 +102,17 @@ public class ReshapeProducer<T extends Shape<T>>
 		return shape == null ?
 				new ReshapeProducer<>(traversalAxis, (Producer<T>) children.get(0)) :
 				new ReshapeProducer<>(shape, (Producer<T>) children.get(0));
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+		if (enableOptimization) return ParallelProcess.super.optimize(ctx);
+
+		if (producer instanceof Process) {
+			return generate(List.of(((Process) producer).optimize(ctx)));
+		}
+
+		return this;
 	}
 
 	@Override

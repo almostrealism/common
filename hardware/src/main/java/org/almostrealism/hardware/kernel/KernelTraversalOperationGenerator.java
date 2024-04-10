@@ -25,6 +25,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
@@ -153,8 +154,8 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	}
 
 	public static KernelTraversalOperationGenerator create(Computation<?> c, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
-		int count = ParallelProcess.count(c);
-		boolean fixed = ParallelProcess.isFixedCount(c);
+		int count = Countable.count(c);
+		boolean fixed = Countable.isFixedCount(c);
 		return new KernelTraversalOperationGenerator(count, fixed, variableFactory);
 	}
 }
