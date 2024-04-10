@@ -85,8 +85,8 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 			CollectionExpression reference, CollectionExpression compareTo,
 			Expression<?> positive, Expression<?> negative) {
 		return create(reference, compareTo,
-				DefaultCollectionExpression.create(reference.getShape(), idx -> positive),
-				DefaultCollectionExpression.create(reference.getShape(), idx -> negative));
+				new ConstantCollectionExpression(reference.getShape(), positive),
+				new ConstantCollectionExpression(reference.getShape(), negative));
 	}
 
 	public static CollectionExpression create(
