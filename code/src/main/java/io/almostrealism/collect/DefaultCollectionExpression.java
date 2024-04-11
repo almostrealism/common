@@ -56,8 +56,11 @@ public class DefaultCollectionExpression extends CollectionExpressionBase {
 
 		ExpressionMatrix<Double> values = indices.apply(globalIndex, localIndex, this::getValueAt);
 		Expression<?> result = values.uniqueNonZeroIndex(globalIndex);
+		if (result == null) return null;
 
-		return result;
+		return ((Expression) globalIndex)
+				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
+				.add(result);
 	}
 
 	public static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
