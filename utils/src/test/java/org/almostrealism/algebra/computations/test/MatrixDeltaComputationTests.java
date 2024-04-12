@@ -282,7 +282,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	@Test
 	public void matmulLarge2() {
 		if (skipLongTests) return;
-		if (skipKnownIssues) return;
 		matmal(392, 10, true);
 	}
 
@@ -345,7 +344,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProductOptimized() {
-		if (skipLongTests) return;
 		matmulEnumerateProduct(true);
 	}
 

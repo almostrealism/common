@@ -45,7 +45,6 @@ import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
 
@@ -201,7 +200,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope(this).simplify(this);
 		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
-		scope.convertArgumentsToRequiredScopes();
+		scope.convertArgumentsToRequiredScopes(this);
 		postCompile();
 		return scope;
 	}

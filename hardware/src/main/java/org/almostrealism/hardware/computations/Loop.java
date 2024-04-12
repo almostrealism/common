@@ -71,11 +71,11 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 			scope.setInterval(e(1));
 			scope.setIndex(i);
 			scope.setCondition(i.ref().lessThan(e(iterations)));
-			scope.add(atom.getScope(null));
+			scope.add(atom.getScope(context));
 			return scope;
 		} else {
-			Scope<Void> atomScope = atom.getScope(null);
-			atomScope.convertArgumentsToRequiredScopes();
+			Scope<Void> atomScope = atom.getScope(context);
+			atomScope.convertArgumentsToRequiredScopes(context);
 
 			HybridScope<Void> scope = new HybridScope<>(this);
 			scope.setMetadata(getMetadata());

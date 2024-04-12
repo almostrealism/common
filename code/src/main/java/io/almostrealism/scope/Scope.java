@@ -344,7 +344,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
-	public List<String> convertArgumentsToRequiredScopes() {
+	public List<String> convertArgumentsToRequiredScopes(KernelStructureContext context) {
 		if (this.arguments != null) {
 			return Collections.emptyList();
 		}
@@ -358,7 +358,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		// is coincidentally in the correct order
 
 		List<String> convertedScopes = new ArrayList<>();
-		stream().map(Scope::convertArgumentsToRequiredScopes)
+		stream().map(tScope -> tScope.convertArgumentsToRequiredScopes(context))
 				.flatMap(List::stream).forEach(convertedScopes::add);
 
 		List<Argument<?>> args = new ArrayList<>();
@@ -414,7 +414,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 						return Collections.singletonList(arg);
 					}
 
-					Scope s = computation.getScope(null);
+					Scope s = computation.getScope(context);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);
 					}
@@ -434,7 +434,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					// Recursively convert the required Scope's arguments
 					// into required scopes themselves
 					// s.convertArgumentsToRequiredScopes();
-					convertedScopes.addAll(s.convertArgumentsToRequiredScopes());
+					convertedScopes.addAll(s.convertArgumentsToRequiredScopes(context));
 
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method

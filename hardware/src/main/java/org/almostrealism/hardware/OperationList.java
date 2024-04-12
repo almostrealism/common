@@ -213,9 +213,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		if (getDepth() > abortableDepth) {
 			stream().flatMap(c -> Stream.of(c, abort))
-					.map(o -> ((Computation) o).getScope(null)).forEach(scope::add);
+					.map(o -> ((Computation) o).getScope(context)).forEach(scope::add);
 		} else {
-			stream().map(o -> ((Computation) o).getScope(null)).forEach(scope::add);
+			stream().map(o -> ((Computation) o).getScope(context)).forEach(scope::add);
 		}
 
 		return scope;

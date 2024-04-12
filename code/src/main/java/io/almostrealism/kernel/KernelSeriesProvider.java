@@ -64,7 +64,7 @@ public interface KernelSeriesProvider {
 					.stream().map(i -> i + 1).findFirst();
 		}
 
-		if (!len.isPresent()) return exp;
+		if (!len.isPresent() || len.getAsLong() > Integer.MAX_VALUE) return exp;
 
 		long start = System.nanoTime();
 

@@ -26,6 +26,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -172,6 +173,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
 				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
 		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {

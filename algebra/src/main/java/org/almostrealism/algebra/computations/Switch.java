@@ -62,7 +62,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 		IntStream.range(0, choices.size()).forEach(i -> {
 			double val = (i + 1) * interval;
 			scope.getConditions().add(decisionValue.valueAt(0).lessThanOrEqual(e(val)));
-			scope.getChildren().add(choices.get(i).getScope(null));
+			scope.getChildren().add(choices.get(i).getScope(context));
 		});
 
 		return scope;

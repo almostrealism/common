@@ -40,6 +40,7 @@ public class TestUtils implements TestSettings {
 
 	public static boolean getSkipKnownIssues() {
 		if (Objects.equals(getTestProfile(), PIPELINE)) return true;
+		if (getSkipLongTests()) return true;
 
 		return !SystemUtils.isEnabled("AR_KNOWN_ISSUES").orElse(true);
 	}

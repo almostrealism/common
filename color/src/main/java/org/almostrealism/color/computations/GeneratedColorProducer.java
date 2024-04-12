@@ -88,7 +88,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(null); }
+	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }

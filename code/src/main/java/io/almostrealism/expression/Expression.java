@@ -305,7 +305,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
 	public Expression<Integer> imod(long operand) {
 		if (operand > Integer.MAX_VALUE) {
-			return mod(new DoubleConstant((double) operand), true).toInt();
+			// return mod(new DoubleConstant((double) operand), true).toInt();
+			throw new UnsupportedOperationException();
 		} else {
 			return imod((int) operand);
 		}

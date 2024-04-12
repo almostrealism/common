@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 
 public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
-	public static int isolationCountThreshold = Integer.MAX_VALUE;
+	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 

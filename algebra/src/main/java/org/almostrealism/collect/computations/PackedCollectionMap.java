@@ -239,5 +239,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 			super(shape, expression, args);
 		}
+
+		@Override
+		public boolean isFixedCount() {
+			return false;
+		}
 	}
 }
