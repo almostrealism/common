@@ -16,10 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;

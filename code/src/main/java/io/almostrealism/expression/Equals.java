@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;

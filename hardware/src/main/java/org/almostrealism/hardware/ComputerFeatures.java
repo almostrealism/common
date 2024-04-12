@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.ArrayVariable;

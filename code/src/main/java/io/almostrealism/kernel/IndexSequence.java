@@ -17,10 +17,7 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.util.ArrayItem;
 
 import java.nio.ByteBuffer;

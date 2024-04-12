@@ -20,7 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Process;

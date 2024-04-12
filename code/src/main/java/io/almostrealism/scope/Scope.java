@@ -27,7 +27,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArrayDeclaration;
-import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;

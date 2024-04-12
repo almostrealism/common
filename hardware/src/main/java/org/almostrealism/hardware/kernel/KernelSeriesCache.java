@@ -20,7 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;

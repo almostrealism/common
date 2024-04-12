@@ -18,7 +18,6 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
@@ -26,7 +25,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;

@@ -14,13 +14,14 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
+
+import io.almostrealism.expression.Expression;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-// TODO  Move to kernel package
 public class IndexValues {
 	private Integer kernelIndex;
 	private Map<String, Integer> values;

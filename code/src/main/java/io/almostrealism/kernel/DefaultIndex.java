@@ -14,15 +14,13 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
-// TODO  Move to kernel package
 public class DefaultIndex extends StaticReference<Integer> implements Index {
 	private OptionalLong limit;
 

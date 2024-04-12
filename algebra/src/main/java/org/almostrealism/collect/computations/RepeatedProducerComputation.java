@@ -16,8 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.DefaultIndex;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationMetadata;

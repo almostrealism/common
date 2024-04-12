@@ -14,14 +14,16 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
-// TODO  Move to kernel package
 public class KernelIndexChild extends Sum<Integer> implements Index {
 	private KernelStructureContext context;
 	private DefaultIndex childIndex;

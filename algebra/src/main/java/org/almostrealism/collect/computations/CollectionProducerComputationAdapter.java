@@ -18,7 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;

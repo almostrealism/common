@@ -19,7 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.scope.Variable;

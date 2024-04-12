@@ -17,8 +17,6 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IntegerConstant;
 
 import java.util.OptionalDouble;
 import java.util.function.Function;

@@ -19,17 +19,14 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesMatcher;
-import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.Arrays;
 
 public class KernelSeriesTests implements ExpressionFeatures {
 	private static LanguageOperations lang = new LanguageOperationsStub();

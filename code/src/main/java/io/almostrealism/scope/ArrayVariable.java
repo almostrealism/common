@@ -18,7 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.expression.Constant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;

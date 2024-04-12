@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.ExpressionMatrix;
 
 import java.util.function.Function;

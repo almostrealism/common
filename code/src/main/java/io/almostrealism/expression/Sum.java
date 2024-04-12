@@ -19,6 +19,10 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 

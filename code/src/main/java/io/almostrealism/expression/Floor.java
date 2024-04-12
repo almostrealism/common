@@ -16,12 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Floor extends Expression<Double> {

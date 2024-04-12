@@ -16,9 +16,6 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
-
 import java.util.OptionalLong;
 
 public interface SequenceGenerator {

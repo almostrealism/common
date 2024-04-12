@@ -20,7 +20,6 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;

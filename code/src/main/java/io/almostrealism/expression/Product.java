@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -26,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;

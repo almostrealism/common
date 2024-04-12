@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;

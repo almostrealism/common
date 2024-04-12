@@ -14,16 +14,14 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
-// TODO  Move to kernel package
 public class KernelIndex extends DefaultIndex {
 	public static boolean enableSimplification = true;
 

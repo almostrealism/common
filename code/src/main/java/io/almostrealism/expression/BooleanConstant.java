@@ -16,11 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Optional;
-import java.util.stream.IntStream;
 
 public class BooleanConstant extends Constant<Boolean> {
 	private boolean value;

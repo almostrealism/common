@@ -16,7 +16,9 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;

@@ -18,14 +18,9 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Delegated;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
-
-import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
 
