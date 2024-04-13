@@ -67,7 +67,7 @@ public interface KernelSeriesProvider {
 		Expression result = null;
 
 		try {
-			if (exp.isKernelValue(new IndexValues().put(index, 0))) {
+			if (exp.isValue(new IndexValues().put(index, 0))) {
 				CachedValue<IndexSequence> seq = new CachedValue<>(args -> exp.sequence(index, ((Integer) args[0]).intValue()));
 				int l = Math.toIntExact(len.getAsLong());
 

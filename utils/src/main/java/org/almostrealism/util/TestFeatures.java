@@ -158,6 +158,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void initKernelMetrics() {
 		HardwareOperator.profile = new OperationProfile("HardwareOperator",
 				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		AcceleratedComputationOperation.clearTimes();
 	}
 
 	default void logKernelMetrics() {

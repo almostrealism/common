@@ -104,7 +104,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public boolean isMasked() { return false; }
 	public boolean isSingleIndex() { return false; }
 	public boolean isSingleIndexMasked() { return isMasked() && getChildren().get(0).isSingleIndex(); }
-	public boolean isKernelValue(IndexValues values) { return false; }
+	public boolean isValue(IndexValues values) { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
@@ -117,6 +117,16 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Expression<T> withValue(String name, Number value) {
 		return generate(getChildren().stream()
 				.map(e -> e.withValue(name, value))
+				.collect(Collectors.toList()));
+	}
+
+	public Expression<T> withIndex(Index index, Expression<?> e) {
+		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
+			return (Expression) e;
+		}
+
+		return generate(getChildren().stream()
+				.map(c -> c.withIndex(index, e))
 				.collect(Collectors.toList()));
 	}
 
@@ -170,7 +180,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	@Override
 	public IndexSequence sequence(Index index, int len) {
-		if (!isKernelValue(new IndexValues().put(index, 0))) {
+		if (!isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
@@ -400,7 +410,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 						.orElse(indices.stream().findFirst().orElse(null));
 			}
 
-			if (target == null || simplified[i].isKernelValue(new IndexValues().put(target, 0))) {
+			if (target == null || simplified[i].isValue(new IndexValues().put(target, 0))) {
 				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}

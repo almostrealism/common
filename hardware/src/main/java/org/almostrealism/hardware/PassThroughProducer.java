@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
@@ -163,6 +164,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return null;
 	}
 
 	@Override

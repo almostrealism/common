@@ -43,7 +43,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) { return true; }
+	public boolean isValue(IndexValues values) { return true; }
 
 	@Override
 	public KernelSeries kernelSeries() {

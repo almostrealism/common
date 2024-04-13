@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,5 +42,17 @@ public class Constant<T> extends Expression<T> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
+	}
+
+	public static <T> Constant<T> of(T value) {
+		if (value instanceof Integer) {
+			return (Constant<T>) new IntegerConstant((Integer) value);
+		} else if (value instanceof Double) {
+			return (Constant<T>) new DoubleConstant((Double) value);
+		} else if (value instanceof Boolean) {
+			return (Constant<T>) new BooleanConstant((Boolean) value);
+		} else {
+			return new ConstantValue(value.getClass(), value);
+		}
 	}
 }

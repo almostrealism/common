@@ -261,6 +261,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
+	public static void clearTimes() {
+		KernelSeriesProvider.timingPos.clear();
+		KernelSeriesProvider.timingNeg.clear();
+		KernelTraversalProvider.timing.clear();
+		Scope.timing.clear();
+		compileTime.clear();
+	}
+	
 	public static void printTimes() {
 		printTimes(false);
 	}

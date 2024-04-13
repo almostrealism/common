@@ -66,7 +66,7 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) { return true; }
+	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
 	@Override
 	public Expression<Integer> withIndex(Index index, int value) {

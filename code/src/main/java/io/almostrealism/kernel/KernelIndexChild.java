@@ -16,44 +16,28 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Sum;
-import io.almostrealism.lang.LanguageOperations;
-
 import java.util.OptionalLong;
 
-public class KernelIndexChild extends Sum<Integer> implements Index {
+public class KernelIndexChild extends IndexChild {
 	private KernelStructureContext context;
-	private DefaultIndex childIndex;
-	private boolean renderAlias;
 
 	public KernelIndexChild(KernelStructureContext context, DefaultIndex childIndex) {
-		super((Expression)
-						Product.of(new KernelIndex(context),
-							new IntegerConstant(Math.toIntExact(childIndex.getLimit().getAsLong()))),
-				childIndex);
+		super(new KernelIndex(context), childIndex);
 		this.context = context;
-		this.childIndex = childIndex;
 	}
 
 	@Override
 	public String getName() {
-		return "k" + childIndex.getName();
-	}
-
-	public void setRenderAlias(boolean renderAlias) {
-		this.renderAlias = renderAlias;
+		return "k" + getChildIndex().getName();
 	}
 
 	public KernelIndexChild renderAlias() {
 		setRenderAlias(true);
-		return new KernelIndexChild(context, childIndex);
+		return new KernelIndexChild(context, getChildIndex());
 	}
 
 	public int kernelIndex(int index) {
-		return Math.toIntExact(index / childIndex.getLimit().getAsLong());
+		return Math.toIntExact(index / getChildIndex().getLimit().getAsLong());
 	}
 
 	@Override
@@ -64,41 +48,15 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 		OptionalLong max = context.getKernelMaximum();
 		if (!max.isPresent()) return OptionalLong.empty();
 
-		OptionalLong limit = childIndex.getLimit();
+		OptionalLong limit = getChildIndex().getLimit();
 		if (!limit.isPresent()) return OptionalLong.empty();
 
 		return OptionalLong.of(max.getAsLong() * limit.getAsLong() - 1);
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		if (values.containsIndex(getName())) return true;
-		return super.isKernelValue(values);
-	}
-
-	@Override
-	public Number value(IndexValues indexValues) {
-		if (indexValues.containsIndex(getName())) {
-			return indexValues.getIndex(getName());
-		}
-
-		return super.value(indexValues);
-	}
-
-	@Override
-	public String getExpression(LanguageOperations lang) {
-		if (renderAlias) return getName();
-		return super.getExpression(lang);
-	}
-
-	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof KernelIndexChild)) return false;
-		return ((KernelIndexChild) o).childIndex.equals(childIndex);
-	}
-
-	@Override
-	public int hashCode() {
-		return childIndex.hashCode();
+		return ((KernelIndexChild) o).getChildIndex().equals(getChildIndex());
 	}
 }

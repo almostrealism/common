@@ -35,8 +35,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	protected abstract boolean compare(Number left, Number right);
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getLeft().isKernelValue(values) && getRight().isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getLeft().isValue(values) && getRight().isValue(values);
 	}
 
 	@Override
@@ -46,7 +46,7 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 	@Override
 	public IndexSequence sequence(Index index, int len) {
-		if (!getLeft().isKernelValue(new IndexValues()) || !getRight().isKernelValue(new IndexValues())) {
+		if (!getLeft().isValue(new IndexValues()) || !getRight().isValue(new IndexValues())) {
 			return super.sequence(index, len);
 		}
 

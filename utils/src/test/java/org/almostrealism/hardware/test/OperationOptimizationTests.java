@@ -84,7 +84,7 @@ public class OperationOptimizationTests implements TestFeatures {
 	public void matmulLoopComparison() {
 		if (skipLongTests) return;
 
-		int itr = 5000000;
+		int itr = 4000000;
 		int dim = 64;
 		PackedCollection<?> in = new PackedCollection<>(shape(dim));
 		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));

@@ -82,33 +82,25 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		boolean traverseEach = PackedCollectionRepeat.enableTraverseEach;
+		Supplier<Producer<PackedCollection<?>>> dense =
+				() -> cp(input).repeat(nodes).each().traverse(1).sum();
 
-		try {
-			PackedCollectionRepeat.enableTraverseEach = true;
+		Consumer<PackedCollection<?>> valid = output -> {
+			for (int i = 0; i < nodes; i++) {
+				double expected = 0;
 
-			Supplier<Producer<PackedCollection<?>>> dense =
-					() -> cp(input).repeat(nodes).each().traverse(1).sum();
-
-			Consumer<PackedCollection<?>> valid = output -> {
-				for (int i = 0; i < nodes; i++) {
-					double expected = 0;
-
-					for (int x = 0; x < size; x++) {
-						expected += input.valueAt(x);
-					}
-
-					double actual = output.valueAt(i);
-
-					System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+				for (int x = 0; x < size; x++) {
+					expected += input.valueAt(x);
 				}
-			};
 
-			kernelTest(dense, valid);
-		} finally {
-			PackedCollectionRepeat.enableTraverseEach = traverseEach;
-		}
+				double actual = output.valueAt(i);
+
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		};
+
+		kernelTest(dense, valid);
 	}
 
 	@Test

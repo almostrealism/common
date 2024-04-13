@@ -124,6 +124,28 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void productRepeatSum1() {
+		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
+		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);
+
+		CollectionProducer<PackedCollection<?>> c = cp(in)
+				.multiply(cp(multiplier)).delta(cp(in))
+				.reshape(4, 4)
+				.traverse()
+				.repeat(3)
+				.sum(2);
+
+		PackedCollection<?> out = c.evaluate().reshape(4, 3);
+		out.traverse(1).print();
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 3; j++) {
+				assertEquals(multiplier.toDouble(i), out.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
 	public void productEnumerate() {
 		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
 		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2);

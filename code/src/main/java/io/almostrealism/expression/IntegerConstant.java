@@ -48,7 +48,7 @@ public class IntegerConstant extends Constant<Integer> {
 	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
 
 	@Override
-	public boolean isKernelValue(IndexValues values) { return true; }
+	public boolean isValue(IndexValues values) { return true; }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }

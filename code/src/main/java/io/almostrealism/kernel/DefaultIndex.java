@@ -55,7 +55,7 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
+	public boolean isValue(IndexValues values) {
 		return values.containsIndex(getName());
 	}
 

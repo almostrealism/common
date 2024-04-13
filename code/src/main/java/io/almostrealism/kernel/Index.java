@@ -16,12 +16,14 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Expression;
-
 public interface Index extends SequenceGenerator {
 	String getName();
 
-	static Expression<Integer> child(Expression<Integer> parent, Expression<Integer> child) {
-		return parent.multiply(Math.toIntExact(child.getLimit().getAsLong())).add(child);
+	static IndexChild child(Index parent, DefaultIndex child) {
+		if (parent instanceof KernelIndex) {
+			return new KernelIndexChild(((KernelIndex) parent).getContext(), child);
+		}
+
+		return new IndexChild(parent, child);
 	}
 }

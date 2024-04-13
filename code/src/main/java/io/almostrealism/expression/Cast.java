@@ -61,8 +61,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getChildren().get(0).isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values);
 	}
 
 	@Override

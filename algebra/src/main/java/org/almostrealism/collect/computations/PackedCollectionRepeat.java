@@ -17,8 +17,10 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -28,13 +30,11 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.OptionalDouble;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	public static boolean enableTraverseEach = false;
-	public static boolean enableSliceShortCircuit = true;
+	public static boolean enableUniqueIndexOptimization = false;
 	public static boolean enableInputIsolation = true;
 
 	private TraversalPolicy subsetShape;
@@ -45,9 +45,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(enableTraverseEach ?
-					shape(collection).replace(shape.prependDimension(repeat)).traverseEach() :
-					shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+		super(shape(collection).replace(shape.prependDimension(repeat)).traverse(),
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
@@ -65,10 +63,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		Expression slice;
 		Expression offset;
 
-		boolean shortcut = enableSliceShortCircuit ||
-				index.upperBound(null).orElse(sliceShape.getTotalSizeLong()) < sliceShape.getTotalSizeLong();
-
-		if (!shortcut || !isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
+		if (!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
 			// Identify the output slice
 			if (sliceShape.getTotalSizeLong() == 1) {
 				slice = index;
@@ -95,6 +90,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		return offset;
 	}
 
+	// TODO  Remove
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		Expression offset = projectIndex(index);
@@ -102,6 +98,23 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 
 		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (!enableUniqueIndexOptimization) return super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+		if (localIndex.getLimit().isEmpty()) return null;
+		if (subsetShape.getTotalSizeLong() % localIndex.getLimit().getAsLong() != 0) return null;
+
+		long limit = subsetShape.getTotalSizeLong() / localIndex.getLimit().getAsLong();
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
+
+		Expression idx = getCollectionArgumentVariable(1).uniqueNonZeroIndex(g, l, Index.child(g, l));
+		if (idx == null) return idx;
+		if (!idx.isValue(IndexValues.of(g))) return null;
+
+		return projectIndex(idx.withIndex(g, (Expression<?>) globalIndex));
 	}
 
 	@Override
