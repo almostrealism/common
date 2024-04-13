@@ -19,6 +19,12 @@ package io.almostrealism.kernel;
 import java.util.OptionalLong;
 
 public interface SequenceGenerator {
+	default OptionalLong getLimit() {
+		OptionalLong upperBound = upperBound(null);
+		if (upperBound.isEmpty()) return OptionalLong.empty();
+		return OptionalLong.of(upperBound.getAsLong() + 1);
+	}
+
 	OptionalLong upperBound(KernelStructureContext context);
 
 	Number value(IndexValues indexValues);

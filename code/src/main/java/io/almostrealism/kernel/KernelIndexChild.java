@@ -52,9 +52,6 @@ public class KernelIndexChild extends Sum<Integer> implements Index {
 		return new KernelIndexChild(context, childIndex);
 	}
 
-	@Override
-	public OptionalLong getLimit() { return OptionalLong.empty(); }
-
 	public int kernelIndex(int index) {
 		return Math.toIntExact(index / childIndex.getLimit().getAsLong());
 	}

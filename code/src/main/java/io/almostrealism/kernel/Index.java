@@ -16,13 +16,12 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.SequenceGenerator;
-
-import java.util.OptionalInt;
-import java.util.OptionalLong;
+import io.almostrealism.expression.Expression;
 
 public interface Index extends SequenceGenerator {
 	String getName();
 
-	OptionalLong getLimit();
+	static Expression<Integer> child(Expression<Integer> parent, Expression<Integer> child) {
+		return parent.multiply(Math.toIntExact(child.getLimit().getAsLong())).add(child);
+	}
 }

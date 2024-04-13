@@ -49,6 +49,14 @@ public interface ExpressionFeatures {
 		return new DoubleConstant(value);
 	}
 
+	default Expression<Integer> e(long value) {
+		if (value > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return e(Math.toIntExact(value));
+	}
+
 	default Expression<Double> e(double value) {
 		return expressionForDouble(value);
 	}

@@ -28,7 +28,7 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 		this(name, null);
 	}
 
-	public DefaultIndex(String name, Integer limit) {
+	public DefaultIndex(String name, Long limit) {
 		super(Integer.class, name);
 		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
 	}
