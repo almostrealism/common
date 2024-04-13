@@ -338,7 +338,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulEnumerateProduct() {
-		if (skipLongTests) return;
 		matmulEnumerateProduct(false);
 	}
 
@@ -432,7 +431,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void denseWeightsMedium() {
-		if (skipLongTests) return;
 		denseWeights(200, 10);
 	}
 
