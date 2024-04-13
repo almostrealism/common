@@ -106,7 +106,7 @@ public class IndexSequence extends ArrayItem<Number> {
 		} else if (index instanceof Expression && IntStream.range(0, length()).allMatch(i -> valueAt(i).doubleValue() == i)) {
 			return (Expression<? extends Number>) index;
 		} else {
-			return null;
+			return KernelSeriesMatcher.match(((Expression) index), this, ((Expression) index).getType() == Integer.class);
 		}
 	}
 

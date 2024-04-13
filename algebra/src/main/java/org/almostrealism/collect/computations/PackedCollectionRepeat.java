@@ -102,11 +102,13 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		if (!enableUniqueIndexOptimization) return super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+		Expression base = super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+		if (!enableUniqueIndexOptimization) return base;
+
 		if (localIndex.getLimit().isEmpty()) return null;
 		if (subsetShape.getTotalSizeLong() % localIndex.getLimit().getAsLong() != 0) return null;
 
-		long limit = subsetShape.getTotalSizeLong() / localIndex.getLimit().getAsLong();
+		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
 		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
 		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
 
@@ -114,7 +116,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (idx == null) return idx;
 		if (!idx.isValue(IndexValues.of(g))) return null;
 
-		return projectIndex(idx.withIndex(g, (Expression<?>) globalIndex));
+		return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
 	}
 
 	@Override

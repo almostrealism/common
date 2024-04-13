@@ -29,8 +29,10 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
+	public static boolean enableGranularityDetection = true;
 	public static TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
 
+	// TODO  Move into IndexSequence
 	public static Expression match(Expression index, IndexSequence seq, boolean isInt) {
 		long start = System.nanoTime();
 
@@ -72,10 +74,12 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				}
 			}
 
+			int granularity = enableGranularityDetection ? seq.getGranularity() : 1;
+
 			double initial = seq.doubleAt(0);
-			double delta = seq.doubleAt(1) - seq.doubleAt(0);
+			double delta = seq.doubleAt(granularity) - seq.doubleAt(0);
 			boolean isArithmetic = true;
-			for (int i = 2; i < seq.length(); i++) {
+			for (int i = 2 * granularity; i < seq.length(); i += granularity) {
 				if (seq.doubleAt(i) - seq.doubleAt(i - 1) != delta) {
 					isArithmetic = false;
 					break;
@@ -83,7 +87,8 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 			}
 
 			if (isArithmetic) {
-				Expression<?> r = new KernelIndex();
+				Expression<?> r = index; // new KernelIndex();
+				if (granularity > 1) r = r.toInt().divide(new IntegerConstant(granularity));
 
 				if (isInt) {
 					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
