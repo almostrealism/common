@@ -21,6 +21,7 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -75,6 +76,21 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			if (var == null) return null;
 
 			return var.getValueAt(projectIndex(var, index));
+		}
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (relative) {
+			TraversableExpression var = getTraversableArguments(targetIndex)[1];
+			if (var == null) return null;
+
+			return var.uniqueNonZeroIndex(globalIndex, localIndex, projectIndex(var, targetIndex));
+		} else {
+			TraversableExpression var = getCollectionArgumentVariable(1);
+			if (var == null) return null;
+
+			return var.uniqueNonZeroIndex(globalIndex, localIndex, projectIndex(var, targetIndex));
 		}
 	}
 

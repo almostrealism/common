@@ -22,45 +22,17 @@ import io.almostrealism.kernel.ExpressionMatrix;
 
 import java.util.function.Function;
 
-public class DefaultCollectionExpression extends CollectionExpressionBase {
-	private final TraversalPolicy shape;
+public class DefaultCollectionExpression extends CollectionExpressionAdapter {
 	private final Function<Expression<?>, Expression<?>> valueAt;
 
 	public DefaultCollectionExpression(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
-		if (shape == null) {
-			throw new IllegalArgumentException("Shape is required");
-		}
-
-		this.shape = shape;
+		super(shape);
 		this.valueAt = valueAt;
-	}
-
-	@Override
-	public TraversalPolicy getShape() {
-		return shape;
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return (Expression) valueAt.apply(index);
-	}
-
-	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
-		Expression<?> column[] = indices.allColumnsMatch();
-		if (column != null) {
-			// TODO
-			throw new RuntimeException("localIndex is irrelevant");
-		}
-
-		ExpressionMatrix<Double> values = indices.apply(globalIndex, localIndex, this::getValueAt);
-		Expression<?> result = values.uniqueNonZeroIndex(globalIndex);
-		if (result == null) return null;
-
-		return ((Expression) globalIndex)
-				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
-				.add(result);
 	}
 
 	public static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {

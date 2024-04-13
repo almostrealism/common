@@ -16,6 +16,10 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
@@ -25,6 +29,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Product;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
@@ -93,6 +98,12 @@ public interface ExpressionFeatures {
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Conditional.of(condition, (Expression) positive, (Expression) negative);
+	}
+
+	default CollectionExpression product(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression product = new UniformCollectionExpression(shape, Product::of, expressions);
+		product.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
+		return product;
 	}
 
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {

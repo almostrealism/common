@@ -72,10 +72,10 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableAxisAlignment = true;
 	boolean enableIndexProjection = false;
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
@@ -462,12 +462,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
-			BiFunction<TraversableExpression[], Expression, Expression> expression,
+			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Evaluable<T> shortCircuit, Producer<T>... arguments) {
 		CollectionProducerComputationBase<T, T> c =
 				(CollectionProducerComputationBase) alignTraversalAxes(List.of(arguments),
 				(shape, args) -> new TraversableExpressionComputation(
-							largestTotalSize(args), expression,
+							largestTotalSize(args), expression.apply(shape),
 							args.toArray(Supplier[]::new))
 						.setShortCircuit(shortCircuit));
 		long count = highestCount(List.of(arguments));
@@ -501,30 +501,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> Sum.of(args[1].getValueAt(index), args[2].getValueAt(index)), null, a, b);
-		} else {
-			TraversalPolicy shape = shape(a);
-			int size = shape(b).getSize();
-
-			if (shape.getSize() != size) {
-				if (shape.getSize() == 1) {
-					return add(a, traverseEach((Producer) b));
-				} else if (size == 1) {
-					return add(traverseEach((Producer) a), b);
-				}
-
-				throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
-						" with a collection of size " + size);
-			}
-
-			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
-					args -> CollectionExpression.create(shape, index ->
-							Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))),
-					(Supplier) a, (Supplier) b);
-			// exp.setShortCircuit(shortCircuit);
-			return exp;
-		}
+		return compute(shape -> args -> CollectionExpression.create(shape, (index) -> Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))), null, a, b);
 	}
 
 	@Deprecated
@@ -583,38 +560,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (enableAxisAlignment) {
-//			TraversalPolicy shapeA = shape(a);
-//			TraversalPolicy shapeB = shape(b);
-//			TraversalPolicy oldShape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
-//			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
-//
-//			System.out.println("Shape would have been " + oldShape.toStringDetail());
-
-			return compute((args, index) -> Product.of(args[1].getValueAt(index), args[2].getValueAt(index)), shortCircuit, a, b);
-		} else {
-			TraversalPolicy shapeA = shape(a);
-			TraversalPolicy shapeB = shape(b);
-			TraversalPolicy shape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
-			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
-
-			if (shape.getSize() != size) {
-				if (shape.getSize() != 1 && size != 1) {
-					throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
-							" with a collection of size " + size);
-				} else {
-					// TODO This should actually just call traverseEach (or repeat)
-					// TODO if the shapes don't match, but one size is = 1
-					System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
-							" with a collection of size " + size + " (will broadcast)");
-				}
-			}
-
-			return new TraversableExpressionComputation(shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-							Product.of(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) a, (Supplier) b).setShortCircuit(shortCircuit);
-		}
+		return compute(shape -> args->
+					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+				shortCircuit, a, b);
 	}
 
 	@Deprecated
@@ -642,22 +590,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)), null, a, b);
-		} else {
-			TraversalPolicy shape = shape(a);
-			int size = shape(b).getSize();
-			if (shape.getSize() != size) {
-				throw new IllegalArgumentException("Cannot divide a collection of size " + shape.getSize() +
-						" by a collection of size " + size);
-			}
-
-			if (shape(b).getCountLong() > shape(a).getCountLong()) shape = shape(b);
-
-			return new TraversableExpressionComputation<>(shape,
-					(args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) a, (Supplier) b);
-		}
+		return compute(shape -> (args) -> CollectionExpression.create(shape, index -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index))), null, a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
@@ -671,22 +604,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index)), null, base, exp);
-		} else {
-			if (shape(base).getSize() != 1 && shape(exp).getSize() != 1 && shape(base).getSize() != shape(exp).getSize()) {
-				throw new IllegalArgumentException("Cannot raise a collection of size " + shape(base).getSize() +
-						" to a collection of size " + shape(exp).getSize());
-			}
-
-			TraversalPolicy shape = shape(base);
-			if (shape.getSize() == 1 && shape(exp).getSize() > 1) shape = shape(exp);
-
-			return new TraversableExpressionComputation<>(shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-							new Exponent(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) base, (Supplier) exp);
-		}
+		return compute(shape -> (args) ->
+				CollectionExpression.create(shape, index -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index))),
+				null, base, exp);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(

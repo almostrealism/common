@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Delegated;
@@ -35,7 +36,20 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	}
 
 	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return null;
+		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		Expression<?> column[] = indices.allColumnsMatch();
+		if (column != null) {
+			// TODO
+			throw new RuntimeException("localIndex is irrelevant");
+		}
+
+		ExpressionMatrix<T> values = indices.apply(globalIndex, localIndex, this::getValueAt);
+		Expression<?> result = values.uniqueNonZeroIndex(globalIndex);
+		if (result == null) return null;
+
+		return ((Expression) globalIndex)
+				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
+				.add(result);
 	}
 
 	default Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {

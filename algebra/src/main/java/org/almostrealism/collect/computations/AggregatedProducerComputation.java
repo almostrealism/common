@@ -62,7 +62,8 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public Scope<T> getScope(KernelStructureContext context) {
-		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty()) return super.getScope(context);
+		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty())
+			return super.getScope(context);
 
 		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
 
@@ -136,8 +137,10 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new AggregatedProducerComputation<>(getShape(),
+		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
+		c.setReplaceLoop(replaceLoop);
+		return c;
 	}
 }

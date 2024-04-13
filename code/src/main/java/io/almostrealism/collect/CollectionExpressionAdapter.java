@@ -16,18 +16,17 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.expression.Expression;
+public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
+	private final TraversalPolicy shape;
 
-public class ConstantCollectionExpression extends CollectionExpressionAdapter {
-	private final Expression<?> value;
+	public CollectionExpressionAdapter(TraversalPolicy shape) {
+		if (shape == null) {
+			throw new IllegalArgumentException("Shape is required");
+		}
 
-	public ConstantCollectionExpression(TraversalPolicy shape, Expression<?> value) {
-		super(shape);
-		this.value = value;
+		this.shape = shape;
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		return (Expression) value;
-	}
+	public TraversalPolicy getShape() { return shape; }
 }

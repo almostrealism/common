@@ -51,10 +51,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
-
-//		if (sliceShape.getTotalSizeLong() > Integer.MAX_VALUE) {
-//			throw new UnsupportedOperationException();
-//		}
 	}
 
 	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,

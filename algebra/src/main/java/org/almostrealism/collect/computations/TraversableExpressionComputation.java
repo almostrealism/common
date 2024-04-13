@@ -20,6 +20,7 @@ import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -45,6 +46,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
+	@Deprecated
 	@SafeVarargs
 	public TraversableExpressionComputation(TraversalPolicy shape,
 										BiFunction<TraversableExpression[], Expression, Expression> expression,
@@ -100,6 +102,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {
