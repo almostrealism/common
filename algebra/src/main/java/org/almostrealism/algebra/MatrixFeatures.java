@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -38,10 +39,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(shape.traverseEach(),
-				(args, idx) -> {
-					Expression pos[] = shape.position(idx);
-					return conditional(pos[0].eq(pos[1]), e(1), e(0));
-				});
+				(args) -> new IdentityCollectionExpression(shape));
 	}
 
 

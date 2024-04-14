@@ -17,29 +17,21 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
 
-public class ConstantCollectionExpression extends CollectionExpressionAdapter {
-	private final Expression<?> value;
-
-	public ConstantCollectionExpression(TraversalPolicy shape, Expression<?> value) {
+public class IdentityCollectionExpression extends CollectionExpressionAdapter {
+	public IdentityCollectionExpression(TraversalPolicy shape) {
 		super(shape);
-		this.value = value;
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return (Expression) value;
+		Expression pos[] = getShape().flatten(true).position(index);
+		return conditional(pos[0].eq(pos[1]), e(1), e(0));
 	}
 
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		if (getShape().getTotalSizeLong() == 1) return new IntegerConstant(0);
-		if (value.doubleValue().orElse(-1) == 0.0) return new IntegerConstant(0);
-		return null;
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
-
-	@Override
-	public boolean isConstant() { return true; }
 }

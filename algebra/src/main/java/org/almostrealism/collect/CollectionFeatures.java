@@ -501,7 +501,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
-		return compute(shape -> args -> CollectionExpression.create(shape, (index) -> Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))), null, a, b);
+		return compute(shape -> args -> sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+				null, a, b);
 	}
 
 	@Deprecated

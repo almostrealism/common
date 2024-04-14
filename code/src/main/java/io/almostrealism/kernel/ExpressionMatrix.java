@@ -18,10 +18,10 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 
 import java.util.OptionalDouble;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class ExpressionMatrix<T> {
 	private final Expression[][] matrix;
@@ -153,24 +153,28 @@ public class ExpressionMatrix<T> {
 		return result;
 	}
 
-	public Expression uniqueNonZeroIndex(Index rowIndex) {
-		Number nonZeroColumns[] = new Number[matrix.length];
+	public Expression uniqueNonZeroOffset(Index rowIndex) {
+		return uniqueMatchingOffset(rowIndex, e -> e.doubleValue().orElse(-1.0) != 0.0);
+	}
+
+	public Expression uniqueMatchingOffset(Index rowIndex, Predicate<Expression<?>> predicate) {
+		Number matchingColumns[] = new Number[matrix.length];
 
 		for (int i = 0; i < matrix.length; i++) {
 			for (int j = 0; j < matrix[i].length; j++) {
 				Expression e = valueAt(i, j);
 				if (e == null) return null;
 
-				OptionalDouble v = e.doubleValue();
-
-				if (v.isEmpty() || v.getAsDouble() != 0.0) {
-					if (nonZeroColumns[i] != null) return null;
-					nonZeroColumns[i] = j;
+				if (predicate.test(e)) {
+					if (matchingColumns[i] != null) return null;
+					matchingColumns[i] = j;
 				}
 			}
+
+			if (matchingColumns[i] == null) matchingColumns[i] = 0;
 		}
 
-		IndexSequence seq = IndexSequence.of(nonZeroColumns);
+		IndexSequence seq = IndexSequence.of(matchingColumns);
 		return seq.getExpression(rowIndex);
 	}
 

@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
@@ -117,17 +118,17 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		CollectionExpression denominatorDelta = denominator.delta(target);
 
 		// f'(x)g(x)
-		CollectionExpression term1 = CollectionExpression.product(target.getShape(),
-				List.of(numeratorDelta, CollectionExpression.create(target.getShape(), denominator)));
+		CollectionExpression term1 = product(target.getShape(),
+				List.of(numeratorDelta, new ConstantCollectionExpression(target.getShape(), denominator)));
 		// f(x)g'(x)
-		CollectionExpression term2 = CollectionExpression.product(target.getShape(),
-				List.of(CollectionExpression.create(target.getShape(), numerator), denominatorDelta));
+		CollectionExpression term2 = product(target.getShape(),
+				List.of(new ConstantCollectionExpression(target.getShape(), numerator), denominatorDelta));
 
 		CollectionExpression derivativeNumerator =
-				CollectionExpression.difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
+				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
 		CollectionExpression derivativeDenominator =
-				CollectionExpression.create(target.getShape(), new Product(denominator, denominator)); // [g(x)]^2
-		return CollectionExpression.quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
+				new ConstantCollectionExpression(target.getShape(), new Product(denominator, denominator)); // [g(x)]^2
+		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
 	@Override

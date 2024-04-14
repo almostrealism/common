@@ -35,7 +35,7 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 		return getValueAt(index);
 	}
 
-	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
 		Expression<?> column[] = indices.allColumnsMatch();
 		if (column != null) {
@@ -44,17 +44,23 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 		}
 
 		ExpressionMatrix<T> values = indices.apply(globalIndex, localIndex, this::getValueAt);
-		Expression<?> result = values.uniqueNonZeroIndex(globalIndex);
-		if (result == null) return null;
+		return values.uniqueNonZeroOffset(globalIndex);
+	}
+
+	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		Expression offset = uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		if (offset == null) return null;
 
 		return ((Expression) globalIndex)
 				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
-				.add(result);
+				.add(offset);
 	}
 
 	default Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
 		return uniqueNonZeroIndex(new KernelIndex(), localIndex, targetIndex);
 	}
+
+	default boolean isConstant() { return false; }
 
 	default boolean isTraversable() {
 		return true;

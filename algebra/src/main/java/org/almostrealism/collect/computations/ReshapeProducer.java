@@ -162,9 +162,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		return producer instanceof TraversableExpression ?
-				((TraversableExpression) producer).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex) :
+				((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex) :
 				null;
 	}
 

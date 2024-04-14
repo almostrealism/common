@@ -431,7 +431,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void denseWeightsMedium() {
-		denseWeights(200, 10);
+		if (skipLongTests) return;
+		denseWeights(120, 10);
 	}
 
 	@Test

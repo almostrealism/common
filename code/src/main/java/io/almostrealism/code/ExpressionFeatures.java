@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
@@ -30,10 +31,14 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
+
+import java.util.Collection;
 
 public interface ExpressionFeatures {
 
@@ -108,10 +113,44 @@ public interface ExpressionFeatures {
 		return Conditional.of(condition, (Expression) positive, (Expression) negative);
 	}
 
+	default CollectionExpression sum(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return sum(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression sum(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression sum = new UniformCollectionExpression(shape, Sum::of, expressions);
+		sum.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
+		return sum;
+	}
+
+	default CollectionExpression difference(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return difference(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression difference(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression difference = new UniformCollectionExpression(shape, Difference::of, expressions);
+		difference.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
+		return difference;
+	}
+
+	default CollectionExpression product(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return product(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
 	default CollectionExpression product(TraversalPolicy shape, TraversableExpression... expressions) {
 		UniformCollectionExpression product = new UniformCollectionExpression(shape, Product::of, expressions);
 		product.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 		return product;
+	}
+
+	default CollectionExpression quotient(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return quotient(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression quotient(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression quotient = new UniformCollectionExpression(shape, Quotient::of, expressions);
+		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
+		return quotient;
 	}
 
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {

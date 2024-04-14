@@ -127,7 +127,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		Supplier producer = getProducer();
 
 		if (producer instanceof Delegated) {
@@ -135,10 +135,10 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		}
 
 		if (producer instanceof TraversableExpression) {
-			return ((TraversableExpression) producer).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+			return ((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
 
-		return CollectionExpression.super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+		return CollectionExpression.super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	public Expression<Double> get(Expression<?>... pos) {

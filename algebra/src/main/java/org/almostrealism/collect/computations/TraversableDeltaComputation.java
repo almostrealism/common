@@ -122,8 +122,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return getExpression(targetIndex).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	@Override

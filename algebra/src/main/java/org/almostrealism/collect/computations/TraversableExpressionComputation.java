@@ -32,12 +32,10 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
@@ -105,8 +103,8 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return getExpression(targetIndex).uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {

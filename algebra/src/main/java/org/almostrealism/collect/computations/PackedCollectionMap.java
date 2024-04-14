@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
@@ -205,7 +206,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
-		return CollectionExpression.create(sliceShape,
+		return DefaultCollectionExpression.create(sliceShape,
 				index -> {
 					// Determine which slice to extract
 					Expression slice;

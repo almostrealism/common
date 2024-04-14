@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
@@ -107,11 +107,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 			for (int j = 0; j < operands.size(); j++) {
 				CollectionExpression op = i == j ? operands.get(j).delta(target) :
-						CollectionExpression.create(target.getShape(), operands.get(j));
+						new ConstantCollectionExpression(target.getShape(), operands.get(j));
 				product.add(op);
 			}
 
-			sum.add(CollectionExpression.product(target.getShape(), product));
+			sum.add(product(target.getShape(), product));
 		}
 
 		CollectionExpression result;
@@ -121,13 +121,13 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		} else if (sum.size() == 1) {
 			result = sum.get(0);
 		} else {
-			result = CollectionExpression.sum(target.getShape(), sum);
+			result = sum(target.getShape(), sum);
 		}
 
 		return ExpressionMatchingCollectionExpression.create(
-				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				new ConstantCollectionExpression(target.getShape(), this),
 				target,
-				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
 				result);
 	}
 

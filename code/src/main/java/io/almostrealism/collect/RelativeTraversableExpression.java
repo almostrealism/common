@@ -78,8 +78,8 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return expression.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return expression.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	@Override

@@ -22,6 +22,7 @@ import io.almostrealism.kernel.Index;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class UniformCollectionExpression extends CollectionExpressionAdapter {
 	private Function<Expression[], Expression<?>> operation;
@@ -52,9 +53,9 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (indexPolicy == null)
-			return super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 
 		switch (indexPolicy) {
 			case CONJUNCTIVE:
@@ -63,16 +64,35 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 			case DISJUNCTIVE:
 				return IntStream.range(0, operands.length)
 						.mapToObj(i ->
-								operands[i].uniqueNonZeroIndex(globalIndex, localIndex, targetIndex))
+								operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex))
 						.filter(Objects::nonNull)
 						.findFirst()
 						.orElse(null);
 			case EXCLUSIVE:
-				// TODO
-				throw new UnsupportedOperationException();
+				Expression offset = operands[0].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+				if (offset == null) return null;
+
+				for (int i = 1; i < operands.length; i++) {
+					if (operands[i].isConstant()) {
+						Expression v = operands[i].getValueAt(e(0));
+						if (v.doubleValue().orElse(-1.0) != 0.0)
+							return null;
+					} else {
+						Expression next = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+						if (!Objects.equals(offset, next))
+							return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+					}
+				}
+
+				return offset;
 			default:
-				return super.uniqueNonZeroIndex(globalIndex, localIndex, targetIndex);
+				return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
+	}
+
+	@Override
+	public boolean isConstant() {
+		return Stream.of(operands).allMatch(TraversableExpression::isConstant);
 	}
 
 	public enum NonZeroIndexPolicy {

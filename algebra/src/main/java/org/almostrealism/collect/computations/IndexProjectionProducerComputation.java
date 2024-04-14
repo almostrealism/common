@@ -17,7 +17,8 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
-import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.IndexProjectionCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -80,17 +81,17 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (relative) {
 			TraversableExpression var = getTraversableArguments(targetIndex)[1];
 			if (var == null) return null;
 
-			return var.uniqueNonZeroIndex(globalIndex, localIndex, projectIndex(var, targetIndex));
+			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 		} else {
 			TraversableExpression var = getCollectionArgumentVariable(1);
 			if (var == null) return null;
 
-			return var.uniqueNonZeroIndex(globalIndex, localIndex, projectIndex(var, targetIndex));
+			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 		}
 	}
 
@@ -136,12 +137,13 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			TraversalPolicy overallShape = shape(outSize, targetSize);
 
 			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
-			return (CollectionProducer<T>) new TraversableExpressionComputation<>(outShape.append(targetShape),
-					(args, idx) -> {
+
+			TraversalPolicy shape = outShape.append(targetShape);
+			return (CollectionProducer<T>) new TraversableExpressionComputation<>(shape,
+					args -> new IndexProjectionCollectionExpression(shape, idx -> {
 						Expression pos[] = overallShape.position(idx);
-						Expression projected = deltaShape.index(projectIndex(pos[0]), pos[1]);
-						return args[1].getValueAt(projected);
-					},
+						return deltaShape.index(projectIndex(pos[0]), pos[1]);
+					}, args[1]),
 					delta).addDependentLifecycle(this);
 		} else {
 			return super.delta(target);

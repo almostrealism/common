@@ -17,11 +17,11 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Exp extends Expression<Double> {
@@ -63,7 +63,7 @@ public class Exp extends Expression<Double> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		CollectionExpression delta = getChildren().get(0).delta(target);
-		CollectionExpression exp = CollectionExpression.create(target.getShape(), this);
-		return CollectionExpression.product(target.getShape(), List.of(delta, exp));
+		CollectionExpression exp = new ConstantCollectionExpression(target.getShape(), this);
+		return product(target.getShape(), List.of(delta, exp));
 	}
 }

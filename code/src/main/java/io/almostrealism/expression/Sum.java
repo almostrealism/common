@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.DefaultIndex;
@@ -99,12 +100,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		CollectionExpression delta = CollectionExpression.sum(target.getShape(),
+		CollectionExpression delta = sum(target.getShape(),
 				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
 		return ExpressionMatchingCollectionExpression.create(
-				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				new ConstantCollectionExpression(target.getShape(), this),
 				target,
-				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
 				delta);
 	}
 
