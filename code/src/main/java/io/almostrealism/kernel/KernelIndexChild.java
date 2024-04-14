@@ -21,13 +21,13 @@ import java.util.OptionalLong;
 public class KernelIndexChild extends IndexChild {
 	private KernelStructureContext context;
 
-	public KernelIndexChild(KernelStructureContext context, DefaultIndex childIndex) {
+	public KernelIndexChild(KernelStructureContext context, Index childIndex) {
 		super(new KernelIndex(context), childIndex);
 		this.context = context;
 	}
 
 	@Override
-	public String getName() {
+	public String initName() {
 		return "k" + getChildIndex().getName();
 	}
 

@@ -30,9 +30,11 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.UnaryOperator;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 public class IndexSequence extends ArrayItem<Number> {
 	private Base64.Encoder encoder = Base64.getEncoder();
+	private Long max;
 
 	protected IndexSequence(Number[] values) {
 		super(values, Number[]::new);
@@ -63,12 +65,33 @@ public class IndexSequence extends ArrayItem<Number> {
 		return stream().mapToInt(Number::intValue);
 	}
 
+	public LongStream longStream() {
+		return stream().mapToLong(Number::longValue);
+	}
+
+
 	public DoubleStream doubleStream() {
 		return stream().mapToDouble(Number::doubleValue);
 	}
 
 	public IntStream matchingIndices(double value) {
 		return IntStream.range(0, length()).filter(i -> valueAt(i).doubleValue() == value);
+	}
+
+	public long max() {
+		if (isConstant()) return single().longValue();
+
+		if (max == null) {
+			if (valueAt(0) instanceof Integer) {
+				max = (long) intStream().max().orElseThrow();
+			} else if (valueAt(0) instanceof Long) {
+				max = longStream().max().orElseThrow();
+			} else {
+				max = (long) Math.ceil(doubleStream().max().orElseThrow());
+			}
+		}
+
+		return max;
 	}
 
 	public boolean isConstant() { return single() != null; }

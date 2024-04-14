@@ -16,10 +16,11 @@
 
 package io.almostrealism.kernel;
 
-public interface Index extends SequenceGenerator {
-	String getName();
+import io.almostrealism.uml.Named;
 
-	static IndexChild child(Index parent, DefaultIndex child) {
+public interface Index extends SequenceGenerator, Named {
+
+	static IndexChild child(Index parent, Index child) {
 		if (parent instanceof KernelIndex) {
 			return new KernelIndexChild(((KernelIndex) parent).getContext(), child);
 		}

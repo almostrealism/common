@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelIndexChild;
@@ -47,6 +48,20 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	protected Sum(Expression<? extends Number>... values) {
 		super((Class<T>) type(List.of(values)), "+", values);
+	}
+
+	@Override
+	public Expression withIndex(Index index, Expression<?> e) {
+		Expression<T> result = super.withIndex(index, e);
+		if (!(result instanceof Sum)) return result;
+
+		if (result.getChildren().stream().allMatch(v -> v.doubleValue().isPresent())) {
+			double r = result.getChildren().stream()
+					.mapToDouble(v -> v.doubleValue().getAsDouble()).reduce(0.0, (a, b) -> a + b);
+			return result.getType() == Integer.class ? new IntegerConstant((int) r) : new DoubleConstant(r);
+		}
+
+		return result;
 	}
 
 	@Override

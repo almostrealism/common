@@ -43,7 +43,7 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 			throw new RuntimeException("localIndex is irrelevant");
 		}
 
-		ExpressionMatrix<T> values = indices.apply(globalIndex, localIndex, this::getValueAt);
+		ExpressionMatrix<T> values = indices.apply(this::getValueAt);
 		return values.uniqueNonZeroOffset(globalIndex);
 	}
 

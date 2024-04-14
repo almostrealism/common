@@ -122,6 +122,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public Expression<T> withIndex(Index index, Expression<?> e) {
+		if (!contains(index)) return this;
+
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
 			return (Expression) e;
 		}
@@ -132,13 +134,18 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public Expression<T> withIndex(Index index, int value) {
-		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
-			return (Expression) new IntegerConstant(value);
+		return withIndex(index, new IntegerConstant(value));
+	}
+
+	public boolean contains(Index idx) {
+		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
+			return true;
+		} else if (getChildren().isEmpty()) {
+			return false;
 		}
 
-		return generate(getChildren().stream()
-				.map(e -> e.withIndex(index, value))
-				.collect(Collectors.toList()));
+		return getChildren().stream().anyMatch(e -> e.contains(idx));
+
 	}
 
 	public Set<Index> getIndices() {
@@ -224,10 +231,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		context = context.asNoOp();
 
 		Expression<?> simplified = simplify(context);
+		if (simplified.isSimple()) return simplified;
+
 		String exp = simplified.getExpression(lang);
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify(context);
+			if (next.isSimple()) return next;
+
 			String nextExp = next.getExpression(lang);
 
 			if (nextExp.equals(exp)) {

@@ -17,14 +17,19 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.Objects;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
 		super(type);
 	}
+
+	@Override
+	public boolean contains(Index idx) { return false; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return null; }
@@ -42,6 +47,21 @@ public class Constant<T> extends Expression<T> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (!(obj instanceof Constant)) {
+			return false;
+		}
+
+		return Objects.equals(((Constant<?>) obj).getType(), getType()) &&
+				Objects.equals(((Constant<?>) obj).getValue(), getValue());
+	}
+
+	@Override
+	public int hashCode() {
+		return String.valueOf(getValue()).hashCode();
 	}
 
 	public static <T> Constant<T> of(T value) {

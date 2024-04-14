@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class KernelIndex extends DefaultIndex {
@@ -67,6 +68,13 @@ public class KernelIndex extends DefaultIndex {
 
 	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
+
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		OptionalInt v = e.intValue();
+		if (v.isPresent()) return withIndex(index, v.getAsInt());
+		return super.withIndex(index, e);
+	}
 
 	@Override
 	public Expression<Integer> withIndex(Index index, int value) {

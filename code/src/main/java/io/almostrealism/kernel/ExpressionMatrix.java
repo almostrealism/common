@@ -17,51 +17,70 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Constant;
+import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalDouble;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 public class ExpressionMatrix<T> {
-	private final Expression[][] matrix;
-	private final int rowDuplicates[];
+	private final Index row;
+	private final Index col;
+	private final int rowCount;
+	private final int colCount;
 
-	public ExpressionMatrix(Index row, Index col, Expression<T> expression) {
-		int r = Math.toIntExact(row.getLimit().orElse(-1));
-		int c = Math.toIntExact(col.getLimit().orElse(-1));
-		if (c < 0 || r < 0)
+	private IndexSequence seq;
+	private Expression[][] matrix;
+	private int rowDuplicates[];
+
+	private ExpressionMatrix(Index row, Index col) {
+		rowCount = Math.toIntExact(row.getLimit().orElse(-1));
+		colCount = Math.toIntExact(col.getLimit().orElse(-1));
+		if (colCount < 0 || rowCount < 0)
 			throw new IllegalArgumentException();
 
-		this.matrix = new Expression[r][c];
-		this.rowDuplicates = new int[r];
-		populate(row, col, expression);
+		this.row = row;
+		this.col = col;
 	}
 
-	protected ExpressionMatrix(Expression[][] matrix, int[] rowDuplicates) {
+	public ExpressionMatrix(Index row, Index col,
+							Expression<T> expression) {
+		this(row, col);
+		this.matrix = new Expression[rowCount][colCount];
+		this.rowDuplicates = new int[rowCount];
+		populate(expression);
+	}
+
+	protected ExpressionMatrix(Index row, Index col,
+							   IndexSequence seq,
+							   Expression[][] matrix,
+							   int[] rowDuplicates) {
+		this(row, col);
+		this.seq = seq;
 		this.matrix = matrix;
 		this.rowDuplicates = rowDuplicates;
 	}
 
-	protected void populate(Index row, Index col, Expression<T> e) {
-		IndexSequence seq = sequence(row, col, e);
+	protected void populate(Expression<T> e) {
+		seq = sequence(row, col, e);
 
 		if (seq == null) {
-			for (int i = 0; i < matrix.length; i++) {
-				for (int j = 0; j < matrix[i].length; j++) {
+			for (int i = 0; i < rowCount; i++) {
+				for (int j = 0; j < colCount; j++) {
 					matrix[i][j] = e.withIndex(row, i).withIndex(col, j).getSimplified();
 				}
 			}
 		} else {
-			for (int i = 0; i < matrix.length; i++) {
+			for (int i = 0; i < rowCount; i++) {
 				rowDuplicates[i] = -1;
 				boolean duplicate = true;
 
-				for (int j = 0; j < matrix[i].length; j++) {
-					Number v = seq.valueAt(i * matrix[i].length + j);
-					matrix[i][j] = Constant.of(v);
+				for (int j = 0; j < colCount; j++) {
+					Number v = seq.valueAt(i * colCount + j);
 
-					if (i == 0 || !matrix[i][j].equals(valueAt(i - 1, j))) {
+					if (i == 0 || !v.equals(seq.valueAt((i - 1) * colCount + j))) {
 						duplicate = false;
 					}
 				}
@@ -73,66 +92,66 @@ public class ExpressionMatrix<T> {
 		}
 	}
 
-	protected IndexSequence sequence(Index row, Index col, Expression<T> e) {
-		if (!(col instanceof DefaultIndex)) return null;
-
-		IndexChild child = Index.child(row, (DefaultIndex) col);
-		if (child.getLimit().isEmpty()) return null;
-
-		IndexValues values = new IndexValues();
-		values.put(child, 0);
-
-		if (!e.isValue(values)) return null;
-		return e.sequence(child, Math.toIntExact(child.getLimit().getAsLong()));
+	protected Number sequenceValueAt(int i, int j) {
+		return seq.valueAt(i * colCount + j);
 	}
 
-	public Expression<T> valueAt(int row, int col) {
-		if (rowDuplicates.length <= row) {
+	public Expression<T> valueAt(int i, int j) {
+		if (rowDuplicates.length <= i) {
 			throw new UnsupportedOperationException();
 		}
 
-		if (rowDuplicates[row] >= 0) {
-			return matrix[rowDuplicates[row]][col];
+		if (rowDuplicates[i] >= 0) {
+			return valueAt(rowDuplicates[i], j);
 		}
 
-		return matrix[row][col];
+		return seq == null ? matrix[i][j] :
+				(Expression) Constant.of(sequenceValueAt(i, j));
 	}
 
 	public <O> ExpressionMatrix<O> apply(Function<Expression<T>, Expression<O>> function) {
-		return apply(null, null, function);
-	}
+		Expression result[][] = new Expression[rowCount][colCount];
 
-	public <O> ExpressionMatrix<O> apply(Index row, Index col, Function<Expression<T>, Expression<O>> function) {
-		Expression result[][] = new Expression[matrix.length][matrix[0].length];
+		boolean rowDependent = false;
+		int rowDuplicates[] = new int[rowCount];
 
-		int rowDuplicates[] = new int[matrix.length];
+		FunctionEvaluator<O> evaluator = new FunctionEvaluator<>(function);
 
-		i: for (int i = 0; i < matrix.length; i++) {
-			if (row == null && this.rowDuplicates[i] >= 0) {
+		i: for (int i = 0; i < rowCount; i++) {
+			if (!rowDependent && this.rowDuplicates[i] >= 0) {
 				rowDuplicates[i] = this.rowDuplicates[i];
 				continue i;
 			} else {
 				rowDuplicates[i] = -1;
 			}
 
-			j: for (int j = 0; j < matrix[i].length; j++) {
-				result[i][j] = function.apply(matrix[i][j]);
+			j: for (int j = 0; j < colCount; j++) {
+				result[i][j] = evaluator.valueAt(i, j);
 				if (result[i][j] == null) continue j;
 
-				if (row != null) result[i][j] = result[i][j].withIndex(row, i);
-				if (col != null) result[i][j] = result[i][j].withIndex(col, j);
+				if (row != null && result[i][j].contains(row)) {
+					rowDependent = true;
+					result[i][j] = result[i][j].withIndex(row, i);
+				}
+
+				if (col != null && result[i][j].contains(col)) {
+					result[i][j] = result[i][j].withIndex(col, j);
+				}
+
 				result[i][j] = result[i][j].getSimplified();
 			}
 		}
 
-		return new ExpressionMatrix<>(result, rowDuplicates);
+		return new ExpressionMatrix<>(row, col, null, result, rowDuplicates);
 	}
 
 	public Expression<T> allMatch() {
 		Expression<T> e = matrix[0][0];
 		for (int i = 0; i < matrix.length; i++) {
-			for (int j = 0; j < matrix[i].length; j++) {
-				if (!e.equals(valueAt(i, j))) return null;
+			if (rowDuplicates[i] < 0) {
+				for (int j = 0; j < matrix[i].length; j++) {
+					if (!e.equals(valueAt(i, j))) return null;
+				}
 			}
 		}
 
@@ -176,6 +195,41 @@ public class ExpressionMatrix<T> {
 
 		IndexSequence seq = IndexSequence.of(matchingColumns);
 		return seq.getExpression(rowIndex);
+	}
+
+	protected class FunctionEvaluator<O> {
+		private Function<Expression<T>, Expression<O>> function;
+		private Expression<O> resultCache[];
+
+		public FunctionEvaluator(Function<Expression<T>, Expression<O>> function) {
+			this.function = function;
+
+			if (seq != null && seq.getType() == Integer.class) {
+				resultCache = new Expression[Math.toIntExact(seq.max() + 1)];
+			}
+		}
+
+		public Expression<O> valueAt(int i, int j) {
+			if (resultCache == null) return function.apply(ExpressionMatrix.this.valueAt(i, j));
+
+			int index = sequenceValueAt(i, j).intValue();
+			if (resultCache[index] == null) {
+				resultCache[index] = function.apply(ExpressionMatrix.this.valueAt(i, j));
+			}
+
+			return resultCache[index];
+		}
+	}
+
+	protected static <T> IndexSequence sequence(Index row, Index col, Expression<T> e) {
+		IndexChild child = Index.child(row, col);
+		if (child.getLimit().isEmpty()) return null;
+
+		IndexValues values = new IndexValues();
+		values.put(child, 0);
+
+		if (!e.isValue(values)) return null;
+		return e.sequence(child, Math.toIntExact(child.getLimit().getAsLong()));
 	}
 
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {

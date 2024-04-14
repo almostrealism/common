@@ -26,24 +26,30 @@ import java.util.OptionalLong;
 
 public class IndexChild extends Sum<Integer> implements Index {
 	private Index parent;
-	private DefaultIndex childIndex;
+	private Index childIndex;
 	private boolean renderAlias;
+	private String name;
 
-	public IndexChild(Index parent, DefaultIndex childIndex) {
+	public IndexChild(Index parent, Index childIndex) {
 		super((Expression)
 						Product.of((Expression) parent,
 								new IntegerConstant(Math.toIntExact(childIndex.getLimit().getAsLong()))),
-				childIndex);
+				(Expression) childIndex);
 		this.parent = parent;
 		this.childIndex = childIndex;
 	}
 
-	@Override
-	public String getName() {
+	protected String initName() {
 		return parent.getName() + "_" + childIndex.getName();
 	}
 
-	public DefaultIndex getChildIndex() {
+	@Override
+	public String getName() {
+		if (name == null) name = initName();
+		return name;
+	}
+
+	public Index getChildIndex() {
 		return childIndex;
 	}
 

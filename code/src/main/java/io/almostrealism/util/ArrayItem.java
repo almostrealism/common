@@ -19,8 +19,10 @@ package io.almostrealism.util;
 import io.almostrealism.uml.Plural;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.IntFunction;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -29,12 +31,13 @@ public class ArrayItem<T> implements Plural<T> {
 	private T single;
 	private int len;
 
+	private Class<T> type;
 	private IntFunction<T[]> generator;
 
 	public ArrayItem(T[] values, IntFunction<T[]> generator) {
 		this.len = values.length;
 
-		if (Stream.of(values).distinct().count() == 1) {
+		if (values.length <= 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {
 			this.single = values[0];
 		} else {
 			this.values = values;
@@ -60,6 +63,24 @@ public class ArrayItem<T> implements Plural<T> {
 
 	public Stream<T> stream() {
 		return IntStream.range(0, length()).mapToObj(this::valueAt);
+	}
+
+	public Class<? extends T> getType() {
+		if (type == null) {
+			if (single != null) {
+				type = (Class) single.getClass();
+			} else {
+				List<Class<?>> types = stream().map(Object::getClass).distinct().collect(Collectors.toList());
+
+				if (types.size() > 1) {
+					throw new RuntimeException();
+				}
+
+				type = (Class) types.get(0);
+			}
+		}
+
+		return type;
 	}
 
 	public T[] toArray() {
