@@ -143,29 +143,35 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear5() throws FileNotFoundException {
-		int inChannels = 3;
-		int hiddenDim = 10;
-		int outLen = 1;
+		try {
+			initKernelMetrics();
 
-		CellularLayer dense = dense(inChannels, hiddenDim);
+			int inChannels = 3;
+			int hiddenDim = 10;
+			int outLen = 1;
 
-		SequentialBlock block = new SequentialBlock(shape(inChannels));
-		block.add(dense);
-		block.add(dense(hiddenDim, outLen));
+			CellularLayer dense = dense(inChannels, hiddenDim);
 
-		Model model = new Model(shape(inChannels));
-		model.addBlock(block);
+			SequentialBlock block = new SequentialBlock(shape(inChannels));
+			block.add(dense);
+			block.add(dense(hiddenDim, outLen));
 
-		int epochs = 600;
-		int steps = 125;
+			Model model = new Model(shape(inChannels));
+			model.addBlock(block);
 
-		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(inChannels)))
-				.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
-				.map(input -> ValueTarget.of(input, func3.apply(input)))
-				.collect(Collectors.toList()));
+			int epochs = 600;
+			int steps = 125;
 
-		optimize("linear5", model, data, epochs, steps, 1.0);
+			Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+					.mapToObj(i -> new PackedCollection<>(shape(inChannels)))
+					.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+					.map(input -> ValueTarget.of(input, func3.apply(input)))
+					.collect(Collectors.toList()));
+
+			optimize("linear5", model, data, epochs, steps, 1.0);
+		} finally {
+			logKernelMetrics();
+		}
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {

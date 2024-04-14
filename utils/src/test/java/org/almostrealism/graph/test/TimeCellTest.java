@@ -14,8 +14,6 @@ import org.junit.Test;
 public class TimeCellTest implements TestFeatures {
 	@Test
 	public void timeCell() {
-		CLOperator.enableVerboseLog = true;
-
 		TimeCell cell = new TimeCell(null, scalar(44100));
 		cell.setup().get().run();
 
