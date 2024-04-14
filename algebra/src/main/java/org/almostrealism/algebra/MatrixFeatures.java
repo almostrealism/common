@@ -39,7 +39,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(shape.traverseEach(),
-				(args) -> new IdentityCollectionExpression(shape));
+				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
 
 
