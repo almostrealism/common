@@ -23,6 +23,7 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
@@ -40,15 +41,17 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
+	public Optional<Boolean> booleanValue() {
+		return Optional.of(value != 0);
+	}
+
+	@Override
 	public OptionalInt intValue() {
 		return OptionalInt.of(value);
 	}
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
-
-	@Override
-	public boolean isValue(IndexValues values) { return true; }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }

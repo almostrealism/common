@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -27,6 +28,9 @@ public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
 		super(type);
 	}
+
+	@Override
+	public boolean isValue(IndexValues values) { return true; }
 
 	@Override
 	public boolean contains(Index idx) { return false; }

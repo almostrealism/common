@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.ExpressionMatrix;
@@ -80,6 +81,19 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 		}
 
 		return null;
+	}
+
+	@Override
+	public boolean isConstant() {
+		DefaultIndex index = new DefaultIndex("matchTest");
+		Expression<Boolean> compare = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
+		Optional<Boolean> alt = compare.booleanValue();
+
+		if (alt.isPresent()) {
+			return alt.get() ? positive.isConstant() : negative.isConstant();
+		}
+
+		return false;
 	}
 
 	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {

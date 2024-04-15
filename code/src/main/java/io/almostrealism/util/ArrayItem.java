@@ -31,10 +31,15 @@ public class ArrayItem<T> implements Plural<T> {
 	private T single;
 	private int len;
 
-	private Class<T> type;
+	protected Class<T> type;
 	private IntFunction<T[]> generator;
 
 	public ArrayItem(T[] values, IntFunction<T[]> generator) {
+		this(null, values, generator);
+	}
+
+	public ArrayItem(Class<T> type, T[] values, IntFunction<T[]> generator) {
+		this.type = type;
 		this.len = values.length;
 
 		if (values.length <= 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {

@@ -52,15 +52,15 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 		if (index instanceof KernelIndex) {
 			int seq[] = checkSingle(getLeft(), getRight(), len);
-			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			if (seq != null) return IndexSequence.of(Integer.class, IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
 
 			seq = checkSingle(getRight(), getLeft(), len);
-			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			if (seq != null) return IndexSequence.of(Integer.class, IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
 		}
 
 		IndexSequence l = getLeft().sequence(index, len);
 		IndexSequence r = getRight().sequence(index, len);
-		return IndexSequence.of(IntStream.range(0, len)
+		return IndexSequence.of(Integer.class, IntStream.range(0, len)
 				.mapToObj(i -> compare(l.valueAt(i), r.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
 	}

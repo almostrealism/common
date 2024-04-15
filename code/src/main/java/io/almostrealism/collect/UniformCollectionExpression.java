@@ -19,8 +19,10 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -92,7 +94,19 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 
 	@Override
 	public boolean isConstant() {
-		return Stream.of(operands).allMatch(TraversableExpression::isConstant);
+		List<TraversableExpression> constants = Stream.of(operands)
+				.filter(TraversableExpression::isConstant)
+				.collect(Collectors.toList());
+
+		if (constants.size() >= operands.length) {
+			return true;
+		} else if (indexPolicy == NonZeroIndexPolicy.DISJUNCTIVE) {
+			return constants.stream()
+					.map(c -> c.getValueAt(e(0)))
+					.anyMatch(v -> v.doubleValue().orElse(-1.0) == 0.0);
+		}
+
+		return false;
 	}
 
 	public enum NonZeroIndexPolicy {

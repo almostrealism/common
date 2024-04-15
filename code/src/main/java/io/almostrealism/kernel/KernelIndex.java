@@ -129,7 +129,7 @@ public class KernelIndex extends DefaultIndex {
 				seq[i] = Integer.valueOf(i);
 			}
 
-			kernelSeq = IndexSequence.of(seq);
+			kernelSeq = IndexSequence.of(Integer.class, seq);
 		}
 	}
 }

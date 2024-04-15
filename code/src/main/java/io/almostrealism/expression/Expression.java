@@ -202,14 +202,17 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 			}
 		}
 
+		Class type = getType();
+		if (type == Boolean.class) type = Integer.class;
+
 		IndexSequence seq;
 
 		if (enableBatchEvaluation) {
-			seq = IndexSequence.of(batchEvaluate(getChildren().stream()
+			seq = IndexSequence.of(type, batchEvaluate(getChildren().stream()
 					.map(e -> e.sequence(index, len).toArray())
 					.collect(Collectors.toList()), len));
 		} else {
-			seq = IndexSequence.of(IntStream.range(0, len).parallel()
+			seq = IndexSequence.of(type, IntStream.range(0, len).parallel()
 					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new));
 		}
 

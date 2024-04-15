@@ -17,11 +17,8 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Constant;
-import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Expression;
 
-import java.util.OptionalDouble;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -110,12 +107,17 @@ public class ExpressionMatrix<T> {
 	}
 
 	public <O> ExpressionMatrix<O> apply(Function<Expression<T>, Expression<O>> function) {
+		FunctionEvaluator<O> evaluator = new FunctionEvaluator<>(function);
+		IndexSequence resultSeq = evaluator.attemptSequence();
+
+		if (resultSeq != null) {
+			return new ExpressionMatrix<>(row, col, resultSeq, null, evaluator.resultRowDuplicates);
+		}
+
 		Expression result[][] = new Expression[rowCount][colCount];
 
 		boolean rowDependent = false;
 		int rowDuplicates[] = new int[rowCount];
-
-		FunctionEvaluator<O> evaluator = new FunctionEvaluator<>(function);
 
 		i: for (int i = 0; i < rowCount; i++) {
 			if (!rowDependent && this.rowDuplicates[i] >= 0) {
@@ -146,10 +148,10 @@ public class ExpressionMatrix<T> {
 	}
 
 	public Expression<T> allMatch() {
-		Expression<T> e = matrix[0][0];
-		for (int i = 0; i < matrix.length; i++) {
+		Expression<T> e = valueAt(0, 0);
+		for (int i = 0; i < rowCount; i++) {
 			if (rowDuplicates[i] < 0) {
-				for (int j = 0; j < matrix[i].length; j++) {
+				for (int j = 0; j < colCount; j++) {
 					if (!e.equals(valueAt(i, j))) return null;
 				}
 			}
@@ -177,10 +179,10 @@ public class ExpressionMatrix<T> {
 	}
 
 	public Expression uniqueMatchingOffset(Index rowIndex, Predicate<Expression<?>> predicate) {
-		Number matchingColumns[] = new Number[matrix.length];
+		Number matchingColumns[] = new Number[rowCount];
 
-		for (int i = 0; i < matrix.length; i++) {
-			for (int j = 0; j < matrix[i].length; j++) {
+		for (int i = 0; i < rowCount; i++) {
+			for (int j = 0; j < colCount; j++) {
 				Expression e = valueAt(i, j);
 				if (e == null) return null;
 
@@ -193,13 +195,15 @@ public class ExpressionMatrix<T> {
 			if (matchingColumns[i] == null) matchingColumns[i] = 0;
 		}
 
-		IndexSequence seq = IndexSequence.of(matchingColumns);
+		IndexSequence seq = IndexSequence.of(Integer.class, matchingColumns);
 		return seq.getExpression(rowIndex);
 	}
 
 	protected class FunctionEvaluator<O> {
 		private Function<Expression<T>, Expression<O>> function;
 		private Expression<O> resultCache[];
+		private int resultRowDuplicates[];
+		private boolean multiRow;
 
 		public FunctionEvaluator(Function<Expression<T>, Expression<O>> function) {
 			this.function = function;
@@ -209,10 +213,51 @@ public class ExpressionMatrix<T> {
 			}
 		}
 
+		public IndexSequence attemptSequence() {
+			// Determine if the result is independent of the row and column
+			if (resultCache != null) {
+				Index index = new DefaultIndex("evalIndex", resultCache.length);
+				Expression<?> e = function.apply((Expression) index);
+				if (e.isValue(IndexValues.of(index))) {
+					setupRowDuplicates(true);
+
+					IndexSequence results = e.sequence(index, resultCache.length);
+					return seq.map(i -> results.valueAt(i.intValue()));
+				}
+			}
+
+			// Determine if the result is dependent on the row and column,
+			// but no other variable
+			Index index = Index.child(row, col);
+			Expression<?> e = function.apply((Expression) index);
+			if (e.isValue(IndexValues.of(index))) {
+				setupRowDuplicates(false);
+
+				int len = isMultiRow() ? rowCount * colCount : colCount;
+				return e.sequence(index, len);
+			}
+
+			// Otherwise, the result is dependent on more information
+			// than can be known ahead of time
+			setupRowDuplicates(false);
+			return null;
+		}
+
+		public boolean isMultiRow() { return resultCache == null || multiRow; }
+
+		private void setupRowDuplicates(boolean rowIndependent) {
+			resultRowDuplicates = new int[rowCount];
+
+			for (int i = 0; i < rowCount; i++) {
+				resultRowDuplicates[i] = rowIndependent ? rowDuplicates[i] : -1;
+				if (i > 0 && resultRowDuplicates[i] < 0) multiRow = true;
+			}
+		}
+
 		public Expression<O> valueAt(int i, int j) {
 			if (resultCache == null) return function.apply(ExpressionMatrix.this.valueAt(i, j));
 
-			int index = sequenceValueAt(i, j).intValue();
+			int index = ExpressionMatrix.this.sequenceValueAt(i, j).intValue();
 			if (resultCache[index] == null) {
 				resultCache[index] = function.apply(ExpressionMatrix.this.valueAt(i, j));
 			}
