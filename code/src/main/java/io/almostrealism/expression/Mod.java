@@ -112,12 +112,16 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public IndexSequence sequence(Index index, int len) {
-		if (!getChildren().get(0).equals(index) || !isInt() || getChildren().get(1).intValue().isEmpty())
+		if (!isInt() || getChildren().get(1).intValue().isEmpty())
 			return super.sequence(index, len);
 
-		Integer[] values = IntStream.range(0, getChildren().get(1).intValue().getAsInt())
-								.boxed().toArray(Integer[]::new);
-		return IndexSequence.of(Integer.class, values, len);
+		if (getChildren().get(0).equals(index)) {
+			Integer[] values = IntStream.range(0, getChildren().get(1).intValue().getAsInt())
+					.boxed().toArray(Integer[]::new);
+			return IndexSequence.of(Integer.class, values, len);
+		} else {
+			return getChildren().get(0).sequence(index, len).mod(getChildren().get(1).intValue().getAsInt());
+		}
 	}
 
 	@Override

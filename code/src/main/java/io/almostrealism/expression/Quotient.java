@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	protected Quotient(List<Expression<?>> values) {
@@ -68,21 +70,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
-		if (getChildren().size() > 2)
-			throw new UnsupportedOperationException();
-
-		Number numerator = getChildren().get(0).value(indexValues);
-		Number denominator = getChildren().get(1).value(indexValues);
-
-		if (numerator instanceof Integer && denominator instanceof Integer) {
-			return ((Integer) numerator) / ((Integer) denominator);
-		} else {
-			return numerator.doubleValue() / denominator.doubleValue();
-		}
-	}
-
-	@Override
 	public Number evaluate(Number... children) {
 		if (getType() == Integer.class) {
 			int value = children[0].intValue();
@@ -99,6 +86,33 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 			return value;
 		}
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Number numerator = getChildren().get(0).value(indexValues);
+		Number denominator = getChildren().get(1).value(indexValues);
+
+		if (numerator instanceof Integer && denominator instanceof Integer) {
+			return ((Integer) numerator) / ((Integer) denominator);
+		} else {
+			return numerator.doubleValue() / denominator.doubleValue();
+		}
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, int len) {
+		if (getChildren().size() != 2 ||
+				!getChildren().get(0).equals(index) ||
+				getChildren().get(1).intValue().isEmpty())
+			return super.sequence(index, len);
+
+		int divisor = getChildren().get(1).intValue().getAsInt();
+		Number[] values = IntStream.range(0, len / divisor).boxed().toArray(Number[]::new);
+		return IndexSequence.of(Integer.class, values, divisor, len);
 	}
 
 	@Override

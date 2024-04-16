@@ -46,22 +46,27 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 	@Override
 	public IndexSequence sequence(Index index, int len) {
-		if (!getLeft().isValue(new IndexValues()) || !getRight().isValue(new IndexValues())) {
+		IndexValues values = IndexValues.of(index);
+		if (!getLeft().isValue(values) || !getRight().isValue(values)) {
 			return super.sequence(index, len);
 		}
 
 		if (index instanceof KernelIndex) {
 			int seq[] = checkSingle(getLeft(), getRight(), len);
-			if (seq != null) return IndexSequence.of(Integer.class, IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			if (seq != null) return IndexSequence.of(seq);
 
 			seq = checkSingle(getRight(), getLeft(), len);
-			if (seq != null) return IndexSequence.of(Integer.class, IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			if (seq != null) return IndexSequence.of(seq);
 		}
 
 		IndexSequence l = getLeft().sequence(index, len);
 		IndexSequence r = getRight().sequence(index, len);
+		return compare(l, r, len);
+	}
+
+	protected IndexSequence compare(IndexSequence left, IndexSequence right, int len) {
 		return IndexSequence.of(Integer.class, IntStream.range(0, len)
-				.mapToObj(i -> compare(l.valueAt(i), r.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
+				.mapToObj(i -> compare(left.valueAt(i), right.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
 	}
 

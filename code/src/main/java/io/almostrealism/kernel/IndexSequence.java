@@ -35,13 +35,21 @@ import java.util.stream.LongStream;
 public class IndexSequence extends ArrayItem<Number> {
 	private Base64.Encoder encoder = Base64.getEncoder();
 	private Long max;
+	private int granularity;
 
-	protected IndexSequence(Class<Number> type, Number[] values, int len) {
+	protected IndexSequence(Class<Number> type, Number[] values, int granularity, int len) {
 		super(type, values, len, Number[]::new);
+		this.granularity = granularity;
 	}
 
 	protected IndexSequence(Number value, int len) {
 		super(value, len, Number[]::new);
+		this.granularity = 1;
+	}
+
+	@Override
+	public Number valueAt(int pos) {
+		return super.valueAt(pos / granularity);
 	}
 
 	public IndexSequence map(UnaryOperator<Number> op) {
@@ -56,9 +64,30 @@ public class IndexSequence extends ArrayItem<Number> {
 		return IndexSequence.of(Double.class, doubleStream().map(op).boxed().toArray(Number[]::new));
 	}
 
+	public IndexSequence mod(int m) {
+		if (m > max()) return this;
+
+		return mapInt(i -> i % m);
+	}
+
+	public IndexSequence eq(IndexSequence other) {
+		if (length() != other.length()) throw new IllegalArgumentException();
+
+		if (isConstant() && other.isConstant()) {
+			return IndexSequence.of(single().doubleValue() == other.single().doubleValue() ?
+					Integer.valueOf(1) : Integer.valueOf(0), length());
+		}
+
+		return IndexSequence.of(type, IntStream.range(0, length())
+					.parallel()
+					.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
+							Integer.valueOf(1) : Integer.valueOf(0))
+					.toArray(Number[]::new));
+	}
+
 	public IndexSequence subset(int len) {
 		if (len == length()) return this;
-		return new IndexSequence(type, Arrays.copyOf(toArray(), len), len);
+		return new IndexSequence(type, Arrays.copyOf(toArray(), len), 1, len);
 	}
 
 	public IntStream intStream() {
@@ -123,13 +152,18 @@ public class IndexSequence extends ArrayItem<Number> {
 		return granularity;
 	}
 
+	@Override
+	public int getMod() {
+		return granularity * super.getMod();
+	}
+
 	public Expression<? extends Number> getExpression(Index index) {
 		if (isConstant()) {
 			return new IntegerConstant(single().intValue());
 		} else if (index instanceof Expression && IntStream.range(0, length()).allMatch(i -> valueAt(i).doubleValue() == i)) {
 			return (Expression<? extends Number>) index;
 		} else {
-			return KernelSeriesMatcher.match(((Expression) index), this, ((Expression) index).getType() == Integer.class);
+			return KernelSeriesMatcher.match((Expression) index, this, ((Expression) index).isInt());
 		}
 	}
 
@@ -166,12 +200,22 @@ public class IndexSequence extends ArrayItem<Number> {
 		return of(null, values);
 	}
 
+	public static IndexSequence of(int[] values) {
+		return IndexSequence.of(Integer.class,
+				IntStream.of(values).boxed().toArray(Number[]::new));
+	}
+
 	public static IndexSequence of(Class<? extends Number> type, Number[] values) {
-		return new IndexSequence((Class) type, values, values.length);
+		return new IndexSequence((Class) type, values, 1, values.length);
 	}
 
 	public static IndexSequence of(Class<? extends Number> type, Number[] values, int len) {
-		return new IndexSequence((Class) type, values, len);
+		return new IndexSequence((Class) type, values, 1, len);
+	}
+
+	public static IndexSequence of(Class<? extends Number> type, Number[] values,
+								   int granularity, int len) {
+		return new IndexSequence((Class) type, values, granularity, len);
 	}
 
 	public static IndexSequence of(Number value, int len) {

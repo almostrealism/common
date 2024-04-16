@@ -423,7 +423,9 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void denseWeightsMedium() {
-		if (skipLongTests) return;
+		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
+			return;
+
 		denseWeights(120, 10);
 	}
 

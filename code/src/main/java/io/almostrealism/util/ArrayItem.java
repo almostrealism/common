@@ -99,7 +99,7 @@ public class ArrayItem<T> implements Plural<T> {
 	}
 
 	public T[] toArray() {
-		if (values == null || mod < len) {
+		if (values == null || getMod() < len) {
 			return IntStream.range(0, len).mapToObj(i -> valueAt(i)).toArray(generator);
 		}
 
