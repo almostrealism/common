@@ -34,7 +34,7 @@ import java.util.OptionalDouble;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	public static boolean enableUniqueIndexOptimization = false;
+	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
 
 	private TraversalPolicy subsetShape;

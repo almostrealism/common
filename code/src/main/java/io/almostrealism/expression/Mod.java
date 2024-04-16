@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -25,6 +27,8 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = true;
@@ -67,6 +71,29 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values) && getChildren().get(1).isValue(values);
+	}
+
+	@Override
+	public Number value(IndexValues indexValues) {
+		if (fp) {
+			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
+		} else {
+			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		if (fp) {
+			return children[0].doubleValue() % children[1].doubleValue();
+		} else {
+			return children[0].intValue() % children[1].intValue();
+		}
+	}
+
+	@Override
 	public KernelSeries kernelSeries() {
 		KernelSeries input = getChildren().get(0).kernelSeries();
 		OptionalDouble mod = getChildren().get(1).doubleValue();
@@ -81,6 +108,16 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		return getChildren().get(1).upperBound(context);
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, int len) {
+		if (!getChildren().get(0).equals(index) || !isInt() || getChildren().get(1).intValue().isEmpty())
+			return super.sequence(index, len);
+
+		Integer[] values = IntStream.range(0, getChildren().get(1).intValue().getAsInt())
+								.boxed().toArray(Integer[]::new);
+		return IndexSequence.of(Integer.class, values, len);
 	}
 
 	@Override
@@ -118,6 +155,21 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			int m = mod.intValue().getAsInt();
 			if (m == 1) return new IntegerConstant(0);
 
+			if (input instanceof Mod && input.isInt()) {
+				Mod<Integer> innerMod = (Mod) input;
+				OptionalInt inMod = innerMod.getChildren().get(1).intValue();
+
+				if (inMod.isPresent()) {
+					int n = inMod.getAsInt();
+
+					if (n == m) {
+						return innerMod;
+					} else if (n % m == 0) {
+						return new Mod(innerMod.getChildren().get(0), new IntegerConstant(m), false);
+					}
+				}
+			}
+
 			OptionalLong u = input.upperBound(context);
 			if (u.isPresent() && u.getAsLong() < m) {
 				return input;
@@ -137,29 +189,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return flat;
-	}
-
-	@Override
-	public boolean isValue(IndexValues values) {
-		return getChildren().get(0).isValue(values) && getChildren().get(1).isValue(values);
-	}
-
-	@Override
-	public Number value(IndexValues indexValues) {
-		if (fp) {
-			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
-		} else {
-			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
-		}
-	}
-
-	@Override
-	public Number evaluate(Number... children) {
-		if (fp) {
-			return children[0].doubleValue() % children[1].doubleValue();
-		} else {
-			return children[0].intValue() % children[1].intValue();
-		}
 	}
 
 	private static boolean isPowerOf2(int number) {

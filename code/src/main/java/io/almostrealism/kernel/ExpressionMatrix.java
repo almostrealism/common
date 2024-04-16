@@ -47,7 +47,7 @@ public class ExpressionMatrix<T> {
 		this(row, col);
 		this.matrix = new Expression[rowCount][colCount];
 		this.rowDuplicates = new int[rowCount];
-		populate(expression);
+		populate(expression.getSimplified());
 	}
 
 	protected ExpressionMatrix(Index row, Index col,
@@ -60,24 +60,17 @@ public class ExpressionMatrix<T> {
 		this.rowDuplicates = rowDuplicates;
 	}
 
-	protected void populate(Expression<T> e) {
+	protected void populate(Expression e) {
 		seq = sequence(row, col, e);
 
 		if (seq == null) {
-			for (int i = 0; i < rowCount; i++) {
-				for (int j = 0; j < colCount; j++) {
-					matrix[i][j] = e.withIndex(row, i).withIndex(col, j).getSimplified();
-				}
-			}
-		} else {
 			for (int i = 0; i < rowCount; i++) {
 				rowDuplicates[i] = -1;
 				boolean duplicate = true;
 
 				for (int j = 0; j < colCount; j++) {
-					Number v = seq.valueAt(i * colCount + j);
-
-					if (i == 0 || !v.equals(seq.valueAt((i - 1) * colCount + j))) {
+					matrix[i][j] = e.withIndex(row, i).withIndex(col, j).getSimplified();
+					if (i == 0 || !valueAt(i, j).equals(valueAt((i - 1), j))) {
 						duplicate = false;
 					}
 				}
@@ -86,6 +79,31 @@ public class ExpressionMatrix<T> {
 					rowDuplicates[i] = rowDuplicates[i - 1] < 0 ? i - 1 : rowDuplicates[i - 1];
 				}
 			}
+		} else {
+			rowDuplicates[0] = -1;
+
+			for (int i = 1; i < rowCount; i++) {
+				rowDuplicates[i] = -1;
+				boolean duplicate = true;
+
+				if (seq.getMod() > colCount || colCount % seq.getMod() != 0) {
+					for (int j = 0; j < colCount; j++) {
+						Number v = seq.valueAt(i * colCount + j);
+
+						if (!v.equals(seq.valueAt((i - 1) * colCount + j))) {
+							duplicate = false;
+						}
+					}
+				}
+
+				if (duplicate) {
+					rowDuplicates[i] = rowDuplicates[i - 1] < 0 ? i - 1 : rowDuplicates[i - 1];
+				}
+			}
+		}
+
+		if (rowDuplicates[0] == 0) {
+			throw new UnsupportedOperationException();
 		}
 	}
 
@@ -94,7 +112,7 @@ public class ExpressionMatrix<T> {
 	}
 
 	public Expression<T> valueAt(int i, int j) {
-		if (rowDuplicates.length <= i) {
+		if (rowDuplicates.length <= i || rowDuplicates[i] == i) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -222,6 +240,10 @@ public class ExpressionMatrix<T> {
 					setupRowDuplicates(true);
 
 					IndexSequence results = e.sequence(index, resultCache.length);
+					if (results.getMod() == 1) {
+						return IndexSequence.of(results.valueAt(0), seq.length());
+					}
+
 					return seq.map(i -> results.valueAt(i.intValue()));
 				}
 			}
@@ -273,7 +295,9 @@ public class ExpressionMatrix<T> {
 		IndexValues values = new IndexValues();
 		values.put(child, 0);
 
-		if (!e.isValue(values)) return null;
+		if (!e.isValue(values))
+			return null;
+
 		return e.sequence(child, Math.toIntExact(child.getLimit().getAsLong()));
 	}
 

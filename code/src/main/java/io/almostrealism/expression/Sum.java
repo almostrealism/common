@@ -223,7 +223,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			List<Expression> args = p.getChildren();
 			if (args.size() != 2) break i;
 
-			index = IntStream.range(0, 2).filter(i -> args.get(i) instanceof KernelIndex).toArray();
+			index = IntStream.range(0, 2).filter(i -> args.get(i) instanceof Index).toArray();
 			if (index.length != 1) break i;
 
 			Expression k = args.get(index[0] == 0 ? 1 : 0);
@@ -234,7 +234,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			if (!r.isPresent()) break i;
 
 			if (v.getAsInt() == r.getAsLong()) {
-				return (Expression) new KernelIndexChild(((KernelIndex) args.get(index[0])).getContext(), idx);
+				return (Expression) Index.child((Index) args.get(index[0]), idx);
 			}
 		}
 

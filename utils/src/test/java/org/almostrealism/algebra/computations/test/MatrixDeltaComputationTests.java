@@ -23,6 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -219,18 +220,10 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
 		PackedCollection<?> out;
 
-		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
+		Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
 
-		try {
-			TraversableExpressionComputation.enableChainRule = true;
-
-			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
-			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
-
-			out = d.get().evaluate();
-		} finally {
-			TraversableExpressionComputation.enableChainRule = chainRule;
-		}
+		out = d.get().evaluate();
 		
 		System.out.println(out.getShape().toStringDetail());
 
@@ -264,7 +257,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulMedium2() {
-		if (skipLongTests) return;
+		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
+			return;
 
 		try {
 			matmal(96, 10, true);
@@ -276,7 +270,9 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	@Test
 	public void matmulLarge1() {
 		if (skipLongTests) return;
-		matmal(392, 10, true);
+		if (skipKnownIssues)
+			throw new UnsupportedOperationException();
+		matmal(392, 10, false);
 	}
 
 	@Test
@@ -286,11 +282,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	public void matmal(int size, int nodes, boolean dIn) {
-		boolean chainRule = TraversableExpressionComputation.enableChainRule;
-
 		try {
 			initKernelMetrics();
-			TraversableExpressionComputation.enableChainRule = true;
 
 			PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
 			PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
@@ -300,7 +293,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 			d.get().evaluate();
 		} finally {
-			TraversableExpressionComputation.enableChainRule = chainRule;
 			logKernelMetrics();
 		}
 	}

@@ -36,8 +36,8 @@ public class IndexSequence extends ArrayItem<Number> {
 	private Base64.Encoder encoder = Base64.getEncoder();
 	private Long max;
 
-	protected IndexSequence(Class<Number> type, Number[] values) {
-		super(type, values, Number[]::new);
+	protected IndexSequence(Class<Number> type, Number[] values, int len) {
+		super(type, values, len, Number[]::new);
 	}
 
 	protected IndexSequence(Number value, int len) {
@@ -58,7 +58,7 @@ public class IndexSequence extends ArrayItem<Number> {
 
 	public IndexSequence subset(int len) {
 		if (len == length()) return this;
-		return new IndexSequence(type, Arrays.copyOf(toArray(), len));
+		return new IndexSequence(type, Arrays.copyOf(toArray(), len), len);
 	}
 
 	public IntStream intStream() {
@@ -83,11 +83,11 @@ public class IndexSequence extends ArrayItem<Number> {
 
 		if (max == null) {
 			if (valueAt(0) instanceof Integer) {
-				max = (long) intStream().max().orElseThrow();
+				max = (long) intStream().limit(getMod()).max().orElseThrow();
 			} else if (valueAt(0) instanceof Long) {
-				max = longStream().max().orElseThrow();
+				max = longStream().limit(getMod()).max().orElseThrow();
 			} else {
-				max = (long) Math.ceil(doubleStream().max().orElseThrow());
+				max = (long) Math.ceil(doubleStream().limit(getMod()).max().orElseThrow());
 			}
 		}
 
@@ -167,7 +167,11 @@ public class IndexSequence extends ArrayItem<Number> {
 	}
 
 	public static IndexSequence of(Class<? extends Number> type, Number[] values) {
-		return new IndexSequence((Class) type, values);
+		return new IndexSequence((Class) type, values, values.length);
+	}
+
+	public static IndexSequence of(Class<? extends Number> type, Number[] values, int len) {
+		return new IndexSequence((Class) type, values, len);
 	}
 
 	public static IndexSequence of(Number value, int len) {
