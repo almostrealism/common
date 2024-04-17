@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Process;
@@ -86,9 +87,9 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(Stream.of(producers), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(producers), manager, context);
 	}
 
 	@Override

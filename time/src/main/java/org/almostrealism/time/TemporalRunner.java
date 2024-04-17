@@ -76,9 +76,9 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(Stream.of(setup), manager);
-		ScopeLifecycle.prepareScope(Stream.of(run), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(Stream.of(setup), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(run), manager, context);
 	}
 
 	public void compile() {

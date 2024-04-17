@@ -62,8 +62,8 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 	public Scope getScope(KernelStructureContext context) { return scope; }
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		scope = new HybridScope(this);
 

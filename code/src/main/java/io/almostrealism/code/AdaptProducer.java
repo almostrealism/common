@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
@@ -48,9 +49,9 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(Stream.of(p), manager);
-		ScopeLifecycle.prepareScope(Stream.of(args), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(Stream.of(p), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(args), manager, context);
 	}
 
 	@Override

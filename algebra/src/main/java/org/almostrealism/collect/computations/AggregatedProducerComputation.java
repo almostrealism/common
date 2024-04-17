@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
@@ -39,9 +40,14 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
+	public static boolean enableUniqueValueAt = false;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 	private boolean replaceLoop;
+
+	private TraversableExpression<Double> inputArg;
+	private DefaultIndex ref;
+	private Expression uniqueIndex;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
@@ -61,41 +67,55 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
-	public Scope<T> getScope(KernelStructureContext context) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+
 		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty())
-			return super.getScope(context);
+			return;
 
-		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
+		if (context == null) {
+			throw new UnsupportedOperationException();
+		}
 
-		DefaultIndex ref = new DefaultIndex(getVariablePrefix() + "_i");
+		ref = new DefaultIndex(getVariablePrefix() + "_i");
 		getIndexLimit().ifPresent(ref::setLimit);
 
 		Expression index = new KernelIndex(context)
 				.divide(e(getShape().getSize()))
 				.multiply(e(getShape().getSize()));
 
-		TraversableExpression arg = getTraversableArguments(index)[1];
-		Expression uniqueIndex = arg.uniqueNonZeroIndexRelative(ref, ref);
+		inputArg = getTraversableArguments(index)[1];
+		uniqueIndex = inputArg.uniqueNonZeroIndexRelative(ref, ref);
+	}
+
+	@Override
+	public Scope<T> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
 
+		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
+
 		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
-		Expression<?> val = arg.getValueAt(uniqueIndex);
+		Expression<?> val = inputArg.getValueAt(uniqueIndex);
 		scope.getStatements().add(out.assign(val));
 		return scope;
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression args[] = getTraversableArguments(index);
+		if (!enableUniqueValueAt || uniqueIndex == null) {
+			TraversableExpression args[] = getTraversableArguments(index);
 
-		Expression value = initial.apply(args, e(0));
+			Expression value = initial.apply(args, e(0));
 
-		for (int i = 0; i < count; i++) {
-			value = expression.apply(value, args[1].getValueRelative(e(i)));
-			value = value.generate(value.flatten());
+			for (int i = 0; i < count; i++) {
+				value = expression.apply(value, args[1].getValueRelative(e(i)));
+				value = value.generate(value.flatten());
+			}
+
+			return value;
+		} else {
+			return inputArg.getValueAt(uniqueIndex);
 		}
-
-		return value;
 	}
 
 	@Override

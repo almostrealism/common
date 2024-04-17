@@ -114,8 +114,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
@@ -148,7 +148,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		}
 
 		if (mapped instanceof TraversableExpression) {
-			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
+			ScopeLifecycle.prepareScope(Stream.of(mapped), manager, context);
 			this.mapped = (TraversableExpression<Double>) mapped;
 		} else {
 			throw new UnsupportedOperationException();

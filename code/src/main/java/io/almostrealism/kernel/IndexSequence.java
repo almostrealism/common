@@ -53,15 +53,15 @@ public class IndexSequence extends ArrayItem<Number> {
 	}
 
 	public IndexSequence map(UnaryOperator<Number> op) {
-		return IndexSequence.of(stream().map(op).toArray(Number[]::new));
+		return IndexSequence.of(type, apply(op, Number[]::new), length());
 	}
 
 	public IndexSequence mapInt(IntUnaryOperator op) {
-		return IndexSequence.of(Integer.class, intStream().map(op).boxed().toArray(Number[]::new));
+		return IndexSequence.of(Integer.class, apply(v -> op.applyAsInt(v.intValue()), Number[]::new), length());
 	}
 
 	public IndexSequence mapDouble(DoubleUnaryOperator op) {
-		return IndexSequence.of(Double.class, doubleStream().map(op).boxed().toArray(Number[]::new));
+		return IndexSequence.of(Double.class, apply(v -> op.applyAsDouble(v.doubleValue()), Number[]::new), length());
 	}
 
 	public IndexSequence mod(int m) {

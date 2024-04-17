@@ -76,10 +76,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (getArgumentVariables() != null) return;
 		this.lang = manager.getLanguage();
-		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
 	}
 

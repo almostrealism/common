@@ -21,6 +21,7 @@ import io.almostrealism.uml.Plural;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -69,6 +70,14 @@ public class ArrayItem<T> implements Plural<T> {
 
 	@Override
 	public T valueAt(int pos) { return values == null ? single : values[pos % mod]; }
+	
+	protected <V> V[] apply(Function<T, V> f, IntFunction<V[]> generator) {
+		if (single == null) {
+			return Stream.of(values).map(f).toArray(generator);
+		} else {
+			return IntStream.range(0, 1).mapToObj(i -> f.apply(single)).toArray(generator);
+		}
+	}
 
 	public int intAt(int pos) { return ((Number) valueAt(pos)).intValue(); }
 

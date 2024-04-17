@@ -179,12 +179,12 @@ public class ExpressionMatrix<T> {
 	}
 
 	public Expression[] allColumnsMatch() {
-		Expression[] result = new Expression[matrix[0].length];
+		Expression[] result = new Expression[rowCount];
 
-		for (int i = 0; i < matrix.length; i++) {
+		for (int i = 0; i < rowCount; i++) {
 			result[i] = valueAt(i, 0);
 
-			for (int j = 0; j < matrix[i].length; j++) {
+			for (int j = 0; j < colCount; j++) {
 				if (!result[i].equals(valueAt(i, j))) return null;
 			}
 		}

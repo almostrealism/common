@@ -21,6 +21,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -133,9 +134,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (producer instanceof ScopeLifecycle) {
-			((ScopeLifecycle) producer).prepareScope(manager);
+			((ScopeLifecycle) producer).prepareScope(manager, context);
 		}
 	}
 

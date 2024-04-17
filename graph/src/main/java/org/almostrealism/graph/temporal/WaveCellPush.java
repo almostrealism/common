@@ -17,10 +17,10 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -28,7 +28,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
@@ -51,8 +50,8 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		Expression<Boolean> condition = getWavePosition().valueAt(0).greaterThanOrEqual(e(0)).and(
 				getWavePosition().valueAt(0).lessThan(getWaveCount().valueAt(0)));

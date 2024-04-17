@@ -158,9 +158,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		getComputation().prepareScope(manager);
+	protected void prepareScope(ScopeInputManager manager) {
+		prepareScope(manager, this);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		getComputation().prepareScope(manager, context);
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
 				data -> manager.argumentForInput(this).apply(() -> new Provider<>(data)));
@@ -268,7 +273,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		Scope.timing.clear();
 		compileTime.clear();
 	}
-	
+
 	public static void printTimes() {
 		printTimes(false);
 	}

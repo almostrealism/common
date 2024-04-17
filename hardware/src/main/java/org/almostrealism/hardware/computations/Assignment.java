@@ -48,8 +48,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		purgeVariables();
 	}

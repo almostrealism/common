@@ -46,9 +46,9 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		choices.forEach(c -> c.prepareScope(manager));
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		choices.forEach(c -> c.prepareScope(manager, context));
 	}
 
 	@Override

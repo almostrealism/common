@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -167,6 +168,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
 	}
 
+	protected void prepareScope(ScopeInputManager manager) {
+		prepareScope(manager, null);
+	}
+
 	@Override
 	public Scope<?> compile() {
 		prepareScope();
@@ -184,11 +189,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (getArgumentVariables() != null) return;
 
 		if (getInputs() != null) {
-			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+			ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 			setArguments(getInputs().stream()
 					.map(manager.argumentForInput(this))
 					.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))

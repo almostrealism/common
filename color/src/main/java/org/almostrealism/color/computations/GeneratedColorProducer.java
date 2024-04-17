@@ -81,9 +81,9 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (p instanceof Computation) {
-			((Computation) p).prepareScope(manager);
+			((Computation) p).prepareScope(manager, context);
 		}
 	}
 

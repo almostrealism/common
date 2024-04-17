@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
@@ -36,6 +37,11 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	}
 
 	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (localIndex.getLimit().orElse(-1) == 1)
+			return new IntegerConstant(0);
+
+		if (globalIndex.getLimit().isEmpty()) return null;
+
 		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
 		Expression<?> column[] = indices.allColumnsMatch();
 		if (column != null) {

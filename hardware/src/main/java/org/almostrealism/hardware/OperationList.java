@@ -193,12 +193,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(stream(), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(stream(), manager, context);
 		if (!abortScope) {
 			if (abort == null) abort = new Abort(abortFlag::get);
 			abortScope = true;
-			abort.prepareScope(manager);
+			abort.prepareScope(manager, context);
 		}
 	}
 
