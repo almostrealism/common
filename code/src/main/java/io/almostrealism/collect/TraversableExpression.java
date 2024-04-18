@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Delegated;
 
@@ -43,6 +44,11 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 		if (globalIndex.getLimit().isEmpty()) return null;
 
 		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		IndexSequence columnSeq = indices.columnSequence();
+		if (columnSeq != null) {
+			return columnSeq.getExpression(globalIndex);
+		}
+
 		Expression<?> column[] = indices.allColumnsMatch();
 		if (column != null) {
 			// TODO

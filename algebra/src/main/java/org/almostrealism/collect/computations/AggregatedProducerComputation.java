@@ -25,6 +25,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
@@ -40,13 +41,14 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
-	public static boolean enableUniqueValueAt = false;
+	public static boolean enableUniqueValueAt = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 	private boolean replaceLoop;
 
 	private TraversableExpression<Double> inputArg;
-	private DefaultIndex ref;
+	private DefaultIndex row, ref;
+	private Expression uniqueOffset;
 	private Expression uniqueIndex;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
@@ -77,15 +79,37 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			throw new UnsupportedOperationException();
 		}
 
-		ref = new DefaultIndex(getVariablePrefix() + "_i");
-		getIndexLimit().ifPresent(ref::setLimit);
+		if (!enableUniqueValueAt) {
+			ref = new DefaultIndex(getVariablePrefix() + "_i");
+			getIndexLimit().ifPresent(ref::setLimit);
 
-		Expression index = new KernelIndex(context)
-				.divide(e(getShape().getSize()))
-				.multiply(e(getShape().getSize()));
+			Expression index = new KernelIndex(context)
+					.divide(e(getShape().getSize()))
+					.multiply(e(getShape().getSize()));
 
-		inputArg = getTraversableArguments(index)[1];
-		uniqueIndex = inputArg.uniqueNonZeroIndexRelative(ref, ref);
+			inputArg = getTraversableArguments(index)[1];
+			uniqueIndex = inputArg.uniqueNonZeroIndexRelative(ref, ref);
+		} else if (isFixedCount()) {
+			inputArg = getCollectionArgumentVariable(1);
+			if (inputArg == null) return;
+			if (inputArg.isRelative()) {
+				throw new UnsupportedOperationException();
+			}
+
+			row = new DefaultIndex(getVariablePrefix() + "_g");
+			row.setLimit(getShape().getCountLong());
+
+			ref = new DefaultIndex(getVariablePrefix() + "_i");
+			getIndexLimit().ifPresent(ref::setLimit);
+
+			Expression index = Index.child(row, ref);
+			uniqueOffset = inputArg.uniqueNonZeroOffset(row, ref, index);
+			if (uniqueOffset == null) return;
+
+			uniqueIndex = row
+					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
+					.add(uniqueOffset);
+		}
 	}
 
 	@Override
@@ -95,7 +119,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
 
 		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
-		Expression<?> val = inputArg.getValueAt(uniqueIndex);
+		Expression<?> val = inputArg.getValueAt(uniqueIndex.withIndex(row, new KernelIndex(context)));
 		scope.getStatements().add(out.assign(val));
 		return scope;
 	}
@@ -114,6 +138,9 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 			return value;
 		} else {
+			Expression uniqueIndex = index
+					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
+					.add(uniqueOffset.withIndex(row, index));
 			return inputArg.getValueAt(uniqueIndex);
 		}
 	}

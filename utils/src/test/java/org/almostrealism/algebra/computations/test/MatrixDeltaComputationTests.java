@@ -242,35 +242,33 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void matmulSmall() {
-		matmal(24, 8, false);
+	public void matmulSmall1() {
+		matmal(48, 10, false);
+	}
+
+	@Test
+	public void matmulSmall2() {
+		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
+			return;
+
+		matmal(48, 10, true);
 	}
 
 	@Test
 	public void matmulMedium1() {
-		try {
-			matmal(48, 10, false);
-		} finally {
-			ParallelProcess.isolationFlags.clear();
-		}
+		if (skipLongTests) return;
+		matmal(210, 10, false);
 	}
 
 	@Test
 	public void matmulMedium2() {
-		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
-			return;
-
-		try {
-			matmal(96, 10, true);
-		} finally {
-			ParallelProcess.isolationFlags.clear();
-		}
+		if (skipLongTests) return;
+		matmal(210, 10, true);
 	}
 
 	@Test
 	public void matmulLarge1() {
-		if (skipLongTests || skipKnownIssues) return;
-
+		if (skipLongTests) return;
 		matmal(392, 10, false);
 	}
 

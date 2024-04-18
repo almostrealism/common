@@ -19,9 +19,8 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 
-import java.util.List;
+import java.util.Set;
 import java.util.function.IntFunction;
-import java.util.stream.Collectors;
 
 public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
 	private final TraversalPolicy shape;
@@ -87,17 +86,15 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 		if (expression.isRelative()) {
 			return expression.uniqueNonZeroIndexRelative(localIndex, targetIndex);
 		} else {
-			List<Index> indices = offset.children()
-					.filter(c -> c instanceof Index)
-					.map(c -> (Index) c)
-					.collect(Collectors.toList());
+			Set<Index> indices = offset.getIndices();
+
 			if (indices.isEmpty()) {
 				return null;
 			} else if (indices.size() > 1) {
 				throw new UnsupportedOperationException();
 			}
 
-			return expression.uniqueNonZeroIndex(indices.get(0), localIndex, offset.add(targetIndex));
+			return expression.uniqueNonZeroIndex(indices.iterator().next(), localIndex, offset.add(targetIndex));
 		}
 	}
 

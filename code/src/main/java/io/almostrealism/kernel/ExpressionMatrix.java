@@ -178,6 +178,22 @@ public class ExpressionMatrix<T> {
 		return e;
 	}
 
+	public IndexSequence columnSequence() {
+		if (seq == null) return null;
+
+		Number[] result = new Number[rowCount];
+
+		for (int i = 0; i < rowCount; i++) {
+			result[i] = sequenceValueAt(i, 0);
+
+			for (int j = 0; j < colCount; j++) {
+				if (!result[i].equals(sequenceValueAt(i, j))) return null;
+			}
+		}
+
+		return IndexSequence.of(result);
+	}
+
 	public Expression[] allColumnsMatch() {
 		Expression[] result = new Expression[rowCount];
 

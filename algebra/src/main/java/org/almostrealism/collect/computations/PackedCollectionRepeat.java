@@ -102,7 +102,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		if (!enableUniqueIndexOptimization)
+		if (!enableUniqueIndexOptimization || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong())
 			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 
 		if (localIndex.getLimit().isEmpty() || globalIndex.getLimit().isEmpty()) return null;
@@ -116,7 +116,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (idx == null) return idx;
 		if (!idx.isValue(IndexValues.of(g))) return null;
 
-		return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
+		// return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
+		return idx.withIndex(g, ((Expression<?>) globalIndex).imod(limit));
 	}
 
 	@Override

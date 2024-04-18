@@ -39,6 +39,8 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 
 	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
 
+	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
+
 	@Override
 	public OptionalLong getLimit() {
 		if (limit.isPresent()) {
