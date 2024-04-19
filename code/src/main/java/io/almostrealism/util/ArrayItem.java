@@ -19,8 +19,10 @@ package io.almostrealism.util;
 import io.almostrealism.uml.Plural;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
@@ -28,6 +30,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class ArrayItem<T> implements Plural<T> {
+	public static boolean enableCalculateMod = false;
+
 	private T[] values;
 	private T single;
 	private int mod;
@@ -52,6 +56,9 @@ public class ArrayItem<T> implements Plural<T> {
 		if (values.length <= 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {
 			this.single = values[0];
 			this.mod = 1;
+		} else if (enableCalculateMod && values.length == len) {
+			this.values = values;
+			this.mod = calculateMod(values);
 		} else {
 			this.values = values;
 			this.mod = values.length;
@@ -108,7 +115,7 @@ public class ArrayItem<T> implements Plural<T> {
 	}
 
 	public T[] toArray() {
-		if (values == null || getMod() < len) {
+		if (values == null || mod < len) {
 			return IntStream.range(0, len).mapToObj(i -> valueAt(i)).toArray(generator);
 		}
 
@@ -131,5 +138,42 @@ public class ArrayItem<T> implements Plural<T> {
 		ArrayItem it = (ArrayItem) obj;
 		if (values == null && Objects.equals(single, it.single)) return true;
 		return Arrays.equals(toArray(), it.toArray());
+	}
+
+	public int computeMod() {
+		return calculateMod(toArray());
+	}
+
+	public static <T> int calculateMod(T values[]) {
+		Set<T> existing = new HashSet<>();
+
+		int mod = -1;
+
+		i: for (int i = 0; i < values.length; i++) {
+			if (existing.size() > 1 && existing.contains(values[i])) {
+				mod = i;
+				break i;
+			}
+
+			existing.add(values[i]);
+		}
+
+		if (mod == -1) {
+			return values.length;
+		}
+
+		for (int i = 0; i < values.length; i++) {
+			int row = i / mod;
+
+			if (row > 0) {
+				int col = i % mod;
+				int compareIdx = (row - 1) * mod + col;
+				if (!values[compareIdx].equals(values[i])) {
+					return values.length;
+				}
+			}
+		}
+
+		return mod;
 	}
 }
