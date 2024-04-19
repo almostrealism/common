@@ -117,7 +117,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 0.3);
+		optimize("linear3", model, data, epochs, steps, 1.0);
 	}
 
 	@Test

@@ -79,7 +79,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 			double initial = seq.doubleAt(0);
 			double delta = seq.doubleAt(granularity) - seq.doubleAt(0);
 			boolean isArithmetic = true;
-			for (int i = 2 * granularity; i < seq.length(); i += granularity) {
+			for (int i = 2 * granularity; i < seq.getMod(); i += granularity) {
 				if (seq.doubleAt(i) - seq.doubleAt(i - 1) != delta) {
 					isArithmetic = false;
 					break;
@@ -93,9 +93,13 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				if (isInt) {
 					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
 					if (initial != 0.0) r = r.add(new IntegerConstant((int) initial));
+					if (seq.getMod() != seq.length())
+						r = r.imod(seq.getMod());
 				} else {
 					if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
+					if (seq.getMod() != seq.length())
+						r = r.mod(new IntegerConstant(seq.getMod()), true);
 				}
 
 				return r;

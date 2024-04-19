@@ -16,8 +16,11 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Process;
+import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
@@ -229,5 +232,43 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(0.0, out.valueAt(1, 1));
 		assertEquals(2.0, out.valueAt(2, 1));
 		assertEquals(1.0, out.valueAt(3, 1));
+	}
+
+	@Test
+	public void convSmallest() {
+		if (skipLongTests || skipKnownIssues) return;
+
+		int dim = 5;
+		int size = 3;
+		int filters = 2;
+
+		convolution2d(shape(dim, dim), size, filters);
+	}
+
+	public void convolution2d(TraversalPolicy inputShape, int size, int filterCount) {
+		try {
+			initKernelMetrics();
+
+			int pad = size - 1;
+			TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
+			TraversalPolicy filterShape = shape(filterCount, size, size);
+			PackedCollection<?> filters = new PackedCollection<>(filterShape).randnFill();
+
+			PackedCollection<?> input = new PackedCollection<>(inputShape).randnFill();
+			cp(input).enumerate(1, size, 1)
+					.enumerate(1, size, 1)
+					.traverse(2)
+					.repeat(filterCount)
+					.traverse(2)
+					.multiply(cp(filters)
+							.repeat(outputShape.length(1)).traverse(0)
+							.repeat(outputShape.length(0)).traverse(2))
+					.traverse()
+					.sum()
+					.delta(cp(input))
+					.get().evaluate();
+		} finally {
+			logKernelMetrics();
+		}
 	}
 }

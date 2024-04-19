@@ -95,6 +95,11 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
+	public Expression simplify(KernelStructureContext context) {
+		return this;
+	}
+
+	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof IndexChild)) return false;
 		return ((IndexChild) o).childIndex.equals(childIndex);

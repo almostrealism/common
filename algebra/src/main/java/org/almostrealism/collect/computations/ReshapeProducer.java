@@ -111,7 +111,7 @@ public class ReshapeProducer<T extends Shape<T>>
 		if (enableOptimization) return ParallelProcess.super.optimize(ctx);
 
 		if (producer instanceof Process) {
-			return generate(List.of(((Process) producer).optimize(ctx)));
+			return generate(List.of(optimize(ctx, ((Process) producer))));
 		}
 
 		return this;

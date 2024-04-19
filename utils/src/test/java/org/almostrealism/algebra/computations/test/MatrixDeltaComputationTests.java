@@ -248,21 +248,16 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulSmall2() {
-		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
-			return;
-
 		matmal(48, 10, true);
 	}
 
 	@Test
 	public void matmulMedium1() {
-		if (skipLongTests) return;
 		matmal(210, 10, false);
 	}
 
 	@Test
 	public void matmulMedium2() {
-		if (skipLongTests) return;
 		matmal(210, 10, true);
 	}
 

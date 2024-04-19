@@ -45,6 +45,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
+	static {
+		if (TestUtils.getTrainTests()) {
+			NativeCompiler.enableLargeInstructionSetMonitoring = true;
+			MetalProgram.enableLargeProgramMonitoring = true;
+		}
+	}
+
 	@Test
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -259,9 +266,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainVerySmall() {
 		if (!trainingTests) return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
 		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -272,11 +276,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	@Test
 	public void trainSmall() {
 		if (!trainingTests) return;
-
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
-		// ParallelProcess.isolationFlags.add(operationFilter("f_constantRepeatedProducerComputation_82"));
 
 		int dim = 16;
 		int filters = 8;
@@ -289,9 +288,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainMedium() {
 		if (!trainingTests) return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
 		int dim = 32;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -302,9 +298,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	@Test
 	public void trainLarge() {
 		if (!trainingTests) return;
-
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
 
 		int dim = 64;
 		int filters = 8;
