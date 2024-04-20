@@ -269,7 +269,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulLarge2() {
-		if (skipLongTests) return;
 		matmal(392, 10, true);
 	}
 

@@ -18,12 +18,13 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Function;
 
-public class MemoryDataCacheManager implements ExpressionFeatures {
+public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 	private final int entrySize;
 	private final Bytes data;
 	private final ArrayVariable<?> variable;
@@ -48,6 +49,11 @@ public class MemoryDataCacheManager implements ExpressionFeatures {
 
 	public Expression<?> reference(int entry, Expression<?> index) {
 		return variable.referenceAbsolute(e(entrySize * entry).add(index));
+	}
+
+	@Override
+	public void destroy() {
+		data.destroy();
 	}
 
 	public static MemoryDataCacheManager create(int entrySize, int maxEntries,

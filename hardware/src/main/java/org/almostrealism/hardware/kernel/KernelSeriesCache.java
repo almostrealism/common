@@ -47,11 +47,17 @@ import java.util.function.Supplier;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
 	public static boolean enableVerbose = false;
-	public static int maxCount = ParallelProcess.maxCount << 6;
+	public static int maxCount = ParallelProcess.maxCount << 2;
 	public static int defaultMaxExpressions = 16;
-	public static int defaultMaxEntries = 16;
-	public static int minNodeCountMatch = 6;
+	public static int defaultMaxEntries = 32; // 16;
+	public static int minNodeCountMatch = 12; // 6;
 	public static int minNodeCountCache = 128;
+
+	static {
+		if (8L * maxCount * defaultMaxEntries > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("Maximum cache size is greater than maximum possible memory reservation");
+		}
+	}
 
 	private int count;
 	private boolean fixed;
@@ -94,10 +100,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		if (result != null) return result;
 
 		result = KernelSeriesProvider.super.getSeries(exp, index);
-		if (result == exp) {
-//			if (exp.countNodes() >= minNodeCountMatch)
-//				throw new RuntimeException();
-		} else {
+		if (result != exp) {
 			expressions.put(e, result);
 		}
 
@@ -159,6 +162,11 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 
 		return result;
+	}
+
+	@Override
+	public void destroy() {
+		cacheManager.destroy();
 	}
 
 	@Override

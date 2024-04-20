@@ -21,6 +21,7 @@ import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
@@ -32,7 +33,7 @@ import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-public interface KernelSeriesProvider {
+public interface KernelSeriesProvider extends Destroyable {
 	TimingMetric timingPos = Scope.console.timing("kernelSeriesPos");
 	TimingMetric timingNeg = Scope.console.timing("kernelSeriesNeg");
 

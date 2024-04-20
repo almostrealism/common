@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.collect.CollectionEvaluable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -27,29 +26,35 @@ import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
 
 import java.util.function.BiFunction;
+import java.util.function.IntFunction;
 
-public class DefaultCollectionEvaluable<T extends PackedCollection> extends AcceleratedComputationEvaluable<T> implements CollectionEvaluable<T> {
+public class DefaultCollectionEvaluable<T extends PackedCollection>
+		extends AcceleratedComputationEvaluable<T> implements CollectionEvaluable<T> {
+	public static boolean enableDestinationFactory = true;
+
 	private TraversalPolicy shape;
+	private IntFunction<T> destinationFactory;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public DefaultCollectionEvaluable(ComputeContext<MemoryData> context, TraversalPolicy shape, Computation<T> c, BiFunction<MemoryData, Integer, T> postprocessor) {
+	public DefaultCollectionEvaluable(ComputeContext<MemoryData> context,
+									  TraversalPolicy shape,
+									  Computation<T> c,
+									  IntFunction<T> destinationFactory,
+									  BiFunction<MemoryData, Integer, T> postprocessor) {
 		super(context, c);
 		this.shape = shape;
+		this.destinationFactory = destinationFactory;
 		this.postprocessor = postprocessor;
 	}
 
 	@Override
-	protected T postProcessOutput(MemoryData output, int offset) {
-		if (postprocessor == null) {
-			return (T) new PackedCollection(shape, 0, output, offset);
-		} else {
-			return postprocessor.apply(output, offset);
-		}
-	}
-
-	// TODO  This duplicates code in CollectionProducerComputationBase::shapeForLength
-	@Override
 	public T createDestination(int len) {
+		if (enableDestinationFactory) {
+			return destinationFactory.apply(len);
+		}
+
+		// TODO  This duplicates code in CollectionProducerComputationBase::shapeForLength
+		// TODO  It should be removed
 		TraversalPolicy shape;
 
 		if (Countable.isFixedCount(getComputation())) {
@@ -72,5 +77,14 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 		}
 
 		return (T) new PackedCollection<>(shape);
+	}
+
+	@Override
+	protected T postProcessOutput(MemoryData output, int offset) {
+		if (postprocessor == null) {
+			return (T) new PackedCollection(shape, 0, output, offset);
+		} else {
+			return postprocessor.apply(output, offset);
+		}
 	}
 }

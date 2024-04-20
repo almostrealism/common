@@ -25,6 +25,7 @@ import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -49,6 +50,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		if (TestUtils.getTrainTests()) {
 			NativeCompiler.enableLargeInstructionSetMonitoring = true;
 			MetalProgram.enableLargeProgramMonitoring = true;
+			MetalMemoryProvider.enableLargeAllocationLogging = true;
+			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 		}
 	}
 
@@ -331,10 +334,11 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		double epochMinutes = 0.0;
 
+		int epochCount = 80;
 		int epochSize = 1000;
 
 		try {
-			int count = 100 * epochSize;
+			int count = epochCount * epochSize;
 
 			long start = 0;
 

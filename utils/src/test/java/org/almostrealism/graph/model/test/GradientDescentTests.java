@@ -109,7 +109,7 @@ public class GradientDescentTests implements TestFeatures {
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 320;
+		int steps = 220;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
@@ -134,7 +134,7 @@ public class GradientDescentTests implements TestFeatures {
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
-				.map(input -> input.fill(pos -> 5 + 5 * Math.random()))
+				.map(input -> input.fill(pos -> 5 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 

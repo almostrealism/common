@@ -183,8 +183,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return ((PackedCollection) existing).range(shape);
 	}
 
-	protected MemoryBank<?> createDestination(int len) {
-		return new PackedCollection<>(shapeForLength(len));
+	@Override
+	public O createDestination(int len) {
+		return (O) getDestination().createDestination(len);
 	}
 
 	@Override

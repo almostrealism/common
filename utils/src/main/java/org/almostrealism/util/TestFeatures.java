@@ -172,7 +172,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
-				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
+				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries | "
+				+ (KernelSeriesCache.enableCache ? "on" : "off"));
 		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
 		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}

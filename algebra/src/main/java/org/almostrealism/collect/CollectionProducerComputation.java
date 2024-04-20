@@ -48,6 +48,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
 
+	default T createDestination(int len) {
+		throw new UnsupportedOperationException();
+	}
+
 	default T postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
@@ -79,7 +83,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	@Override
 	default Evaluable<T> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(ctx, getShape(), this, this::postProcessOutput);
+		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
+				ctx, getShape(), this,
+				this::createDestination, this::postProcessOutput);
 		ev.compile();
 		return ev;
 	}

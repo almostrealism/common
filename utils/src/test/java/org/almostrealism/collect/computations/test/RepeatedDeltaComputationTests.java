@@ -236,11 +236,20 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convSmallest() {
+		int dim = 10;
+		int size = 3;
+		int filters = 8;
+
+		convolution2d(shape(dim, dim), size, filters);
+	}
+
+	@Test
+	public void convSmall() {
 		if (skipLongTests || skipKnownIssues) return;
 
-		int dim = 5;
+		int dim = 16;
 		int size = 3;
-		int filters = 2;
+		int filters = 8;
 
 		convolution2d(shape(dim, dim), size, filters);
 	}
@@ -255,7 +264,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 			PackedCollection<?> filters = new PackedCollection<>(filterShape).randnFill();
 
 			PackedCollection<?> input = new PackedCollection<>(inputShape).randnFill();
-			cp(input).enumerate(1, size, 1)
+			Process.optimized(cp(input).enumerate(1, size, 1)
 					.enumerate(1, size, 1)
 					.traverse(2)
 					.repeat(filterCount)
@@ -265,7 +274,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 							.repeat(outputShape.length(0)).traverse(2))
 					.traverse()
 					.sum()
-					.delta(cp(input))
+					.delta(cp(input)))
 					.get().evaluate();
 		} finally {
 			logKernelMetrics();

@@ -71,18 +71,20 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 						.findFirst()
 						.orElse(null);
 			case EXCLUSIVE:
-				Expression offset = operands[0].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-				if (offset == null) return null;
+				Expression offset = null;
 
-				for (int i = 1; i < operands.length; i++) {
+				for (int i = 0; i < operands.length; i++) {
 					if (operands[i].isConstant()) {
 						Expression v = operands[i].getValueAt(e(0));
 						if (v.doubleValue().orElse(-1.0) != 0.0)
 							return null;
-					} else {
+					} else if (offset != null) {
 						Expression next = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 						if (!Objects.equals(offset, next))
 							return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+					} else {
+						offset = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+						if (offset == null) return null;
 					}
 				}
 

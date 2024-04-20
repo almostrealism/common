@@ -153,6 +153,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (uniqueOffset == null)
+			return null;
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		CollectionProducer<?> delta = attemptDelta(this, target);
 		if (delta != null) return (CollectionProducer) delta;

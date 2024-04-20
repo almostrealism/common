@@ -188,6 +188,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		throw new UnsupportedOperationException();
 	}
 
+	public IndexSequence sequence() {
+		Set<Index> indices = getIndices();
+		if (indices.size() != 1) throw new UnsupportedOperationException();
+
+		return sequence(indices.iterator().next(),
+				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()));
+	}
+
 	@Override
 	public IndexSequence sequence(Index index, int len) {
 		if (!isValue(new IndexValues().put(index, 0))) {
