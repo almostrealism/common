@@ -19,6 +19,7 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 
+import java.util.OptionalLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -314,7 +315,13 @@ public class ExpressionMatrix<T> {
 		if (!e.isValue(values))
 			return null;
 
-		return e.sequence(child, Math.toIntExact(child.getLimit().getAsLong()));
+		OptionalLong limit = child.getLimit();
+
+		if (limit.getAsLong() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return e.sequence(child, Math.toIntExact(limit.getAsLong()));
 	}
 
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {
