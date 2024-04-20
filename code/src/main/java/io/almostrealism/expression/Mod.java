@@ -35,11 +35,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	private boolean fp;
 
-	public Mod(Expression<T> a, Expression<T> b) {
-		this(a, b, true);
-	}
-
-	public Mod(Expression<T> a, Expression<T> b, boolean fp) {
+	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
 		super((Class<T>) (fp ? Double.class : Integer.class),
 				a, b);
 		this.fp = fp;
@@ -130,7 +126,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Mod(children.get(0), children.get(1), fp);
+		return Mod.of(children.get(0), children.get(1), fp);
 	}
 
 	@Override
@@ -193,6 +189,33 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return flat;
+	}
+
+	public static Expression of(Expression input, Expression mod) {
+		return of(input, mod, true);
+	}
+
+	public static Expression of(Expression input, Expression mod, boolean fp) {
+		if (fp || mod.intValue().isEmpty()) return new Mod(input, mod, fp);
+
+		int m = mod.intValue().getAsInt();
+
+		if (input instanceof Mod && input.isInt()) {
+			Mod<Integer> innerMod = (Mod) input;
+			OptionalInt inMod = innerMod.getChildren().get(1).intValue();
+
+			if (inMod.isPresent()) {
+				int n = inMod.getAsInt();
+
+				if (n == m) {
+					return innerMod;
+				} else if (n % m == 0) {
+					return new Mod(innerMod.getChildren().get(0), new IntegerConstant(m), false);
+				}
+			}
+		}
+
+		return new Mod(input, mod, fp);
 	}
 
 	private static boolean isPowerOf2(int number) {

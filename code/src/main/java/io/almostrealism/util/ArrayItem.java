@@ -86,6 +86,10 @@ public class ArrayItem<T> implements Plural<T> {
 		}
 	}
 
+	public T[] distinct() {
+		return Stream.of(values).distinct().toArray(generator);
+	}
+
 	public int intAt(int pos) { return ((Number) valueAt(pos)).intValue(); }
 
 	public double doubleAt(int pos) { return ((Number) valueAt(pos)).doubleValue(); }

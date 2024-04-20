@@ -337,10 +337,16 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Ceiling((Expression) this);
 	}
 
-	public Mod mod(Expression<Double> operand) { return new Mod(this, operand); }
-	public Mod mod(Expression<?> operand, boolean fp) { return new Mod(this, operand, fp); }
-	public Mod<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
-	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
+	public Expression mod(Expression<Double> operand) {
+		return Mod.of((Expression) this, (Expression) operand);
+	}
+
+	public Expression mod(Expression<?> operand, boolean fp) {
+		return Mod.of((Expression) this, (Expression)  operand, fp);
+	}
+
+	public Expression<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
+	public Expression<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
 	public Expression<Integer> imod(long operand) {
 		if (operand > Integer.MAX_VALUE) {
 			// return mod(new DoubleConstant((double) operand), true).toInt();

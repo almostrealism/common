@@ -193,7 +193,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarMod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
 				args -> args.get(1).getValueRelative(1)),
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}

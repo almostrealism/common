@@ -663,14 +663,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(shape,
-				(args, index) -> new Mod(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Mod.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
 
 	@Deprecated
 	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
+				Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 

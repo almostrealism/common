@@ -77,7 +77,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		Expression b = c.add(e(2));
 		Expression a = d.multiply(e(4));
 		Expression out = b.add(a).toInt();
-		out = new Mod(out, e(5), false);
+		out = Mod.of(out, e(5), false);
 
 		System.out.println(out.getSimpleExpression(lang));
 	}

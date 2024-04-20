@@ -30,14 +30,18 @@ import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
+	public static boolean enableMinusSimplification = true;
+
 	protected Sum(Stream<Expression<? extends Number>> values) {
 		super("+", (Stream) values);
 	}
@@ -149,13 +153,39 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		Expression<?> simple = super.simplify(context);
 		if (!(simple instanceof Sum)) return simple;
 
-		List<Expression<?>> children = simple.flatten().stream()
+		List<Expression<?>> children = new ArrayList<>();
+
+		simple.flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
-				.collect(Collectors.toList());
+				.forEach(children::add);
 
 		if (children.size() == 1) return children.get(0);
 		if (children.size() == 0) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+		}
+
+		if (enableMinusSimplification) {
+			Set<Integer> removed = new HashSet<>();
+
+			i: for (int i = 0; i < children.size(); i++) {
+				if (removed.contains(i)) continue i;
+
+				if (children.get(i) instanceof Minus) {
+					j: for (int j = 0; j < children.size(); j++) {
+						if (i == j || removed.contains(j)) continue j;
+
+						if (children.get(j).equals(children.get(i).getChildren().get(0))) {
+							removed.add(i);
+							removed.add(j);
+							children.set(i, new IntegerConstant(0));
+							children.set(j, new IntegerConstant(0));
+							continue i;
+						}
+					}
+				}
+			}
+
+			if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 		}
 
 		if (context.getTraversalProvider() != null &&
