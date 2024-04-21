@@ -17,6 +17,8 @@
 package io.almostrealism.collect;
 
 public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
+	protected static long idxCount;
+
 	private final TraversalPolicy shape;
 
 	public CollectionExpressionAdapter(TraversalPolicy shape) {

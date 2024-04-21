@@ -31,7 +31,7 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 
 	@Override
 	public TraversalPolicy getShape() {
-		return deltaExpression.getShape();
+		return deltaExpression.getShape().append(targetExpression.getShape());
 	}
 
 	@Override

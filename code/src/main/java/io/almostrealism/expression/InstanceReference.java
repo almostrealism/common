@@ -103,6 +103,11 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	@Override
+	public boolean containsReference(Variable var) {
+		return Objects.equals(getReferent().getName(), var.getName());
+	}
+
+	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
 		return new ExpressionAssignment<>(this, exp);
 	}

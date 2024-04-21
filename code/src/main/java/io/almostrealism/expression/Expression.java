@@ -146,6 +146,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return withIndex(index, new IntegerConstant(value));
 	}
 
+	public Set<Index> getIndices() {
+		if (this instanceof Index) return Set.of((Index) this);
+
+		return getChildren().stream()
+				.flatMap(e -> e.getIndices().stream())
+				.collect(Collectors.toSet());
+	}
+
 	public boolean contains(Index idx) {
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
 			return true;
@@ -154,15 +162,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		}
 
 		return getChildren().stream().anyMatch(e -> e.contains(idx));
-
 	}
 
-	public Set<Index> getIndices() {
-		if (this instanceof Index) return Set.of((Index) this);
-
-		return getChildren().stream()
-				.flatMap(e -> e.getIndices().stream())
-				.collect(Collectors.toSet());
+	public boolean containsReference(Variable var) {
+		return getChildren().stream().anyMatch(e -> e.containsReference(var));
 	}
 
 	public KernelSeries kernelSeries() {

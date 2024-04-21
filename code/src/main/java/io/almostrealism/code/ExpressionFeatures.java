@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
@@ -31,7 +32,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
-import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
@@ -139,9 +139,8 @@ public interface ExpressionFeatures {
 	}
 
 	default CollectionExpression product(TraversalPolicy shape, TraversableExpression... expressions) {
-		UniformCollectionExpression product = new UniformCollectionExpression(shape, Product::of, expressions);
-		product.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
-		return product;
+		if (expressions.length < 2) throw new IllegalArgumentException();
+		return new ProductCollectionExpression(shape, expressions);
 	}
 
 	default CollectionExpression quotient(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {

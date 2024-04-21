@@ -16,22 +16,10 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.expression.IntegerConstant;
 
-public class IdentityCollectionExpression extends CollectionExpressionAdapter {
+public class IdentityCollectionExpression extends DiagonalCollectionExpression {
 	public IdentityCollectionExpression(TraversalPolicy shape) {
-		super(shape);
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		Expression pos[] = getShape().flatten(true).position(index);
-		return conditional(pos[0].eq(pos[1]), e(1), e(0));
-	}
-
-	@Override
-	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		super(shape, new ConstantCollectionExpression(shape.item(), new IntegerConstant(1)));
 	}
 }

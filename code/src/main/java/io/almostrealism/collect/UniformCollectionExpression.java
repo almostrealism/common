@@ -47,6 +47,10 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 		this.indexPolicy = indexPolicy;
 	}
 
+	public List<TraversableExpression<Double>> getOperands() {
+		return List.of(operands);
+	}
+
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		Expression args[] = new Expression[operands.length];

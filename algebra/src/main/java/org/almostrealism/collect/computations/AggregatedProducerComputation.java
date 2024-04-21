@@ -41,7 +41,6 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
-	public static boolean enableUniqueValueAt = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 	private boolean replaceLoop;
@@ -79,17 +78,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			throw new UnsupportedOperationException();
 		}
 
-		if (!enableUniqueValueAt) {
-			ref = new DefaultIndex(getVariablePrefix() + "_i");
-			getIndexLimit().ifPresent(ref::setLimit);
-
-			Expression index = new KernelIndex(context)
-					.divide(e(getShape().getSize()))
-					.multiply(e(getShape().getSize()));
-
-			inputArg = getTraversableArguments(index)[1];
-			uniqueIndex = inputArg.uniqueNonZeroIndexRelative(ref, ref);
-		} else if (isFixedCount()) {
+		if (isFixedCount()) {
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
 			if (inputArg.isRelative()) {
@@ -126,7 +115,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (!enableUniqueValueAt || uniqueIndex == null) {
+		if (uniqueIndex == null) {
 			TraversableExpression args[] = getTraversableArguments(index);
 
 			Expression value = initial.apply(args, e(0));

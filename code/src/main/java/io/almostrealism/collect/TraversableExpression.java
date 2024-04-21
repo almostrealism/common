@@ -99,4 +99,18 @@ public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFea
 			return null;
 		}
 	}
+
+	static boolean match(TraversableExpression<?> a, TraversableExpression<?> b) {
+		while (a instanceof RelativeTraversableExpression) {
+			a = ((RelativeTraversableExpression) a).getExpression();
+		}
+
+		while (b instanceof RelativeTraversableExpression) {
+			b = ((RelativeTraversableExpression) b).getExpression();
+		}
+
+		if (a == b) return true;
+		if (a == null || b == null) return false;
+		return a.equals(b);
+	}
 }
