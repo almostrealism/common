@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
@@ -50,7 +51,7 @@ public class Constant<T> extends Expression<T> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
+		return new ConstantCollectionExpression(target.getShape(), new IntegerConstant(0));
 	}
 
 	@Override
