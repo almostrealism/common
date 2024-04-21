@@ -37,5 +37,6 @@ public interface Computation<T> extends ScopeLifecycle, OutputSupport, ConsoleFe
 
 	}
 
+	@Override
 	default Console console() { return console; }
 }

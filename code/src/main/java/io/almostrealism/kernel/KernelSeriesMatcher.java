@@ -41,17 +41,17 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				return isInt ? new IntegerConstant(seq.intAt(0)) : new DoubleConstant(seq.doubleAt(0));
 			}
 
-			double distinct[] = seq.doubleStream().distinct().sorted().toArray();
+			Number distinct[] = seq.distinct();
 			if (distinct.length == 1) {
 				Scope.console.features(KernelSeriesMatcher.class).warn("Constant sequence not detected by IndexSequence");
-				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0]);
+				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
 			}
 
-			if (distinct.length == 2 && distinct[0] == 0) {
-				int first = seq.matchingIndices(distinct[1]).findFirst().orElse(-1);
+			if (distinct.length == 2 && distinct[0].intValue() == 0) {
+				int first = seq.matchingIndices(distinct[1].intValue()).findFirst().orElse(-1);
 				if (first < 0) throw new UnsupportedOperationException();
 
-				int tot = seq.doubleStream().mapToInt(v -> v == distinct[1] ? 1 : 0).sum();
+				int tot = seq.doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
 
 				long cont = seq.doubleStream().skip(first).limit(tot).distinct().count();
 
@@ -69,12 +69,15 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 					if (isInt) {
 						return Mask.of(condition, new IntegerConstant((int) distinct[1]));
 					} else {
-						return Mask.of(condition, new DoubleConstant(distinct[1]));
+						return Mask.of(condition, new DoubleConstant(distinct[1].doubleValue()));
 					}
 				}
 			}
 
 			int granularity = enableGranularityDetection ? seq.getGranularity() : 1;
+			if (seq.length() % granularity != 0) {
+				granularity = 1;
+			}
 
 			double initial = seq.doubleAt(0);
 			double delta = seq.doubleAt(granularity) - seq.doubleAt(0);
@@ -90,16 +93,29 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				Expression<?> r = index; // new KernelIndex();
 				if (granularity > 1) r = r.toInt().divide(new IntegerConstant(granularity));
 
+				int mod = ((int) delta) * seq.getMod() / granularity;
+
 				if (isInt) {
 					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
 					if (initial != 0.0) r = r.add(new IntegerConstant((int) initial));
 					if (seq.getMod() != seq.length())
-						r = r.imod(seq.getMod());
+						r = r.imod(mod);
 				} else {
 					if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
 					if (seq.getMod() != seq.length())
-						r = r.mod(new IntegerConstant(seq.getMod()), true);
+						r = r.mod(new IntegerConstant(mod), true);
+				}
+
+				if (seq.getMod() != seq.length()) {
+					IndexSequence newSeq = r.sequence((Index) index, seq.length());
+
+					if (!newSeq.equals(seq)) {
+						throw new RuntimeException();
+					} else {
+						Scope.console.features(KernelSeriesMatcher.class)
+								.warn("Sequence replacement using mod is experimental");
+					}
 				}
 
 				return r;
