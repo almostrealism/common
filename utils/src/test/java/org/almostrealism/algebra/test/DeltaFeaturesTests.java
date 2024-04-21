@@ -56,7 +56,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		// dy = f'(g(x))
 		//    = w2
 		Producer<PackedCollection<?>> in = matchInput(c, x);
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta(shape(in), (ComputationBase) c, in).get();
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate(v);
 		dout.print();
 
@@ -92,7 +92,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		// dy = f'(g(x))
 		//    = w0, w1
 		Producer<PackedCollection<?>> in = matchInput(c, cp(input));
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta(shape(in), (ComputationBase) c, in).get();
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate();
 		dout.traverse().print();
 
@@ -124,7 +124,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 		// dy = f'(g(x))
 		//    = w0, w1
 		Producer<PackedCollection<?>> in = matchInput(c, cp(input));
-		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta(shape(in), (ComputationBase) c, in).get();
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate();
 		dout.traverse().print();
 

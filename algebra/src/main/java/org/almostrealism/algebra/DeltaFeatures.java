@@ -38,29 +38,42 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableIsolationWarnings = false;
-	boolean enableInputStub = true;
+	boolean enableTotalIsolation = false;
 
 	default boolean isChainRuleSupported() {
 		return false;
 	}
 
-	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(TraversalPolicy inputShape,
-																			 ComputationBase<T, T, Evaluable<T>> producer,
+	default <T extends Shape<?>> CollectionProducer<T> generateIsolatedDelta(ComputationBase<T, T, Evaluable<T>> producer,
 																			 Producer<?> input) {
-		if (enableInputStub) {
-			CollectionProducerComputation<?> inputStub = inputStub(inputShape, Countable.isFixedCount(input));
-			ComputationBase delta = (ComputationBase) ((CollectionProducer) replaceInput(producer, input, inputStub)).delta(inputStub);
-			// return (CollectionProducer<T>) replaceInput(delta, inputStub, input);
-			return (CollectionProducer) delta;
-		} else {
-			return ((CollectionProducer) producer).delta(input);
+		Map<Producer<?>, Producer<?>> replacements = new HashMap<>();
+		List toReplace = enableTotalIsolation ? producer.getInputs() : Collections.singletonList(input);
+
+		CollectionProducer isolated = (CollectionProducer) replaceInput(producer, toReplace, replacements);
+		ComputationBase delta = (ComputationBase) isolated.delta(replacements.get(input));
+
+		if (enableTotalIsolation) {
+			List restore = new ArrayList();
+			Map<Producer<?>, Producer<?>> originals = new HashMap<>();
+			replacements.forEach((k, v) -> {
+				if (k != input) {
+					originals.put(v, k);
+					restore.add(v);
+				}
+			});
+
+			delta = replaceInput(delta, restore, originals);
 		}
+
+		return (CollectionProducer) delta;
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
@@ -73,10 +86,6 @@ public interface DeltaFeatures extends MatrixFeatures {
 		TraversalPolicy targetShape = shape(target);
 
 		if (DeltaFeatures.match(producer, target)) {
-//			PackedCollection<?> identity =
-//					new PackedCollection<>(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-//							.identityFill().reshape(shape.append(targetShape));
-//			return (CollectionProducer) c(identity);
 			return (CollectionProducer)
 					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
 						.reshape(shape.append(targetShape));
@@ -93,7 +102,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			if (match(in, target)) return null;
 			if (!(in instanceof CollectionProducer)) return null;
 
-			Producer f = generateIsolatedDelta(shape(in), (ComputationBase) producer, in);
+			Producer f = generateIsolatedDelta((ComputationBase) producer, in);
 			if (f == null) return null;
 
 			Producer g = ((CollectionProducer<T>) in).delta(target);
@@ -112,14 +121,20 @@ public interface DeltaFeatures extends MatrixFeatures {
 
 	default <T extends Shape<?>> ComputationBase<T, T, Evaluable<T>> replaceInput(
 			ComputationBase<T, T, Evaluable<T>> producer,
-			Producer<?> original, Producer<?> replacement) {
+			List<Supplier> toReplace,
+			Map<Producer<?>, Producer<?>> replacements) {
 		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
 		List<Process<?, ?>> newInputs = new ArrayList<>();
 		newInputs.add(null);
+
 		for (int i = 1; i < inputs.size(); i++) {
 			Supplier<Evaluable<? extends T>> input = inputs.get(i);
-			if (input == original) {
-				newInputs.add((Process) replacement);
+
+			if (toReplace.contains(input)) {
+				Producer<?> inputStub = replacements.getOrDefault(input,
+						inputStub(shape(input), Countable.isFixedCount(input)));
+				newInputs.add((Process) inputStub);
+				replacements.put((Producer) input, inputStub);
 			} else {
 				newInputs.add((Process) input);
 			}
