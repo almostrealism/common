@@ -31,10 +31,10 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
-	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-	}
+//	static {
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//	}
 
 	@Test
 	public void embeddedProduct() {

@@ -34,10 +34,10 @@ import org.almostrealism.util.TestSettings;
 import org.junit.Test;
 
 public class RepeatedDeltaComputationTests implements TestFeatures {
-	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-	}
+//	static {
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//	}
 
 	@Test
 	public void sum() {

@@ -112,6 +112,12 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
 	public OptionalInt intValue() { return OptionalInt.empty(); }
+
+	public OptionalLong longValue() {
+		OptionalInt intValue = intValue();
+		return intValue.isPresent() ? OptionalLong.of(intValue.getAsInt()) : OptionalLong.empty();
+	}
+
 	public OptionalDouble doubleValue() {
 		OptionalInt intValue = intValue();
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
@@ -329,28 +335,29 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;
+
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return new DoubleConstant(Math.floor(v.getAsDouble()));
+
 		return new Floor((Expression) this);
 	}
 
 	public Expression ceil() {
 		if (getType() == Integer.class) return this;
+
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return new DoubleConstant(Math.ceil(v.getAsDouble()));
+
 		return new Ceiling((Expression) this);
 	}
 
-	public Expression mod(Expression<Double> operand) {
-		return Mod.of((Expression) this, (Expression) operand);
-	}
-
-	public Expression mod(Expression<?> operand, boolean fp) {
-		return Mod.of((Expression) this, (Expression)  operand, fp);
-	}
-
-	public Expression<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
+	public Expression mod(Expression<Double> operand) { return Mod.of(this, operand); }
+	public Expression mod(Expression<?> operand, boolean fp) { return Mod.of(this, operand, fp); }
+	public Expression<Integer> imod(Expression<? extends Number> operand) { return mod(operand, false); }
 	public Expression<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
 	public Expression<Integer> imod(long operand) {
 		if (operand > Integer.MAX_VALUE) {
-			// return mod(new DoubleConstant((double) operand), true).toInt();
-			throw new UnsupportedOperationException();
+			return imod(new LongConstant(operand));
 		} else {
 			return imod((int) operand);
 		}

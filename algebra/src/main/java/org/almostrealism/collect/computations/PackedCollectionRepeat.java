@@ -36,6 +36,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
+	public static boolean enableLargeSlice = true;
 
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
@@ -49,6 +50,12 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
+
+		if (!enableLargeSlice &&
+				(!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) &&
+				sliceShape.getTotalSizeLong() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,

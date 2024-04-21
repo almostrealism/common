@@ -23,43 +23,55 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.OptionalDouble;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 
-public class DoubleConstant extends Constant<Double> {
-	private double value;
+public class LongConstant extends Constant<Long> {
+	private long value;
 
-	public DoubleConstant(Double value) {
-		super(Double.class);
+	public LongConstant(Integer value) {
+		this(value.longValue());
+	}
+
+	public LongConstant(Long value) {
+		super(Long.class);
 		this.value = value;
 	}
 
 	@Override
-	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
-
-	@Override
-	public OptionalDouble doubleValue() {
-		return OptionalDouble.of(value);
+	public String getExpression(LanguageOperations lang) {
+		return lang.getPrecision().stringForLong(value);
 	}
 
 	@Override
-	public KernelSeries kernelSeries() {
-		return KernelSeries.constant(value);
+	public Optional<Boolean> booleanValue() {
+		return Optional.of(value != 0);
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
-		return value;
+	public OptionalInt intValue() {
+		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE)
+			return OptionalInt.empty();
+
+		return OptionalInt.of(Math.toIntExact(value));
 	}
+
+	@Override
+	public OptionalLong longValue() { return OptionalLong.of(value); }
+
+	@Override
+	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
+
+	@Override
+	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }
+
+	@Override
+	public Number value(IndexValues indexValues) { return value; }
 
 	@Override
 	public IndexSequence sequence(Index index, int len) {
 		return IndexSequence.of(value, len);
-	}
-
-	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
-		return OptionalLong.of((long) Math.ceil(value));
 	}
 
 	@Override

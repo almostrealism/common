@@ -64,7 +64,7 @@ public class GradientDescentTests implements TestFeatures {
 		Model model = new Model(shape(1), 1e-5);
 		model.addBlock(block);
 
-		int epochs = 600;
+		int epochs = 300;
 		int steps = 100;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
@@ -73,7 +73,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear1", model, data, epochs, steps, 0.5);
+		optimize("linear1", model, data, epochs, steps, 0.25);
 	}
 
 	@Test

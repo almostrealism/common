@@ -16,11 +16,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeatTests implements TestFeatures {
-	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-	}
-
 	@Test
 	public void repeatItem() {
 		int w = 2;

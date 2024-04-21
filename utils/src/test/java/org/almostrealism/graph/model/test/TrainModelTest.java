@@ -244,7 +244,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 					}
 
 					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -254,10 +254,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	@Test
 	public void trainSmallest() {
 		if (!trainingTests) return;
-
-		GradientPropagation.enableDiagnosticGrad = true;
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));

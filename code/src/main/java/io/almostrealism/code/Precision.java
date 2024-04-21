@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -69,6 +69,22 @@ public enum Precision {
 			default:
 				return "float";
 		}
+	}
+
+	public String stringForInt(int i) {
+		if (this == Precision.FP16 && (i < -32768 || i > 32767)) {
+			throw new UnsupportedOperationException();
+		}
+
+		return String.valueOf(i);
+	}
+
+	public String stringForLong(long l) {
+		if (this != Precision.FP64) {
+			throw new UnsupportedOperationException();
+		}
+
+		return String.valueOf(l);
 	}
 
 	public String stringForDouble(double d) {

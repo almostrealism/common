@@ -117,8 +117,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerate() {
-		NativeCompiler.enableInstructionSetMonitoring = true;
-
 		int c = 16;
 		int d = 1;
 
@@ -188,9 +186,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 	@Test
 	public void singleEnumerateReduceMax() {
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
-
 		int c = 16;
 		int d = 1;
 

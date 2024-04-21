@@ -37,8 +37,8 @@ import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
 	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
 	}
 
 	@Test

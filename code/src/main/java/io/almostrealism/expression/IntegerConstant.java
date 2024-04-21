@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ public class IntegerConstant extends Constant<Integer> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return String.valueOf(value);
+		return lang.getPrecision().stringForInt(value);
 	}
 
 	@Override
