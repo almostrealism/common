@@ -102,6 +102,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Class<T> getType() { return this.type; }
 
 	public boolean isInt() { return getType() == Integer.class; }
+	public boolean isFP() { return getType() == Double.class; }
 
 	public boolean isNull() { return false; }
 	public boolean isMasked() { return false; }

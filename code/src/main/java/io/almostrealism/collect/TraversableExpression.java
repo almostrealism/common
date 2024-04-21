@@ -27,8 +27,8 @@ import io.almostrealism.relation.Delegated;
 import org.almostrealism.io.ConsoleFeatures;
 
 public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFeatures {
-	// Long childLimitMax = Long.valueOf(Integer.MAX_VALUE);
-	Long childLimitMax = null;
+	Long childLimitMax = Long.valueOf(Integer.MAX_VALUE);
+//	Long childLimitMax = null;
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();

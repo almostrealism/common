@@ -89,10 +89,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		}
 
 		// Find the index in the input slice
-		offset = offset.imod(subsetShape.getTotalSize());
+		offset = offset.imod(subsetShape.getTotalSizeLong());
 
 		// Position the offset relative to the slice
-		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+		offset = slice.multiply(e(subsetShape.getTotalSizeLong())).add(offset);
 
 		return offset;
 	}

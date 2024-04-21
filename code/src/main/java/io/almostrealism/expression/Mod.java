@@ -36,11 +36,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	private boolean fp;
 
 	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
-		super((Class<T>) (fp ? Double.class : Integer.class),
-				a, b);
+		super(a.getType(), a, b);
 		this.fp = fp;
 
-		if (!fp && (a.getType() != Integer.class || b.getType() != Integer.class))
+		if (!fp && (a.isFP() || b.isFP()))
 			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {

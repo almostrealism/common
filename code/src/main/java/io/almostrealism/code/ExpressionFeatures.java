@@ -30,6 +30,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -54,9 +55,9 @@ public interface ExpressionFeatures {
 		return new DoubleConstant(value);
 	}
 
-	default Expression<Integer> e(long value) {
-		if (value > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
+	default Expression<? extends Number> e(long value) {
+		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+			return new LongConstant(value);
 		}
 
 		return e(Math.toIntExact(value));
