@@ -40,6 +40,18 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 //	}
 
 	@Test
+	public void repeatProduct() {
+		PackedCollection<?> in = pack(2.0, 1.5);
+		PackedCollection<?> multiplier = pack(4.0, 3.0);
+
+		CollectionProducer<PackedCollection<?>> c =
+					cp(in).traverse(1).repeat(2)
+							.multiply(cp(multiplier).repeat(2))
+							.delta(cp(in));
+		c.get().evaluate().print();
+	}
+
+	@Test
 	public void sum() {
 		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 		PackedCollection<?> out = cp(in).sum().delta(cp(in)).evaluate();
