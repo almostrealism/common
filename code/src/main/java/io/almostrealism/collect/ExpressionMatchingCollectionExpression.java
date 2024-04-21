@@ -23,14 +23,17 @@ import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class ExpressionMatchingCollectionExpression extends CollectionExpressionBase {
+public class ExpressionMatchingCollectionExpression extends CollectionExpressionBase implements ConsoleFeatures {
 	public static BiFunction<Supplier, Supplier, Boolean> matcher;
 
 	private final CollectionExpression reference;
@@ -61,6 +64,11 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (Index.child(globalIndex, localIndex, childLimitMax) == null) {
+			warn("Limit too large for ExpressionMatrix");
+			return null;
+		}
+
 		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
 		ExpressionMatrix<Boolean> comparison = indices.apply(i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
 
@@ -95,6 +103,9 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 		return false;
 	}
+
+	@Override
+	public Console console() { return Scope.console; }
 
 	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {
 		if (a == null && b == null) return new BooleanConstant(true);

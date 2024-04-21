@@ -18,13 +18,31 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.uml.Named;
 
+import java.util.OptionalLong;
+
 public interface Index extends SequenceGenerator, Named {
 
 	static IndexChild child(Index parent, Index child) {
+		return child(parent, child, null);
+	}
+
+	static IndexChild child(Index parent, Index child, Long limitMax) {
+		IndexChild result;
+
 		if (parent instanceof KernelIndex) {
-			return new KernelIndexChild(((KernelIndex) parent).getContext(), child);
+			result = new KernelIndexChild(((KernelIndex) parent).getContext(), child);
+		} else {
+			result = new IndexChild(parent, child);
 		}
 
-		return new IndexChild(parent, child);
+		if (limitMax != null) {
+			OptionalLong limit = result.getLimit();
+
+			if (limit.isEmpty() || limit.getAsLong() > limitMax) {
+				return null;
+			}
+		}
+
+		return result;
 	}
 }
