@@ -30,7 +30,7 @@ import java.util.OptionalLong;
 import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
-	public static boolean enableMod2Optimization = true;
+	public static boolean enableMod2Optimization = false;
 
 	private boolean fp;
 

@@ -206,6 +206,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()));
 	}
 
+	public IndexSequence sequence(int len) {
+		Set<Index> indices = getIndices();
+		if (indices.size() != 1) throw new UnsupportedOperationException();
+
+		return sequence(indices.iterator().next(), len);
+	}
+
 	@Override
 	public IndexSequence sequence(Index index, int len) {
 		if (!isValue(new IndexValues().put(index, 0))) {

@@ -108,6 +108,19 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelSumQuotient() {
+		int n = 4;
+
+		Expression<?> e =
+				kernel().multiply(n)
+						.add(kernel().imod(n))
+						.divide(n * n);
+		String simple = e.getSimplified().getExpression(lang);
+		log(simple);
+		Assert.assertEquals("kernel0 / " + n, simple);
+	}
+
+	@Test
 	public void kernelModProduct() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));

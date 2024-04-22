@@ -130,11 +130,11 @@ public class GradientDescentTests implements TestFeatures {
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 150;
+		int steps = 180;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
-				.map(input -> input.fill(pos -> 5 + 3 * Math.random()))
+				.map(input -> input.fill(pos -> 5 + 5 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -175,7 +175,7 @@ public class GradientDescentTests implements TestFeatures {
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		i: for (int i = 0; i < 5; i++) {
+		i: for (int i = 0; i < 6; i++) {
 			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
 			try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {

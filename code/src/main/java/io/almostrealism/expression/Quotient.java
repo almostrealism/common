@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,10 +33,6 @@ import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	protected Quotient(List<Expression<?>> values) {
-		super((Class<T>) type(values), "/", values);
-	}
-
-	protected Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
 	}
 
@@ -158,11 +154,17 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (children.isEmpty()) return new IntegerConstant(1);
 		if (children.size() == 1) return children.get(0);
 
-		if (children.get(0) instanceof Index && children.size() == 2) {
+		if (children.size() == 2) {
 			OptionalLong divisor = children.get(1).longValue();
 			OptionalLong max = children.get(0).getLimit();
-			if (divisor.isPresent() && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
-				return new IntegerConstant(0);
+
+			if (divisor.isPresent()) {
+				if (max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
+					return new IntegerConstant(0);
+				} else if (children.get(0) instanceof Sum) {
+					Expression simple = trySumSimplify((Sum) children.get(0), divisor.getAsLong());
+					if (simple != null) return simple;
+				}
 			}
 		}
 
@@ -221,5 +223,39 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		if (operands.size() == 1) return operands.get(0);
 		return new Quotient(operands);
+	}
+
+	private static Expression trySumSimplify(Sum<?> sum, long divisor) {
+		if (sum.getChildren().size() != 2) return null;
+
+		Product<?> product = (Product) sum.getChildren().stream()
+				.filter(e -> e instanceof Product)
+				.findFirst().orElse(null);
+		if (product == null) return null;
+		if (product.getChildren().size() != 2) return null;
+
+		Expression<?> arg = product.getChildren()
+				.stream().filter(e -> e.longValue().isEmpty())
+				.findFirst().orElse(null);
+		if (arg == null) return null;
+
+		long constant = product.getChildren().stream()
+				.map(Expression::longValue)
+				.filter(OptionalLong::isPresent).findFirst()
+				.map(OptionalLong::getAsLong).orElse(-1L);
+		if (constant <= 0) return null;
+		if (divisor % constant != 0) return null;
+		if (constant > divisor) return null;
+
+		Mod<?> mod = (Mod) sum.getChildren().stream()
+				.filter(e -> e instanceof Mod)
+				.findFirst().orElse(null);
+		if (mod == null) return null;
+		if (mod.isFP()) return null;
+		if (!mod.getChildren().get(0).equals(arg)) return null;
+		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
+		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
+
+		return Quotient.of(arg, Constant.of(divisor / constant));
 	}
 }

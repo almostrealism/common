@@ -90,7 +90,7 @@ public interface KernelSeriesProvider extends Destroyable {
 					result = getSeries((Expression) index,
 								() -> exp.getExpression(lang),
 								() -> seq.evaluate(Integer.valueOf(l)),
-								exp.getType() == Integer.class, exp::countNodes);
+								!exp.isFP(), exp::countNodes);
 				}
 			}
 		} finally {
