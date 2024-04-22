@@ -88,6 +88,8 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	protected static Class<? extends Number> type(Iterable values) {
+		boolean ln = false;
+
 		for (Object o : values) {
 			if (!(o instanceof Expression)) {
 				throw new UnsupportedOperationException();
@@ -96,12 +98,14 @@ public class NAryExpression<T> extends Expression<T> {
 			Expression<?> e = (Expression<?>) o;
 			if (!Number.class.isAssignableFrom(e.getType())) {
 				throw new UnsupportedOperationException();
-			} else if (!Objects.equals(e.getType(), Integer.class)) {
+			} else if (e.isFP()) {
 				return Double.class;
+			} else if (!Objects.equals(e.getType(), Integer.class)) {
+				ln = true;
 			}
 		}
 
-		return Integer.class;
+		return ln ? Long.class : Integer.class;
 	}
 
 	private static String concat(String separator, Stream<String> values) {

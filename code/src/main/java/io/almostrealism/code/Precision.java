@@ -80,11 +80,13 @@ public enum Precision {
 	}
 
 	public String stringForLong(long l) {
-		if (this != Precision.FP64) {
+		if (this == Precision.FP64) {
+			return String.valueOf(l);
+		} else if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException();
 		}
 
-		return String.valueOf(l);
+		return stringForInt(Math.toIntExact(l));
 	}
 
 	public String stringForDouble(double d) {

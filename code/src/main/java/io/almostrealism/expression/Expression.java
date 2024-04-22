@@ -396,8 +396,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public Expression<Integer> toInt() {
+		return toInt(false);
+	}
+
+	public Expression<Integer> toInt(boolean requireInt) {
+		boolean cast = requireInt ? getType() != Integer.class : isFP();
 		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return new Cast(Integer.class, "int", this);
+		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
 	}
 
 	public CollectionExpression delta(CollectionExpression target) {

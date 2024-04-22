@@ -159,9 +159,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (children.size() == 1) return children.get(0);
 
 		if (children.get(0) instanceof Index && children.size() == 2) {
-			OptionalInt divisor = children.get(1).intValue();
-			OptionalLong max = ((Index) children.get(0)).getLimit();
-			if (divisor.isPresent() && max.isPresent() && max.getAsLong() <= divisor.getAsInt()) {
+			OptionalLong divisor = children.get(1).longValue();
+			OptionalLong max = children.get(0).getLimit();
+			if (divisor.isPresent() && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
 				return new IntegerConstant(0);
 			}
 		}

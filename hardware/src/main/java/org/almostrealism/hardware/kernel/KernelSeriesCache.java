@@ -156,7 +156,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 			if (result == null) {
 				matchFailures.add(exp.get());
 			} else {
-				result = result.add(new DoubleConstant(init));
+				if (init != 0.0) result = result.add(new DoubleConstant(init));
 				if (isInt) result = result.toInt();
 			}
 		}

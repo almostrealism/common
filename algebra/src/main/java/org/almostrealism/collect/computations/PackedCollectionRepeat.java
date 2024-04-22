@@ -74,8 +74,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 			// Identify the output slice
 			if (sliceShape.getTotalSizeLong() == 1) {
 				slice = index;
-			} else if (index.getType() == Integer.class && sliceShape.getTotalSizeLong() < Integer.MAX_VALUE) {
-				slice = index.divide(e(sliceShape.getTotalSize()));
+			} else if (!index.isFP()) {
+				slice = index.divide(e(sliceShape.getTotalSizeLong()));
 			} else {
 				slice = index.divide(e((double) sliceShape.getTotalSizeLong())).floor();
 			}

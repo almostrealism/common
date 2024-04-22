@@ -72,6 +72,8 @@ public class Constant<T> extends Expression<T> {
 	public static <T> Constant<T> of(T value) {
 		if (value instanceof Integer) {
 			return (Constant<T>) new IntegerConstant((Integer) value);
+		} else if (value instanceof Long) {
+			return (Constant<T>) new LongConstant((Long) value);
 		} else if (value instanceof Double) {
 			return (Constant<T>) new DoubleConstant((Double) value);
 		} else if (value instanceof Boolean) {

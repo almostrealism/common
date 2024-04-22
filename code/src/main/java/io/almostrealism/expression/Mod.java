@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
@@ -150,30 +149,25 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 					System.out.println("WARN: Module zero encountered while simplifying expression");
 				}
 			}
-		} else if (mod.intValue().isPresent()) {
-			int m = mod.intValue().getAsInt();
+		} else if (mod.longValue().isPresent()) {
+			long m = mod.longValue().getAsLong();
 			if (m == 1) return new IntegerConstant(0);
 
-			if (input instanceof Mod && input.isInt()) {
-				Mod<Integer> innerMod = (Mod) input;
-				OptionalInt inMod = innerMod.getChildren().get(1).intValue();
-
-				if (inMod.isPresent()) {
-					int n = inMod.getAsInt();
-
-					if (n == m) {
-						return innerMod;
-					} else if (n % m == 0) {
-						return new Mod(innerMod.getChildren().get(0), new IntegerConstant(m), false);
-					}
+			if (!input.isFP()) {
+				if (input instanceof Mod) {
+					Expression simple = tryModSimplify((Mod) input, m);
+					if (simple != null) return simple;
+				} else if (input instanceof Sum) {
+					Expression simple = trySumSimplify((Sum) input, m);
+					if (simple != null) return simple;
 				}
 			}
 
 			OptionalLong u = input.upperBound(context);
 			if (u.isPresent() && u.getAsLong() < m) {
 				return input;
-			} else if (enableMod2Optimization && isPowerOf2(m)) {
-				return new And(input, new IntegerConstant(m - 1));
+			} else if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+				return new And(input, new IntegerConstant((int) m - 1));
 			}
 		} else if (input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
@@ -217,7 +211,57 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return new Mod(input, mod, fp);
 	}
 
-	private static boolean isPowerOf2(int number) {
+	private static Expression tryModSimplify(Mod<?> innerMod, long m) {
+		OptionalLong inMod = innerMod.getChildren().get(1).longValue();
+
+		if (inMod.isPresent()) {
+			long n = inMod.getAsLong();
+
+			if (n == m) {
+				return innerMod;
+			} else if (n % m == 0) {
+				return new Mod(innerMod.getChildren().get(0), Constant.of(m), false);
+			}
+		}
+
+		return null;
+	}
+
+	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
+		if (innerSum.getChildren().size() != 2) return null;
+
+		Product<?> product = (Product) innerSum.getChildren().stream()
+				.filter(e -> e instanceof Product)
+				.findFirst().orElse(null);
+		if (product == null) return null;
+		if (product.getChildren().size() != 2) return null;
+
+		Expression<?> arg = product.getChildren()
+				.stream().filter(e -> e.longValue().isEmpty())
+				.findFirst().orElse(null);
+		if (arg == null) return null;
+
+		long constant = product.getChildren().stream()
+				.map(Expression::longValue)
+				.filter(OptionalLong::isPresent).findFirst()
+				.map(OptionalLong::getAsLong).orElse(-1L);
+		if (constant <= 0) return null;
+		if (m % constant != 0) return null;
+		if (constant > m) return null;
+
+		Mod<?> mod = (Mod) innerSum.getChildren().stream()
+				.filter(e -> e instanceof Mod)
+				.findFirst().orElse(null);
+		if (mod == null) return null;
+		if (mod.isFP()) return null;
+		if (!mod.getChildren().get(0).equals(arg)) return null;
+		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
+		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
+
+		return new Mod(arg, Constant.of(m), false);
+	}
+
+	private static boolean isPowerOf2(long number) {
 		return number > 0 && (number & (number - 1)) == 0;
 	}
 }
