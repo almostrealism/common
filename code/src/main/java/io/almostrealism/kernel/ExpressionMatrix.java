@@ -283,7 +283,7 @@ public class ExpressionMatrix<T> {
 			if (e.isValue(IndexValues.of(index))) {
 				setupRowDuplicates(false);
 
-				int len = isMultiRow() ? rowCount * colCount : colCount;
+				long len = isMultiRow() ? index.getLimit().orElse(-1) : colCount;
 				return e.sequence(index, len);
 			}
 

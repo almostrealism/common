@@ -134,7 +134,7 @@ public class GradientDescentTests implements TestFeatures {
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
-				.map(input -> input.fill(pos -> 5 + 3 * Math.random()))
+				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 

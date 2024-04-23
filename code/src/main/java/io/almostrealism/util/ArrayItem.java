@@ -54,7 +54,9 @@ public class ArrayItem<T> implements Plural<T> {
 		this.type = type;
 		this.len = len;
 
-		if (values.length <= 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {
+		if (values.length < 1 || len < 1) {
+			throw new IllegalArgumentException();
+		} else if (values.length == 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {
 			this.single = values[0];
 			this.mod = 1;
 		} else if (enableCalculateMod && len < Integer.MAX_VALUE && values.length == len) {

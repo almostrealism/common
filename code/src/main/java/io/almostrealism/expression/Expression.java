@@ -215,7 +215,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	@Override
 	public IndexSequence sequence(Index index, long len) {
-		if (!isValue(new IndexValues().put(index, 0))) {
+		if (len < 0 || !isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
