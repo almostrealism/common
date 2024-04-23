@@ -105,7 +105,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		if (!isInt() || getChildren().get(1).intValue().isEmpty())
 			return super.sequence(index, len);
 

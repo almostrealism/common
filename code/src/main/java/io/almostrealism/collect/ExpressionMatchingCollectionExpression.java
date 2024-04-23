@@ -23,6 +23,7 @@ import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.Console;
@@ -64,15 +65,15 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		if (Index.child(globalIndex, localIndex, childLimitMax) == null) {
-			warn("Limit too large for ExpressionMatrix");
+		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
+		if (indices == null) {
+			warn("Unable to create ExpressionMatrix for " + targetIndex);
 			return null;
 		}
 
-		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
 		ExpressionMatrix<Boolean> comparison = indices.apply(i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
-
 		Expression<Boolean> allMatch = comparison.allMatch();
+
 		if (allMatch != null) {
 			Optional<Boolean> alt = allMatch.booleanValue();
 
@@ -84,8 +85,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 				}
 			}
 		} else {
-			Expression idx = comparison.uniqueMatchingOffset(globalIndex, e -> e.booleanValue().orElse(false));
-			return idx;
+			return comparison.uniqueMatchingOffset(globalIndex, e -> e.booleanValue().orElse(false));
 		}
 
 		return null;

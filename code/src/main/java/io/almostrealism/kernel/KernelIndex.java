@@ -101,12 +101,12 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		if (!(index instanceof KernelIndex)) {
+	public IndexSequence sequence(Index index, long len) {
+		if (!(index instanceof KernelIndex) || len > Integer.MAX_VALUE) {
 			return super.sequence(index, len);
 		}
 
-		if (kernelSeq == null || kernelSeq.length() < len) {
+		if (kernelSeq == null || kernelSeq.lengthLong() < len) {
 			updateKernelSeq(len);
 		}
 
@@ -122,9 +122,11 @@ public class KernelIndex extends DefaultIndex {
 		return super.simplify(context);
 	}
 
-	protected synchronized static void updateKernelSeq(int len) {
-		if (kernelSeq == null || kernelSeq.length() < len) {
-			Number seq[] = new Integer[len];
+	protected synchronized static void updateKernelSeq(long len) {
+		if (len > Integer.MAX_VALUE) return;
+
+		if (kernelSeq == null || kernelSeq.lengthLong() < len) {
+			Number seq[] = new Integer[(int) len];
 			for (int i = 0; i < len; i++) {
 				seq[i] = Integer.valueOf(i);
 			}

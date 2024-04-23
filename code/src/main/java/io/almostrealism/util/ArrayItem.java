@@ -27,6 +27,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public class ArrayItem<T> implements Plural<T> {
@@ -35,7 +36,7 @@ public class ArrayItem<T> implements Plural<T> {
 	private T[] values;
 	private T single;
 	private int mod;
-	private int len;
+	private long len;
 
 	protected Class<T> type;
 	private IntFunction<T[]> generator;
@@ -49,14 +50,14 @@ public class ArrayItem<T> implements Plural<T> {
 		this(type, values, values.length, generator);
 	}
 
-	public ArrayItem(Class<T> type, T[] values, int len, IntFunction<T[]> generator) {
+	public ArrayItem(Class<T> type, T[] values, long len, IntFunction<T[]> generator) {
 		this.type = type;
 		this.len = len;
 
 		if (values.length <= 1 || !Stream.of(values).anyMatch(v -> !Objects.equals(v, values[0]))) {
 			this.single = values[0];
 			this.mod = 1;
-		} else if (enableCalculateMod && values.length == len) {
+		} else if (enableCalculateMod && len < Integer.MAX_VALUE && values.length == len) {
 			this.values = values;
 			this.mod = calculateMod(values);
 		} else {
@@ -67,7 +68,7 @@ public class ArrayItem<T> implements Plural<T> {
 		this.generator = generator;
 	}
 
-	public ArrayItem(T value, int len, IntFunction<T[]> generator) {
+	public ArrayItem(T value, long len, IntFunction<T[]> generator) {
 		this.mod = 1;
 		this.len = len;
 		this.single = value;
@@ -77,6 +78,8 @@ public class ArrayItem<T> implements Plural<T> {
 
 	@Override
 	public T valueAt(int pos) { return values == null ? single : values[pos % mod]; }
+
+	public T valueAt(long pos) { return valueAt(Math.toIntExact(pos % mod)); }
 	
 	protected <V> V[] apply(Function<T, V> f, IntFunction<V[]> generator) {
 		if (single == null) {
@@ -97,7 +100,11 @@ public class ArrayItem<T> implements Plural<T> {
 	protected T single() { return single; }
 
 	public Stream<T> stream() {
-		return IntStream.range(0, length()).mapToObj(this::valueAt);
+		return LongStream.range(0, length()).mapToObj(this::valueAt);
+	}
+
+	public Stream<T> values() {
+		return values == null ? Stream.of(single) : Stream.of(values);
 	}
 
 	public Class<? extends T> getType() {
@@ -120,7 +127,9 @@ public class ArrayItem<T> implements Plural<T> {
 
 	public T[] toArray() {
 		if (values == null || mod < len) {
-			return IntStream.range(0, len).mapToObj(i -> valueAt(i)).toArray(generator);
+			return IntStream.range(0, length())
+					.mapToObj(i -> valueAt(i))
+					.toArray(generator);
 		}
 
 		return values;
@@ -128,7 +137,9 @@ public class ArrayItem<T> implements Plural<T> {
 
 	public int getMod() { return mod; }
 
-	public int length() { return len; }
+	public int length() { return Math.toIntExact(lengthLong()); }
+
+	public long lengthLong() { return len; }
 
 	@Override
 	public int hashCode() {

@@ -45,23 +45,23 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		IndexValues values = IndexValues.of(index);
 		if (!getLeft().isValue(values) || !getRight().isValue(values)) {
 			return super.sequence(index, len);
 		}
 
 		if (index instanceof KernelIndex) {
-			int seq[] = checkSingle(getLeft(), getRight(), len);
+			int seq[] = checkSingle(getLeft(), getRight(), Math.toIntExact(len));
 			if (seq != null) return IndexSequence.of(seq);
 
-			seq = checkSingle(getRight(), getLeft(), len);
+			seq = checkSingle(getRight(), getLeft(), Math.toIntExact(len));
 			if (seq != null) return IndexSequence.of(seq);
 		}
 
 		IndexSequence l = getLeft().sequence(index, len);
 		IndexSequence r = getRight().sequence(index, len);
-		return compare(l, r, len);
+		return compare(l, r, Math.toIntExact(len));
 	}
 
 	protected IndexSequence compare(IndexSequence left, IndexSequence right, int len) {

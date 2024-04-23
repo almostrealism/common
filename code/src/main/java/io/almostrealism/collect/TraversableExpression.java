@@ -44,15 +44,12 @@ public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFea
 		if (localIndex.getLimit().orElse(-1) == 1)
 			return new IntegerConstant(0);
 
-		if (globalIndex.getLimit().isEmpty()) return null;
-
-		if (Index.child(globalIndex, localIndex, childLimitMax) == null) {
-			warn("Limit too large for ExpressionMatrix");
+		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		if (indices == null) {
+			warn("Unable to create ExpressionMatrix for " + targetIndex);
 			return null;
 		}
 
-
-		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
 		IndexSequence columnSeq = indices.columnSequence();
 		if (columnSeq != null) {
 			return columnSeq.getExpression(globalIndex);

@@ -48,7 +48,9 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 			}
 
 			if (distinct.length == 2 && distinct[0].intValue() == 0) {
-				int first = seq.matchingIndices(distinct[1].intValue()).findFirst().orElse(-1);
+				int first = (int) seq.matchingIndices(distinct[1].intValue())
+						.filter(i -> i < Integer.MAX_VALUE)
+						.findFirst().orElse(-1);
 				if (first < 0) throw new UnsupportedOperationException();
 
 				int tot = seq.doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
@@ -75,7 +77,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 			}
 
 			int granularity = enableGranularityDetection ? seq.getGranularity() : 1;
-			if (seq.length() % granularity != 0) {
+			if (seq.lengthLong() % granularity != 0) {
 				granularity = 1;
 			}
 
@@ -98,17 +100,17 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 				if (isInt) {
 					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
 					if (initial != 0.0) r = r.add(new IntegerConstant((int) initial));
-					if (seq.getMod() != seq.length())
+					if (seq.getMod() != seq.lengthLong())
 						r = r.imod(mod);
 				} else {
 					if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
-					if (seq.getMod() != seq.length())
+					if (seq.getMod() != seq.lengthLong())
 						r = r.mod(new IntegerConstant(mod), true);
 				}
 
-				if (seq.getMod() != seq.length()) {
-					IndexSequence newSeq = r.sequence((Index) index, seq.length());
+				if (seq.getMod() != seq.lengthLong()) {
+					IndexSequence newSeq = r.sequence((Index) index, seq.lengthLong());
 
 					if (!newSeq.equals(seq)) {
 						throw new RuntimeException();

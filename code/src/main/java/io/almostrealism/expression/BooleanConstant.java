@@ -41,7 +41,7 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		return IndexSequence.of(value ? 1 : 0, len);
 	}
 

@@ -46,9 +46,14 @@ public class ExpressionMatrix<T> {
 	public ExpressionMatrix(Index row, Index col,
 							Expression<T> expression) {
 		this(row, col);
-		this.matrix = new Expression[rowCount][colCount];
-		this.rowDuplicates = new int[rowCount];
 		populate(expression.getSimplified());
+	}
+
+	protected ExpressionMatrix(Index row, Index col,
+							   IndexSequence seq) {
+		this(row, col);
+		this.seq = seq;
+		populate(null);
 	}
 
 	protected ExpressionMatrix(Index row, Index col,
@@ -62,9 +67,14 @@ public class ExpressionMatrix<T> {
 	}
 
 	protected void populate(Expression e) {
-		seq = sequence(row, col, e);
+		if (e != null) {
+			seq = sequence(row, col, e);
+		}
 
 		if (seq == null) {
+			matrix = new Expression[rowCount][colCount];
+			rowDuplicates = new int[rowCount];
+
 			for (int i = 0; i < rowCount; i++) {
 				rowDuplicates[i] = -1;
 				boolean duplicate = true;
@@ -81,6 +91,7 @@ public class ExpressionMatrix<T> {
 				}
 			}
 		} else {
+			rowDuplicates = new int[rowCount];
 			rowDuplicates[0] = -1;
 
 			for (int i = 1; i < rowCount; i++) {
@@ -258,7 +269,7 @@ public class ExpressionMatrix<T> {
 
 					IndexSequence results = e.sequence(index, resultCache.length);
 					if (results.getMod() == 1) {
-						return IndexSequence.of(results.valueAt(0), seq.length());
+						return IndexSequence.of(results.valueAt(0), seq.lengthLong());
 					}
 
 					return seq.map(i -> results.valueAt(i.intValue()));
@@ -315,17 +326,20 @@ public class ExpressionMatrix<T> {
 		if (!e.isValue(values))
 			return null;
 
-		OptionalLong limit = child.getLimit();
-
-		if (limit.getAsLong() > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
-		}
-
-		return e.sequence(child, Math.toIntExact(limit.getAsLong()));
+		return e.sequence(child, child.getLimit().getAsLong());
 	}
 
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {
 		if (row.getLimit().isEmpty() || col.getLimit().isEmpty()) return null;
-		return new ExpressionMatrix<>(row, col, expression);
+
+		IndexSequence seq = sequence(row, col, expression);
+
+		if (seq != null) {
+			return new ExpressionMatrix<>(row, col, seq);
+		} else if (Index.child(row, col, (long) Integer.MAX_VALUE) == null) {
+			return null;
+		}
+
+		return new ExpressionMatrix<>(row, col, (Expression) null);
 	}
 }

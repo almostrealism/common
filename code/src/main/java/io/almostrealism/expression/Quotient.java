@@ -100,15 +100,17 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		if (getChildren().size() != 2 ||
 				!getChildren().get(0).equals(index) ||
 				getChildren().get(1).intValue().isEmpty())
 			return super.sequence(index, len);
 
-		int divisor = getChildren().get(1).intValue().getAsInt();
-		Number[] values = IntStream.range(0, len / divisor).boxed().toArray(Number[]::new);
-		return IndexSequence.of(Integer.class, values, divisor, len);
+		long divisor = getChildren().get(1).longValue().getAsLong();
+		Number[] values = IntStream.range(0, Math.toIntExact(len / divisor))
+				.boxed().toArray(Number[]::new);
+		return IndexSequence.of(Integer.class, values,
+				Math.toIntExact(divisor), len);
 	}
 
 	@Override

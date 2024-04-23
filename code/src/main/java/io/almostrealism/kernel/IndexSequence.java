@@ -37,12 +37,12 @@ public class IndexSequence extends ArrayItem<Number> {
 	private Long max;
 	private int granularity;
 
-	protected IndexSequence(Class<Number> type, Number[] values, int granularity, int len) {
+	protected IndexSequence(Class<Number> type, Number[] values, int granularity, long len) {
 		super(type, values, len, Number[]::new);
 		this.granularity = granularity;
 	}
 
-	protected IndexSequence(Number value, int len) {
+	protected IndexSequence(Number value, long len) {
 		super(value, len, Number[]::new);
 		this.granularity = 1;
 	}
@@ -53,15 +53,15 @@ public class IndexSequence extends ArrayItem<Number> {
 	}
 
 	public IndexSequence map(UnaryOperator<Number> op) {
-		return IndexSequence.of(type, apply(op, Number[]::new), length());
+		return IndexSequence.of(type, apply(op, Number[]::new), lengthLong());
 	}
 
 	public IndexSequence mapInt(IntUnaryOperator op) {
-		return IndexSequence.of(Integer.class, apply(v -> op.applyAsInt(v.intValue()), Number[]::new), length());
+		return IndexSequence.of(Integer.class, apply(v -> op.applyAsInt(v.intValue()), Number[]::new), lengthLong());
 	}
 
 	public IndexSequence mapDouble(DoubleUnaryOperator op) {
-		return IndexSequence.of(Double.class, apply(v -> op.applyAsDouble(v.doubleValue()), Number[]::new), length());
+		return IndexSequence.of(Double.class, apply(v -> op.applyAsDouble(v.doubleValue()), Number[]::new), lengthLong());
 	}
 
 	public IndexSequence mod(int m) {
@@ -71,11 +71,11 @@ public class IndexSequence extends ArrayItem<Number> {
 	}
 
 	public IndexSequence eq(IndexSequence other) {
-		if (length() != other.length()) throw new IllegalArgumentException();
+		if (lengthLong() != other.lengthLong()) throw new IllegalArgumentException();
 
 		if (isConstant() && other.isConstant()) {
 			return IndexSequence.of(single().doubleValue() == other.single().doubleValue() ?
-					Integer.valueOf(1) : Integer.valueOf(0), length());
+					Integer.valueOf(1) : Integer.valueOf(0), lengthLong());
 		}
 
 		return IndexSequence.of(type, IntStream.range(0, length())
@@ -85,9 +85,13 @@ public class IndexSequence extends ArrayItem<Number> {
 					.toArray(Number[]::new));
 	}
 
-	public IndexSequence subset(int len) {
-		if (len == length()) return this;
-		return new IndexSequence(type, Arrays.copyOf(toArray(), len), 1, len);
+	public IndexSequence subset(long len) {
+		if (len == lengthLong())
+			return this;
+
+		return new IndexSequence(type,
+				Arrays.copyOf(toArray(), Math.toIntExact(len)),
+				1, Math.toIntExact(len));
 	}
 
 	public IntStream intStream() {
@@ -98,13 +102,24 @@ public class IndexSequence extends ArrayItem<Number> {
 		return stream().mapToLong(Number::longValue);
 	}
 
-
 	public DoubleStream doubleStream() {
 		return stream().mapToDouble(Number::doubleValue);
 	}
 
-	public IntStream matchingIndices(double value) {
-		return IntStream.range(0, length()).filter(i -> valueAt(i).doubleValue() == value);
+	public IntStream intValues() {
+		return values().mapToInt(Number::intValue);
+	}
+
+	public LongStream longValues() {
+		return values().mapToLong(Number::longValue);
+	}
+
+	public DoubleStream doubleValues() {
+		return values().mapToDouble(Number::doubleValue);
+	}
+
+	public LongStream matchingIndices(double value) {
+		return LongStream.range(0, lengthLong()).filter(i -> valueAt(i).doubleValue() == value);
 	}
 
 	public long max() {
@@ -112,11 +127,11 @@ public class IndexSequence extends ArrayItem<Number> {
 
 		if (max == null) {
 			if (valueAt(0) instanceof Integer) {
-				max = (long) intStream().limit(getMod()).max().orElseThrow();
+				max = (long) intValues().limit(getMod()).max().orElseThrow();
 			} else if (valueAt(0) instanceof Long) {
-				max = longStream().limit(getMod()).max().orElseThrow();
+				max = longValues().limit(getMod()).max().orElseThrow();
 			} else {
-				max = (long) Math.ceil(doubleStream().limit(getMod()).max().orElseThrow());
+				max = (long) Math.ceil(doubleValues().limit(getMod()).max().orElseThrow());
 			}
 		}
 
@@ -126,6 +141,7 @@ public class IndexSequence extends ArrayItem<Number> {
 	public boolean isConstant() { return single() != null; }
 
 	public int getGranularity() {
+		if (lengthLong() > Integer.MAX_VALUE) return 1;
 		if (single() != null) return length();
 
 		int granularity = 1;
@@ -160,7 +176,7 @@ public class IndexSequence extends ArrayItem<Number> {
 	public Expression<? extends Number> getExpression(Index index) {
 		if (isConstant()) {
 			return new IntegerConstant(single().intValue());
-		} else if (index instanceof Expression && IntStream.range(0, length()).allMatch(i -> valueAt(i).doubleValue() == i)) {
+		} else if (index instanceof Expression && LongStream.range(0, lengthLong()).allMatch(i -> valueAt(i).doubleValue() == i)) {
 			return (Expression<? extends Number>) index;
 		} else {
 			return KernelSeriesMatcher.match((Expression) index, this, ((Expression) index).isInt());
@@ -187,12 +203,15 @@ public class IndexSequence extends ArrayItem<Number> {
 		}
 	}
 
-	public static IndexSequence of(Expression<?> exp, IndexValues values, int len) {
+	public static IndexSequence of(Expression<?> exp, IndexValues values, long len) {
 		return values.apply(exp).sequence(new KernelIndex(), len);
 	}
 
-	public static IndexSequence of(SequenceGenerator source, Index index, int len) {
-		return of(IntStream.range(0, len).parallel()
+	public static IndexSequence of(SequenceGenerator source, Index index, long len) {
+		if (len > Integer.MAX_VALUE)
+			throw new IllegalArgumentException();
+
+		return of(IntStream.range(0, Math.toIntExact(len)).parallel()
 				.mapToObj(i -> source.value(new IndexValues().put(index, i))).toArray(Number[]::new));
 	}
 
@@ -209,16 +228,16 @@ public class IndexSequence extends ArrayItem<Number> {
 		return new IndexSequence((Class) type, values, 1, values.length);
 	}
 
-	public static IndexSequence of(Class<? extends Number> type, Number[] values, int len) {
+	public static IndexSequence of(Class<? extends Number> type, Number[] values, long len) {
 		return new IndexSequence((Class) type, values, 1, len);
 	}
 
 	public static IndexSequence of(Class<? extends Number> type, Number[] values,
-								   int granularity, int len) {
+								   int granularity, long len) {
 		return new IndexSequence((Class) type, values, granularity, len);
 	}
 
-	public static IndexSequence of(Number value, int len) {
+	public static IndexSequence of(Number value, long len) {
 		return new IndexSequence(value, len);
 	}
 }

@@ -29,5 +29,5 @@ public interface SequenceGenerator {
 
 	Number value(IndexValues indexValues);
 
-	IndexSequence sequence(Index index, int len);
+	IndexSequence sequence(Index index, long len);
 }

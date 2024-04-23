@@ -124,10 +124,10 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 			return result;
 		}
 
-		if (seq.length() != count) {
+		if (seq.lengthLong() != count) {
 			matchFailures.add(exp.get());
 			if (enableVerbose)
-				warn("Cannot cache sequence of length " + seq.length() + " (length != " + count + ")");
+				warn("Cannot cache sequence of length " + seq.lengthLong() + " (length != " + count + ")");
 			return result;
 		}
 

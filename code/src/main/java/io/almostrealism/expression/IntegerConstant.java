@@ -60,7 +60,7 @@ public class IntegerConstant extends Constant<Integer> {
 	public Number value(IndexValues indexValues) { return value; }
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		return IndexSequence.of(value, len);
 	}
 

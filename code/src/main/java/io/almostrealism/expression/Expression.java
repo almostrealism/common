@@ -214,7 +214,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
+	public IndexSequence sequence(Index index, long len) {
 		if (!isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
@@ -224,7 +224,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		if (kernelSeqCache != null && exp != null) {
 			IndexSequence cached = kernelSeqCache.get(exp);
-			if (cached != null && cached.length() >= len) {
+			if (cached != null && cached.lengthLong() >= len) {
 				return cached.subset(len);
 			}
 		}
@@ -237,9 +237,9 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		if (enableBatchEvaluation) {
 			seq = IndexSequence.of(type, batchEvaluate(getChildren().stream()
 					.map(e -> e.sequence(index, len).toArray())
-					.collect(Collectors.toList()), len));
+					.collect(Collectors.toList()), Math.toIntExact(len)));
 		} else {
-			seq = IndexSequence.of(type, IntStream.range(0, len).parallel()
+			seq = IndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
 					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new));
 		}
 
