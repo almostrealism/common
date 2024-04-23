@@ -107,6 +107,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return super.sequence(index, len);
 
 		long divisor = getChildren().get(1).longValue().getAsLong();
+		if (len <= divisor) return IndexSequence.of(0, len);
+
 		Number[] values = IntStream.range(0, Math.toIntExact(len / divisor))
 				.boxed().toArray(Number[]::new);
 		return IndexSequence.of(Integer.class, values,
