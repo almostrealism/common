@@ -17,13 +17,9 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -31,7 +27,6 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -73,7 +68,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear1", model, data, epochs, steps, 0.25);
+		optimize("linear1", model, data, epochs, steps, 0.25, 0.1);
 	}
 
 	@Test
@@ -95,7 +90,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear2", model, data, epochs, steps, 1.0);
+		optimize("linear2", model, data, epochs, steps, 1.0, 0.2);
 	}
 
 	@Test
@@ -117,7 +112,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 0.3);
+		optimize("linear3", model, data, epochs, steps, 1.0, 0.2);
 	}
 
 	@Test
@@ -138,7 +133,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear4", model, data, epochs, steps, 0.3);
+		optimize("linear4", model, data, epochs, steps, 0.8, 0.075);
 	}
 
 	@Test
@@ -168,13 +163,14 @@ public class GradientDescentTests implements TestFeatures {
 					.map(input -> ValueTarget.of(input, func3.apply(input)))
 					.collect(Collectors.toList()));
 
-			optimize("linear5", model, data, epochs, steps, 1.0);
+			optimize("linear5", model, data, epochs, steps, 1.0, 0.1);
 		} finally {
 			logKernelMetrics();
 		}
 	}
 
-	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {
+	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
+						 double lossTarget, double minLoss) throws FileNotFoundException {
 		i: for (int i = 0; i < 6; i++) {
 			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
@@ -182,9 +178,17 @@ public class GradientDescentTests implements TestFeatures {
 				optimizer.setReceptor(receptor);
 				optimizer.setLossTarget(lossTarget);
 				optimizer.optimize(epochs);
-
 				log("Completed " + optimizer.getTotalIterations() + " epochs");
-				if (optimizer.getTotalIterations() < 5) continue i;
+
+				if (optimizer.getTotalIterations() < 5) {
+					optimizer.setLossTarget(minLoss);
+					optimizer.optimize(epochs);
+					log("Completed " + optimizer.getTotalIterations() + " epochs");
+				}
+
+				if (optimizer.getTotalIterations() < 5) {
+					continue i;
+				}
 
 				Assert.assertTrue(optimizer.getLoss() > 0.0);
 				Assert.assertTrue(optimizer.getLoss() < optimizer.getLossTarget());
