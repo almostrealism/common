@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.lang;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;

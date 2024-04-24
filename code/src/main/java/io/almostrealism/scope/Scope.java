@@ -17,7 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;

@@ -16,14 +16,12 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;

@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.lang;
 
-import io.almostrealism.lang.DefaultLanguageOperations;
-import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;

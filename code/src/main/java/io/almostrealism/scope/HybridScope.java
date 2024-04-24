@@ -16,9 +16,8 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.relation.Parent;
 
 import java.util.ArrayList;
