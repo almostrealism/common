@@ -16,6 +16,8 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.kernel.DefaultIndex;
+
 public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
 	protected static long idxCount;
 
@@ -31,4 +33,8 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 
 	@Override
 	public TraversalPolicy getShape() { return shape; }
+
+	protected static DefaultIndex generateTemporaryIndex() {
+		return new DefaultIndex("ci_" + idxCount++);
+	}
 }

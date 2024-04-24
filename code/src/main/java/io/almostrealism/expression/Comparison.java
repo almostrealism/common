@@ -61,11 +61,13 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 		IndexSequence l = getLeft().sequence(index, len);
 		IndexSequence r = getRight().sequence(index, len);
-		return compare(l, r, Math.toIntExact(len));
+		return compare(l, r, len);
 	}
 
-	protected IndexSequence compare(IndexSequence left, IndexSequence right, int len) {
-		return IndexSequence.of(Integer.class, IntStream.range(0, len)
+	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
+		if (len > Integer.MAX_VALUE) return null;
+
+		return IndexSequence.of(Integer.class, IntStream.range(0, Math.toIntExact(len))
 				.mapToObj(i -> compare(left.valueAt(i), right.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
 	}

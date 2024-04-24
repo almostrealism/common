@@ -50,7 +50,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 			}
 		});
 
-		DefaultIndex index = new DefaultIndex("ci_" + idxCount++);
+		DefaultIndex index = generateTemporaryIndex();
 
 		if (matches.size() != 1 ||
 				others.stream().map(e -> e.getValueAt(index))

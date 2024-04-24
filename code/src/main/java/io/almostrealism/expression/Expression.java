@@ -231,6 +231,9 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		Class type = getType();
 		if (type == Boolean.class) type = Integer.class;
+		if (len > Integer.MAX_VALUE) {
+			return null;
+		}
 
 		IndexSequence seq;
 

@@ -33,6 +33,8 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public class IndexSequence extends ArrayItem<Number> {
+	public static boolean enableEqOptimization = false;
+
 	private Base64.Encoder encoder = Base64.getEncoder();
 	private Long max;
 	private int granularity;
@@ -65,6 +67,7 @@ public class IndexSequence extends ArrayItem<Number> {
 	}
 
 	public IndexSequence mod(int m) {
+		if (m < 0) throw new IllegalArgumentException();
 		if (m > max()) return this;
 
 		return mapInt(i -> i % m);
@@ -76,6 +79,18 @@ public class IndexSequence extends ArrayItem<Number> {
 		if (isConstant() && other.isConstant()) {
 			return IndexSequence.of(single().doubleValue() == other.single().doubleValue() ?
 					Integer.valueOf(1) : Integer.valueOf(0), lengthLong());
+		}
+
+		if (getGranularity() != other.getGranularity() && lengthLong() > Integer.MAX_VALUE) {
+			return null;
+		}
+
+		if (getMod() == other.getMod()) {
+			return IndexSequence.of(type, IntStream.range(0, getMod())
+					.parallel()
+					.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
+							Integer.valueOf(1) : Integer.valueOf(0))
+					.toArray(Number[]::new), lengthLong());
 		}
 
 		return IndexSequence.of(type, IntStream.range(0, length())
@@ -127,11 +142,11 @@ public class IndexSequence extends ArrayItem<Number> {
 
 		if (max == null) {
 			if (valueAt(0) instanceof Integer) {
-				max = (long) intValues().limit(getMod()).max().orElseThrow();
+				max = (long) intValues().max().orElseThrow();
 			} else if (valueAt(0) instanceof Long) {
-				max = longValues().limit(getMod()).max().orElseThrow();
+				max = longValues().max().orElseThrow();
 			} else {
-				max = (long) Math.ceil(doubleValues().limit(getMod()).max().orElseThrow());
+				max = (long) Math.ceil(doubleValues().max().orElseThrow());
 			}
 		}
 
@@ -141,6 +156,7 @@ public class IndexSequence extends ArrayItem<Number> {
 	public boolean isConstant() { return single() != null; }
 
 	public int getGranularity() {
+		if (granularity > 1) return granularity;
 		if (lengthLong() > Integer.MAX_VALUE) return 1;
 		if (single() != null) return length();
 
@@ -155,7 +171,7 @@ public class IndexSequence extends ArrayItem<Number> {
 
 		if (granularity == 1) return granularity;
 
-		int sections = length() / granularity;
+		long sections = lengthLong() / granularity;
 
 		for (int i = 0; i < sections; i++) {
 			for (int j = 1; j < granularity & i * granularity + j < length(); j++) {
@@ -170,7 +186,14 @@ public class IndexSequence extends ArrayItem<Number> {
 
 	@Override
 	public int getMod() {
-		return granularity * super.getMod();
+		long g = granularity;
+		g = g * super.getMod();
+
+		if (g > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return Math.toIntExact(g);
 	}
 
 	public Expression<? extends Number> getExpression(Index index) {

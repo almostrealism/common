@@ -51,7 +51,7 @@ public class Equals extends Comparison {
 	}
 
 	@Override
-	protected IndexSequence compare(IndexSequence left, IndexSequence right, int len) {
+	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
 		return left.eq(right);
 	}
 

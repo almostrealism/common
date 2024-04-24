@@ -27,8 +27,6 @@ import io.almostrealism.relation.Delegated;
 import org.almostrealism.io.ConsoleFeatures;
 
 public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFeatures {
-	Long childLimitMax = Long.valueOf(Integer.MAX_VALUE);
-//	Long childLimitMax = null;
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();
@@ -44,7 +42,7 @@ public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFea
 		if (localIndex.getLimit().orElse(-1) == 1)
 			return new IntegerConstant(0);
 
-		ExpressionMatrix<?> indices = new ExpressionMatrix<>(globalIndex, localIndex, targetIndex);
+		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
 		if (indices == null) {
 			warn("Unable to create ExpressionMatrix for " + targetIndex);
 			return null;
