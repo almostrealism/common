@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -53,10 +54,10 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 		if (index instanceof KernelIndex) {
 			int seq[] = checkSingle(getLeft(), getRight(), Math.toIntExact(len));
-			if (seq != null) return IndexSequence.of(seq);
+			if (seq != null) return ArrayIndexSequence.of(seq);
 
 			seq = checkSingle(getRight(), getLeft(), Math.toIntExact(len));
-			if (seq != null) return IndexSequence.of(seq);
+			if (seq != null) return ArrayIndexSequence.of(seq);
 		}
 
 		IndexSequence l = getLeft().sequence(index, len);
@@ -67,7 +68,7 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
 		if (len > Integer.MAX_VALUE) return null;
 
-		return IndexSequence.of(Integer.class, IntStream.range(0, Math.toIntExact(len))
+		return ArrayIndexSequence.of(Integer.class, IntStream.range(0, Math.toIntExact(len))
 				.mapToObj(i -> compare(left.valueAt(i), right.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
 	}

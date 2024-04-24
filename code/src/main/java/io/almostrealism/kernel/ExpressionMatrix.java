@@ -203,7 +203,7 @@ public class ExpressionMatrix<T> {
 			}
 		}
 
-		return IndexSequence.of(result);
+		return ArrayIndexSequence.of(result);
 	}
 
 	public Expression[] allColumnsMatch() {
@@ -241,7 +241,7 @@ public class ExpressionMatrix<T> {
 			if (matchingColumns[i] == null) matchingColumns[i] = 0;
 		}
 
-		IndexSequence seq = IndexSequence.of(Integer.class, matchingColumns);
+		IndexSequence seq = ArrayIndexSequence.of(Integer.class, matchingColumns);
 		return seq.getExpression(rowIndex);
 	}
 
@@ -269,7 +269,7 @@ public class ExpressionMatrix<T> {
 
 					IndexSequence results = e.sequence(index, resultCache.length);
 					if (results.getMod() == 1) {
-						return IndexSequence.of(results.valueAt(0), seq.lengthLong());
+						return ArrayIndexSequence.of(results.valueAt(0), seq.lengthLong());
 					}
 
 					return seq.map(i -> results.valueAt(i.intValue()));

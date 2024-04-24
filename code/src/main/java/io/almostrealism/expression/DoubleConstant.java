@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -54,7 +55,7 @@ public class DoubleConstant extends Constant<Double> {
 
 	@Override
 	public IndexSequence sequence(Index index, long len) {
-		return IndexSequence.of(value, len);
+		return ArrayIndexSequence.of(value, len);
 	}
 
 	@Override

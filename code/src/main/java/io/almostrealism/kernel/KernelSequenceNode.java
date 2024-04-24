@@ -54,7 +54,7 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 
 	public static KernelSequenceNode generateTree(Expression<?> exp, IndexValues values, Set<Index> indices, int len) {
 		if (indices.isEmpty()) {
-			return new KernelSequenceNode(IndexSequence.of(exp, values, len));
+			return new KernelSequenceNode(ArrayIndexSequence.of(exp, values, len));
 		}
 
 		Index index = indices.iterator().next();

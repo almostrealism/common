@@ -16,8 +16,6 @@
 
 package io.almostrealism.util;
 
-import io.almostrealism.uml.Plural;
-
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -27,10 +25,9 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
-public class ArrayItem<T> implements Plural<T> {
+public class ArrayItem<T> implements Sequence<T> {
 	public static boolean enableCalculateMod = false;
 
 	private T[] values;
@@ -81,6 +78,7 @@ public class ArrayItem<T> implements Plural<T> {
 	@Override
 	public T valueAt(int pos) { return values == null ? single : values[pos % mod]; }
 
+	@Override
 	public T valueAt(long pos) { return valueAt(Math.toIntExact(pos % mod)); }
 	
 	protected <V> V[] apply(Function<T, V> f, IntFunction<V[]> generator) {
@@ -91,24 +89,19 @@ public class ArrayItem<T> implements Plural<T> {
 		}
 	}
 
+	@Override
 	public T[] distinct() {
-		return Stream.of(values).distinct().toArray(generator);
+		return values().distinct().toArray(generator);
 	}
-
-	public int intAt(int pos) { return ((Number) valueAt(pos)).intValue(); }
-
-	public double doubleAt(int pos) { return ((Number) valueAt(pos)).doubleValue(); }
 
 	protected T single() { return single; }
 
-	public Stream<T> stream() {
-		return LongStream.range(0, length()).mapToObj(this::valueAt);
-	}
-
+	@Override
 	public Stream<T> values() {
 		return values == null ? Stream.of(single) : Stream.of(values);
 	}
 
+	@Override
 	public Class<? extends T> getType() {
 		if (type == null) {
 			if (single != null) {
@@ -127,6 +120,7 @@ public class ArrayItem<T> implements Plural<T> {
 		return type;
 	}
 
+	@Override
 	public T[] toArray() {
 		if (values == null || mod < len) {
 			return IntStream.range(0, length())
@@ -139,8 +133,7 @@ public class ArrayItem<T> implements Plural<T> {
 
 	public int getMod() { return mod; }
 
-	public int length() { return Math.toIntExact(lengthLong()); }
-
+	@Override
 	public long lengthLong() { return len; }
 
 	@Override

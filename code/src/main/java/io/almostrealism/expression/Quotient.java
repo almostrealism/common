@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -107,11 +108,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return super.sequence(index, len);
 
 		long divisor = getChildren().get(1).longValue().getAsLong();
-		if (len <= divisor) return IndexSequence.of(0, len);
+		if (len <= divisor) return ArrayIndexSequence.of(0, len);
 
 		Number[] values = IntStream.range(0, Math.toIntExact(len / divisor))
 				.boxed().toArray(Number[]::new);
-		return IndexSequence.of(Integer.class, values,
+		return ArrayIndexSequence.of(Integer.class, values,
 				Math.toIntExact(divisor), len);
 	}
 

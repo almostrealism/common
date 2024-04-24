@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -112,7 +113,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (getChildren().get(0).equals(index)) {
 			Integer[] values = IntStream.range(0, getChildren().get(1).intValue().getAsInt())
 					.boxed().toArray(Integer[]::new);
-			return IndexSequence.of(Integer.class, values, len);
+			return ArrayIndexSequence.of(Integer.class, values, len);
 		} else {
 			return getChildren().get(0).sequence(index, len).mod(getChildren().get(1).intValue().getAsInt());
 		}

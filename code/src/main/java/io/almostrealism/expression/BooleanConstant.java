@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.lang.LanguageOperations;
@@ -42,7 +43,7 @@ public class BooleanConstant extends Constant<Boolean> {
 
 	@Override
 	public IndexSequence sequence(Index index, long len) {
-		return IndexSequence.of(value ? 1 : 0, len);
+		return ArrayIndexSequence.of(value ? 1 : 0, len);
 	}
 
 	@Override

@@ -14,15 +14,9 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.uml;
 
-import io.almostrealism.uml.Signature;
+public interface Signature {
 
-@FunctionalInterface
-public interface Factor<T> extends Function<T, T>, Signature {
-	Producer<T> getResultant(Producer<T> value);
-
-	default Factor<T> andThen(Factor<T> next) {
-		throw new UnsupportedOperationException();
-	}
+	default String signature() { throw new UnsupportedOperationException(); }
 }

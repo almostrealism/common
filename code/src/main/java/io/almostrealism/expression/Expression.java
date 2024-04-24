@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -238,11 +239,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		IndexSequence seq;
 
 		if (enableBatchEvaluation) {
-			seq = IndexSequence.of(type, batchEvaluate(getChildren().stream()
+			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
 					.map(e -> e.sequence(index, len).toArray())
 					.collect(Collectors.toList()), Math.toIntExact(len)));
 		} else {
-			seq = IndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
+			seq = ArrayIndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
 					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new));
 		}
 
