@@ -76,10 +76,15 @@ public class ArrayItem<T> implements Sequence<T> {
 	}
 
 	@Override
-	public T valueAt(int pos) { return values == null ? single : values[pos % mod]; }
+	public T valueAt(long pos) {
+		pos = pos % mod;
 
-	@Override
-	public T valueAt(long pos) { return valueAt(Math.toIntExact(pos % mod)); }
+		if (pos > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return values == null ? single : values[(int) pos];
+	}
 	
 	protected <V> V[] apply(Function<T, V> f, IntFunction<V[]> generator) {
 		if (single == null) {

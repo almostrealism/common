@@ -23,9 +23,10 @@ import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public interface Sequence<T> extends Plural<T>, Signature {
-	default T valueAt(long pos) {
-		return valueAt(Math.toIntExact(pos));
-	}
+	@Override
+	default T valueAt(int pos) { return valueAt((long) pos); }
+
+	T valueAt(long pos);
 
 	default int intAt(int pos) { return ((Number) valueAt(pos)).intValue(); }
 

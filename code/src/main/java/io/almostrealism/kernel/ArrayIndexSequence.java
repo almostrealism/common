@@ -47,7 +47,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	}
 
 	@Override
-	public Number valueAt(int pos) {
+	public Number valueAt(long pos) {
 		return super.valueAt(pos / granularity);
 	}
 

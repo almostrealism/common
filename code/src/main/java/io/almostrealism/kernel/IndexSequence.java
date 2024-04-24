@@ -17,16 +17,8 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.uml.Plural;
-import io.almostrealism.util.ArrayItem;
 import io.almostrealism.util.Sequence;
 
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Objects;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.UnaryOperator;
@@ -35,6 +27,10 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public interface IndexSequence extends Sequence<Number> {
+
+	default Number valueAt(int pos) {
+		return valueAt((long) pos);
+	}
 
 	IndexSequence map(UnaryOperator<Number> op);
 
@@ -74,6 +70,11 @@ public interface IndexSequence extends Sequence<Number> {
 
 	default LongStream matchingIndices(double value) {
 		return LongStream.range(0, lengthLong()).filter(i -> valueAt(i).doubleValue() == value);
+	}
+
+	@Override
+	default Number[] distinct() {
+		return values().distinct().toArray(Number[]::new);
 	}
 
 	default long max() {
