@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
@@ -59,7 +60,16 @@ public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFea
 			throw new RuntimeException("localIndex is irrelevant");
 		}
 
+		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {
+			return null;
+		}
+
 		ExpressionMatrix<T> values = indices.apply(this::getValueAt);
+		if (values == null) {
+			warn("Unable to create ExpressionMatrix for " + this);
+			return null;
+		}
+
 		return values.uniqueNonZeroOffset(globalIndex);
 	}
 

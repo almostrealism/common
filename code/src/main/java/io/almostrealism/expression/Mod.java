@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -28,7 +27,6 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
@@ -106,17 +104,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
+	public IndexSequence sequence(Index index, long len, long limit) {
 		if (!isInt() || getChildren().get(1).intValue().isEmpty())
-			return super.sequence(index, len);
+			return super.sequence(index, len, limit);
 
-		if (getChildren().get(0).equals(index)) {
-			Integer[] values = IntStream.range(0, getChildren().get(1).intValue().getAsInt())
-					.boxed().toArray(Integer[]::new);
-			return ArrayIndexSequence.of(Integer.class, values, len);
-		} else {
-			return getChildren().get(0).sequence(index, len).mod(getChildren().get(1).intValue().getAsInt());
-		}
+		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
+		if (seq == null) return null;
+
+		return seq.mod(getChildren().get(1).intValue().getAsInt());
 	}
 
 	@Override

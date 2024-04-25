@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -70,6 +72,14 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	@Override
 	public Number evaluate(Number... children) {
 		return -1 * children[0].doubleValue();
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, long len, long limit) {
+		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
+		if (seq == null) return null;
+
+		return seq.minus();
 	}
 
 	@Override

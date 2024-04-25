@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -30,7 +29,6 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	protected Quotient(List<Expression<?>> values) {
@@ -101,19 +99,16 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
+	public IndexSequence sequence(Index index, long len, long limit) {
 		if (getChildren().size() != 2 ||
-				!getChildren().get(0).equals(index) ||
-				getChildren().get(1).intValue().isEmpty())
-			return super.sequence(index, len);
+				getChildren().get(1).longValue().isEmpty())
+			return super.sequence(index, len, limit);
+
+		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
+		if (seq == null) return null;
 
 		long divisor = getChildren().get(1).longValue().getAsLong();
-		if (len <= divisor) return ArrayIndexSequence.of(0, len);
-
-		Number[] values = IntStream.range(0, Math.toIntExact(len / divisor))
-				.boxed().toArray(Number[]::new);
-		return ArrayIndexSequence.of(Integer.class, values,
-				Math.toIntExact(divisor), len);
+		return seq.divide(divisor);
 	}
 
 	@Override

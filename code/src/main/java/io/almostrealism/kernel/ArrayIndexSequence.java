@@ -27,13 +27,14 @@ import java.util.Base64;
 import java.util.Objects;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
+import java.util.function.LongUnaryOperator;
 import java.util.function.UnaryOperator;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequence {
 	private final Base64.Encoder encoder = Base64.getEncoder();
-	private Long max;
+	private Long min, max;
 	private int granularity;
 
 	protected ArrayIndexSequence(Class<Number> type, Number[] values, int granularity, long len) {
@@ -59,42 +60,12 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 		return ArrayIndexSequence.of(Integer.class, apply(v -> op.applyAsInt(v.intValue()), Number[]::new), lengthLong());
 	}
 
+	public IndexSequence mapLong(LongUnaryOperator op) {
+		return ArrayIndexSequence.of(Long.class, apply(v -> op.applyAsLong(v.longValue()), Number[]::new), lengthLong());
+	}
+
 	public IndexSequence mapDouble(DoubleUnaryOperator op) {
 		return ArrayIndexSequence.of(Double.class, apply(v -> op.applyAsDouble(v.doubleValue()), Number[]::new), lengthLong());
-	}
-
-	public IndexSequence mod(int m) {
-		if (m < 0) throw new IllegalArgumentException();
-		if (m > max()) return this;
-
-		return mapInt(i -> i % m);
-	}
-
-	public IndexSequence eq(IndexSequence other) {
-		if (lengthLong() != other.lengthLong()) throw new IllegalArgumentException();
-
-		if (isConstant() && other.isConstant()) {
-			return ArrayIndexSequence.of(valueAt(0).doubleValue() == other.valueAt(0).doubleValue() ?
-					Integer.valueOf(1) : Integer.valueOf(0), lengthLong());
-		}
-
-		if (getGranularity() != other.getGranularity() && lengthLong() > Integer.MAX_VALUE) {
-			return null;
-		}
-
-		if (getMod() == other.getMod()) {
-			return ArrayIndexSequence.of(type, IntStream.range(0, getMod())
-					.parallel()
-					.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
-							Integer.valueOf(1) : Integer.valueOf(0))
-					.toArray(Number[]::new), lengthLong());
-		}
-
-		return ArrayIndexSequence.of(type, IntStream.range(0, length())
-				.parallel()
-				.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
-						Integer.valueOf(1) : Integer.valueOf(0))
-				.toArray(Number[]::new));
 	}
 
 	@Override
@@ -111,6 +82,15 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	@Override
 	public LongStream matchingIndices(double value) {
 		return LongStream.range(0, lengthLong()).filter(i -> valueAt(i).doubleValue() == value);
+	}
+
+	@Override
+	public long min() {
+		if (min == null) {
+			min = IndexSequence.super.max();
+		}
+
+		return min;
 	}
 
 	@Override
@@ -173,7 +153,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 		} else if (index instanceof Expression && LongStream.range(0, lengthLong()).allMatch(i -> valueAt(i).doubleValue() == i)) {
 			return (Expression<? extends Number>) index;
 		} else {
-			return KernelSeriesMatcher.match((Expression) index, this, ((Expression) index).isInt());
+			return getExpression((Expression) index, ((Expression) index).isInt());
 		}
 	}
 

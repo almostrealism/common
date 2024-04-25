@@ -16,18 +16,28 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 
-import java.util.function.DoubleUnaryOperator;
-import java.util.function.IntUnaryOperator;
-import java.util.function.UnaryOperator;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
-public class ArithmeticIndexSequence implements IndexSequence {
+public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeatures {
+	public static boolean enableAutoExpression = true;
+
 	private long offset;
 	private long scale;
 	private long granularity;
 	private long mod;
 	private long len;
+
+	public ArithmeticIndexSequence(long scale, long granularity, long len) {
+		this(0, scale, granularity, len, len);
+	}
+
+	public ArithmeticIndexSequence(long scale, long granularity, long mod, long len) {
+		this(0, scale, granularity, mod, len);
+	}
 
 	public ArithmeticIndexSequence(long offset, long scale, long granularity, long mod, long len) {
 		this.offset = offset;
@@ -44,28 +54,31 @@ public class ArithmeticIndexSequence implements IndexSequence {
 	}
 
 	@Override
-	public IndexSequence map(UnaryOperator<Number> op) {
-		throw new UnsupportedOperationException();
+	public IndexSequence multiply(long operand) {
+		return new ArithmeticIndexSequence(offset * operand, scale * operand, granularity, mod, len);
 	}
 
 	@Override
-	public IndexSequence mapInt(IntUnaryOperator op) {
-		throw new UnsupportedOperationException();
+	public IndexSequence divide(long operand) {
+		if (offset != 0 || granularity != 1 || scale != 1) {
+			return IndexSequence.super.divide(operand);
+		}
+
+		return new ArithmeticIndexSequence(0, scale, granularity * operand, mod, len);
 	}
 
 	@Override
-	public IndexSequence mapDouble(DoubleUnaryOperator op) {
-		throw new UnsupportedOperationException();
+	public IndexSequence minus() {
+		return new ArithmeticIndexSequence(-offset, -scale, granularity, mod, len);
 	}
 
 	@Override
 	public IndexSequence mod(int m) {
-		throw new UnsupportedOperationException();
-	}
+		if (offset != 0 || granularity != 1 || scale != 1 || mod % m != 0) {
+			return IndexSequence.super.mod(m);
+		}
 
-	@Override
-	public IndexSequence eq(IndexSequence other) {
-		throw new UnsupportedOperationException();
+		return new ArithmeticIndexSequence(0, 1, granularity, m, len);
 	}
 
 	@Override
@@ -80,17 +93,36 @@ public class ArithmeticIndexSequence implements IndexSequence {
 
 	@Override
 	public int getGranularity() {
-		throw new UnsupportedOperationException();
+		return Math.toIntExact(granularity);
 	}
 
 	@Override
 	public int getMod() {
-		throw new UnsupportedOperationException();
+		return Math.toIntExact(mod);
 	}
 
 	@Override
-	public Expression<? extends Number> getExpression(Index index) {
-		throw new UnsupportedOperationException();
+	public Expression getExpression(Expression index, boolean isInt) {
+		if (!enableAutoExpression) return IndexSequence.super.getExpression(index, isInt);
+
+		Expression pos = index.imod(mod).divide(e(granularity));
+		Expression r = pos.multiply(e(Math.abs(scale)));
+		if (scale < 0) r = r.minus();
+		if (offset != 0) r = r.add(e(offset));
+
+//		Expression exp = IndexSequence.super.getExpression(index, isInt);
+//		if (!r.equals(exp)) {
+//			IndexSequence.super.getExpression(index, isInt);
+//		}
+
+		return r;
+	}
+
+	@Override
+	public Stream<Number> values() {
+		if (offset != 0) return IndexSequence.super.values();
+
+		return LongStream.range(0, mod).mapToObj(this::valueAt);
 	}
 
 	@Override
@@ -106,5 +138,19 @@ public class ArithmeticIndexSequence implements IndexSequence {
 	@Override
 	public Class<? extends Number> getType() {
 		return Integer.class;
+	}
+
+	@Override
+	public int hashCode() {
+		return (int) mod;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (!(obj instanceof ArithmeticIndexSequence)) return false;
+
+		ArithmeticIndexSequence other = (ArithmeticIndexSequence) obj;
+		return offset == other.offset && scale == other.scale &&
+				granularity == other.granularity && mod == other.mod && len == other.len;
 	}
 }

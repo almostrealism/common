@@ -42,7 +42,7 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
+	public IndexSequence sequence(Index index, long len, long limit) {
 		return ArrayIndexSequence.of(value ? 1 : 0, len);
 	}
 

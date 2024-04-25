@@ -57,12 +57,9 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
-		if (indices == null) return null;
-
-		ExpressionMatrix<Boolean> comparison =
-				indices.apply(i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
-
+		ExpressionMatrix<Boolean> comparison = ExpressionMatrix.create(globalIndex, localIndex, targetIndex,
+				i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
+		if (comparison == null) return null;
 
 		Expression<Boolean> allMatch = comparison.allMatch();
 

@@ -101,9 +101,9 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
+	public IndexSequence sequence(Index index, long len, long limit) {
 		if (!(index instanceof KernelIndex) || len > Integer.MAX_VALUE) {
-			return super.sequence(index, len);
+			return super.sequence(index, len, limit);
 		}
 
 		if (kernelSeq == null || kernelSeq.lengthLong() < len) {

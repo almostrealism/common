@@ -29,5 +29,9 @@ public interface SequenceGenerator {
 
 	Number value(IndexValues indexValues);
 
-	IndexSequence sequence(Index index, long len);
+	default IndexSequence sequence(Index index, long len) {
+		return sequence(index, len, len);
+	}
+
+	IndexSequence sequence(Index index, long len, long limit);
 }

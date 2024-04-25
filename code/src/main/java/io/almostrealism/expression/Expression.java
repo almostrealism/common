@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.ArithmeticIndexSequence;
 import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
@@ -54,6 +55,7 @@ import java.util.stream.IntStream;
 public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
+	public static boolean enableArithmeticSequence = true;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 	public static int maxDepth = 4096;
@@ -204,7 +206,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		if (indices.size() != 1) throw new UnsupportedOperationException();
 
 		return sequence(indices.iterator().next(),
-				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()));
+				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);
 	}
 
 	public IndexSequence sequence(int len) {
@@ -215,8 +217,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
-		if (len < 0 || !isValue(new IndexValues().put(index, 0))) {
+	public IndexSequence sequence(Index index, long len, long limit) {
+		if (len < 0) throw new IllegalArgumentException();
+
+		if (enableArithmeticSequence && equals(index)) {
+			return new ArithmeticIndexSequence(1, 1, len);
+		}
+
+		if (!isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
@@ -232,7 +240,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		Class type = getType();
 		if (type == Boolean.class) type = Integer.class;
-		if (len > Integer.MAX_VALUE) {
+		if (len > limit) {
 			return null;
 		}
 
@@ -240,7 +248,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		if (enableBatchEvaluation) {
 			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
-					.map(e -> e.sequence(index, len).toArray())
+					.map(e -> e.sequence(index, len, limit).toArray())
 					.collect(Collectors.toList()), Math.toIntExact(len)));
 		} else {
 			seq = ArrayIndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()

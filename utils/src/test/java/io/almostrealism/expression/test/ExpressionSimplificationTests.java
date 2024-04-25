@@ -17,7 +17,6 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
@@ -26,8 +25,6 @@ import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
-import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;

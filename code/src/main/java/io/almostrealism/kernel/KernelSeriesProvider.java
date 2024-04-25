@@ -39,6 +39,10 @@ public interface KernelSeriesProvider extends Destroyable {
 
 	LanguageOperations lang = new LanguageOperationsStub();
 
+	default long getSequenceComputationLimit() {
+		return Integer.MAX_VALUE;
+	}
+
 	default Expression getSeries(Expression exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
@@ -69,7 +73,8 @@ public interface KernelSeriesProvider extends Destroyable {
 
 		try {
 			if (exp.isValue(new IndexValues().put(index, 0))) {
-				CachedValue<IndexSequence> seq = new CachedValue<>(args -> exp.sequence(index, ((Integer) args[0]).intValue()));
+				CachedValue<IndexSequence> seq = new CachedValue<>(args ->
+						exp.sequence(index, ((Number) args[0]).longValue(), getSequenceComputationLimit()));
 				int l = Math.toIntExact(len.getAsLong());
 
 				if (exp.getType() == Boolean.class) {

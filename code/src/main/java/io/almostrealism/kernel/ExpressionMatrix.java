@@ -18,12 +18,17 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.OptionalLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-public class ExpressionMatrix<T> {
+public class ExpressionMatrix<T> implements ConsoleFeatures {
+	public static boolean enableUnsequencedMatrices = false;
+
 	private final Index row;
 	private final Index col;
 	private final int rowCount;
@@ -142,6 +147,8 @@ public class ExpressionMatrix<T> {
 
 		if (resultSeq != null) {
 			return new ExpressionMatrix<>(row, col, resultSeq, null, evaluator.resultRowDuplicates);
+		} else if (!enableUnsequencedMatrices) {
+			return null;
 		}
 
 		Expression result[][] = new Expression[rowCount][colCount];
@@ -245,8 +252,15 @@ public class ExpressionMatrix<T> {
 		return seq.getExpression(rowIndex);
 	}
 
+	@Override
+	public Console console() {
+		return Scope.console;
+	}
+
 	protected class FunctionEvaluator<O> {
 		private Function<Expression<T>, Expression<O>> function;
+
+		private int valueCount;
 		private Expression<O> resultCache[];
 		private int resultRowDuplicates[];
 		private boolean multiRow;
@@ -254,25 +268,30 @@ public class ExpressionMatrix<T> {
 		public FunctionEvaluator(Function<Expression<T>, Expression<O>> function) {
 			this.function = function;
 
-			if (seq != null && seq.getType() == Integer.class) {
-				resultCache = new Expression[Math.toIntExact(seq.max() + 1)];
+			if (seq != null && seq.getType() != Double.class) {
+				valueCount = Math.toIntExact(seq.max() + 1);
+			} else {
+				valueCount = -1;
 			}
 		}
 
 		public IndexSequence attemptSequence() {
 			// Determine if the result is independent of the row and column
-			if (resultCache != null) {
-				Index index = new DefaultIndex("evalIndex", resultCache.length);
+			if (valueCount >= 0) {
+				Index index = new DefaultIndex("evalIndex", valueCount);
 				Expression<?> e = function.apply((Expression) index);
 				if (e.isValue(IndexValues.of(index))) {
 					setupRowDuplicates(true);
 
-					IndexSequence results = e.sequence(index, resultCache.length);
+					IndexSequence results = e.sequence(index, valueCount);
 					if (results.getMod() == 1) {
 						return ArrayIndexSequence.of(results.valueAt(0), seq.lengthLong());
 					}
 
+					resultCache = new Expression[valueCount];
 					return seq.map(i -> results.valueAt(i.intValue()));
+				} else if (e instanceof Mask && e.getChildren().get(0).isValue(IndexValues.of(index))) {
+					log("Detected mask which could have been sequenced");
 				}
 			}
 
@@ -284,7 +303,7 @@ public class ExpressionMatrix<T> {
 				setupRowDuplicates(false);
 
 				long len = isMultiRow() ? index.getLimit().orElse(-1) : colCount;
-				return e.sequence(index, len);
+				return e.sequence(index, len, Integer.MAX_VALUE);
 			}
 
 			// Otherwise, the result is dependent on more information
@@ -326,7 +345,7 @@ public class ExpressionMatrix<T> {
 		if (!e.isValue(values))
 			return null;
 
-		return e.sequence(child, child.getLimit().getAsLong());
+		return e.sequence(child, child.getLimit().getAsLong(), Integer.MAX_VALUE);
 	}
 
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {
@@ -341,5 +360,13 @@ public class ExpressionMatrix<T> {
 		}
 
 		return new ExpressionMatrix<>(row, col, (Expression) null);
+	}
+
+	public static <T, O> ExpressionMatrix<O> create(Index row, Index col, Expression<T> expression,
+												 Function<Expression<T>, Expression<O>> function) {
+		ExpressionMatrix<T> matrix = create(row, col, expression);
+		if (matrix == null) return null;
+
+		return matrix.apply(function);
 	}
 }

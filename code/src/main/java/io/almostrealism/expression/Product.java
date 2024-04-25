@@ -19,7 +19,9 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.kernel.ArrayIndexSequence;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -105,6 +107,33 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		}
 
 		return value;
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, long len, long limit) {
+		if (isFP()) return super.sequence(index, len, limit);
+
+		List<Expression<?>> constant = new ArrayList<>();
+		List<Expression<?>> variable = new ArrayList<>();
+
+		getChildren().forEach(e -> {
+			if (e.doubleValue().isPresent()) {
+				constant.add(e);
+			} else {
+				variable.add(e);
+			}
+		});
+
+		long value = constant.stream()
+				.mapToLong(e -> e.longValue().getAsLong())
+				.reduce(1L, (a, b) -> a * b);
+		if (variable.isEmpty()) return ArrayIndexSequence.of(value, len);
+		if (variable.size() != 1) return super.sequence(index, len, limit);
+
+		IndexSequence seq = variable.get(0).sequence(index, len, limit);
+		if (seq == null) return null;
+
+		return seq.multiply(value);
 	}
 
 	@Override

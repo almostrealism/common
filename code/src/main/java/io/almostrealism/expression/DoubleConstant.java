@@ -54,7 +54,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len) {
+	public IndexSequence sequence(Index index, long len, long limit) {
 		return ArrayIndexSequence.of(value, len);
 	}
 

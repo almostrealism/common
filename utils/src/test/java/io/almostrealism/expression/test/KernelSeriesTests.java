@@ -22,7 +22,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.junit.Assert;
@@ -157,11 +156,11 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		validateSeries(c);
 
 //		TODO  This should also succeed
-//		Expression e = KernelSeriesMatcher.match(
-//				new KernelIndex(), c.sequence(new KernelIndex(), 36), true);
+//		Expression e = c.sequence(new KernelIndex(), 36).match(
+//				new KernelIndex(), true);
 //		Assert.assertEquals("(kernel0) % (18)", e.getExpression(new LanguageOperationsStub()));
-		Expression e = KernelSeriesMatcher.match(
-				new KernelIndex(), c.sequence(new KernelIndex(), 18), true);
+		Expression e = c.sequence(new KernelIndex(), 18L).getExpression(
+				new KernelIndex(), true);
 		Assert.assertEquals("kernel0", e.getExpression(new LanguageOperationsStub()));
 	}
 
@@ -290,7 +289,7 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		int period = series.getPeriod().orElseThrow();
 		System.out.println("Reported Period: " + period);
 
-		Number[] values = exp.sequence(new KernelIndex(), period * 4).toArray();
+		Number[] values = exp.sequence(new KernelIndex(), period * 4L).toArray();
 
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < period; j++) {

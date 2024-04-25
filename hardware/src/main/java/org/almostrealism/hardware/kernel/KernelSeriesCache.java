@@ -22,7 +22,6 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
@@ -88,6 +87,11 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
+	public long getSequenceComputationLimit() {
+		return maxCount;
+	}
+
+	@Override
 	public Expression getSeries(Expression exp, Index index) {
 		if (!isComputable() || exp.isSingleIndexMasked()) {
 			return exp;
@@ -115,8 +119,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		if (n < minNodeCountMatch) return null;
 
 		IndexSequence seq = sequence.get();
+		if (seq == null) return null;
 
-		Expression result = KernelSeriesMatcher.match(index, seq, isInt);
+		Expression result = seq.getExpression(index, isInt);
 		if (result != null) return result;
 
 		if (!enableCache || cache == null || n < minNodeCountCache) {
