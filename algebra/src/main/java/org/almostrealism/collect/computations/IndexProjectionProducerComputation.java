@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -64,6 +65,15 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		super(shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
 		this.indexProjection = indexProjection;
 		this.relative = relative;
+	}
+
+	@Override
+	public boolean isConstant() {
+		if (getInputs().get(1) instanceof Computable) {
+			return ((Computable) getInputs().get(1)).isConstant();
+		}
+
+		return false;
 	}
 
 	@Override
