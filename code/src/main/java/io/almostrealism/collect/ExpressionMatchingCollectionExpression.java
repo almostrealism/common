@@ -81,13 +81,13 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	}
 
 	@Override
-	public boolean isConstant() {
-		DefaultIndex index = new DefaultIndex("matchTest");
+	public boolean isIndexIndependent() {
+		DefaultIndex index = generateTemporaryIndex();
 		Expression<Boolean> compare = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
 		Optional<Boolean> alt = compare.booleanValue();
 
 		if (alt.isPresent()) {
-			return alt.get() ? positive.isConstant() : negative.isConstant();
+			return alt.get() ? positive.isIndexIndependent() : negative.isIndexIndependent();
 		}
 
 		return false;

@@ -86,7 +86,7 @@ public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFea
 		return uniqueNonZeroIndex(new KernelIndex(), localIndex, targetIndex);
 	}
 
-	default boolean isConstant() { return false; }
+	default boolean isIndexIndependent() { return false; }
 
 	default boolean isTraversable() {
 		return true;

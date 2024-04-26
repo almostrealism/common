@@ -41,5 +41,5 @@ public class ConstantCollectionExpression extends CollectionExpressionAdapter {
 	}
 
 	@Override
-	public boolean isConstant() { return true; }
+	public boolean isIndexIndependent() { return true; }
 }

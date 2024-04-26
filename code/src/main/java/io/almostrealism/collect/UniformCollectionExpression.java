@@ -78,7 +78,7 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 				Expression offset = null;
 
 				for (int i = 0; i < operands.length; i++) {
-					if (operands[i].isConstant()) {
+					if (operands[i].isIndexIndependent()) {
 						Expression v = operands[i].getValueAt(e(0));
 						if (v.doubleValue().orElse(-1.0) != 0.0)
 							return null;
@@ -99,9 +99,9 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 	}
 
 	@Override
-	public boolean isConstant() {
+	public boolean isIndexIndependent() {
 		List<TraversableExpression> constants = Stream.of(operands)
-				.filter(TraversableExpression::isConstant)
+				.filter(TraversableExpression::isIndexIndependent)
 				.collect(Collectors.toList());
 
 		if (constants.size() >= operands.length) {
