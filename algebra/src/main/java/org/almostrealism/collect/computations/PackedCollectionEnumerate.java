@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -25,12 +24,12 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 
+	private TraversalPolicy inputShape;
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
 
@@ -40,6 +39,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		super(computeShape(shape, stride, collection), null, collection);
+		this.inputShape = shape(collection);
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}
@@ -90,7 +90,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		Expression blockOffset = getCollectionArgumentVariable(1).getShape().subset(subsetShape, offset, p);
+		Expression blockOffset = inputShape.subset(subsetShape, offset, p);
 
 		return block.multiply(e(blockShape.getTotalSize())).add(blockOffset);
 	}
