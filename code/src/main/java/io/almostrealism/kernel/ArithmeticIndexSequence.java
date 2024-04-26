@@ -74,11 +74,11 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 
 	@Override
 	public IndexSequence mod(int m) {
-		if (offset != 0 || granularity != 1 || scale != 1 || mod % m != 0) {
+		if (offset != 0 || scale != 1 || mod % m != 0) {
 			return IndexSequence.super.mod(m);
 		}
 
-		return new ArithmeticIndexSequence(0, 1, granularity, m, len);
+		return new ArithmeticIndexSequence(0, 1, granularity, granularity * m, len);
 	}
 
 	@Override

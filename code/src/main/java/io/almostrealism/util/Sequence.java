@@ -35,7 +35,7 @@ public interface Sequence<T> extends Plural<T>, Signature {
 	T[] distinct();
 
 	default Stream<T> stream() {
-		return LongStream.range(0, length()).mapToObj(this::valueAt);
+		return LongStream.range(0, lengthLong()).mapToObj(this::valueAt);
 	}
 
 	default Stream<T> values() {
