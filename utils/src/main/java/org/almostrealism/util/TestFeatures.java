@@ -26,6 +26,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
@@ -179,8 +180,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {
-		return p -> p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||
-				(p instanceof OperationAdapter && ((OperationAdapter) p).getFunctionName().equals(classSubstringOrFunctionName));
+		return p -> {
+			while (p instanceof ReshapeProducer) {
+				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+			}
+
+			return p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||
+					(p instanceof OperationAdapter && ((OperationAdapter) p).getFunctionName().equals(classSubstringOrFunctionName));
+		};
 	}
 
 	@Override
