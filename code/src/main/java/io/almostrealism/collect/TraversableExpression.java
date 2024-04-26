@@ -24,10 +24,11 @@ import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import org.almostrealism.io.ConsoleFeatures;
 
-public interface TraversableExpression<T> extends ExpressionFeatures, ConsoleFeatures {
+public interface TraversableExpression<T> extends Computable, ExpressionFeatures, ConsoleFeatures {
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();

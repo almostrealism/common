@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
 package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-public interface Computation<T> extends ScopeLifecycle, OutputSupport, ConsoleFeatures {
+public interface Computation<T> extends
+		Computable, ScopeLifecycle, OutputSupport, ConsoleFeatures {
 	Console console = Scope.console.child();
 
 	/**

@@ -61,8 +61,19 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		this.expression = expression;
 	}
 
+	public TraversableExpressionComputation(TraversalPolicy shape,
+											CollectionExpression expression) {
+		super(shape);
+		this.expression = (arguments) -> expression;
+	}
+
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index));
+	}
+
+	@Override
+	public boolean isConstant() {
+		return getInputs().size() <= 1;
 	}
 
 	@Override

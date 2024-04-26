@@ -24,6 +24,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -90,6 +91,15 @@ public class ReshapeProducer<T extends Shape<T>>
 		} else {
 			return shape;
 		}
+	}
+
+	@Override
+	public boolean isConstant() {
+		if (producer instanceof Computable) {
+			return ((Computable) producer).isConstant();
+		}
+
+		return false;
 	}
 
 	@Override

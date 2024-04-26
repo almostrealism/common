@@ -39,6 +39,9 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		return (ProducerComputation<T>) super.getComputation();
 	}
 
+	@Override
+	public boolean isConstant() { return getComputation().isConstant(); }
+
 	public IntFunction<Multiple<T>> getDestinationFactory() {
 		return destinationFactory;
 	}
