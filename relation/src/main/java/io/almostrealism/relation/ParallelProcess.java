@@ -55,6 +55,10 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return process.isolate();
 	}
 
+	default long[] computeParallelism(Collection<? extends Process> children) {
+		return children.stream().mapToLong(ParallelProcess::parallelism).toArray();
+	}
+
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {
 		Collection<? extends Process> children = getChildren();
@@ -80,7 +84,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 					.collect(Collectors.toList()));
 		}
 
-		long counts[] = children.stream().mapToLong(ParallelProcess::parallelism).filter(v -> v != 0).distinct().toArray();
+		long counts[] = computeParallelism(children);
 		long cn = getCountLong();
 		long p = counts.length;
 		long tot = LongStream.of(counts).sum();
