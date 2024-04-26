@@ -34,10 +34,12 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
@@ -47,6 +49,12 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	 */
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
+
+	@Override
+	default long[] computeParallelism(Collection<? extends Process> children) {
+		return ParallelProcess.super.computeParallelism(children.stream()
+				.filter(f -> !(f instanceof MemoryDataDestination)).collect(Collectors.toList()));
+	}
 
 	default T createDestination(int len) {
 		throw new UnsupportedOperationException();

@@ -134,9 +134,12 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		if ((shape == null || enableDelegateIsolation) && producer instanceof Process) {
-			// return new CollectionProducerComputation.IsolatedProcess(this);
-			return generate(List.of(((Process) producer).isolate()));
+		if (shape == null) {
+			if (enableDelegateIsolation && producer instanceof Process) {
+				return generate(List.of(((Process) producer).isolate()));
+			}
+
+			return  new CollectionProducerComputation.IsolatedProcess(this);
 		} else {
 			return this;
 		}

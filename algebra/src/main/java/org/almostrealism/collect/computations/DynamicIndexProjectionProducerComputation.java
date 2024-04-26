@@ -33,6 +33,8 @@ import java.util.function.Supplier;
 
 public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	public static boolean enableChainDelta = true;
+
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 
 	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,

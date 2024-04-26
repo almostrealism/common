@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
-import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.IndexProjectionCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -34,10 +33,12 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
-	public static boolean enableChainDelta = true;
+	public static boolean enableTraversableExpressionDelta = false;
+	public static boolean enableDelegatedIsolate = false;
 
 	private UnaryOperator<Expression<?>> indexProjection;
 	protected boolean relative;
@@ -115,6 +116,41 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 				.addDependentLifecycle(this);
 	}
 
+	private Process<Process<?, ?>, Evaluable<? extends T>> isolateForce() {
+		return super.isolate();
+	}
+
+	private Process<Process<?, ?>, Evaluable<? extends T>> isolateInput() {
+		IndexProjectionProducerComputation c;
+
+		if (getInputs().get(1) instanceof IndexProjectionProducerComputation) {
+			c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
+		} else {
+			c = (IndexProjectionProducerComputation)
+					generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+		}
+
+		return c;
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		if (enableDelegatedIsolate) {
+			IndexProjectionProducerComputation c;
+
+			if (getInputs().get(1) instanceof IndexProjectionProducerComputation) {
+				c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
+			} else {
+				c = (IndexProjectionProducerComputation)
+						generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+			}
+
+			return c.isolateForce();
+		}
+
+		return super.isolate();
+	}
+
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
@@ -124,7 +160,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (enableChainDelta && getInputs().get(1) instanceof CollectionProducer) {
+		if (getInputs().get(1) instanceof CollectionProducer) {
 			TraversalPolicy outShape = getShape();
 			TraversalPolicy inShape = shape(getInputs().get(1));
 			TraversalPolicy targetShape = shape(target);
@@ -139,14 +175,21 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
-			return (CollectionProducer<T>) new TraversableExpressionComputation<>(shape,
-					args -> new IndexProjectionCollectionExpression(shape, idx -> {
-						Expression pos[] = overallShape.position(idx);
-						return deltaShape.index(projectIndex(pos[0]), pos[1]);
-					}, args[1]),
-					delta).addDependentLifecycle(this);
-		} else {
-			return super.delta(target);
+
+			UnaryOperator<Expression<?>> project = idx -> {
+				Expression pos[] = overallShape.position(idx);
+				return deltaShape.index(projectIndex(pos[0]), pos[1]);
+			};
+
+			if (enableTraversableExpressionDelta) {
+				return (CollectionProducer<T>) new TraversableExpressionComputation<>(shape,
+						args -> new IndexProjectionCollectionExpression(shape, project, args[1]),
+						delta).addDependentLifecycle(this);
+			} else {
+				return new IndexProjectionProducerComputation<>(shape, project, false, delta);
+			}
 		}
+
+		return super.delta(target);
 	}
 }
