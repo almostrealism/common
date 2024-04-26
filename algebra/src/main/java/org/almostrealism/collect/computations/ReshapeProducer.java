@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
@@ -44,8 +46,8 @@ import java.util.List;
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					ScopeLifecycle {
-	public static boolean enableOptimization = false;
+					OperationInfo, ScopeLifecycle {
+	public static boolean enableDelegateIsolation = false;
 
 	private TraversalPolicy shape;
 	private int traversalAxis;
@@ -63,6 +65,21 @@ public class ReshapeProducer<T extends Shape<T>>
 		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
 			throw new IllegalArgumentException();
 		}
+	}
+
+	@Override
+	public OperationMetadata getMetadata() {
+		if (producer instanceof OperationInfo) {
+			OperationMetadata metadata = ((OperationInfo) producer).getMetadata();
+
+			if (shape == null) {
+				return metadata.withDisplayName(metadata.getDisplayName() + " (-> axis " + traversalAxis + ")");
+			} else {
+				return metadata.withDisplayName(metadata.getDisplayName() + " (-> " + getShape() + ")");
+			}
+		}
+
+		return null;
 	}
 
 	@Override
@@ -108,8 +125,6 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
-		if (enableOptimization) return ParallelProcess.super.optimize(ctx);
-
 		if (producer instanceof Process) {
 			return generate(List.of(optimize(ctx, ((Process) producer))));
 		}
@@ -119,8 +134,9 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		if (shape == null) {
-			return new CollectionProducerComputation.IsolatedProcess(this);
+		if ((shape == null || enableDelegateIsolation) && producer instanceof Process) {
+			// return new CollectionProducerComputation.IsolatedProcess(this);
+			return generate(List.of(((Process) producer).isolate()));
 		} else {
 			return this;
 		}
