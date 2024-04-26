@@ -735,8 +735,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void enumerate2d() {
-		if (skipLongTests) return;
-
 		int dim = 6;
 		int size = 3;
 		int filterCount = 2;

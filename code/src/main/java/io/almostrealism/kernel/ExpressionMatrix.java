@@ -151,6 +151,8 @@ public class ExpressionMatrix<T> implements ConsoleFeatures {
 			return null;
 		}
 
+		log("Expanding full ExpressionMatrix (" + rowCount + "x" + colCount + ")");
+
 		Expression result[][] = new Expression[rowCount][colCount];
 
 		boolean rowDependent = false;

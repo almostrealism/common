@@ -263,7 +263,6 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulLarge1() {
-		if (skipLongTests) return;
 		matmal(392, 10, false);
 	}
 
@@ -414,15 +413,11 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void denseWeightsMedium() {
-		if (skipLongTests && !PackedCollectionRepeat.enableUniqueIndexOptimization)
-			return;
-
 		denseWeights(120, 10);
 	}
 
 	@Test
 	public void denseWeightsLarge() {
-		if (skipLongTests) return;
 		denseWeights(600, 10);
 	}
 

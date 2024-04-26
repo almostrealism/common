@@ -88,6 +88,12 @@ public class OperationMetadata {
 		return metadata;
 	}
 
+	public OperationMetadata withDisplayName(String name) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setDisplayName(name);
+		return metadata;
+	}
+
 	public OperationMetadata appendShortDescription(String desc) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShortDescription(metadata.getShortDescription() + desc);
