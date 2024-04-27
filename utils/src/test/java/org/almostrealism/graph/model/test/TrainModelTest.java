@@ -17,14 +17,17 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -53,6 +56,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			MetalProgram.enableLargeProgramMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
+
+			ReshapeProducer.enableDelegateIsolation = true;
+			ProductCollectionExpression.enableDiagonalDelta = true;
+			ProcessDetailsFactory.enableConstantCache = true;
 		}
 	}
 

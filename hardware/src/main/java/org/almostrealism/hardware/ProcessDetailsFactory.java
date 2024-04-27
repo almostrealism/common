@@ -40,6 +40,7 @@ import java.util.stream.Stream;
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable {
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelDestination = true;
+	public static boolean enableConstantCache = false;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;
@@ -149,6 +150,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelArgEvaluables[i] = ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
+				} else if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
+					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
 				}
 			}
 
