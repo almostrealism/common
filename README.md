@@ -3,9 +3,16 @@
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![Apache License][license-shield]][license-url]
-[![Qodana](https://github.com/almostrealism/common/actions/workflows/analysis.yaml/badge.svg)](https://github.com/almostrealism/common/actions/workflows/analysis.yaml)
+
 
 <h3 align="center">Almost Realism Scientific Computing and Machine Learning Libraries</h3>
+
+<div style="text-align: right">
+
+[![Qodana](https://github.com/almostrealism/common/actions/workflows/analysis.yaml/badge.svg)](https://github.com/almostrealism/common/actions/workflows/analysis.yaml)
+
+</div>
+
 <h5 align="center">Tools for high-performance scientific computing, generative art, and machine learning in Java
 with pluggable native acceleration.</h5>
 
