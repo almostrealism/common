@@ -18,7 +18,7 @@ package io.almostrealism.relation;
 
 import java.util.function.Supplier;
 
-public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Node {
+public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node {
 	@Override
 	Evaluable<T> get();
 

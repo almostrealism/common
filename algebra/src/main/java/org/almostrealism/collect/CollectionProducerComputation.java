@@ -144,6 +144,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		}
 
 		@Override
+		public boolean isConstant() { return op.isConstant(); }
+
+		@Override
 		public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
 
 		@Override

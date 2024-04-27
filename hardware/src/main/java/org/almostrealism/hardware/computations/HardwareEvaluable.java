@@ -81,6 +81,11 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 		this.shortCircuit = shortCircuit;
 	}
 
+	@Override
+	public boolean isConstant() {
+		return getKernel().getValue().isConstant();
+	}
+
 	public boolean isKernel() { return isKernel; }
 
 	public UnaryOperator<MemoryBank<?>> getDestinationProcessor() {
