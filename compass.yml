@@ -1,0 +1,24 @@
+name: common
+id: ari:cloud:compass:a158e1a1-12d9-425a-a3c4-f5ff83e10cb2:component/d9bc3aba-252d-40c5-9afc-82f68c42bfdd/0e261321-1ab0-4ceb-bd52-b6572f58c9b7
+description: Modular Java HPC & ML library with pluggable accelerator support via OpenCL or Metal
+configVersion: 1
+typeId: LIBRARY
+ownerId: null
+fields:
+  tier: 4
+links:
+  - name: null
+    type: REPOSITORY
+    url: https://github.com/almostrealism/common
+relationships:
+  DEPENDS_ON: []
+labels:
+  - cl
+  - gpu
+  - java
+  - language:java
+  - metal
+  - ml
+  - opencl
+  - source:github
+customFields: null

@@ -4,10 +4,17 @@
 [![Issues][issues-shield]][issues-url]
 [![Apache License][license-shield]][license-url]
 
+
 <h3 align="center">Almost Realism Scientific Computing and Machine Learning Libraries</h3>
-<h5 align="center">[![Qodana](https://github.com/almostrealism/common/actions/workflows/analysis.yaml/badge.svg)](https://github.com/almostrealism/common/actions/workflows/analysis.yaml)</h5>
-<h5 align="center">Tools for high-performance scientific computing, generative art, and machine learning in Java
-with pluggable native acceleration.</h5>
+
+<h5 align="center">
+
+Tools for high-performance scientific computing, generative art, and machine learning in Java
+with pluggable native acceleration.
+
+[![Qodana](https://github.com/almostrealism/common/actions/workflows/analysis.yaml/badge.svg)](https://github.com/almostrealism/common/actions/workflows/analysis.yaml)
+
+</h5>
 
   <p align="center">
     Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
