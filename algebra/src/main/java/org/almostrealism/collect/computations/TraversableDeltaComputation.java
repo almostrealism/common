@@ -16,63 +16,91 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.Computation;
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableTraverseEach = false;
-	public static boolean enableDirect = false;
+	public static boolean enableOptimization = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
+	private Producer<?> target;
+	private CollectionVariable<?> targetVariable;
 
 	@SafeVarargs
 	protected TraversableDeltaComputation(TraversalPolicy shape,
-											Function<TraversableExpression[], CollectionExpression> expression,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+										  Function<TraversableExpression[], CollectionExpression> expression,
+										  Producer<?> target,
+										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = expression;
+		this.target = target;
+		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		targetVariable = null;
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
-		return expression.apply(getTraversableArguments(index));
+		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		if (matchInput(this, target) == process) return process;
+		return super.optimize(ctx, process);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		if (matchInput(this, target) == process) return process;
+		return super.isolate(process);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
-		return this;
+		if (!enableOptimization) return this;
+		return super.optimize(ctx);
 	}
 
 	@Override
 	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
 		TraversableDeltaComputation<T> result =
-				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
+				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression, target,
 					children.stream().skip(1).toArray(Supplier[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 		getDependentLifecycles().forEach(result::addDependentLifecycle);
@@ -102,76 +130,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  	 	Function<TraversableExpression[], CollectionExpression> expression,
 															  	Producer<?> target,
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		TraversalPolicy ds = enableTraverseEach ? deltaShape.traverseEach() : deltaShape;
-		return new TraversableDeltaComputation<>(ds.append(targetShape),
-				exp ->
-						expression.apply(exp).delta(targetShape, matcher(target)), args);
-	}
-
-	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target) {
-		return index -> exp -> {
-			if (!(exp instanceof InstanceReference)) return false;
-
-			InstanceReference ref = (InstanceReference) exp;
-			Variable v = ref.getReferent();
-
-			w: while (true) {
-				if (match(v.getProducer(), target)) {
-					break w;
-				}
-
-				if (v.getDelegate() == null && v.getProducer() instanceof CollectionProducerComputation.IsolatedProcess) {
-					Computation.console.features(TraversableDeltaComputation.class)
-							.warn("Isolated producer cannot be matched");
-				}
-
-				v = v.getDelegate();
-				if (v == null) {
-					return false;
-				}
-			}
-
-			return true;
-		};
-	}
-
-	public static boolean deepMatch(Supplier<?> p, Supplier<?> target) {
-		if (match(p, target)) {
-			return true;
-		} if (p instanceof Parent) {
-			for (Supplier<?> child : ((Parent<Supplier>) p).getChildren()) {
-				if (deepMatch(child, target)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	public static boolean match(Supplier<?> p, Supplier<?> q) {
-		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestination) {
-			if (p instanceof ReshapeProducer) {
-				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
-			} else {
-				p = (Producer<?>) ((MemoryDataDestination) p).getDelegate();
-			}
-		}
-
-		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestination) {
-			if (q instanceof ReshapeProducer) {
-				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
-			} else {
-				q = (Producer<?>) ((MemoryDataDestination) q).getDelegate();
-			}
-		}
-
-		if (Objects.equals(p, q)) {
-			return true;
-		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
-			return ((PassThroughProducer) p).getIndex() == ((PassThroughProducer) q).getIndex();
-		}
-
-		return false;
+		return new TraversableDeltaComputation<>(deltaShape.append(targetShape), expression, target, args);
 	}
 }

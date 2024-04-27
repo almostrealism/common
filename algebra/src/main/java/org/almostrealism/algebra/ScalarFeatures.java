@@ -62,8 +62,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> v(double value) { return value(new Scalar(value)); }
-
 	default ExpressionComputation<Scalar> v(Scalar value) { return value(value); }
 
 	default ExpressionComputation<Scalar> scalar(double value) { return value(new Scalar(value)); }

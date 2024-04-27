@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.DefaultTraversalOrdering;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -46,12 +48,12 @@ import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
+		implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -86,7 +88,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
-		this.shape = shape.traverse(traversalAxis);
+		this(shape, traversalAxis, delegate, delegateOffset, null);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
+		this.shape = shape.traverse(order).traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -140,11 +146,24 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public TraversalPolicy getShape() { return shape; }
 
+	@Override
+	public TraversalOrdering getDelegateOrdering() {
+		if (getShape().getOrder() == null) return null;
+		return getShape().getOrder().getLength().stream()
+				.mapToObj(DefaultTraversalOrdering::new)
+				.findFirst()
+				.orElseGet(DefaultTraversalOrdering::new);
+	}
+
+	@Override
+	public double toDouble(int index) {
+		if (getShape().getOrder() == null) return super.toDouble(index);
+		return super.toDouble(getShape().getOrder().indexOf(index));
+	}
+
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
-
-	public DoubleStream doubleStream() { return DoubleStream.of(toArray()); }
 
 	public Stream<String> stringStream() {
 		int colWidth = getShape().getSize();
@@ -217,7 +236,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
 
-		return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
+			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		} else {
+			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
+		}
 	}
 
 	public PackedCollection<T> value(int pos) {

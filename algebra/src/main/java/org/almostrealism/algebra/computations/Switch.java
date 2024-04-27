@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import io.almostrealism.scope.Cases;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -33,8 +34,8 @@ import java.util.stream.IntStream;
 public class Switch extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
 	private final List<Computation> choices;
 
-	public Switch(ProducerComputation<PackedCollection<?>> decision, List<Computation> choices) {
-		super(new ProducerComputation[] { decision });
+	public Switch(CollectionProducer<PackedCollection<?>> decision, List<Computation> choices) {
+		super(new CollectionProducer[] { decision });
 		this.choices = choices;
 	}
 

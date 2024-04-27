@@ -18,10 +18,10 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.ParallelProcess;
+import org.almostrealism.collect.CollectionEvaluable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
 

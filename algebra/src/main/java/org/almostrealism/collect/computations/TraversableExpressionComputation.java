@@ -41,6 +41,8 @@ import java.util.stream.Stream;
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
+	public static boolean enableChainRule = false;
+
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
 	@SafeVarargs
@@ -64,6 +66,21 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public boolean isChainRuleSupported() {
+		return enableChainRule || super.isChainRuleSupported();
+	}
+
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		CollectionProducer<T> delta = attemptDelta(this, target);
+		if (delta != null) return delta;
+
+		delta = TraversableDeltaComputation.create(getShape(), shape(target),
+				expression, target, getInputs().stream().skip(1).toArray(Supplier[]::new));
+		return delta;
+	}
+
+	@Override
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
 		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
@@ -83,13 +100,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
-	}
-
-	@Override
-	public CollectionProducer<T> delta(Producer<?> target) {
-		// TODO  This may not be necessary, as the parent class implementation is probably fine
-		return TraversableDeltaComputation.create(getShape(), shape(target), expression, target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {

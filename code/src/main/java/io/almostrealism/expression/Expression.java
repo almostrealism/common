@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
@@ -43,7 +42,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -52,6 +50,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public static boolean enableBatchEvaluation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
+	public static int maxDepth = 4096;
 
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
@@ -70,8 +69,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	private Class<T> type;
 	private List<Expression<?>> children;
-	private Variable<T, ?> referent;
 
+	private int depth;
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
@@ -87,16 +86,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		setType(type);
 		this.children = List.of(children);
-	}
+		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
 
-	public Expression(Class<T> type, Variable<T, ?> referent, Expression<?> argument) {
-		if (type == null) {
-			throw new IllegalArgumentException("Type is required");
+		if (depth > maxDepth) {
+			throw new UnsupportedOperationException();
 		}
-
-		setType(type);
-		this.referent = referent;
-		this.children = argument == null ? Collections.emptyList() : List.of(argument);
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
@@ -258,10 +252,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public List<Variable<?, ?>> getDependencies() {
-		ArrayList<Variable<?, ?>> dependencies = new ArrayList<>();
-		if (referent != null) dependencies.add(referent);
-		dependencies.addAll(dependencies(getChildren().toArray(new Expression[0])));
-		return dependencies;
+		return new ArrayList<>(dependencies(getChildren().toArray(new Expression[0])));
 	}
 
 	public int getArraySize() { return -1; }
@@ -345,7 +336,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Cast(Integer.class, "int", this);
 	}
 
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 

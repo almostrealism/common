@@ -22,6 +22,7 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
@@ -31,6 +32,7 @@ import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.nio.NativeBufferMemoryProvider;
 
@@ -47,7 +49,8 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static boolean defaultKernelFriendly = true;
 
-	public static Console console = Console.root().child();
+	public static Console console = Console.root().child()
+			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
 
 	protected static final int MEMORY_SCALE;
 
@@ -388,7 +391,7 @@ public final class Hardware {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 1024;
+			return 0; // 1024;
 		}
 	}
 

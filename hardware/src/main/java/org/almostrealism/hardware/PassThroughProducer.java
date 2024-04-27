@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -38,7 +36,6 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
@@ -74,7 +71,8 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
-	public int getIndex() { return argIndex; }
+	@Override
+	public int getReferencedArgumentIndex() { return argIndex; }
 
 	@Override
 	public int getMemLength() { return getShape().getSize(); }
@@ -167,11 +165,22 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public int getReferencedArgumentIndex() { return argIndex; }
-
-	@Override
 	public PassThroughProducer<T> generate(List<Process<?, ?>> children) {
 		return this;
+	}
+
+	@Override
+	public int hashCode() {
+		return getReferencedArgumentIndex();
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if ((obj instanceof PassThroughProducer)) {
+			return ((PassThroughProducer) obj).getReferencedArgumentIndex() == getReferencedArgumentIndex();
+		}
+
+		return super.equals(obj);
 	}
 
 	@Override

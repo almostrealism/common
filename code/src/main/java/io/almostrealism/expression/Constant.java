@@ -17,12 +17,9 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
@@ -43,7 +40,7 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
-		return CollectionExpression.create(shape, idx -> new IntegerConstant(0));
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
 	}
 }

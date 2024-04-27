@@ -17,14 +17,11 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 public class Max extends BinaryExpression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
@@ -55,11 +52,11 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
-		return CollectionExpression.conditional(shape,
+	public CollectionExpression delta(CollectionExpression target) {
+		return CollectionExpression.conditional(target.getShape(),
 				getLeft().greaterThan(getRight()),
-				getLeft().delta(shape, target),
-				getRight().delta(shape, target));
+				getLeft().delta(target),
+				getRight().delta(target));
 	}
 
 	@Override

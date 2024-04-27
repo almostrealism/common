@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.stream.IntStream;
 
 public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+	private static long seed;
+
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
@@ -82,5 +84,19 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	@Override
 	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
+	}
+
+	// TODO  There should be an option to use this ring xor algorithm
+	// TODO  (as a genuine Computation) instead of the java.util.Random
+
+	public static int nextInt() {
+		seed ^= seed >> 12;
+		seed ^= seed << 25;
+		seed ^= seed >> 27;
+		return (int) ((seed * 0x2545F4914F6CDD1DL) >> 32);
+	}
+
+	public static float nextFloat() {
+		return (nextInt() >>> 8) / 16777216.0f;
 	}
 }

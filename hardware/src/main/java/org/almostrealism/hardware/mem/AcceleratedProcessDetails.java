@@ -1,9 +1,28 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Semaphore;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
-public class AcceleratedProcessDetails {
+public class AcceleratedProcessDetails implements ConsoleFeatures {
 	private boolean enableAggregation = true;
 	public static int aggregationThreshold = 1024 * 1024;
 
@@ -52,6 +71,9 @@ public class AcceleratedProcessDetails {
 
 	public int getKernelSize() { return kernelSize; }
 
+	@Override
+	public Console console() { return Hardware.console; }
+
 	private Object[] processArguments(Object args[], MemoryProvider target, TempMemoryFactory tempFactory) {
 		if (!enableAggregation) return args;
 
@@ -68,9 +90,13 @@ public class AcceleratedProcessDetails {
 			}
 
 			MemoryData data = (MemoryData) arg;
-			if (data.getMem() == null)
+			if (data.getMem() == null) {
 				throw new IllegalArgumentException();
-			if (data.getMem().getProvider() == target || data.getMemLength() > aggregationThreshold) {
+			} else if (data.getMemOrdering() != null) {
+				warn("Reordered memory cannot be aggregated");
+				result[i] = arg;
+				continue i;
+			} else if (data.getMem().getProvider() == target || data.getMemLength() > aggregationThreshold) {
 				result[i] = arg;
 				continue i;
 			}

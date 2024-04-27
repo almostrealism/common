@@ -44,13 +44,21 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return (ParallelProcess<P, T>) Process.super.optimize();
 	}
 
+	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
+		return process.optimize(ctx);
+	}
+
+	default Process<P, T> isolate(Process<P, T> process) {
+		return process.isolate();
+	}
+
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {
 		Collection<? extends Process> children = getChildren();
 		if (children.isEmpty()) return this;
 
 		ParallelProcessContext context = ParallelProcessContext.of(ctx, this);
-		children = children.stream().map(process -> process.optimize(context)).collect(Collectors.toList());
+		children = children.stream().map(process -> optimize(context, process)).collect(Collectors.toList());
 
 		if (!isolationFlags.isEmpty()) {
 			if (children.stream()
@@ -91,7 +99,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 
-		return generate(children.stream().map(c -> (P) c.isolate()).collect(Collectors.toList()));
+		return generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
 	}
 
 	default boolean isUniform() {

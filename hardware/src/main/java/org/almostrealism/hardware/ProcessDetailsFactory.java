@@ -39,7 +39,7 @@ import java.util.stream.Stream;
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails> {
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelDestination = true;
-	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
+	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;
 	private boolean fixedCount;
@@ -99,7 +99,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelSize = getCount();
 			} else if (output != null) {
 				kernelSize = output.getCount();
-			} else if (args.length > 0 && allMemoryData) {
+			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCount() > getCount()) {
 				kernelSize = ((MemoryBank) args[0]).getCount();
 			} else if (isFixedCount()) {
 				kernelSize = getCount();
@@ -137,7 +137,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				// If the kernel size can be inferred from this operation argument
 				// capture it from the argument to the evaluation
-				if (kernelArgs[i] instanceof MemoryBank) {
+				if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCount() > 1) {
 					kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
 				}
 			}
@@ -165,8 +165,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			 */
 			if (kernelSize < 0) {
 				if (enableKernelSizeWarnings)
-					System.out.println("WARN: Could not infer kernel size, it will be set to 1");
-				kernelSize = 1;
+					System.out.println("WARN: Could not infer kernel size, it will be set to " + getCount());
+				kernelSize = getCount();
 			}
 		}
 

@@ -97,15 +97,19 @@ public class NativeExecution extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		CountDownLatch latch = new CountDownLatch(inst.getParallelism());
+		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
+
+		CountDownLatch latch = new CountDownLatch(p);
 
 		if (enableExecutor) {
 			recordDuration(() -> {
-				IntStream.range(0, inst.getParallelism()).parallel()
+				IntStream.range(0, p).parallel()
 						.mapToObj(id ->
 								executor.submit(() -> {
 									try {
 										inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
+									} catch (Exception e) {
+										e.printStackTrace();
 									} finally {
 										latch.countDown();
 									}

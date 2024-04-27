@@ -38,6 +38,10 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	}
 
 	public ExpressionAssignment(boolean declaration, Expression<T> destination, Expression<T> expression) {
+		if (expression == null) {
+			throw new IllegalArgumentException();
+		}
+
 		this.declaration = declaration;
 		this.destination = destination;
 		this.expression = expression;

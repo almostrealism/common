@@ -16,21 +16,29 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
@@ -147,6 +155,31 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				validate.accept(dest);
 			});
 		}
+	}
+
+	default void initKernelMetrics() {
+		HardwareOperator.profile = new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+	}
+
+	default void logKernelMetrics() {
+		logKernelMetrics(null);
+	}
+
+	default void logKernelMetrics(OperationProfile profile) {
+		if (profile != null) profile.print();
+		if (HardwareOperator.profile != null) HardwareOperator.profile.print();
+		AcceleratedComputationOperation.printTimes();
+		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
+				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
+		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
+				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
+		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+	}
+
+	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {
+		return p -> p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||
+				(p instanceof OperationAdapter && ((OperationAdapter) p).getFunctionName().equals(classSubstringOrFunctionName));
 	}
 
 	@Override

@@ -13,6 +13,9 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class CompiledModel implements CodeFeatures {
+	private TraversalPolicy inputShape;
+	private TraversalPolicy outputShape;
+
 	private Consumer<PackedCollection<?>> updateInput;
 	private Supplier<PackedCollection<?>> retrieveOutput;
 	private Runnable forward;
@@ -21,12 +24,15 @@ public class CompiledModel implements CodeFeatures {
 	private Supplier<PackedCollection<?>> retrieveGradient;
 	private Runnable backward;
 
-	protected CompiledModel(Consumer<PackedCollection<?>> updateInput,
+	protected CompiledModel(TraversalPolicy inputShape, TraversalPolicy outputShape,
+							Consumer<PackedCollection<?>> updateInput,
 							Supplier<PackedCollection<?>> retrieveOutput,
 							Runnable forward,
 							Consumer<PackedCollection<?>> updateGradient,
 							Supplier<PackedCollection<?>> retrieveGradient,
 							Runnable backward) {
+		this.inputShape = inputShape;
+		this.outputShape = outputShape;
 		this.updateInput = updateInput;
 		this.retrieveOutput = retrieveOutput;
 		this.forward = forward;
@@ -34,6 +40,10 @@ public class CompiledModel implements CodeFeatures {
 		this.retrieveGradient = retrieveGradient;
 		this.backward = backward;
 	}
+
+	public TraversalPolicy getInputShape() { return inputShape; }
+
+	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	public PackedCollection<?> forward(PackedCollection<?> input) {
 		updateInput.accept(input);
@@ -48,10 +58,14 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model) {
-		return compile(model, null);
+		return compile(model, true, null);
 	}
 
 	public static CompiledModel compile(Model model, OperationProfile profile) {
+		return compile(model, true, profile);
+	}
+
+	public static CompiledModel compile(Model model, boolean backprop, OperationProfile profile) {
 		model.setup().get().run();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
@@ -69,14 +83,21 @@ public class CompiledModel implements CodeFeatures {
 		if (p instanceof OperationList) p = ((OperationList) p).flatten();
 		p = p.optimize();
 
-		ParallelProcess<?, Runnable> q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
-		if (q instanceof OperationList) q = ((OperationList) q).flatten();
-		q = q.optimize();
+		ParallelProcess<?, Runnable> q;
+
+		if (backprop) {
+			q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
+			if (q instanceof OperationList) q = ((OperationList) q).flatten();
+			q = q.optimize();
+		} else {
+			q = null;
+		}
 
 		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
 		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
-		return new CompiledModel(in, () -> output, p.get(), grad, () -> gradOut, q.get());
+		return new CompiledModel(in.getShape(), grad.getShape(), in, () -> output,
+									p.get(), grad, () -> gradOut, q == null ? null : q.get());
 	}
 
 	protected static class InputManager implements Consumer<PackedCollection<?>>,
@@ -87,6 +108,8 @@ public class CompiledModel implements CodeFeatures {
 		public InputManager(TraversalPolicy shape) {
 			this.shape = shape;
 		}
+
+		public TraversalPolicy getShape() { return shape; }
 
 		@Override
 		public void accept(PackedCollection<?> input) {

@@ -16,6 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.collect.CollectionExpression;
+
+import java.util.List;
 import java.util.Optional;
 
 public class Mask<T extends Number> extends Conditional<T> {
@@ -24,19 +28,38 @@ public class Mask<T extends Number> extends Conditional<T> {
 	}
 
 	public Expression<Boolean> getMask() { return (Expression<Boolean>) getChildren().get(0); }
-	public Expression<Double> getMaskedValue() { return (Expression<Double>) getChildren().get(1); }
+	public Expression<T> getMaskedValue() { return (Expression<T>) getChildren().get(1); }
+
+	@Override
+	public ExpressionAssignment<T> assign(Expression exp) {
+		if (getMaskedValue() instanceof InstanceReference) {
+			return getMaskedValue().assign(exp);
+		}
+
+		return super.assign(exp);
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		return getMaskedValue().delta(target);
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		return Mask.of((Expression<Boolean>) children.get(0), (Expression<T>) children.get(1));
+	}
 
 	@Override
 	public boolean isMasked() { return true; }
 
-	public static Expression<?> of(Expression<Boolean> mask, Expression<?> value) {
+	public static <T> Expression<T> of(Expression<Boolean> mask, Expression<T> value) {
 		Optional<Boolean> b = mask.booleanValue();
 
 		if (b.isPresent()) {
 			if (b.get()) {
 				return value;
 			} else {
-				return new IntegerConstant(0);
+				return (Expression) new IntegerConstant(0);
 			}
 		} else {
 			return new Mask(mask, value);

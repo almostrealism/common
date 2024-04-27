@@ -27,7 +27,6 @@ public class FourierTransformTests implements TestFeatures {
 	public void compile() {
 		int bins = 512;
 
-		NativeCompiler.enableInstructionSetMonitoring = true;
 		PackedCollection<?> input = new PackedCollection<>(bins, 2);
 		FourierTransform ft = new FourierTransform(bins, cp(input));
 		ft.get().evaluate();

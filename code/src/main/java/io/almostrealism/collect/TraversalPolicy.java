@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,12 +24,10 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
-import org.almostrealism.io.Console;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -42,10 +40,16 @@ import java.util.stream.Stream;
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
 	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
 
+	private TraversalOrdering order;
 	private int dims[];
 	private int traversalAxis;
 
 	public TraversalPolicy(int... dims) {
+		this(null, dims);
+	}
+
+	public TraversalPolicy(TraversalOrdering order, int... dims) {
+		this.order = order;
 		this.dims = dims;
 
 		if (dims.length > 0) {
@@ -60,6 +64,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 			}
 		}
 	}
+
+	public TraversalOrdering getOrder() { return order; }
 
 	public int size(int depth) {
 		return Math.toIntExact(sizeLong(depth));
@@ -82,10 +88,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 			index += pos[i] * size(i + 1);
 		}
 		return index;
-	}
-
-	public Expression index(PositionExpression pos) {
-		return index(pos.toArray());
 	}
 
 	public Expression index(Expression... pos) {
@@ -161,7 +163,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	@Override
 	public TraversalPolicy traverse(int axis) {
-		TraversalPolicy p = new TraversalPolicy(dims);
+		TraversalPolicy p = new TraversalPolicy(order, dims);
 		p.traversalAxis = axis;
 		return p;
 	}
@@ -170,12 +172,23 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return traverse(getDimensions());
 	}
 
+	public TraversalPolicy traverse(TraversalOrdering order) {
+		TraversalPolicy p = new TraversalPolicy(order == null ? getOrder() : order.compose(getOrder()), dims);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
+	public TraversalPolicy withOrder(TraversalOrdering order) {
+		if (this.order == order) return this;
+		return new TraversalPolicy(order, dims).traverse(traversalAxis);
+	}
+
 	public TraversalPolicy prependDimension(int size) {
 		int newDims[] = new int[getDimensions() + 1];
 		newDims[0] = size;
 		for (int i = 0; i < getDimensions(); i++) newDims[i + 1] = length(i);
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis + 1;
 		return p;
 	}
@@ -185,7 +198,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);
 		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -195,7 +208,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);
 		newDims[newDims.length - 1] = size;
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -208,7 +221,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		int newDims[] = new int[getDimensions()];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == axis ? size : length(i);
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -217,7 +230,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		int newDims[] = new int[getDimensions()];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == traversalAxis ? stride : 0;
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -226,13 +239,13 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		int newDims[] = new int[getDimensions() - depth];
 		for (int i = 0; i < newDims.length; i++) newDims[i] = length(i + depth);
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis > depth ? traversalAxis - depth : 0;
 		return p;
 	}
 
 	public TraversalPolicy item() {
-		if (traversalAxis == dims.length) return new TraversalPolicy();
+		if (traversalAxis == dims.length) return new TraversalPolicy(order);
 		return new TraversalPolicy(IntStream.range(traversalAxis, dims.length).map(i -> dims[i]).toArray());
 	}
 
@@ -241,7 +254,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		for (int i = 0; i < traversalAxis; i++) newDims[i] = length(i);
 		for (int i = 0; i < itemShape.getDimensions(); i++) newDims[i + traversalAxis] = itemShape.length(i);
 
-		TraversalPolicy p = new TraversalPolicy(newDims);
+		TraversalPolicy p = new TraversalPolicy(order, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -252,17 +265,29 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	public TraversalPolicy flatten(boolean preserveCount) {
 		if (preserveCount) {
-			return new TraversalPolicy(getCount(), getSize()).traverse();
+			return new TraversalPolicy(order, getCount(), getSize()).traverse();
 		} else {
-			return new TraversalPolicy(getTotalSize());
+			return new TraversalPolicy(order, getTotalSize());
 		}
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }
 
-	public int getSize() { return size(traversalAxis); }
+	public int getSize() {
+		if (traversalAxis > dims.length) {
+			throw new IllegalArgumentException("Traversal axis is greater than the number of dimensions");
+		}
 
-	public long getSizeLong() { return sizeLong(traversalAxis); }
+		return size(traversalAxis);
+	}
+
+	public long getSizeLong() {
+		if (traversalAxis > dims.length) {
+			throw new IllegalArgumentException("Traversal axis is greater than the number of dimensions");
+		}
+
+		return sizeLong(traversalAxis);
+	}
 
 	public int getTotalSize() { return size(0); }
 
@@ -284,6 +309,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public void store(DataOutputStream dos) throws IOException {
+		if (order != null) {
+			throw new UnsupportedOperationException();
+		}
+
 		dos.writeInt(dims.length);
 		dos.writeInt(traversalAxis);
 
@@ -344,11 +373,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 			dims[i] = (int) d;
 		}
 
-		return new TraversalPolicy(dims).traverse(traversalAxis);
+		return new TraversalPolicy(null, dims).traverse(traversalAxis);
 	}
 
 	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
 											  BiFunction<Integer, V, V> traversalFunction,
+											  BiFunction<Integer, V, V> expandFunction,
 											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
 		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
 		sortedShapes.addAll(shapes);
@@ -356,13 +386,41 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		s: for (TraversalPolicy shape : sortedShapes) {
 			int[] compatibleAxes =
 					IntStream.range(0, values.size())
-							.map(i -> compatibleAxis(shape, shapes.get(i)))
+							.map(i -> compatibleAxis(shapes.get(i), shape))
 							.filter(i -> i >= 0).toArray();
 			if (compatibleAxes.length != values.size()) continue s;
 
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
 				vals.add(traversalFunction.apply(compatibleAxes[i], values.get(i)));
+			}
+
+			return resultProcessor.apply(shape, vals);
+		}
+
+		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSize).reversed());
+		sortedShapes.addAll(shapes);
+
+		int largest = sortedShapes.iterator().next().getTotalSize();
+
+		s: for (TraversalPolicy shape : sortedShapes) {
+			if (shape.getTotalSize() < largest) {
+				break s;
+			}
+
+			int[] matchDepths =
+					IntStream.range(0, values.size())
+							.map(i -> matchDepth(shapes.get(i), shape))
+							.filter(i -> i > 0).toArray();
+			if (matchDepths.length != values.size()) continue s;
+
+			List<V> vals = new ArrayList<>();
+			for (int i = 0; i < values.size(); i++) {
+				int repeat = shape.getTotalSize() / shapes.get(i).getTotalSize();
+
+				V v = traversalFunction.apply(matchDepths[i], values.get(i));
+				if (repeat > 1) v = expandFunction.apply(repeat, v);
+				vals.add(v);
 			}
 
 			return resultProcessor.apply(shape, vals);
@@ -379,5 +437,17 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		}
 
 		return -1;
+	}
+
+	public static int matchDepth(TraversalPolicy shape, TraversalPolicy target) {
+		int i;
+
+		i: for (i = 0; i < shape.getDimensions(); i++) {
+			if (target.getDimensions() <= i || shape.length(i) != target.length(i)) {
+				break i;
+			}
+		}
+
+		return i;
 	}
 }

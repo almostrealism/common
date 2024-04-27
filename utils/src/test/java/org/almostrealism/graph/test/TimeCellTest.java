@@ -16,7 +16,7 @@ public class TimeCellTest implements TestFeatures {
 	public void timeCell() {
 		CLOperator.enableVerboseLog = true;
 
-		TimeCell cell = new TimeCell(null, v(44100));
+		TimeCell cell = new TimeCell(null, scalar(44100));
 		cell.setup().get().run();
 
 		Runnable tick = cell.tick().get();
@@ -30,10 +30,10 @@ public class TimeCellTest implements TestFeatures {
 	@Test
 	public void fmod() {
 		Scalar time = new Scalar();
-		Producer<Scalar> loopDuration = v(2.0);
+		Producer<Scalar> loopDuration = scalar(2.0);
 
 		Producer<Scalar> left = l(() -> new Provider<>(time));
-		left = scalarGreaterThan(loopDuration, v(0.0),
+		left = scalarGreaterThan(loopDuration, scalar(0.0),
 				scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 				scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 

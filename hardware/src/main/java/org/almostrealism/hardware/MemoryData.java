@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
@@ -29,6 +30,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
 
 public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
 
@@ -79,6 +82,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	default int getOffset() {
 		if (getDelegate() == null) {
 			return getDelegateOffset();
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
 			return getDelegateOffset() + getDelegate().getOffset();
 		}
@@ -90,6 +95,14 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return getMemLength();
 	}
 
+	default int getDelegatedLength() {
+		if (getDelegateOrdering() == null) {
+			return getMemLength();
+		} else {
+			return getDelegateOrdering().getLength().orElse(getMemLength());
+		}
+	}
+
 	void destroy();
 
 	/**
@@ -99,15 +112,66 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * to skip over to get to the location in the {@link Memory} where data should be
 	 * kept.
 	 */
-	void setDelegate(MemoryData m, int offset);
+	default void setDelegate(MemoryData m, int offset) {
+		if (m == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
+		}
+
+		setDelegate(m, offset, null);
+	}
+
+	/**
+	 * If a delegate is set using this method, then the {@link Memory} for the delegate
+	 * should be used to store and retrieve data, with the specified offset. The offset
+	 * size is based on the size of a double, it indicates the number of double values
+	 * to skip over to get to the location in the {@link Memory} where data should be
+	 * kept.
+	 */
+	void setDelegate(MemoryData m, int offset, TraversalOrdering order);
 
 	@Override
 	MemoryData getDelegate();
 
 	int getDelegateOffset();
 
+	TraversalOrdering getDelegateOrdering();
+
+	default TraversalOrdering getMemOrdering() {
+		if (getDelegate() == null) {
+			return getDelegateOrdering();
+		} else if (getDelegateOrdering() == null) {
+			return getDelegate().getMemOrdering();
+		} else {
+			return getDelegateOrdering().compose(getDelegate().getMemOrdering());
+		}
+	}
+
+	default DoubleStream doubleStream() {
+		return doubleStream(0, getMemLength());
+	}
+
+	default DoubleStream doubleStream(int offset, int length) {
+		if (getDelegateOrdering() == null) {
+			return DoubleStream.of(toArray(offset, length));
+		} else {
+			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
+		}
+	}
+
 	default double toDouble(int index) {
-		return toArray(index, 1)[0];
+		if (getMemOrdering() == null) {
+			return index < 0 ? 0.0 : toArray(index, 1)[0];
+		} else if (getDelegate() == null) {
+			index = getMemOrdering().indexOf(index);
+			if (index < 0) return 0.0;
+
+			return getMem().toArray(getOffset() + index, 1)[0];
+		} else {
+			index = getDelegateOrdering().indexOf(index);
+			if (index < 0) return 0.0;
+
+			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
+		}
 	}
 
 	default double[] toArray(int offset, int length) {
@@ -115,7 +179,11 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
 		}
 
-		return getMem().toArray(getOffset() + offset, length);
+		if (getMemOrdering() == null) {
+			return getMem().toArray(getOffset() + offset, length);
+		} else {
+			return doubleStream(offset, length).toArray();
+		}
 	}
 
 	default double[] toArray() {

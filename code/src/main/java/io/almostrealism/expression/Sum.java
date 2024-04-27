@@ -17,7 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -25,8 +26,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -93,9 +92,14 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
-		return CollectionExpression.sum(shape,
-				getChildren().stream().map(e -> e.delta(shape, target)).collect(Collectors.toList()));
+	public CollectionExpression delta(CollectionExpression target) {
+		CollectionExpression delta = CollectionExpression.sum(target.getShape(),
+				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
+		return ExpressionMatchingCollectionExpression.create(
+				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				target,
+				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				delta);
 	}
 
 	@Override

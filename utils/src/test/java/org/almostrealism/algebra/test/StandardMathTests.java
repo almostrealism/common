@@ -16,8 +16,10 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
@@ -25,6 +27,14 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class StandardMathTests implements TestFeatures {
+	@Test
+	public void add() {
+		CollectionProducer<Scalar> sum = scalarAdd(scalar(1.0), scalar(2.0));
+		Evaluable ev = sum.get();
+		System.out.println(ev.evaluate());
+		assertEquals(3.0, (Scalar) ev.evaluate());
+	}
+
 	@Test
 	public void multiplyBroadcast() {
 		PackedCollection<?> in = new PackedCollection<Pair<?>>(shape(12, 32, 2)).randFill();

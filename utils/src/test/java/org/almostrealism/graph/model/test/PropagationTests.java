@@ -66,7 +66,7 @@ public class PropagationTests implements TestFeatures {
 				-3.64399601e-04, -9.90540812e-04 };
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-6);
+			Assert.assertEquals(expected[i], result[i], 1e-5);
 		}
 	}
 

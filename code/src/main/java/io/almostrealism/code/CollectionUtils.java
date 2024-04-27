@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CollectionUtils {
+	@SafeVarargs
 	public static <T> T[] include(T[] empty, T r, T... p) {
 		List<T> res = new ArrayList<>();
 		res.add(r);

@@ -17,7 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -26,8 +27,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -98,7 +97,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+	public CollectionExpression delta(CollectionExpression target) {
 		List<Expression<?>> operands = getChildren();
 		List<CollectionExpression> sum = new ArrayList<>();
 
@@ -106,20 +105,29 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			List<CollectionExpression> product = new ArrayList<>();
 
 			for (int j = 0; j < operands.size(); j++) {
-				CollectionExpression op = i == j ? operands.get(j).delta(shape, target) : CollectionExpression.create(shape, operands.get(j));
+				CollectionExpression op = i == j ? operands.get(j).delta(target) :
+						CollectionExpression.create(target.getShape(), operands.get(j));
 				product.add(op);
 			}
 
-			sum.add(CollectionExpression.product(shape, product));
+			sum.add(CollectionExpression.product(target.getShape(), product));
 		}
 
+		CollectionExpression result;
+
 		if (sum.isEmpty()) {
-			return CollectionExpression.zeros(shape);
+			result = CollectionExpression.zeros(target.getShape());
 		} else if (sum.size() == 1) {
-			return sum.get(0);
+			result = sum.get(0);
 		} else {
-			return CollectionExpression.sum(shape, sum);
+			result = CollectionExpression.sum(target.getShape(), sum);
 		}
+
+		return ExpressionMatchingCollectionExpression.create(
+				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				target,
+				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				result);
 	}
 
 	@Override

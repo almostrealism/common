@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -56,5 +57,12 @@ public class Exp extends Expression<Double> {
 		}
 
 		return new Exp((Expression<Double>) children.get(0));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		CollectionExpression delta = getChildren().get(0).delta(target);
+		CollectionExpression exp = CollectionExpression.create(target.getShape(), this);
+		return CollectionExpression.product(target.getShape(), List.of(delta, exp));
 	}
 }

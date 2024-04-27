@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.io.ObjectOutput;
 import java.util.function.BiFunction;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -190,7 +191,8 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 //		else
 //			return Math.pow(c * f, this.gamma);
 	}
-	
+
+	@Override
 	public TraversalPolicy getShape() {
 		return data.getShape();
 	}
@@ -546,9 +548,9 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	}
 
 	@Override
-	public void setDelegate(MemoryData m, int offset) {
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
 		if (data != null)
-			data.setDelegate(m, offset);
+			data.setDelegate(m, offset, order);
 	}
 
 	@Override
@@ -556,6 +558,11 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 
 	@Override
 	public int getDelegateOffset() { return data == null ? 0 : data.getDelegateOffset(); }
+
+	@Override
+	public TraversalOrdering getDelegateOrdering() {
+		return data == null ? null : data.getDelegateOrdering();
+	}
 
 	@Override
 	public void destroy() { data.destroy(); }

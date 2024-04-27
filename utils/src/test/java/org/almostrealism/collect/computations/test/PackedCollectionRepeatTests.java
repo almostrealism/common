@@ -186,4 +186,29 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 
 		kernelTest(dense, valid);
 	}
+
+	@Test
+	public void maxRepeat() {
+		PackedCollection<?> in = new PackedCollection<>(8, 4).randFill();
+		in.traverse(1).print();
+		System.out.println("--");
+
+		PackedCollection<?> o = cp(in).traverse(1).max().repeat(3).get().evaluate();
+		o.traverse(1).print();
+
+		for (int h = 0; h < 8; h++) {
+			double max = in.valueAt(h, 0);
+			for (int i = 1; i < 4; i++) {
+				if (in.valueAt(h, i) > max) {
+					max = in.valueAt(h, i);
+				}
+			}
+
+			for (int i = 0; i < 3; i++) {
+				double actual = o.valueAt(h, i, 0);
+				System.out.println("CollectionRepeatTests[" + h + "] " + max + " vs " + actual);
+				assertEquals(max, actual);
+			}
+		}
+	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable
 	private PrintWriter ps;
 	private long index;
 	private int rate;
+	private String lastValue;
 
 	public CSVReceptor(OutputStream out) {
 		this(out, 1);
@@ -38,12 +39,17 @@ public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable
 		ps = new PrintWriter(new OutputStreamWriter(out));
 		setConsumer(p -> {
 			if (index % this.rate == 0) {
-				ps.println(index + "," + process(p));
+				lastValue = process(p);
+				ps.println(index + "," + lastValue);
 				ps.flush();
 			}
 
 			index++;
 		});
+	}
+
+	public String getLastValue() {
+		return lastValue;
 	}
 
 	public void flush() {

@@ -16,11 +16,9 @@
 
 package org.almostrealism.time.computations.test;
 
-import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
@@ -102,7 +100,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add(temporal(r(p(cursors)), v(30)));
+		return series.add(temporal(r(p(cursors)), scalar(30)));
 	}
 
 	protected Supplier<Runnable> assign() {
@@ -114,7 +112,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected Supplier<Runnable> increment() {
-		return cursors.increment(v(1));
+		return cursors.increment(scalar(1));
 	}
 
 	@Test

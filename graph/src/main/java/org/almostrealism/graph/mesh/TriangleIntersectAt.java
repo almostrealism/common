@@ -77,10 +77,10 @@ public class TriangleIntersectAt extends LessThanScalar {
 		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ScalarFeatures.getInstance().scalar(-1.0),
-						Ops.o().scalarGreaterThan(u, Ops.o().v(0.0), true),
-						Ops.o().scalarLessThan(u, Ops.o().v(1.0), true),
-						Ops.o().scalarGreaterThan(v, Ops.o().v(0.0), true),
-						Ops.o().scalarLessThan(Ops.o().add(u, v), Ops.o().v(1.0), true)));
+						Ops.o().scalarGreaterThan(u, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan(u, Ops.o().scalar(1.0), true),
+						Ops.o().scalarGreaterThan(v, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan(Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
 	}
 
 	protected TriangleIntersectAt(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,

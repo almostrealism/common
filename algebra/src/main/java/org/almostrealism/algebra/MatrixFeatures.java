@@ -24,18 +24,41 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 public interface MatrixFeatures extends CollectionFeatures {
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> matmul(Producer<T> matrix, Producer<T> vector) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);
 		if (shape.getDimensions() != 2)
 			throw new IllegalArgumentException();
 
+		CollectionProducer<PackedCollection<?>> a;
+		CollectionProducer<PackedCollection<?>> b;
+
+		int n = shape.length(0);
+
 		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
-			System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+			// System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+
+			int m = shape.length(1);
+			int p = vshape.length(1);
+
+			a = c(matrix).repeat(p);
+			b = c(vector).enumerate(1, 1)
+					.reshape(p, m)
+					.traverse(1)
+					.repeat(n)
+					.reshape(p, n, m)
+					.traverse(1);
+			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
+			return (CollectionProducer) product
+					.reshape(p, n, m).sum(2)
+					.enumerate(1, 1)
+					.reshape(n, p);
+		} else {
+			a = c(matrix);
+			b = repeat(n, vector);
 		}
 
-		int d = shape.length(0);
-		return multiply(traverseEach(matrix), traverseEach(repeat(d, vector))).traverse(1).sum();
+		return multiply(traverseEach(a), traverseEach(b)).traverse(1).sum();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
@@ -43,16 +66,16 @@ public interface MatrixFeatures extends CollectionFeatures {
 		int m = shape(a).length(1);
 		int p = shape(b).length(1);
 
-		return c(c(b).enumerate(1, 1)
+		return (CollectionProducer) c(b).enumerate(1, 1)
 				.reshape(p, m)
 				.traverse(1)
-				.expand(n, v -> v.repeat(n))
+				.repeat(n)
 				.reshape(p, n, m)
 				.traverse(1)
-				.map(v -> multiply(v, c(a)))
+				.multiply(c(a).repeat(p))
 				.reshape(p, n, m).sum(2)
 				.enumerate(1, 1)
-				.reshape(n, p));
+				.reshape(n, p);
 	}
 
 	static MatrixFeatures getInstance() {

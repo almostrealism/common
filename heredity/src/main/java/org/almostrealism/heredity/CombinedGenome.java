@@ -92,7 +92,12 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 		if (factor instanceof ScaleFactor) {
 			return ((ScaleFactor) factor).getScaleValue();
 		} else if (factor instanceof AssignableGenome.AssignableFactor) {
-			return ((AssignableGenome.AssignableFactor) factor).getValue().toDouble(0);
+			PackedCollection<?> value = ((AssignableGenome.AssignableFactor) factor).getValue();
+			if (value == null) {
+				throw new UnsupportedOperationException();
+			}
+
+			return value.toDouble(0);
 		} else {
 			return factor.getResultant(c(1.0)).get().evaluate().toDouble(0);
 		}

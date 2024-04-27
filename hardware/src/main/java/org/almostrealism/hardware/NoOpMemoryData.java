@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,14 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversalOrdering;
 
 public class NoOpMemoryData implements MemoryData {
 	@Override
-	public Memory getMem() {
-		return null;
-	}
+	public Memory getMem() { return null; }
 
 	@Override
-	public void reassign(Memory mem) {
-
-	}
+	public void reassign(Memory mem) { }
 
 	@Override
 	public int getMemLength() {
@@ -35,22 +32,17 @@ public class NoOpMemoryData implements MemoryData {
 	}
 
 	@Override
-	public void destroy() {
-
-	}
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) { }
 
 	@Override
-	public void setDelegate(MemoryData m, int offset) {
-
-	}
+	public MemoryData getDelegate() { return null; }
 
 	@Override
-	public MemoryData getDelegate() {
-		return null;
-	}
+	public int getDelegateOffset() { return 0; }
 
 	@Override
-	public int getDelegateOffset() {
-		return 0;
-	}
+	public TraversalOrdering getDelegateOrdering() { return null; }
+
+	@Override
+	public void destroy() { }
 }

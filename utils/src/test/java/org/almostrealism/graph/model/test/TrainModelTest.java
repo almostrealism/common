@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,31 +16,19 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.GradientPropagation;
-import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -48,7 +36,6 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
@@ -57,13 +44,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int w = 10;
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
-
-	public CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
-		if (skipLongTests && !LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
-			throw new UnsupportedOperationException();
-
-		return TestFeatures.super.convolution2d(inputShape, size, filterCount, requirements);
-	}
 
 	@Test
 	public void dense() {
@@ -281,11 +261,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_41"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_45"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_packedCollectionEnumerate_53"));
-		// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_54"));
-
 		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -300,7 +275,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
+		// ParallelProcess.isolationFlags.add(operationFilter("f_constantRepeatedProducerComputation_82"));
 
 		int dim = 16;
 		int filters = 8;
@@ -316,8 +291,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_11"));
-
 		int dim = 32;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -331,14 +304,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
-
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_15"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_20"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_48"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_50"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_57"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_traversableDeltaComputation_59"));
-//		ParallelProcess.isolationFlags.add(operationFilter("f_packedCollectionEnumerate_62"));
 
 		int dim = 64;
 		int filters = 8;
@@ -365,8 +330,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator",
-				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		initKernelMetrics();
 		OperationProfile profile = new OperationProfile("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
@@ -421,14 +385,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 				}
 			}
 		} finally {
-			profile.print();
-			HardwareOperator.profile.print();
-			AcceleratedComputationOperation.printTimes();
-			log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
-							" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
-			log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
-					" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
-			log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+			logKernelMetrics(profile);
 		}
 	}
 
@@ -436,15 +393,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
 		model.addLayer(pool2d(2));
-//		model.addBlock(flatten());
-//		model.addLayer(dense(denseSize));
-//		model.addLayer(softmax());
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
-	}
-
-	private Predicate<Process> operationFilter(String functionName) {
-		return p -> p instanceof OperationAdapter &&
-				((OperationAdapter) p).getFunctionName().equals(functionName);
 	}
 }

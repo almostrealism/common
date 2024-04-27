@@ -45,9 +45,9 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applyProduct() {
-		Scalar s = product().evaluate(v(1.0).get().evaluate(),
-									v(2.0).get().evaluate(),
-									v(3.0).get().evaluate());
+		Scalar s = product().evaluate(scalar(1.0).get().evaluate(),
+									scalar(2.0).get().evaluate(),
+									scalar(3.0).get().evaluate());
 		System.out.println(s.getValue());
 		System.out.println(s.getValue());
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));

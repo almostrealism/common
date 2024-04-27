@@ -66,6 +66,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected CollectionProducerComputationBase() {
 	}
 
+	@SafeVarargs
 	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this();
 
@@ -74,7 +75,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		this.name = name;
-		this.shape = outputShape;
+		this.shape = outputShape.withOrder(null);
 		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
 		init();
 	}
@@ -175,6 +176,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			return new PackedCollection<>(shape);
 		}
 
+		if (((PackedCollection<?>) existing).getShape().equals(shape))
+			return existing;
+
 		return ((PackedCollection) existing).range(shape);
 	}
 
@@ -251,12 +255,24 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public Evaluable<O> get() {
 		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
-		ev.setDestinationValidation(destination -> {
+		ev.setDestinationProcessor(destination -> {
 			if (destination instanceof Shape) {
+				Shape out = (Shape) destination;
+
+				if (getCount() > 1 || isFixedCount() || (out.getShape().getCount() > 1 && getCount() == 1)) {
+					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
+						if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
+							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
+						}
+					}
+				}
+
 				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
 					throw new IllegalArgumentException();
 				}
 			}
+
+			return destination;
 		});
 		return ev;
 	}

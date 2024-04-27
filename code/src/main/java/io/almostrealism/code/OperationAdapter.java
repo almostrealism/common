@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -207,21 +208,31 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
+		if (input == null) return null;
+
 		// Check for argument variables for which the original producer is
 		// the specified input
-		Optional<ArrayVariable> var = vars.stream()
-				.filter(arg -> arg != null && arg.getOriginalProducer() == (Supplier) input)
-				.findFirst();
-		if (var.isPresent()) return var.get();
+		Set<ArrayVariable> var = vars.stream()
+				.filter(arg -> arg != null && input.equals(arg.getOriginalProducer()))
+				.collect(Collectors.toSet());
+		if (var.size() == 1) return var.iterator().next();
+		if (var.size() > 1) {
+			throw new IllegalArgumentException("Multiple arguments match input");
+		}
 
 		// Additionally, check for variables for which the original producer
 		// delegates to the specified input
 		var = vars.stream()
 				.filter(Objects::nonNull)
 				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
-				.filter(arg -> ((Delegated) arg.getOriginalProducer()).getDelegate() == (Supplier) input)
-				.findFirst();
-		return var.orElse(null);
+				.filter(arg -> input.equals(((Delegated) arg.getOriginalProducer()).getDelegate()))
+				.collect(Collectors.toSet());
+		if (var.size() == 1) return var.iterator().next();
+		if (var.size() > 1) {
+			throw new IllegalArgumentException("Multiple arguments match input");
+		}
+
+		return null;
 	}
 
 	protected static String functionName(Class c) {

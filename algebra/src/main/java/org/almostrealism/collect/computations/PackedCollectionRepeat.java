@@ -16,10 +16,13 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -32,6 +35,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	public static boolean enableTraverseEach = false;
 	public static boolean enableItem = true;
+	public static boolean enableInputIsolation = true;
 
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
@@ -124,6 +128,16 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	@Override
 	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
 		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		if (!enableInputIsolation ||
+				!(getInputs().get(1) instanceof Computation) ||
+				getInputs().get(1) instanceof CollectionProducerComputation.IsolatedProcess)
+			return super.isolate();
+
+		return generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1)))).isolate();
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

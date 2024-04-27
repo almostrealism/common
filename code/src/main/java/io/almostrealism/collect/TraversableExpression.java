@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,10 @@ import io.almostrealism.scope.Variable;
 import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
-	default Expression<T> getValue(PositionExpression pos) {
-		return getValue(pos.toArray());
-	}
 
-	Expression<T> getValue(Expression... pos);
+	default Expression<T> getValue(Expression... pos) {
+		throw new UnsupportedOperationException();
+	}
 
 	Expression<T> getValueAt(Expression index);
 

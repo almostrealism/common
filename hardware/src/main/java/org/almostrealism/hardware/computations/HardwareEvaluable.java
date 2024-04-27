@@ -24,9 +24,9 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
-import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 /**
  * A {@link HardwareEvaluable} is a {@link Evaluable} that can be evaluated
@@ -51,7 +51,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 	private boolean isKernel;
 	private ContextSpecific<Evaluable<T>> kernel;
 
-	private Consumer<MemoryBank<?>> destinationValidation;
+	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
 	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
 							 IntFunction<Multiple<T>> destination,
@@ -83,12 +83,12 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 
 	public boolean isKernel() { return isKernel; }
 
-	public Consumer<MemoryBank<?>> getDestinationValidation() {
-		return destinationValidation;
+	public UnaryOperator<MemoryBank<?>> getDestinationProcessor() {
+		return destinationProcessor;
 	}
 
-	public void setDestinationValidation(Consumer<MemoryBank<?>> destinationValidation) {
-		this.destinationValidation = destinationValidation;
+	public void setDestinationProcessor(UnaryOperator<MemoryBank<?>> destinationProcessor) {
+		this.destinationProcessor = destinationProcessor;
 	}
 
 	@Override
@@ -97,8 +97,8 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 	}
 
 	public Evaluable<T> withDestination(MemoryBank destination) {
-		if (destinationValidation != null) {
-			destinationValidation.accept(destination);
+		if (destinationProcessor != null) {
+			destination = destinationProcessor.apply(destination);
 		}
 
 		Evaluable ev = getKernel().getValue();

@@ -96,7 +96,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
 			if (!allocated.remove(mem) && enableWarnings) {
-				System.out.println("WARN: Deallocated untracked memory");
+				warn("Deallocated untracked memory");
 			}
 		} finally {
 			deallocating.remove(ram);

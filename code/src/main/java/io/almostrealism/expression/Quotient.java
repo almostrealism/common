@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -102,6 +103,31 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Expression numerator = getChildren().get(0);
+		Expression denominator = getChildren().get(1);
+
+		CollectionExpression numeratorDelta = numerator.delta(target);
+		CollectionExpression denominatorDelta = denominator.delta(target);
+
+		// f'(x)g(x)
+		CollectionExpression term1 = CollectionExpression.product(target.getShape(),
+				List.of(numeratorDelta, CollectionExpression.create(target.getShape(), denominator)));
+		// f(x)g'(x)
+		CollectionExpression term2 = CollectionExpression.product(target.getShape(),
+				List.of(CollectionExpression.create(target.getShape(), numerator), denominatorDelta));
+
+		CollectionExpression derivativeNumerator =
+				CollectionExpression.difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
+		CollectionExpression derivativeDenominator =
+				CollectionExpression.create(target.getShape(), new Product(denominator, denominator)); // [g(x)]^2
+		return CollectionExpression.quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
+	}
+
+	@Override
 	public Expression simplify(KernelStructureContext context) {
 		Expression<?> flat = super.simplify(context);
 		if (!enableSimplification || !(flat instanceof Quotient)) return flat;
@@ -113,6 +139,14 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		if (children.isEmpty()) return new IntegerConstant(1);
 		if (children.size() == 1) return children.get(0);
+
+		if (children.get(0) instanceof Index && children.size() == 2) {
+			OptionalInt divisor = children.get(1).intValue();
+			OptionalInt max = ((Index) children.get(0)).getLimit();
+			if (divisor.isPresent() && max.isPresent() && max.getAsInt() <= divisor.getAsInt()) {
+				return new IntegerConstant(0);
+			}
+		}
 
 		if (children.get(0).intValue().isPresent()) {
 			int numerator = children.get(0).intValue().getAsInt();

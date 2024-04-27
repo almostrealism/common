@@ -39,12 +39,21 @@ public class DitherTest implements TestFeatures {
 	}
 
 	@Test
-	public void random() {
+	public void random1() {
 		PackedCollection<Scalar> random = Scalar.scalarBank(160);
 		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
 		ExpressionComputation<PackedCollection<Scalar>> dither = dither(160, v(320, 0), v(Scalar.shape(), 1));
 		PackedCollection<Scalar> out = dither.get().evaluate(random, new Scalar(1.0));
-		System.out.println(Arrays.toString(IntStream.range(0, 160).mapToDouble(i -> out.get(i).getValue()).toArray()));
+		assertNotEquals(0.0, out.get(20));
+	}
+
+	@Test
+	public void random2() {
+		PackedCollection<Scalar> random = Scalar.scalarBank(160);
+		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(160, v(Scalar.shape(), 0), v(Scalar.shape(), 1));
+		Assert.assertFalse(ParallelProcess.isFixedCount(dither));
+		PackedCollection<Scalar> out = dither.get().evaluate(random, new Scalar(1.0));
 		assertNotEquals(0.0, out.get(20));
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
@@ -38,7 +37,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	private Expression pos[];
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, shape, np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
+		this(np, name, shape, np == null ? null : np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
 	}
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
@@ -48,7 +47,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	protected CollectionVariable(TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
-		super(null, null, null, (Expression<Integer>) null);
+		super(null, null, null, null);
 		this.shape = shape;
 		this.parent = parent;
 		this.pos = pos;
@@ -62,7 +61,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	@Override
-	public InstanceReference<T> referenceRelative(Expression<?> idx) {
+	public Expression<T> referenceRelative(Expression<?> idx) {
 		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.reference(p, false);
@@ -119,6 +118,10 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 			return (Expression) reference(e(0), false);
 		} else {
 			index = index.toInt().mod(e(getShape().getTotalSize()), false);
+			if (getShape().getOrder() != null) {
+				index = getShape().getOrder().indexOf(index);
+			}
+
 			return (Expression) reference(index, false);
 		}
 	}
@@ -147,8 +150,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return new CollectionVariable<>(shape, this, pos);
 	}
 
-	public static <T> ArrayVariable<T> create(LanguageOperations lang, NameProvider np,
-											  String name, Supplier<Evaluable<? extends T>> p) {
+	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {

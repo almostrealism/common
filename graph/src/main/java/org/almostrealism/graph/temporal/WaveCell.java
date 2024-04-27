@@ -54,7 +54,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat) {
-		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().v(0.0), Ops.o().v(wav.getCount()));
+		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCount()));
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -82,7 +82,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		Producer<Scalar> initial;
 
 		if (offset != null) {
-			initial = scalarsMultiply(offset, v(-sampleRate));
+			initial = scalarsMultiply(offset, scalar(-sampleRate));
 		} else {
 			initial = null;
 		}
@@ -90,7 +90,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		Producer<Scalar> duration;
 
 		if (repeat != null) {
-			duration = scalarsMultiply(repeat, v(sampleRate));
+			duration = scalarsMultiply(repeat, scalar(sampleRate));
 		} else {
 			duration = null;
 		}
@@ -111,7 +111,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(data, wav, sampleRate, amplitude, frame, Ops.o().v(0.0), Ops.o().v(wav.getCount()));
+		this(data, wav, sampleRate, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCount()));
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -139,10 +139,10 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("WaveCell Setup");
 		if (clock != null) setup.add(clock.setup());
-		setup.add(a(1, data.getWaveLength(), v(waveLength)));
+		setup.add(a(1, data.getWaveLength(), scalar(waveLength)));
 		setup.add(a(1, data.getWaveIndex(), frameIndex));
 		setup.add(a(1, data.getWaveCount(), frameCount));
-		setup.add(a(1, data.getAmplitude(), v(amplitude)));
+		setup.add(a(1, data.getAmplitude(), scalar(amplitude)));
 		setup.add(super.setup());
 		return setup;
 	}

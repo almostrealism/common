@@ -17,21 +17,35 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.optimize.Dataset;
+import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.ValueTarget;
+import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-public class LayersTests implements LayerFeatures, TestFeatures {
+public class LayersTests implements LayerFeatures, DistributionFeatures, TestFeatures {
 	private static final int SIZE = 768;
 
 	private float cpuOut[];
@@ -128,16 +142,11 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void softmaxComputation() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int heads = 12;
-		int len = KernelPreferences.isPreferLoops() ? 1024 : 8;
-		int l = KernelPreferences.isPreferLoops() ? 64 : 4;
+		int len = 8; // 1024;
+		int l = 4; // 64;
 
 		PackedCollection<?> in = new PackedCollection<>(heads, len).randFill().traverseEach();
-//		PackedCollection<?> subtractMax = new PackedCollection<>(heads, len);
-//		PackedCollection<?> exp = new PackedCollection<>(heads, len);
-//		PackedCollection<?> norm = new PackedCollection<>(heads, len);
 
 		for (int h = 0; h < heads; h++) {
 			for (int i = l; i < len; i++) {
@@ -145,56 +154,82 @@ public class LayersTests implements LayerFeatures, TestFeatures {
 			}
 		}
 
-		Producer<PackedCollection<?>> input = p(in);
 		boolean subtractMax = true;
+		Producer<PackedCollection<?>> input = p(in);
 
-		HardwareOperator.verboseLog(() -> {
-//			cp(in).traverse(2).subtract(cp(in).traverse(1).max().expand(len, v -> v.repeat(len))).get().into(subtractMax.traverseEach()).evaluate();
-//			cp(subtractMax).exp().get().into(exp).evaluate();
-//			cp(exp).traverse(1).divide(cp(exp).traverse(1).sum().expand(len, v -> v.repeat(len))).get().into(norm.traverse(1)).evaluate();
+		CollectionProducer<PackedCollection<?>> o = softmax(traverse(1, input));
 
-			CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+		/*
+		CollectionProducer<PackedCollection<?>> o = traverse(1, input);
 
-			if (subtractMax) {
-				o = o.max();
-				o = o.expand(len, v -> v.repeat(len));
-				o = traverse(2, input).subtractIgnoreZero(o);
-			}
+		if (subtractMax) {
+			o = o.max();
+			o = o.repeat(len).consolidate();
+			o = traverse(2, input).subtractIgnoreZero(o);
+		}
 
-			o = o.expIgnoreZero().traverse(1);
-//			o = o.divide(o.sum().expand(len, v -> v.repeat(len)));
-			o = o.divide(o.sum().repeat(len).consolidate());
+		o = o.expIgnoreZero().traverse(1);
+		o = o.divide(o.sum().repeat(len).consolidate());
 
-			// PackedCollection<?> output = o.get().evaluate();
+		// PackedCollection<?> output = o.get().evaluate();
+		 */
 
-			PackedCollection<?> output = new PackedCollection<>(heads, len);
+		PackedCollection<?> output = new PackedCollection<>(heads, len);
 
-			OperationList op = new OperationList();
-			op.add(a(traverse(1, p(output)), o));
-			op.optimize().get().run();
+		OperationList op = new OperationList();
+		op.add(a(traverse(1, p(output)), o));
+		op.optimize().get().run();
 
-			for (int h = 0; h < heads; h++) {
-				double max = in.valueAt(h, 0);
-				for (int i = 1; i < l; i++) {
-					if (in.valueAt(h, i) > max) {
-						max = in.valueAt(h, i);
-					}
-				}
-
-				double x[] = new double[len];
-				double sum = 0.0;
-				for (int i = 0; i < l; i++) {
-					x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
-					sum += x[i];
-				}
-
-				for (int i = 0; i < l; i++) {
-					x[i] /= sum;
-					double actual = output.valueAt(h, i);
-					System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
-					assertEquals(x[i], actual);
+		for (int h = 0; h < heads; h++) {
+			double max = in.valueAt(h, 0);
+			for (int i = 1; i < l; i++) {
+				if (in.valueAt(h, i) > max) {
+					max = in.valueAt(h, i);
 				}
 			}
-		});
+
+			double x[] = new double[len];
+			double sum = 0.0;
+			for (int i = 0; i < l; i++) {
+				x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
+				sum += x[i];
+			}
+
+			for (int i = 0; i < l; i++) {
+				x[i] /= sum;
+				double actual = output.valueAt(h, i);
+				System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
+				assertEquals(x[i], actual);
+			}
+		}
+	}
+
+	@Test
+	public void dense() {
+		if (skipLongTests) return;
+
+		int size = 1800;
+		int nodes = 10;
+		int steps = 100;
+
+		Model model = new Model(shape(size));
+		model.addLayer(dense(nodes));
+
+		initKernelMetrics();
+		OperationProfile profile = new OperationProfile("Model");
+
+		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+				.map(input -> ValueTarget.of(input, input))
+				.collect(Collectors.toList()));
+		ModelOptimizer train = new ModelOptimizer(model, profile, data);
+		log("Model compiled");
+
+		try {
+			train.optimize(1);
+		} finally {
+			logKernelMetrics(profile);
+		}
 	}
 }

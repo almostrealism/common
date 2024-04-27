@@ -6,6 +6,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -115,7 +116,7 @@ public class PairBankTest implements TestFeatures {
 
 		int len = 100;
 
-		CLOperator.disableDimensionMasks(() -> {
+		HardwareOperator.disableDimensionMasks(() -> {
 			PackedCollection<?> destination = new PackedCollection<>(shape(4));
 
 			Producer<PackedCollection<?>> c = new ExpressionComputation<>(List.of(args -> args.get(1).getValueRelative(1)),

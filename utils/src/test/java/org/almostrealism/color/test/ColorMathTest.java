@@ -48,7 +48,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), arg1, black());
+			GreaterThanRGB greater = new GreaterThanRGB(arg0, scalar(0.0), arg1, black());
 			RGB result = greater.get().evaluate(new Scalar(0.1), new RGB(0.0, 1.0, 0.0));
 			assertEquals(0.0, result.getRed());
 			assertEquals(1.0, result.getGreen());
@@ -69,7 +69,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 			input.set(3, -0.1);
 			input.set(4, 0.1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), white(), black());
+			GreaterThanRGB greater = new GreaterThanRGB(arg0, scalar(0.0), white(), black());
 			greater.get().into(result).evaluate(input);
 			assertEquals(0.0, result.get(0).getGreen());
 			assertEquals(0.0, result.get(1).getGreen());

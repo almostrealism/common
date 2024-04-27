@@ -17,11 +17,10 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
@@ -36,10 +35,10 @@ public class SwitchTest implements TestFeatures {
 	}
 
 	public Switch choice(Scalar output, Producer<Scalar> decision, Producer<Scalar> multiplier) {
-		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
-		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
-		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
-		return new Switch((ProducerComputation) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
+		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(2.0)));
+		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(4.0)));
+		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(8.0)));
+		return new Switch((CollectionProducer) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test
@@ -84,21 +83,21 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void nestedChoiceList() {
-		Producer<Scalar> multiplier = v(2.0);
+		Producer<Scalar> multiplier = scalar(2.0);
 
 		Scalar output1a = new Scalar(0.0);
 		Scalar output1b = new Scalar(0.0);
-		Producer<Scalar> decisionA = v(0.4);
+		Producer<Scalar> decisionA = scalar(0.4);
 		Scalar output2a = new Scalar(0.0);
 		Scalar output2b = new Scalar(0.0);
-		Producer<Scalar> decisionB = scalarsMultiply(v(0.4), multiplier);
+		Producer<Scalar> decisionB = scalarsMultiply(scalar(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));
-		embeddedList.add(choice(output2b, decisionB, v(1.0)));
+		embeddedList.add(choice(output2b, decisionB, scalar(1.0)));
 
 		OperationList list = new OperationList("Choice List");
-		list.add(choice(output1a, decisionA, v(1.0)));
+		list.add(choice(output1a, decisionA, scalar(1.0)));
 		list.add(choice(output1b, decisionB, multiplier));
 		list.add(embeddedList);
 

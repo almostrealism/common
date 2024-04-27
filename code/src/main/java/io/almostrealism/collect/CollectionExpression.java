@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,21 +16,24 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.Array;
 import io.almostrealism.code.ExpressionList;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 // TODO  Shouldn't this implement Shape?
 public interface CollectionExpression extends TraversableExpression<Double> {
+	boolean enableArrayTraversal = false;
 
 	TraversalPolicy getShape();
 
@@ -60,7 +63,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
-	default CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
+	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -68,8 +71,16 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return create(shape, idx -> Sum.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
+	static CollectionExpression difference(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> Difference.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
+	}
+
 	static CollectionExpression product(TraversalPolicy shape, List<CollectionExpression> operands) {
 		return create(shape, idx -> Product.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
+	}
+
+	static CollectionExpression quotient(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> Quotient.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
 	}
 
 	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
@@ -86,57 +97,28 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 	}
 
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
-		if (shape == null) {
-			throw new IllegalArgumentException("Shape is required");
-		}
-
-		return new CollectionExpression() {
-			@Override
-			public TraversalPolicy getShape() {
-				return shape;
-			}
-
-			@Override
-			public Expression<Double> getValueAt(Expression index) {
-				return (Expression) valueAt.apply(index);
-			}
-
-			@Override
-			public Expression<Double> getValueRelative(Expression index) {
-				return CollectionExpression.super.getValueRelative(index);
-			}
-
-			@Override
-			public CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-				return createDelta(this, targetShape, target);
-			}
-		};
-	}
-
-	static CollectionExpression createDelta(CollectionExpression exp, TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-		return new CollectionExpression() {
-			@Override
-			public TraversalPolicy getShape() {
-				return exp.getShape();
-			}
-
-			@Override
-			public Expression<Double> getValueAt(Expression index) {
-				return exp.getValueAt(index.divide(targetShape.getTotalSize()))
-										.delta(targetShape, target)
-						.getValueAt(index.imod(targetShape.getTotalSize()));
-			}
-
-			@Override
-			public CollectionExpression delta(TraversalPolicy targetShape, Function<Expression, Predicate<Expression>> target) {
-				return createDelta(this, targetShape, target);
-			}
-		};
+		return new DefaultCollectionExpression(shape, valueAt);
 	}
 
 	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {
 		TraversableExpression exp = TraversableExpression.traverse(o);
-		if (exp == null) return null;
+		if (exp == null) {
+			if (enableArrayTraversal && o instanceof Array) {
+				return new TraversableExpression() {
+					@Override
+					public Expression getValue(Expression[] pos) {
+						throw new UnsupportedOperationException();
+					}
+
+					@Override
+					public Expression getValueAt(Expression index) {
+						return ((Array) o).valueAt(index);
+					}
+				};
+			}
+
+			return null;
+		}
 
 		if (exp instanceof Shape) {
 			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, offset);

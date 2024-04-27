@@ -16,6 +16,9 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public interface Delegated<T> {
 	T getDelegate();
 
@@ -23,5 +26,26 @@ public interface Delegated<T> {
 		if (getDelegate() == null) return (T) this;
 		if (getDelegate() instanceof Delegated) return (T) ((Delegated) getDelegate()).getRootDelegate();
 		return getDelegate();
+	}
+
+	default int getDelegateDepth() {
+		if (getDelegate() == null) return 0;
+		if (getDelegate() instanceof Delegated) return 1 + ((Delegated) getDelegate()).getDelegateDepth();
+		return 1;
+	}
+
+	default void validateDelegate() {
+		validateDelegate(new ArrayList<>());
+	}
+
+	default void validateDelegate(List<T> existing) {
+		if (getDelegate() == null) return;
+
+		if (existing.contains(getDelegate())) {
+			throw new IllegalStateException("Circular delegation detected");
+		}
+
+		existing.add(getDelegate());
+		if (getDelegate() instanceof Delegated) ((Delegated) getDelegate()).validateDelegate(existing);
 	}
 }

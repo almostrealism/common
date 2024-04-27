@@ -25,6 +25,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
+	public static boolean enableMod2Optimization = true;
+
 	private boolean fp;
 
 	public Mod(Expression<T> a, Expression<T> b) {
@@ -117,7 +119,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			OptionalInt u = input.upperBound(context);
 			if (u.isPresent() && u.getAsInt() < m) {
 				return input;
-			} else if (isPowerOf2(m)) {
+			} else if (enableMod2Optimization && isPowerOf2(m)) {
 				return new And(input, new IntegerConstant(m - 1));
 			}
 		} else if (input.doubleValue().isPresent()) {

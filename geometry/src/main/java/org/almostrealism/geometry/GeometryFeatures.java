@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -40,13 +41,13 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-																							 Producer<PackedCollection<?>> wavelength,
-																							 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+														 Producer<PackedCollection<?>> wavelength,
+														 Producer<PackedCollection<?>> amp) {
 		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
-	default CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
 																							 Producer<PackedCollection<?>> wavelength,
 																							 Producer<PackedCollection<?>> phase,
 																							 Producer<PackedCollection<?>> amp) {

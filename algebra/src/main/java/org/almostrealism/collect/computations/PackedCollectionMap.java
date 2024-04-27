@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -169,7 +170,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (!enableChainDelta || !(TraversableDeltaComputation.deepMatch(getInputs().get(1), target))) {
+		if (!enableChainDelta || !(DeltaFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create(getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 					(Supplier) this).addDependentLifecycle(this);

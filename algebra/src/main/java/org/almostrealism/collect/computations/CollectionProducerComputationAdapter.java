@@ -60,18 +60,13 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {
-		if (TraversableDeltaComputation.enableDirect) {
-			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-					getInputs().stream().skip(1).toArray(Supplier[]::new));
-			delta.addDependentLifecycle(this);
-			return delta;
-		} else {
-			TraversableDeltaComputation<O> delta = TraversableDeltaComputation.create(getShape(), shape(target),
-					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-					(Supplier) this);
-			return delta;
-		}
+		CollectionProducer<O> delta = attemptDelta(this, target);
+		if (delta != null) return delta;
+
+		delta = TraversableDeltaComputation.create(getShape(), shape(target),
+				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+				(Supplier) this);
+		return delta;
 	}
 
 	@Override

@@ -25,7 +25,6 @@ public class KernelPreferences {
 	private static boolean enableSharedMemory = false;
 
 	private static boolean preferKernels = true;
-	private static boolean preferLoops = false;
 	private static boolean enableSubdivision = true;
 
 	static {
@@ -62,9 +61,6 @@ public class KernelPreferences {
 	public static boolean isPreferKernels() {
 		return preferKernels;
 	}
-
-	@Deprecated
-	public static boolean isPreferLoops() { return preferLoops; }
 
 	public static boolean isEnableSubdivision() { return enableSubdivision; }
 
