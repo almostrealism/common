@@ -267,7 +267,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		if (!trainingTests) return;
 
 		try {
-			ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_81"));
+			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_81"));
 
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
@@ -305,10 +305,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainLarge() {
 		if (!trainingTests) return;
 
-
 		try {
-			ParallelProcess.isolationFlags.add(operationFilter("f_indexProjectionProducerComputation_83"));
-
 			int dim = 64;
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
@@ -400,10 +397,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
-//		model.addLayer(pool2d(2));
-//		model.addBlock(flatten());
-//		model.addLayer(dense(denseSize));
-//		model.addLayer(softmax());
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}

@@ -38,8 +38,8 @@ import java.util.stream.Collectors;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
-	public static boolean enableTraversableExpressionDelta = false;
 	public static boolean enableDelegatedIsolate = false;
+	public static boolean enableInputIsolate = false;
 
 	private UnaryOperator<Expression<?>> indexProjection;
 	protected boolean relative;
@@ -145,10 +145,10 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		if (enableDelegatedIsolate) {
+		if (enableDelegatedIsolate && isConstant()) {
 			IndexProjectionProducerComputation c;
 
-			if (getInputs().get(1) instanceof IndexProjectionProducerComputation) {
+			if (enableInputIsolate && getInputs().get(1) instanceof IndexProjectionProducerComputation) {
 				c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
 			} else {
 				c = (IndexProjectionProducerComputation)
@@ -191,13 +191,8 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 				return deltaShape.index(projectIndex(pos[0]), pos[1]);
 			};
 
-			if (enableTraversableExpressionDelta) {
-				return (CollectionProducer<T>) new TraversableExpressionComputation<>(shape,
-						args -> new IndexProjectionCollectionExpression(shape, project, args[1]),
-						delta).addDependentLifecycle(this);
-			} else {
-				return new IndexProjectionProducerComputation<>(shape, project, false, delta);
-			}
+
+			return new IndexProjectionProducerComputation<>(shape, project, false, delta);
 		}
 
 		return super.delta(target);

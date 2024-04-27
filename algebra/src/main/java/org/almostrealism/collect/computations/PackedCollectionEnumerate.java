@@ -54,7 +54,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression block;
 
 		// Determine the current block
-		if (blockShape.getTotalSize() == 1) {
+		if (blockShape.getTotalSizeLong() == 1) {
 			block = index;
 		} else if (!index.isFP()) {
 			block = index.divide(e(blockShape.getTotalSizeLong()));
@@ -92,7 +92,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 		Expression blockOffset = inputShape.subset(subsetShape, offset, p);
 
-		return block.multiply(e(blockShape.getTotalSize())).add(blockOffset);
+		return block.multiply(e(blockShape.getTotalSizeLong())).add(blockOffset);
 	}
 
 	@Override
