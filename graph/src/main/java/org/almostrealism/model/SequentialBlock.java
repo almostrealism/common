@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class SequentialBlock implements Block, Learning, LayerFeatures {
+	public static boolean enableWarnings = false;
+
 	private TraversalPolicy inputShape;
 
 	private List<Block> blocks;
@@ -72,7 +74,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 
 		if (block.getBackward() == null) {
-			System.out.println("WARN: No backward Cell for " + Named.nameOf(block));
+			if (enableWarnings)
+				System.out.println("WARN: No backward Cell for " + Named.nameOf(block));
 		} else {
 			block.getBackward().setReceptor(prev);
 		}
