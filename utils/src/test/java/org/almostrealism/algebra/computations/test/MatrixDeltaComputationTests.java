@@ -399,7 +399,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void denseWeightsSmall() {
+	public void denseWeightsSmallest() {
 		try {
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_17"));
@@ -412,13 +412,20 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void denseWeightsMedium() {
+	public void denseWeightsSmall() {
 		denseWeights(120, 10);
 	}
 
 	@Test
-	public void denseWeightsLarge() {
+	public void denseWeightsMedium() {
 		denseWeights(600, 10);
+	}
+
+	@Test
+	public void denseWeightsLarge() {
+		if (skipLongTests) return;
+
+		denseWeights(7688, 10);
 	}
 
 	public void denseWeights(int size, int nodes) {

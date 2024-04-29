@@ -31,9 +31,10 @@ import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -60,6 +61,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			ReshapeProducer.enableDelegateIsolation = true;
 			ProductCollectionExpression.enableDiagonalDelta = true;
 			ProcessDetailsFactory.enableConstantCache = true;
+
+			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
 	}
 
@@ -266,7 +269,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 2, 2, 10));
+		train(input, model(dim, dim, 2, 2, 2, 10));
 	}
 
 	@Test
@@ -279,7 +282,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, 4, 10));
+			train(input, model(dim, dim, 3, 4, 2, 10));
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
@@ -294,7 +297,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 10));
+		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
 	@Test
@@ -305,7 +308,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 10));
+		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
 	@Test
@@ -317,7 +320,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, filters, 10));
+			train(input, model(dim, dim, 3, filters, 3, 10));
 		} finally {
 			ParallelProcess.isolationFlags.clear();
 		}
@@ -334,7 +337,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 			Tensor<Double> t = tensor(shape(s, s));
 			PackedCollection<?> input = t.pack();
-			train(input, model(s, s, 3, 8, 10));
+			train(input, model(s, s, 3, 8, 2, 10));
 
 			size = size * 1.2;
 		}
@@ -401,10 +404,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
+	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
 		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
+
+		for (int i = 0; i < convLayers; i++) {
+			model.addLayer(convolution2d(convSize, convFilters));
+			model.addLayer(pool2d(2));
+		}
+
 		model.addBlock(flatten());
 		model.addLayer(dense(denseSize));
 		model.addLayer(softmax());

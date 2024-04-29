@@ -119,7 +119,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		private CollectionProducer<T> op;
 
 		public IsolatedProcess(CollectionProducer<T> op) {
-			// Computation.console.features(this).log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
+			Computation.console.features(this).log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
 
 			this.op = op;
 

@@ -257,9 +257,20 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convSmall() {
-		if (skipLongTests || skipKnownIssues) return;
+		if (skipLongTests) return;
 
 		int dim = 16;
+		int size = 3;
+		int filters = 8;
+
+		convolution2d(shape(dim, dim), size, filters);
+	}
+
+	@Test
+	public void convLarge() {
+		if (skipLongTests || skipKnownIssues) return;
+
+		int dim = 64;
 		int size = 3;
 		int filters = 8;
 
