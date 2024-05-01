@@ -18,23 +18,43 @@ package org.almostrealism.ui;
 
 import io.almostrealism.code.OperationProfileNode;
 
-import javax.swing.JFrame;
-import javax.swing.JScrollPane;
-import javax.swing.JTree;
+import javax.swing.*;
+import java.awt.BorderLayout;
+import java.util.function.Consumer;
 
 public class OperationProfileUI {
-	public static JTree createTree(OperationProfileNode root) {
-		return new JTree(new OperationProfileNodeUI(root));
+	public static JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
+		JTree tree = new JTree(new OperationProfileNodeUI(root));
+
+		if (textDisplay != null) {
+			tree.addTreeSelectionListener(e -> {
+				if (tree.getLastSelectedPathComponent() == null) return;
+
+				OperationProfileNode node = (OperationProfileNode)
+						((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
+
+				if (node != null) {
+					textDisplay.accept(node.getMetric().summary(node.getName()));
+				}
+			});
+		}
+
+		return tree;
 	}
 
 	public static JFrame display(OperationProfileNode root) {
-		JFrame frame = new JFrame();
-		frame.add(new JScrollPane(createTree(root)));
-		frame.setSize(800, 600);
+		JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 
+		JTextArea textArea = new JTextArea(80, 120);
+		body.setRightComponent(new JScrollPane(textArea));
+		body.setLeftComponent(new JScrollPane(createTree(root, textArea::setText)));
+
+		JFrame frame = new JFrame("OperationProfile - " + root.getName());
+		frame.getContentPane().add(body);
 		frame.pack();
-		frame.setVisible(true);
 
+		frame.setSize(800, 600);
+		frame.setVisible(true);
 		return frame;
 	}
 }

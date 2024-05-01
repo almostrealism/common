@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Tree;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,16 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		super(name, key);
 		children = new HashMap<>();
 		parentCache = new HashMap<>();
+	}
+
+	@Override
+	public double getTotalDuration() {
+		double duration = super.getTotalDuration();
+		if (duration > 0) return duration;
+
+		return getChildren().stream()
+				.mapToDouble(OperationProfileNode::getTotalDuration)
+				.sum();
 	}
 
 	protected void addChild(OperationProfileNode node) {
@@ -65,7 +76,9 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public Collection<OperationProfileNode> getChildren() {
-		return children.values();
+		return children.values().stream()
+				.sorted(Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed())
+				.collect(Collectors.toList());
 	}
 
 	@Override
@@ -109,7 +122,7 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public String toString() {
-		return getName();
+		return getName() + " - " + getMetric().getFormat().format(getTotalDuration()) + " seconds";
 	}
 
 	public static OperationProfileNode forMetadata(OperationMetadata metadata) {

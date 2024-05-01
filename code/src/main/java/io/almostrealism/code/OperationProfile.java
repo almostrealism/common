@@ -49,6 +49,8 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public TimingMetric getMetric() { return metric; }
 
+	public double getTotalDuration() { return metric.getTotal(); }
+
 	public Function<OperationMetadata, String> getKey() { return key; }
 
 	public void setKey(Function<OperationMetadata, String> key) { this.key = key; }

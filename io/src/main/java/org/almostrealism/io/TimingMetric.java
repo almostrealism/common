@@ -28,6 +28,10 @@ public class TimingMetric extends DistributionMetric {
 		this.format = new DecimalFormat("##0.00#");
 	}
 
+	public DecimalFormat getFormat() {
+		return format;
+	}
+
 	@Override
 	public String summary(String displayName) {
 		StringBuilder builder = new StringBuilder();
