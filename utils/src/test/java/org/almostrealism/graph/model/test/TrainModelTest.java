@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
 import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.Scope;
@@ -37,11 +37,13 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.ui.OperationProfileUI;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import javax.swing.*;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
@@ -277,12 +279,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		if (!trainingTests) return;
 
 		try {
-			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_81"));
-
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, 4, 2, 10));
+			train(input, model(dim, dim, 3, 4, 1, 10), 1);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
@@ -293,7 +293,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainSmall() {
 		if (!trainingTests) return;
 
-		int dim = 16;
+		int dim = 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -304,11 +304,11 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainMedium() {
 		if (!trainingTests) return;
 
-		int dim = 32;
+		int dim = 54;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 2, 10));
+		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
 	@Test
@@ -316,7 +316,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		if (!trainingTests) return;
 
 		try {
-			int dim = 64;
+			int dim = 72;
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
@@ -332,7 +332,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		double size = 10;
 
-		while (size < 60) {
+		while (size < 75) {
 			int s = (int) size;
 
 			Tensor<Double> t = tensor(shape(s, s));
@@ -344,14 +344,17 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		initKernelMetrics();
-		OperationProfile profile = new OperationProfile("Model");
+		train(input, model, 80);
+	}
+
+	protected void train(PackedCollection<?> input, Model model, int epochCount) {
+		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
-		double epochMinutes = 0.0;
+		initKernelMetrics(profile);
 
-		int epochCount = 80;
+		double epochMinutes = 0.0;
 		int epochSize = 1000;
 
 		try {
@@ -401,6 +404,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			}
 		} finally {
 			logKernelMetrics(profile);
+			JFrame f = OperationProfileUI.display(profile);
+
+			try {
+				Thread.sleep(24 * 60 * 60 * 1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 

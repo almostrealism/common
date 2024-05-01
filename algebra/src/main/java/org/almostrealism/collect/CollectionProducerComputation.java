@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
@@ -115,7 +116,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	class IsolatedProcess<T extends PackedCollection<?>> implements Process<Process<?, ?>, Evaluable<? extends T>>, CollectionProducerBase<T, Producer<T>> {
+	class IsolatedProcess<T extends PackedCollection<?>> implements
+			Process<Process<?, ?>, Evaluable<? extends T>>,
+			CollectionProducerBase<T, Producer<T>>,
+			OperationInfo {
 		private CollectionProducer<T> op;
 
 		public IsolatedProcess(CollectionProducer<T> op) {
@@ -126,6 +130,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
 				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
 			}
+		}
+
+		@Override
+		public OperationMetadata getMetadata() {
+			return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
 		}
 
 		@Override

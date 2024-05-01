@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
@@ -27,7 +29,7 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
 
-public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
 	private static long seed;
 
 	private java.util.Random random;
@@ -42,6 +44,12 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
+	}
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return new OperationMetadata("Random", "Generate random values",
+				"Generate random values " + shape.toStringDetail());
 	}
 
 	@Override

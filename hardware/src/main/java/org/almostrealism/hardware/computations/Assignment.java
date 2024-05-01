@@ -95,8 +95,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		Assignment generated = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
-		generated.setMetadata(getMetadata());
-		return generated;
+		return new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
 	}
 }

@@ -71,13 +71,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public OperationMetadata getMetadata() {
 		if (producer instanceof OperationInfo) {
-			OperationMetadata metadata = ((OperationInfo) producer).getMetadata();
+			OperationMetadata child = ((OperationInfo) producer).getMetadata();
+			OperationMetadata metadata;
 
-			if (shape == null) {
-				return metadata.withDisplayName(metadata.getDisplayName() + " (-> axis " + traversalAxis + ")");
+			if (child == null) {
+				return null;
+			} else if (shape == null) {
+				metadata = new OperationMetadata(child.getDisplayName() + " {-> axis " + traversalAxis + "}",
+						"Reshape");
 			} else {
-				return metadata.withDisplayName(metadata.getDisplayName() + " (-> " + getShape() + ")");
+				metadata = new OperationMetadata(child.getDisplayName() + " {-> " + getShape() + "}",
+						"Reshape");
 			}
+
+			return new OperationMetadata(metadata, List.of(child));
 		}
 
 		return null;

@@ -2,6 +2,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import org.almostrealism.hardware.MemoryData;
@@ -47,7 +48,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 
 	@Override
 	public OperationMetadata getMetadata() {
-		return new OperationMetadata(name, name, "Copy " + length + " values");
+		return new OperationMetadata(name == null ? toString() : name, name, "Copy " + length + " values");
 	}
 
 	@Override
@@ -57,7 +58,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 
 	@Override
 	public Runnable get() {
-		return () -> {
+		return OperationWithInfo.RunnableWithInfo.of(getMetadata(), () -> {
 			MemoryData source = this.source.get();
 			MemoryData target = this.target.get();
 
@@ -68,7 +69,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 
 			// TODO  This can be done faster if the source and target are on the same MemoryProvider
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
-		};
+		});
 	}
 
 	@Override

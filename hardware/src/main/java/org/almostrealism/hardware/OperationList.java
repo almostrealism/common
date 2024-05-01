@@ -23,6 +23,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
@@ -68,6 +69,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	private boolean enableCompilation;
 	private String functionName;
+	private String description;
 	private Long count;
 
 	private OperationMetadata metadata;
@@ -81,7 +83,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public OperationList(String description, boolean enableCompilation) {
 		this.enableCompilation = enableCompilation;
 		this.functionName = "operations_" + functionCount++;
-		this.metadata = new OperationMetadata(functionName, description);
+		this.description = description;
 	}
 
 	@Override
@@ -91,7 +93,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public String getFunctionName() { return this.functionName; }
 
 	@Override
-	public OperationMetadata getMetadata() { return metadata; }
+	public OperationMetadata getMetadata() {
+		if (metadata == null) {
+			metadata = OperationInfo.metadataForProcess(this, new OperationMetadata(functionName, description));
+		}
+
+		return metadata;
+	}
 
 	public OperationProfile getProfile() { return profile; }
 	public void setProfile(OperationProfile profile) { this.profile = profile; }
@@ -224,7 +232,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public OperationList generate(List<Process<?, ?>> children) {
 		OperationList list = new OperationList();
-		list.metadata = metadata;
 		list.enableCompilation = enableCompilation;
 		list.setComputeRequirements(getComputeRequirements());
 		children.forEach(c -> list.add((Supplier) c));
@@ -266,7 +273,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				})
 				.collect(OperationList.collector());
-		flat.metadata = metadata;
 		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
@@ -315,54 +321,63 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Supplier<Runnable> set(int index, Supplier<Runnable> element) {
 		count = null;
+		metadata = null;
 		return super.set(index, element);
 	}
 
 	@Override
 	public boolean add(Supplier<Runnable> runnableSupplier) {
 		count = null;
+		metadata = null;
 		return super.add(runnableSupplier);
 	}
 
 	@Override
 	public void add(int index, Supplier<Runnable> element) {
 		count = null;
+		metadata = null;
 		super.add(index, element);
 	}
 
 	@Override
 	public Supplier<Runnable> remove(int index) {
 		count = null;
+		metadata = null;
 		return super.remove(index);
 	}
 
 	@Override
 	public boolean remove(Object o) {
 		count = null;
+		metadata = null;
 		return super.remove(o);
 	}
 
 	@Override
 	public void clear() {
 		count = null;
+		metadata = null;
 		super.clear();
 	}
 
 	@Override
 	public boolean addAll(Collection<? extends Supplier<Runnable>> c) {
 		count = null;
+		metadata = null;
 		return super.addAll(c);
 	}
 
 	@Override
 	public boolean addAll(int index, Collection<? extends Supplier<Runnable>> c) {
 		count = null;
+		metadata = null;
 		return super.addAll(index, c);
 	}
 
 	@Override
 	protected void removeRange(int fromIndex, int toIndex) {
 		count = null;
+		metadata = null;
 		super.removeRange(fromIndex, toIndex);
 	}
 
@@ -370,6 +385,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public boolean removeAll(Collection<?> c) {
 		if (super.removeAll(c)) {
 			count = null;
+			metadata = null;
 			return true;
 		} else {
 			return false;
@@ -380,6 +396,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public boolean retainAll(Collection<?> c) {
 		if (super.retainAll(c)) {
 			count = null;
+			metadata = null;
 			return true;
 		} else {
 			return false;
@@ -431,6 +448,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						run.get(i).run();
 					}
 				} else {
+					if (profiles instanceof OperationProfileNode) {
+						((OperationProfileNode) profiles).addChildren(getMetadata());
+					}
+
 					for (int i = 0; i < run.size(); i++) {
 						profiles.recordDuration(run.get(i));
 					}

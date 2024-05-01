@@ -46,7 +46,7 @@ public class MetalProgram implements OperationInfo, ConsoleFeatures {
 	public MetalProgram(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
 		this.device = ctx.getMtlDevice();
 		this.metadata = (metadata == null ?
-				new OperationMetadata(null, null) : metadata)
+				new OperationMetadata((String) null, null) : metadata)
 				.withContextName(ctx.getDataContext().getName());
 		this.func = func;
 		this.src = src;

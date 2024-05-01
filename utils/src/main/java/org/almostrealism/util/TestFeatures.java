@@ -157,8 +157,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void initKernelMetrics() {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator",
-				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		initKernelMetrics(new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName)));
+	}
+
+	default void initKernelMetrics(OperationProfile profile) {
+		HardwareOperator.profile = profile;
 		AcceleratedComputationOperation.clearTimes();
 	}
 
@@ -168,7 +172,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default void logKernelMetrics(OperationProfile profile) {
 		if (profile != null) profile.print();
-		if (HardwareOperator.profile != null) HardwareOperator.profile.print();
+		if (HardwareOperator.profile != null && HardwareOperator.profile != profile)
+			HardwareOperator.profile.print();
+
 		AcceleratedComputationOperation.printTimes();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");

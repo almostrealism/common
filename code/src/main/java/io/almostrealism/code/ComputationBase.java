@@ -41,6 +41,11 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	}
 
 	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return OperationInfo.metadataForProcess(this, metadata);
+	}
+
+	@Override
 	public long getCountLong() {
 		long p = getInputs().stream().mapToLong(Countable::countLong).distinct().count();
 

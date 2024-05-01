@@ -80,7 +80,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public void recordDuration(OperationMetadata metadata, long nanos) {
-		metric.addEntry(key.apply(metadata), nanos);
+		metric.addEntry(getKey().apply(metadata), nanos);
 	}
 
 	public void clear() { metric.clear(); }

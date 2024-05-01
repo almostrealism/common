@@ -43,6 +43,11 @@ public class OperationMetadata {
 		}
 	}
 
+	public OperationMetadata(OperationMetadata from, List<OperationMetadata> children) {
+		this(from);
+		setChildren(children);
+	}
+
 	public OperationMetadata(String displayName, String shortDescription) {
 		this(displayName, shortDescription, null);
 	}
@@ -59,7 +64,9 @@ public class OperationMetadata {
 	}
 
 	public String getDisplayName() { return displayName; }
-	public void setDisplayName(String displayName) { this.displayName = displayName; }
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
 
 	public String getShortDescription() { return shortDescription; }
 	public void setShortDescription(String description) { this.shortDescription = description; }

@@ -130,9 +130,13 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = new OperationMetadata(getFunctionName(), getName());
+		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
 
 		purgeVariables();
+	}
+
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return metadata;
 	}
 
 	/**
