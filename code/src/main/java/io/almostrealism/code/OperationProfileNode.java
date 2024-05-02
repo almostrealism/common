@@ -58,14 +58,19 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		}
 	}
 
-	@Override
-	public double getTotalDuration() {
-		double duration = super.getTotalDuration();
-		if (duration > 0) return duration;
+	public double getSelfDuration() {
+		return super.getTotalDuration();
+	}
 
+	public double getChildDuration() {
 		return getChildren().stream()
 				.mapToDouble(OperationProfileNode::getTotalDuration)
 				.sum();
+	}
+
+	@Override
+	public double getTotalDuration() {
+		return getSelfDuration() + getChildDuration();
 	}
 
 	protected void addChild(OperationProfileNode node) {
@@ -140,7 +145,17 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public String toString() {
-		return getName() + " - " + MetricBase.format.getValue().format(getTotalDuration()) + " seconds";
+		double selfDuration = getSelfDuration();
+
+		if (selfDuration == 0.0) {
+			return getName() + " - " + MetricBase.format.getValue().format(getTotalDuration()) +
+					" seconds";
+		} else {
+			return getName() + " - " + MetricBase.format.getValue().format(getTotalDuration()) +
+					" seconds (" + MetricBase.format.getValue().format(getChildDuration()) +
+					"s + " + MetricBase.format.getValue().format(selfDuration) + "s)";
+
+		}
 	}
 
 	public static OperationProfileNode forMetadata(OperationMetadata metadata) {
