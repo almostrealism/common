@@ -18,8 +18,11 @@ package org.almostrealism.ui;
 
 import io.almostrealism.code.OperationProfileNode;
 
-import javax.swing.*;
-import java.awt.BorderLayout;
+import javax.swing.JFrame;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
+import javax.swing.JTree;
 import java.util.function.Consumer;
 
 public class OperationProfileUI {
@@ -34,7 +37,7 @@ public class OperationProfileUI {
 						((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
 
 				if (node != null) {
-					textDisplay.accept(node.getMetric().summary(node.getName()));
+					textDisplay.accept(node.summary());
 				}
 			});
 		}

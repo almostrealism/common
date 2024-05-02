@@ -17,7 +17,9 @@
 package org.almostrealism.io;
 
 import io.almostrealism.uml.Named;
+import io.almostrealism.uml.ThreadLocalSuppliedValue;
 
+import java.text.DecimalFormat;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,6 +27,9 @@ import java.util.Map;
 
 public abstract class MetricBase implements Named, ConsoleFeatures {
 	public static long startingTime = Instant.now().getEpochSecond();
+
+	public static final ThreadLocalSuppliedValue<DecimalFormat> format =
+			new ThreadLocalSuppliedValue<>(() -> new DecimalFormat("##0.00#"));
 
 	/** 10 minutes */
 	public static long intervalRate = 600;

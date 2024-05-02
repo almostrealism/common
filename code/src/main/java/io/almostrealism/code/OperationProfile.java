@@ -40,8 +40,13 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public OperationProfile(String name, Function<OperationMetadata, String> key) {
 		this.name = name;
-		this.metric = console().timing(name + "_prof" + id++);
 		setKey(key);
+	}
+
+	protected void initMetric() {
+		if (metric == null) {
+			metric = console().timing(name + "_prof" + id++);
+		}
 	}
 
 	@Override
@@ -49,7 +54,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public TimingMetric getMetric() { return metric; }
 
-	public double getTotalDuration() { return metric.getTotal(); }
+	public double getTotalDuration() { return metric == null ? 0.0 : metric.getTotal(); }
 
 	public Function<OperationMetadata, String> getKey() { return key; }
 
@@ -57,7 +62,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public void print() { log(summary()); }
 
-	public String summary() { return metric.summary(getName()); }
+	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
 	public long recordDuration(Runnable r) {
 		long start = System.nanoTime();
@@ -82,10 +87,13 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public void recordDuration(OperationMetadata metadata, long nanos) {
+		initMetric();
 		metric.addEntry(getKey().apply(metadata), nanos);
 	}
 
-	public void clear() { metric.clear(); }
+	public void clear() {
+		if (metric != null) metric.clear();
+	}
 
 	@Override
 	public Console console() { return Computation.console; }

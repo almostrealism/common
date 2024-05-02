@@ -17,11 +17,13 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Tree;
+import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.io.MetricBase;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -29,7 +31,7 @@ import java.util.stream.Collectors;
 
 public class OperationProfileNode extends OperationProfile implements Tree<OperationProfileNode> {
 	private Map<String, OperationProfileNode> children;
-	private Map<String, OperationProfileNode> parentCache;
+	private FrequencyCache<String, OperationProfileNode> parentCache;
 
 	public OperationProfileNode() { this("default"); }
 
@@ -39,8 +41,21 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	public OperationProfileNode(String name, Function<OperationMetadata, String> key) {
 		super(name, key);
-		children = new HashMap<>();
-		parentCache = new HashMap<>();
+	}
+
+	protected void initChildren() {
+		if (children == null) {
+			children = new HashMap<>();
+		}
+	}
+
+	protected void initParentCache() {
+		initChildren();
+
+		if (parentCache == null) {
+			log("Creating cache for " + getName() + " (" + children.size() + " children)");
+			parentCache = new FrequencyCache(60, 0.5);
+		}
 	}
 
 	@Override
@@ -54,13 +69,16 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	}
 
 	protected void addChild(OperationProfileNode node) {
+		initChildren();
 		children.put(node.getName(), node);
-		node.getChildren().forEach(v -> parentCache.put(v.getName(), node));
 	}
 
 	public void addChildren(OperationMetadata metadata) {
 		if (metadata.getDisplayName() == null)
 			throw new IllegalArgumentException();
+
+		if (children != null && children.containsKey(metadata.getDisplayName()))
+			return;
 
 		if (!Objects.equals(getName(), metadata.getDisplayName())) {
 			addChild(OperationProfileNode.forMetadata(metadata, getKey()));
@@ -76,6 +94,8 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public Collection<OperationProfileNode> getChildren() {
+		if (children == null) return Collections.emptyList();
+
 		return children.values().stream()
 				.sorted(Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed())
 				.collect(Collectors.toList());
@@ -83,7 +103,7 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public void recordDuration(OperationMetadata metadata, long nanos) {
-		if (children.containsKey(metadata.getDisplayName())) {
+		if (children != null && children.containsKey(metadata.getDisplayName())) {
 			super.recordDuration(metadata, nanos);
 			return;
 		}
@@ -91,6 +111,9 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		OperationProfileNode node = getProfileNode(metadata);
 
 		if (node != null) {
+			initParentCache();
+			parentCache.put(metadata.getDisplayName(), node);
+
 			node.recordDuration(metadata, nanos);
 			return;
 		}
@@ -101,28 +124,23 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	}
 
 	public OperationProfileNode getProfileNode(OperationMetadata metadata) {
-		if (Objects.equals(getName(), metadata.getDisplayName())) {
-			throw new IllegalArgumentException("Profiling data for " + metadata.getDisplayName() +
-					" should be recorded in the parent OperationProfileNode");
-		} else if (parentCache.containsKey(metadata.getDisplayName())) {
+		if (children == null) {
+			return null;
+		} else if (children.containsKey(metadata.getDisplayName())) {
+			return this;
+		} else if (parentCache != null && parentCache.containsKey(metadata.getDisplayName())) {
 			return parentCache.get(metadata.getDisplayName());
 		} else {
-			OperationProfileNode node = getChildren().stream().map(v -> v.getProfileNode(metadata))
+			return getChildren().stream().map(v -> v.getProfileNode(metadata))
 					.filter(Objects::nonNull)
 					.findFirst()
 					.orElse(null);
-			if (node == null) {
-				return null;
-			}
-
-			parentCache.put(metadata.getDisplayName(), node);
-			return node;
 		}
 	}
 
 	@Override
 	public String toString() {
-		return getName() + " - " + getMetric().getFormat().format(getTotalDuration()) + " seconds";
+		return getName() + " - " + MetricBase.format.getValue().format(getTotalDuration()) + " seconds";
 	}
 
 	public static OperationProfileNode forMetadata(OperationMetadata metadata) {

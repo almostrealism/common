@@ -282,7 +282,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, 4, 1, 10), 1);
+			train(input, model(dim, dim, 3, 4, 1, 10), 60);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
@@ -404,13 +404,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			}
 		} finally {
 			logKernelMetrics(profile);
-			JFrame f = OperationProfileUI.display(profile);
+		}
 
-			try {
-				Thread.sleep(24 * 60 * 60 * 1000);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
+		JFrame f = OperationProfileUI.display(profile);
+
+		try {
+			Thread.sleep(24 * 60 * 60 * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
 	}
 
