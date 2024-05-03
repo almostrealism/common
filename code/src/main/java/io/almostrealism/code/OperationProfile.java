@@ -21,12 +21,13 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
+import java.util.Map;
 import java.util.function.Function;
 
 public class OperationProfile implements Named, ConsoleFeatures {
 	public static long id = 0;
 
-	private String name;
+	protected String name;
 	private TimingMetric metric;
 	private Function<OperationMetadata, String> key;
 
@@ -52,6 +53,21 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	@Override
 	public String getName() { return name; }
 
+	public void setMetricEntries(Map<String, Double> entries) {
+		initMetric();
+		metric.setEntries(entries);
+	}
+
+	public Map<String, Double> getMetricEntries() { return metric == null ? null : metric.getEntries(); }
+
+	public void setMetricCounts(Map<String, Integer> counts) {
+		initMetric();
+		metric.setCounts(counts);
+	}
+
+	public Map<String, Integer> getMetricCounts() { return metric == null ? null : metric.getCounts(); }
+
+	public void setMetric(TimingMetric metric) { this.metric = metric; }
 	public TimingMetric getMetric() { return metric; }
 
 	public double getTotalDuration() { return metric == null ? 0.0 : metric.getTotal(); }

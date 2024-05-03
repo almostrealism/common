@@ -18,15 +18,20 @@ package org.almostrealism.io;
 
 import java.util.Comparator;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 public class TimingMetric extends DistributionMetric {
+
+	public TimingMetric() {
+		super(null, 1e9);
+	}
 
 	public TimingMetric(String name) {
 		super(name, 1e9);
 	}
 
 	@Override
-	public String summary(String displayName) {
+	public String summary(String displayName, UnaryOperator<String> keyFormatter) {
 		StringBuilder builder = new StringBuilder();
 
 		double all = getTotal();
@@ -47,7 +52,7 @@ public class TimingMetric extends DistributionMetric {
 		getEntries().entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
+					builder.append(String.format(form, keyFormatter.apply(entry.getKey()), getCounts().get(entry.getKey()),
 							format.getValue().format(entry.getValue()),
 							format.getValue().format(1000 * entry.getValue() / getCounts().get(entry.getKey())),
 							(int) (100 * entry.getValue() / all)));

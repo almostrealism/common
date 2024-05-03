@@ -49,7 +49,7 @@ import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
-	public static TimingMetric compileTime = console.timing("computationCompile");
+	public static TimingMetric compileProfile = console.timing("computationCompile");
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
@@ -204,7 +204,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		long start = System.nanoTime();
 		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope(this).simplify(this);
-		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
+		compileProfile.addEntry(getFunctionName(), System.nanoTime() - start);
 		scope.convertArgumentsToRequiredScopes(this);
 		postCompile();
 		return scope;
@@ -272,7 +272,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		KernelSeriesProvider.timingNeg.clear();
 		KernelTraversalProvider.timing.clear();
 		Scope.timing.clear();
-		compileTime.clear();
+		compileProfile.clear();
 	}
 
 	public static void printTimes() {
@@ -296,8 +296,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			Scope.timing.print();
 		}
 
-		if (verbose || compileTime.getTotal() > 60) {
-			compileTime.print();
+		if (verbose || compileProfile.getTotal() > 60) {
+			compileProfile.print();
 		}
 	}
 }

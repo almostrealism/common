@@ -18,6 +18,7 @@ package org.almostrealism.io;
 
 import java.util.Comparator;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 public class DistributionMetric extends MetricBase {
 	private double scale;
@@ -26,6 +27,10 @@ public class DistributionMetric extends MetricBase {
 	public DistributionMetric(String name, double scale) {
 		super(name);
 		this.scale = scale;
+	}
+
+	public double getScale() {
+		return scale;
 	}
 
 	public double getThreshold() { return threshold; }
@@ -46,12 +51,24 @@ public class DistributionMetric extends MetricBase {
 		addEntry(entry, value / scale);
 	}
 
+	public void addAll(DistributionMetric metric) {
+		if (getScale() != metric.getScale()) {
+			throw new IllegalArgumentException();
+		}
+
+		metric.getEntries().forEach(this::addEntry);
+	}
+
 	@Override
 	public void print() { log(summary()); }
 
 	public String summary() { return summary(getName()); }
 
 	public String summary(String displayName) {
+		return summary(displayName, s -> s);
+	}
+
+	public String summary(String displayName, UnaryOperator<String> keyFormatter) {
 		StringBuilder builder = new StringBuilder();
 
 		double all = getTotal();

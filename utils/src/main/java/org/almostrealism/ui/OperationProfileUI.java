@@ -17,6 +17,7 @@
 package org.almostrealism.ui;
 
 import io.almostrealism.code.OperationProfileNode;
+import org.almostrealism.io.TimingMetric;
 
 import javax.swing.JFrame;
 import javax.swing.JScrollPane;
@@ -27,17 +28,21 @@ import java.util.function.Consumer;
 
 public class OperationProfileUI {
 	public static JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
-		JTree tree = new JTree(new OperationProfileNodeUI(root));
+		JTree tree = new JTree(new OperationProfileNodeUI(root, root));
 
 		if (textDisplay != null) {
 			tree.addTreeSelectionListener(e -> {
 				if (tree.getLastSelectedPathComponent() == null) return;
 
-				OperationProfileNode node = (OperationProfileNode)
+				OperationProfileNodeInfo node = (OperationProfileNodeInfo)
 						((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
+				if (node == null) return;
 
-				if (node != null) {
-					textDisplay.accept(node.summary());
+				if (root.getOperationSources().containsKey(node.getNode().getName())) {
+					textDisplay.accept(root.getOperationSources().get(node.getNode().getName()));
+				} else {
+					TimingMetric metric = node.getNode().getMergedMetric();
+					textDisplay.accept(metric.summary(node.getNode().getName(), root::getMetadataDetail));
 				}
 			});
 		}
@@ -56,7 +61,7 @@ public class OperationProfileUI {
 		frame.getContentPane().add(body);
 		frame.pack();
 
-		frame.setSize(800, 600);
+		frame.setSize(1200, 900);
 		frame.setVisible(true);
 		return frame;
 	}

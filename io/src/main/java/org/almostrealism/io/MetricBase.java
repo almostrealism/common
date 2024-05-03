@@ -78,7 +78,18 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		intervalCounts.merge(interval, 1, Integer::sum);
 	}
 
+	public void setEntries(Map<String, Double> entries) {
+		this.entries = entries;
+		this.total = entries.values().stream().mapToDouble(Double::doubleValue).sum();
+	}
+
 	public Map<String, Double> getEntries() { return entries; }
+
+	public void setCounts(Map<String, Integer> counts) {
+		this.counts = counts;
+		this.count = counts.values().stream().mapToInt(Integer::intValue).sum();
+	}
+
 	public Map<String, Integer> getCounts() { return counts; }
 
 	public Map<Long, Double> getIntervalAverages() {

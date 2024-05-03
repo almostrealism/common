@@ -95,16 +95,22 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
+		long start = System.nanoTime();
 		StringBuilder buf = new StringBuilder();
-		buf.append(includes);
-		buf.append("\n");
 
-		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName(), getLanguage().getPrecision()), Accessibility.EXTERNAL);
-		buf.append(enc.apply(scope));
+		try {
+			buf.append(includes);
+			buf.append("\n");
 
-		MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-		instructionSets.add(instSet);
-		return instSet;
+			ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName(), getLanguage().getPrecision()), Accessibility.EXTERNAL);
+			buf.append(enc.apply(scope));
+
+			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
+			instructionSets.add(instSet);
+			return instSet;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

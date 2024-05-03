@@ -18,6 +18,8 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
@@ -40,6 +42,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+	}
+
+	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		metadata = super.prepareMetadata(metadata);
+
+		if (getInputs().get(0) instanceof Shape<?>) {
+			metadata = metadata.withShape(((Shape<?>) getInputs().get(0)).getShape());
+		}
+
+		return metadata;
 	}
 
 	@Override
@@ -95,6 +108,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		return new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+		Assignment result = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+
+		if (getMetadata().getShortDescription() != null) {
+			result.getMetadata().setShortDescription(getMetadata().getShortDescription());
+		}
+
+		return result;
 	}
 }

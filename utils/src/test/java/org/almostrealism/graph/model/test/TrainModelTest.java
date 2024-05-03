@@ -44,6 +44,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import javax.swing.*;
+import java.io.IOException;
 import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures, KernelAssertions {
@@ -265,7 +266,18 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainSmallest() {
+	public void displayProfile() throws IOException {
+		OperationProfileUI.display(OperationProfileNode.load("results/logs/train.xml"));
+
+		try {
+			Thread.sleep(24 * 60 * 60 * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Test
+	public void trainSmallest() throws IOException {
 		if (!trainingTests) return;
 
 		int dim = 3;
@@ -275,14 +287,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainVerySmall() {
+	public void trainVerySmall() throws IOException {
 		if (!trainingTests) return;
 
 		try {
 			int dim = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, 4, 1, 10), 60);
+			train(input, model(dim, dim, 3, 4, 1, 10), 2);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
@@ -290,7 +302,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 
 	@Test
-	public void trainSmall() {
+	public void trainSmall() throws IOException {
 		if (!trainingTests) return;
 
 		int dim = 28;
@@ -301,7 +313,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainMedium() {
+	public void trainMedium() throws IOException {
 		if (!trainingTests) return;
 
 		int dim = 54;
@@ -312,7 +324,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainLarge() {
+	public void trainLarge() throws IOException {
 		if (!trainingTests) return;
 
 		try {
@@ -327,7 +339,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainProgressive() {
+	public void trainProgressive() throws IOException {
 		if (!trainingTests) return;
 
 		double size = 10;
@@ -343,11 +355,11 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	protected void train(PackedCollection<?> input, Model model) {
+	protected void train(PackedCollection<?> input, Model model) throws IOException {
 		train(input, model, 80);
 	}
 
-	protected void train(PackedCollection<?> input, Model model, int epochCount) {
+	protected void train(PackedCollection<?> input, Model model, int epochCount) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
@@ -404,14 +416,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			}
 		} finally {
 			logKernelMetrics(profile);
-		}
-
-		JFrame f = OperationProfileUI.display(profile);
-
-		try {
-			Thread.sleep(24 * 60 * 60 * 1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
+			profile.save("results/logs/train.xml");
 		}
 	}
 

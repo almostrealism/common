@@ -21,16 +21,16 @@ import io.almostrealism.code.OperationProfileNode;
 import javax.swing.tree.DefaultMutableTreeNode;
 
 public class OperationProfileNodeUI extends DefaultMutableTreeNode {
-	public OperationProfileNodeUI(OperationProfileNode node) {
-		super(node);
+	public OperationProfileNodeUI(OperationProfileNode root, OperationProfileNode node) {
+		super(new OperationProfileNodeInfo(root, node));
 		init();
 	}
 
 	protected void init() {
-		OperationProfileNode node = (OperationProfileNode) getUserObject();
+		OperationProfileNodeInfo node = (OperationProfileNodeInfo) getUserObject();
 
 		if (node != null) {
-			node.getChildren().forEach(child -> add(new OperationProfileNodeUI(child)));
+			node.getNode().getChildren().forEach(child -> add(new OperationProfileNodeUI(node.getRoot(), child)));
 		}
 	}
 }

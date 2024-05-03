@@ -50,12 +50,18 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 		target.setParallelism(NativeExecution.PARALLELISM);
 
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw ->
-				new CLJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
-						getLanguage()), Accessibility.EXTERNAL).apply(scope));
-		getNativeCompiler().compile(target, buf.toString());
-		return target;
+
+		try {
+			buf.append(new ScopeEncoder(pw ->
+					new CLJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+							getLanguage()), Accessibility.EXTERNAL).apply(scope));
+			getNativeCompiler().compile(target, buf.toString());
+			return target;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

@@ -73,12 +73,18 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		inst.setComputeContext(this);
 		inst.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));
-		buf.append("\n");
-		buf.append(externalWrapper);
-		String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
-		return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
+
+		try {
+			buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));
+			buf.append("\n");
+			buf.append(externalWrapper);
+			String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
+			return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override
