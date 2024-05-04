@@ -62,8 +62,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
 			ReshapeProducer.enableDelegateIsolation = true;
-			ProductCollectionExpression.enableDiagonalDelta = true;
-			ProcessDetailsFactory.enableConstantCache = true;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}

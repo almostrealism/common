@@ -16,11 +16,10 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.ProductCollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.graph.io.CSVReceptor;
-import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -51,8 +50,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
 			ReshapeProducer.enableDelegateIsolation = true;
-			ProductCollectionExpression.enableDiagonalDelta = true;
-			ProcessDetailsFactory.enableConstantCache = true;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
@@ -67,6 +64,9 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
 
+		Model model = convolution2dModel(rows, cols, 3, 8, 3, 2);
+		TraversalPolicy outShape = model.lastBlock().getOutputShape();
+
 		log("Adding circles...");
 		for (int i = 0; i < 100; i++) {
 			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
@@ -79,11 +79,11 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 				return dx * dx + dy * dy < r * r ? 10.0 : 0.0;
 			});
 
-			// data.add(ValueTarget.of(input, PackedCollection.of(1.0, 0.0)));
-			data.add(ValueTarget.of(input,
-					PackedCollection.of(
-							1.0, 1.0, 1.0, 1.0, 1.0,
-							0.0, 0.0, 0.0, 0.0, 0.0)));
+			if (outShape.getTotalSize() == 2) {
+				data.add(ValueTarget.of(input, PackedCollection.of(1.0, 0.0)));
+			} else {
+				data.add(ValueTarget.of(input, new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
+			}
 		}
 
 		log("Adding squares...");
@@ -98,19 +98,18 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 				return dx < r && dy < r ? 10.0 : 0.0;
 			});
 
-			// data.add(ValueTarget.of(input, PackedCollection.of(0.0, 1.0)));
-			data.add(ValueTarget.of(input,
-					PackedCollection.of(
-							0.0, 0.0, 0.0, 0.0, 0.0,
-								1.0, 1.0, 1.0, 1.0, 1.0)));
+			if (outShape.getTotalSize() == 2) {
+				data.add(ValueTarget.of(input, PackedCollection.of(0.0, 1.0)));
+			} else {
+				data.add(ValueTarget.of(input, new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
+			}
 		}
 
-		Model model = convolution2dModel(rows, cols, 3, 8, 3, 10);
 		optimize("convolution2d_" + rows * cols, model,
 				() -> {
 					Collections.shuffle(data);
 					return Dataset.of(data);
-				}, 5000, data.size(), 1.0);
+				}, 2000, data.size(), 1.0);
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data,
