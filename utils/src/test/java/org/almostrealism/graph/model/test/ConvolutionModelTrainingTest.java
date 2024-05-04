@@ -42,21 +42,27 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures {
+	static boolean large = false;
+	static int rows, cols;
+
 	static {
+		if (large) {
+			rows = 54;
+			cols = 54;
+		} else {
+			rows = 12;
+			cols = 12;
+		}
+
 		if (TestUtils.getTrainTests()) {
 			NativeCompiler.enableLargeInstructionSetMonitoring = true;
 			MetalProgram.enableLargeProgramMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
-			ReshapeProducer.enableDelegateIsolation = true;
-
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
 	}
-
-	int rows = 54;
-	int cols = 54;
 
 	@Test
 	public void train() throws FileNotFoundException {

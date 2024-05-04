@@ -241,6 +241,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return stream()
+				.filter(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty())
 				.map(o -> o instanceof Process ? (Process<?, ?>) o : Process.of(o))
 				.collect(Collectors.toList());
 	}

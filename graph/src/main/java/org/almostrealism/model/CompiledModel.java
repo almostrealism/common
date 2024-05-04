@@ -3,6 +3,7 @@ package org.almostrealism.model;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
@@ -66,7 +67,7 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model, boolean backprop, OperationProfile profile) {
-		model.setup().get().run();
+		Process.optimized(model.setup()).get().run();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
