@@ -48,7 +48,7 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					OperationInfo, ScopeLifecycle {
-	public static boolean enableDelegateIsolation = false;
+	public static boolean enableDelegateIsolation = true;
 
 	private TraversalPolicy shape;
 	private int traversalAxis;
@@ -153,10 +153,14 @@ public class ReshapeProducer<T extends Shape<T>>
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		if (shape == null) {
 			if (enableDelegateIsolation && producer instanceof Process) {
-				return generate(List.of(((Process) producer).isolate()));
+				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
+
+				if (isolated != producer) {
+					return generate(List.of(isolated));
+				}
 			}
 
-			return  new CollectionProducerComputation.IsolatedProcess(this);
+			return new CollectionProducerComputation.IsolatedProcess(this);
 		} else {
 			return this;
 		}
