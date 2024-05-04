@@ -37,17 +37,17 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.ui.OperationProfileUI;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import javax.swing.*;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements TestFeatures, KernelAssertions {
+public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
 	private int convSize = 3;
 	private int poolSize = 2;
 	private int w = 10;
@@ -421,16 +421,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
-		Model model = new Model(shape(r, c));
-
-		for (int i = 0; i < convLayers; i++) {
-			model.addLayer(convolution2d(convSize, convFilters));
-			model.addLayer(pool2d(2));
-		}
-
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
+		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}
