@@ -267,6 +267,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void displayProfile() throws IOException {
+		if (!trainingTests) return;
+
 		OperationProfileUI.display(OperationProfileNode.load("results/logs/train.xml"));
 
 		try {
@@ -278,7 +280,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmallest() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests) return;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -288,7 +290,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainVerySmall() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests) return;
 
 		try {
 			int dim = 8;
@@ -303,7 +305,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmall() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests) return;
 
 		int dim = 28;
 		int filters = 8;
@@ -314,7 +316,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainMedium() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -356,7 +358,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	}
 
 	protected void train(PackedCollection<?> input, Model model) throws IOException {
-		train(input, model, 80);
+		train(input, model, trainingTests ? 80 : 2);
 	}
 
 	protected void train(PackedCollection<?> input, Model model, int epochCount) throws IOException {

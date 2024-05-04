@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProductCollectionExpression extends UniformCollectionExpression {
-	public static boolean enableDiagonalDelta = false;
+	public static boolean enableDiagonalDelta = true;
 
 	public ProductCollectionExpression(TraversalPolicy shape, TraversableExpression... operands) {
 		super(shape, Product::of, operands);

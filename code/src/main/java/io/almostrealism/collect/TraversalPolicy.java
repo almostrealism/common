@@ -38,6 +38,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
+	public static boolean enableStrictSizes = true;
+
 	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
 
 	private TraversalOrdering order;
@@ -380,13 +382,22 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 											  BiFunction<Integer, V, V> traversalFunction,
 											  BiFunction<Integer, V, V> expandFunction,
 											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
+		return alignTraversalAxes(shapes, values,
+				enableStrictSizes || shapes.stream().noneMatch(s -> s.getDimensions() > 1),
+				traversalFunction, expandFunction, resultProcessor);
+	}
+
+	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
+											  boolean requireIdenticalTotalSize, BiFunction<Integer, V, V> traversalFunction,
+											  BiFunction<Integer, V, V> expandFunction,
+											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
 		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
 		sortedShapes.addAll(shapes);
 
 		s: for (TraversalPolicy shape : sortedShapes) {
 			int[] compatibleAxes =
 					IntStream.range(0, values.size())
-							.map(i -> compatibleAxis(shapes.get(i), shape))
+							.map(i -> compatibleAxis(shapes.get(i), shape, requireIdenticalTotalSize))
 							.filter(i -> i >= 0).toArray();
 			if (compatibleAxes.length != values.size()) continue s;
 
@@ -402,16 +413,19 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		sortedShapes.addAll(shapes);
 
 		int largest = sortedShapes.iterator().next().getTotalSize();
+		int depth = sortedShapes.iterator().next().getDimensions();
 
 		s: for (TraversalPolicy shape : sortedShapes) {
 			if (shape.getTotalSize() < largest) {
 				break s;
 			}
 
+			int minDepth = (enableStrictSizes || depth <= 1) ? -1 : 0;
+
 			int[] matchDepths =
 					IntStream.range(0, values.size())
 							.map(i -> matchDepth(shapes.get(i), shape))
-							.filter(i -> i > 0).toArray();
+							.filter(i -> i > minDepth).toArray();
 			if (matchDepths.length != values.size()) continue s;
 
 			List<V> vals = new ArrayList<>();
@@ -429,9 +443,11 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		throw new IllegalArgumentException("No compatible traversal axes");
 	}
 
-	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
+	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target, boolean requireIdenticalTotalSize) {
 		for (int i = 0; i < shape.getDimensions() + 1; i++) {
-			if (shape.sizeLong(i) == target.getSizeLong()) {
+			if (shape.sizeLong(i) == target.getSizeLong() &&
+					(!requireIdenticalTotalSize ||
+							shape.getTotalSizeLong() == target.getTotalSizeLong())) {
 				return i;
 			}
 		}

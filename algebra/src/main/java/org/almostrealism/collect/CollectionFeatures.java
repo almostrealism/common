@@ -205,7 +205,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape);
+			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, true);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {

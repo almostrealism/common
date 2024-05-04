@@ -40,7 +40,7 @@ import java.util.stream.Stream;
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable {
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelDestination = true;
-	public static boolean enableConstantCache = false;
+	public static boolean enableConstantCache = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;

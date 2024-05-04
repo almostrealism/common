@@ -42,7 +42,7 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		Expression pos[] = getPosition(index);
+		Expression pos[] = getPosition(index.imod(getPositionShape().getTotalSizeLong()));
 		return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
 	}
 
