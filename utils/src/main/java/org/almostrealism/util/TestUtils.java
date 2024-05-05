@@ -18,6 +18,8 @@ package org.almostrealism.util;
 
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Objects;
@@ -30,6 +32,8 @@ public class TestUtils implements TestSettings {
 			CLMemoryProvider.enableWarnings = !skipLongTests;
 		if (MetalMemoryProvider.enableWarnings)
 			MetalMemoryProvider.enableWarnings = !skipLongTests;
+
+		Console.root().addListener(OutputFeatures.fileOutput("results/logs/test.out"));
 	}
 
 	public static boolean getSkipLongTests() {

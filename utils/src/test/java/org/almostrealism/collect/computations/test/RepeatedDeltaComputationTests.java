@@ -263,6 +263,56 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void pool2d() {
+		int r = 4;
+		int c = 4;
+		int s = 2;
+
+		int ro = r / s;
+		int co = c / s;
+
+		PackedCollection<?> in = new PackedCollection<>(r * c).fill(pos -> (double) pos[0])
+									.reshape(r, c, 1).traverse(1);
+		PackedCollection<?> out = Process.optimized(cp(in)
+				.enumerate(2, 1)
+				.enumerate(2, s)
+				.enumerate(2, s)
+				.traverse(3)
+				.max().delta(cp(in))).get().evaluate();
+		out = out.reshape(ro, co, r, c);
+		out.traverse(3).print();
+
+		for (int i = 0; i < ro; i++) {
+			for (int j = 0; j < co; j++) {
+				double max = Double.MIN_VALUE;
+				int x = -1, y = -1;
+
+				log("[" + i + ", " + j + "] in ->");
+				in.range(shape(s, s), in.getShape().index(i * s, j * s)).traverse().print();
+				log("[" + i + ", " + j + "] out ->");
+				out.range(shape(r, c), out.getShape().index(i, j, 0, 0)).traverse().print();
+
+				for (int k = 0; k < s; k++) {
+					for (int l = 0; l < s; l++) {
+						if (in.valueAt(i * s + k, j * s + l) > max) {
+							max = in.valueAt(i * s + k, j * s + l);
+							x = i * s + k;
+							y = j * s + l;
+						}
+					}
+				}
+
+				for (int ix = 0; ix < r; ix++) {
+					for (int jy = 0; jy < c; jy++) {
+						assertEquals(x == ix && y == jy ? 1.0 : 0.0,
+								out.valueAt(i, j, ix, jy));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
 	public void convSmallest() {
 		int dim = 10;
 		int size = 3;
