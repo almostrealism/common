@@ -23,9 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -38,10 +36,11 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
+	@SafeVarargs
 	public TraversableRepeatedProducerComputation(TraversalPolicy shape, int count,
-										 BiFunction<TraversableExpression[], Expression, Expression> initial,
-										 BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-										 Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												  BiFunction<TraversableExpression[], Expression, Expression> initial,
+												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
+												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;

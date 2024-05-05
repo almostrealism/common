@@ -191,7 +191,6 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 				return deltaShape.index(projectIndex(pos[0]), pos[1]);
 			};
 
-
 			return new IndexProjectionProducerComputation<>(shape, project, false, delta);
 		}
 

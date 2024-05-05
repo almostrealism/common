@@ -140,6 +140,10 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return Mask.of(condition.not(), negative);
 		}
 
-		return new Conditional(Double.class, condition, positive, negative);
+		if (positive.getType() == negative.getType()) {
+			return new Conditional<>(positive.getType(), condition, positive, negative);
+		} else {
+			return new Conditional(Double.class, condition, positive, negative);
+		}
 	}
 }

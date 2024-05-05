@@ -285,14 +285,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		try {
-			if (isKernel()) {
-				apply(output, args);
-			} else {
-				throw new HardwareException("Kernel not supported");
-			}
-		} catch (CLException e) {
-			throw new HardwareException("Could not evaluate AcceleratedOperation", e);
+		if (isKernel()) {
+			apply(output, args);
+		} else {
+			throw new HardwareException("Kernel not supported");
 		}
 	}
 

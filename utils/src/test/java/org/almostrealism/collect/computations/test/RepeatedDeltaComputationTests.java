@@ -247,6 +247,22 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void max() {
+		PackedCollection<?> in = pack(1.0, 2.0, 4.0, 3.0).reshape(2, 2).traverse(1);
+		PackedCollection<?> out = cp(in).max().delta(cp(in)).evaluate();
+		out.print();
+
+		assertEquals(0.0, out.valueAt(0, 0, 0, 0));
+		assertEquals(1.0, out.valueAt(0, 0, 0, 1));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 0));
+		assertEquals(0.0, out.valueAt(0, 0, 1, 1));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 0));
+		assertEquals(0.0, out.valueAt(1, 0, 0, 1));
+		assertEquals(1.0, out.valueAt(1, 0, 1, 0));
+		assertEquals(0.0, out.valueAt(1, 0, 1, 1));
+	}
+
+	@Test
 	public void convSmallest() {
 		int dim = 10;
 		int size = 3;

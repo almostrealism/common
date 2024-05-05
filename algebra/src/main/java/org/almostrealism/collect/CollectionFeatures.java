@@ -76,7 +76,7 @@ import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableIndexProjection = false;
+	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
 
@@ -696,10 +696,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				new DynamicIndexProjectionProducerComputation<>(shape(input).replace(shape(1)),
 						(args, idx) -> args[2].getValueAt(idx),
 						true, input, indexOfMax(input));
-		
-		if (enableIndexProjection) {
-			return (CollectionProducerComputationBase<T, T>) projection;
-		}
 
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
@@ -708,7 +704,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(args, index) -> minValue(),
 				(out, arg) -> new Max(out, arg),
 				(Supplier) input);
-		c.setDeltaAlternate(projection);
+		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;
 	}
 
