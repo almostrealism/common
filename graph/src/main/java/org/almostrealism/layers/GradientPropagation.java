@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 
 		if (enableDiagnosticGrad) {
 			op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
-				Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
+				Evaluable<PackedCollection<?>> grad = (Evaluable) Process.optimized(deltaOutDeltaIn).get();
 				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 				return () -> {
