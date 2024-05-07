@@ -50,8 +50,10 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			rows = 54;
 			cols = 54;
 		} else {
-			rows = 12;
-			cols = 12;
+//			rows = 28;
+//			cols = 28;
+			rows = 18;
+			cols = 18;
 		}
 
 		if (TestUtils.getTrainTests()) {
@@ -70,19 +72,20 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
 
-		Model model = convolution2dModel(rows, cols, 3, 8, 3, 2);
+		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2);
+		model.setLearningRate(1e-4);
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
 		log("Adding circles...");
-		for (int i = 0; i < 100; i++) {
+		for (int i = 0; i < 250; i++) {
 			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
-			double r = Math.random() * 6;
+			double r = Math.random() * (rows / 4.0);
 			input.fill(pos -> {
 				double dx = pos[1] - x;
 				double dy = pos[0] - y;
-				return dx * dx + dy * dy < r * r ? 10.0 : 0.0;
+				return dx * dx + dy * dy < r * r ? 1.0 : 0.0;
 			});
 
 			if (outShape.getTotalSize() == 2) {
@@ -93,15 +96,15 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 
 		log("Adding squares...");
-		for (int i = 0; i < 100; i++) {
+		for (int i = 0; i < 250; i++) {
 			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
-			double r = Math.random() * 6;
+			double r = Math.random() * (rows / 4.0);
 			input.fill(pos -> {
 				double dx = Math.abs(pos[1] - x);
 				double dy = Math.abs(pos[0] - y);
-				return dx < r && dy < r ? 10.0 : 0.0;
+				return dx < r && dy < r ? 1.0 : 0.0;
 			});
 
 			if (outShape.getTotalSize() == 2) {
@@ -115,7 +118,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 				() -> {
 					Collections.shuffle(data);
 					return Dataset.of(data);
-				}, 2000, data.size(), 1.0);
+				}, 2000, data.size(), 0.001);
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data,
@@ -124,6 +127,8 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 			optimizer.setReceptor(receptor);
+			optimizer.setLogFrequency(25);
+
 			optimizer.setLossTarget(lossTarget);
 			optimizer.optimize(epochs);
 			log("Completed " + optimizer.getTotalIterations() + " epochs");

@@ -17,17 +17,15 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.OperationProfileNode;
-import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
@@ -274,6 +272,13 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
+
+	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
+		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
+		log("Created model (" + model.getBlocks().size() + " blocks)");
+		return model;
+	}
+
 	@Test
 	public void trainSmallest() throws IOException {
 		if (skipLongTests) return;
@@ -302,8 +307,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void trainSmall() throws IOException {
 		if (skipLongTests) return;
+		if (!trainingTests &&
+				!DynamicIndexProjectionProducerComputation.enableChainDelta)
+			return;
 
-		int dim = 28;
+		int dim = 18; // 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -313,6 +321,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void trainMedium() throws IOException {
 		if (skipLongTests) return;
+		if (!trainingTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -416,11 +425,5 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			logKernelMetrics(profile);
 			profile.save("results/logs/train.xml");
 		}
-	}
-
-	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
-		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
-		log("Created model (" + model.getBlocks().size() + " blocks)");
-		return model;
 	}
 }

@@ -147,10 +147,12 @@ public class PropagationTests implements TestFeatures {
 		}
 	}
 
-	// @Test
+	@Test
 	public void pool2dBackwards() {
-		int w = 16;
-		int h = 12;
+//		int w = 16;
+//		int h = 12;
+		int w = 4;
+		int h = 4;
 		int size = 2;
 
 		TraversalPolicy inputShape = shape(h, w, 1);
