@@ -35,7 +35,7 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -54,7 +54,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	@Override
 	default long[] computeParallelism(Collection<? extends Process> children) {
 		return ParallelProcess.super.computeParallelism(children.stream()
-				.filter(f -> !(f instanceof MemoryDataDestination)).collect(Collectors.toList()));
+				.filter(f -> !(f instanceof MemoryDataDestinationProducer)).collect(Collectors.toList()));
 	}
 
 	default T createDestination(int len) {

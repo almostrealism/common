@@ -45,7 +45,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 		KernelizedEvaluable<T> // TODO  Remove this
 {
 	private Supplier<Evaluable<T>> ev;
-	private IntFunction<Multiple<T>> destination;
+	private Evaluable<T> destination;
 	private Evaluable<T> shortCircuit;
 
 	private boolean isKernel;
@@ -54,7 +54,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
 	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
-							 IntFunction<Multiple<T>> destination,
+							 Evaluable<T> destination,
 							 Evaluable<T> shortCircuit, boolean kernel) {
 		this.ev = ev;
 		this.destination = destination;
@@ -65,11 +65,11 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 
 	public void setEvaluable(Supplier<Evaluable<T>> ev) { this.ev = ev; }
 
-	public IntFunction<Multiple<T>> getDestination() {
+	public Evaluable<T> getDestination() {
 		return destination;
 	}
 
-	public void setDestination(IntFunction<Multiple<T>> destination) {
+	public void setDestination(Evaluable<T> destination) {
 		this.destination = destination;
 	}
 
@@ -118,7 +118,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 
 	@Override
 	public Multiple<T> createDestination(int size) {
-		return destination == null ? getKernel().getValue().createDestination(size) : destination.apply(size);
+		return destination == null ? getKernel().getValue().createDestination(size) : destination.createDestination(size);
 	}
 
 	@Override

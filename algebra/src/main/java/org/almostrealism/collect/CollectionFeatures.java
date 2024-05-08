@@ -79,6 +79,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
+	boolean enableAxisAlignment = true;
 
 	Console console = Computation.console.child();
 
@@ -177,7 +178,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 			@Override
 			public Producer reshape(TraversalPolicy shape) {
-				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
+				return CollectionFeatures.this.reshape(shape, this);
 			}
 		});
 	}
@@ -656,15 +657,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		TraversalPolicy shape = shape(1);
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		}
+	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
+		if (enableAxisAlignment) {
+			return compute(shape -> args ->
+					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+					null, a, b);
+		} else {
+			TraversalPolicy shape = shape(1);
+			if (shape(a).getSize() == shape(b).getSize()) {
+				shape = shape(a);
+			}
 
-		return new TraversableExpressionComputation<>(shape,
-				(args, index) -> Mod.of(args[1].getValueAt(index), args[2].getValueAt(index)),
-				a, b);
+			return new TraversableExpressionComputation<>(shape,
+					(args, index) -> Mod.of(args[1].getValueAt(index), args[2].getValueAt(index)),
+					(Supplier) a, (Supplier)  b);
+		}
 	}
 
 	@Deprecated

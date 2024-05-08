@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.ctx;
 
-import io.almostrealism.uml.ThreadLocalSuppliedValue;
+import org.almostrealism.lifecycle.ThreadLocalSuppliedValue;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;

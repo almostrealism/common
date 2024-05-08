@@ -18,7 +18,6 @@ package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
@@ -52,8 +51,8 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		} else {
 //			rows = 28;
 //			cols = 28;
-			rows = 18;
-			cols = 18;
+			rows = 22;
+			cols = 22;
 		}
 
 		if (TestUtils.getTrainTests()) {
@@ -77,7 +76,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
 		log("Adding circles...");
-		for (int i = 0; i < 250; i++) {
+		for (int i = 0; i < 500; i++) {
 			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
@@ -96,7 +95,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 
 		log("Adding squares...");
-		for (int i = 0; i < 250; i++) {
+		for (int i = 0; i < 500; i++) {
 			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
@@ -118,7 +117,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 				() -> {
 					Collections.shuffle(data);
 					return Dataset.of(data);
-				}, 2000, data.size(), 0.001);
+				}, 3500, data.size(), 0.05);
 	}
 
 	public void optimize(String name, Model model, Supplier<Dataset<?>> data,

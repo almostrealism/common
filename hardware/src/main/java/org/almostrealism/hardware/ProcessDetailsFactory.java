@@ -28,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
@@ -233,6 +234,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		return new AcceleratedProcessDetails(kernelArgs, target, tempFactory, size);
+	}
+
+	@Deprecated
+	private void reviewDestination(Evaluable e) {
+		MemoryDataDestination dest = null;
+
+		if (e instanceof MemoryDataDestination) {
+			dest = (MemoryDataDestination) e;
+		} else if (e instanceof HardwareEvaluable) {
+			Evaluable d = ((HardwareEvaluable<?>) e).getDestination();
+			if (d instanceof MemoryDataDestination) {
+				dest = (MemoryDataDestination) d;
+			}
+		}
+
+		if (dest == null) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {

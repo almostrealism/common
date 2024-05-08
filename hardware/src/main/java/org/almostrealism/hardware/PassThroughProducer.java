@@ -33,7 +33,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,7 +60,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	private PassThroughProducer() {
-		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null, false)));
+		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
 		init();
 	}
 

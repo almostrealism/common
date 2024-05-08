@@ -14,24 +14,40 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.uml;
+package org.almostrealism.lifecycle;
 
+import io.almostrealism.lifecycle.Destroyable;
+
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
-	private ThreadLocal<T> value;
+public class SuppliedValue<T> implements Destroyable {
+	protected Supplier<T> supplier;
+	private T value;
 
-	public ThreadLocalSuppliedValue(Supplier<T> supplier) {
-		super(supplier);
-		this.value = new ThreadLocal<>();
+	public SuppliedValue(Supplier<T> supplier) {
+		this.supplier = supplier;
 	}
 
-	@Override
 	public T getValue() {
-		if (value.get() == null) value.set(supplier.get());
-		return value.get();
+		if (value == null) value = supplier.get();
+		return value;
+	}
+
+	public boolean isAvailable() { return value != null; }
+
+	public void applyAll(Consumer<T> consumer) {
+		if (consumer == null || !isAvailable()) return;
+
+		consumer.accept(getValue());
 	}
 
 	@Override
-	public boolean isAvailable() { return value.get() != null; }
+	public void destroy() {
+		if (value instanceof Destroyable) {
+			((Destroyable) value).destroy();
+		}
+
+		value = null;
+	}
 }

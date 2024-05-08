@@ -17,7 +17,7 @@
 package org.almostrealism.io;
 
 import io.almostrealism.uml.Named;
-import io.almostrealism.uml.ThreadLocalSuppliedValue;
+import org.almostrealism.lifecycle.ThreadLocalSuppliedValue;
 
 import java.text.DecimalFormat;
 import java.time.Instant;

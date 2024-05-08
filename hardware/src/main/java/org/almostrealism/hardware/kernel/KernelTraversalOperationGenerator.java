@@ -37,7 +37,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -109,11 +109,11 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 			implements MemoryDataComputation<T>, ComputerFeatures {
 		private List<Expression> expressions;
-		private MemoryDataDestination destination;
+		private MemoryDataDestinationProducer destination;
 
 		public TraversalOperation() {
 			this.expressions = new ArrayList<>();
-			this.destination = new MemoryDataDestination<>(this, i -> new Bytes(expressions.size()));
+			this.destination = new MemoryDataDestinationProducer<>(this, i -> new Bytes(expressions.size()));
 			setInputs(destination);
 			init();
 		}

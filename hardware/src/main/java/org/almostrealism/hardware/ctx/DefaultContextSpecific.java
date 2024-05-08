@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.ctx;
 
-import io.almostrealism.uml.SuppliedValue;
+import org.almostrealism.lifecycle.SuppliedValue;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;

@@ -121,8 +121,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			// ways, so it probably has to be stored with the Delegated variable,
 			// but it cannot be tracked using the delegate field because that
 			// is already used to point at the root delegate MemoryData
-			if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestination) {
-				Object dest = ((MemoryDataDestination) key).get().evaluate();
+			if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestinationProducer) {
+				Object dest = ((MemoryDataDestinationProducer) key).get().evaluate();
 				if (dest != null && !(dest instanceof MemoryData)) {
 					throw new RuntimeException();
 				}

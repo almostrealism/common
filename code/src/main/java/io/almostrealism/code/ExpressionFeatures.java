@@ -32,6 +32,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
@@ -151,6 +152,10 @@ public interface ExpressionFeatures {
 		UniformCollectionExpression quotient = new UniformCollectionExpression(shape, Quotient::of, expressions);
 		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 		return quotient;
+	}
+
+	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
+		return new UniformCollectionExpression(shape, Mod::of, in, mod);
 	}
 
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {

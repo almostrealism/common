@@ -33,7 +33,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -227,19 +227,19 @@ public interface DeltaFeatures extends MatrixFeatures {
 	}
 
 	static boolean match(Supplier<?> p, Supplier<?> q) {
-		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestination) {
+		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
 			if (p instanceof ReshapeProducer) {
 				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
 			} else {
-				p = (Producer<?>) ((MemoryDataDestination) p).getDelegate();
+				p = (Producer<?>) ((MemoryDataDestinationProducer) p).getDelegate();
 			}
 		}
 
-		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestination) {
+		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestinationProducer) {
 			if (q instanceof ReshapeProducer) {
 				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
 			} else {
-				q = (Producer<?>) ((MemoryDataDestination) q).getDelegate();
+				q = (Producer<?>) ((MemoryDataDestinationProducer) q).getDelegate();
 			}
 		}
 

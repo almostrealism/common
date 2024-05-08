@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,22 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.uml;
+package io.almostrealism.lifecycle;
 
-import java.util.function.Supplier;
+public interface Lifecycle {
+	default void reset() {
 
-public class SuppliedValue<T> {
-	protected Supplier<T> supplier;
-	private T value;
-
-	public SuppliedValue(Supplier<T> supplier) {
-		this.supplier = supplier;
 	}
-
-	public T getValue() {
-		if (value == null) value = supplier.get();
-		return value;
-	}
-
-	public boolean isAvailable() { return value != null; }
 }

@@ -32,7 +32,7 @@ import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ProducerCache;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +64,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		this.memLength = memLength;
 
 		List inputs = new ArrayList();
-		inputs.add(new MemoryDataDestination(this, kernelDestination));
+		inputs.add(new MemoryDataDestinationProducer(this, kernelDestination));
 		inputs.add(leftOperand);
 		inputs.add(rightOperand);
 		inputs.add(trueValue);

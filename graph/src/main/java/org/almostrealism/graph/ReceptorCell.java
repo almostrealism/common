@@ -17,7 +17,7 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;

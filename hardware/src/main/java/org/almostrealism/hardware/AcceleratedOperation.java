@@ -325,6 +325,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	@Deprecated
 	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
 		CreatedMemoryData last = created.get();
 
@@ -340,6 +341,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	@Deprecated
 	public static <I, O> O apply(Supplier<I> input, Function<I, O> process) {
 		CreatedMemoryData data = new CreatedMemoryData();
 

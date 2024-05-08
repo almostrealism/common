@@ -180,6 +180,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return flat;
 	}
 
+	public static Expression of(Expression... inputs) {
+		if (inputs.length != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return of(inputs[0], inputs[1], inputs[0].isFP() || inputs[1].isFP());
+	}
+
 	public static Expression of(Expression input, Expression mod) {
 		return of(input, mod, true);
 	}

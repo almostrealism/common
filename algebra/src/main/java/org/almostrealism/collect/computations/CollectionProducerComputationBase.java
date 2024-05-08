@@ -41,7 +41,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,6 +64,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private Evaluable<O> shortCircuit;
 	private List<ScopeLifecycle> dependentLifecycles;
 
+	private HardwareEvaluable<O> evaluable;
+
 	protected CollectionProducerComputationBase() {
 	}
 
@@ -77,7 +79,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		this.name = name;
 		this.shape = outputShape.withOrder(null);
-		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
+		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestinationProducer<>(this, this::adjustDestination), arguments));
 		init();
 	}
 
@@ -123,13 +125,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
-		if (dependentLifecycles != null) ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+
+		if (dependentLifecycles != null)
+			ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
 	}
 
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		if (dependentLifecycles != null) ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+
+		if (dependentLifecycles != null)
+			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+
+		this.evaluable = null;
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -256,27 +264,33 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public Evaluable<O> get() {
-		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
-		ev.setDestinationProcessor(destination -> {
-			if (destination instanceof Shape) {
-				Shape out = (Shape) destination;
+		if (evaluable == null) {
+			this.evaluable = new HardwareEvaluable<>(
+											CollectionProducerComputation.super::get,
+											getDestination(),
+											shortCircuit, true);
+			this.evaluable.setDestinationProcessor(destination -> {
+				if (destination instanceof Shape) {
+					Shape out = (Shape) destination;
 
-				if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
-					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
-						if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
-							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
+					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
+						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
+							if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
+								return (O) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
+							}
 						}
+					}
+
+					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+						throw new IllegalArgumentException();
 					}
 				}
 
-				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
-					throw new IllegalArgumentException();
-				}
-			}
+				return destination;
+			});
+		}
 
-			return destination;
-		});
-		return ev;
+		return evaluable;
 	}
 
 	@Override
@@ -291,7 +305,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void destroy() {
 		super.destroy();
-		((MemoryDataDestination) getInputs().get(0)).destroy();
+		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
 	}
 

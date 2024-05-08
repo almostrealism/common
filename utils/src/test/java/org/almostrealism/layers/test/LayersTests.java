@@ -114,17 +114,15 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 			o.getMem(0, gpuOut, 0, SIZE);
 		});
 
-		HardwareOperator.verboseLog(() -> {
-			OperationList cop = ((OperationList) cpuModel.getForward().push(p(in)));
-			cop = cop.flatten();
-			cop = (OperationList) cop.optimize();
-			cop.get().run();
+		OperationList cop = ((OperationList) cpuModel.getForward().push(p(in)));
+		cop = cop.flatten();
+		cop = (OperationList) cop.optimize();
+		cop.get().run();
 
-			OperationList gop = ((OperationList) gpuModel.getForward().push(p(in)));
-			gop = gop.flatten();
-			gop = (OperationList) gop.optimize();
-			gop.get().run();
-		});
+		OperationList gop = ((OperationList) gpuModel.getForward().push(p(in)));
+		gop = gop.flatten();
+		gop = (OperationList) gop.optimize();
+		gop.get().run();
 
 		System.out.println("CPU vs GPU = " + cpuSum + " vs " + gpuSum);
 

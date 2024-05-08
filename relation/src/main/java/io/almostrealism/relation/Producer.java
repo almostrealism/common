@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.lifecycle.Destroyable;
+
 import java.util.function.Supplier;
 
-public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node {
+public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node,  Destroyable {
 	@Override
 	Evaluable<T> get();
 
@@ -29,6 +31,4 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	default T evaluate(Object... args) {
 		return get().evaluate(args);
 	}
-
-	default void destroy() { }
 }

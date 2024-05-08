@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,12 +29,14 @@ import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.stream.Stream;
 
 public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
 	private MeshData data;
 	private Evaluable<Ray> ray;
+	private Evaluable<Vector> closestNormal;
 
 	private PackedCollection<Pair<?>> cache;
 
@@ -62,7 +64,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 			cache = Pair.bank(destination.getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) destination.get(i)).setMem(new double[] { cache.get(i).getA(), 1.0 });
+				((MemoryData) destination.get(i)).setMem(cache.get(i).getA(), 1.0);
 			}
 
 			return destination;
@@ -86,17 +88,21 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	public Evaluable<Vector> getClosestNormal() {
-		return new HardwareEvaluable<>(() -> args -> {
-			if (cache == null) {
-				return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
-			} else {
-				Pair pos = (Pair) args[0];
-				int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-				if (n < 0) return ZeroVector.getEvaluable().evaluate();
-				int a = (int) cache.get(n).getB();
-				if (a < 0) return ZeroVector.getEvaluable().evaluate();
-				return new Vector(data.get(a).get(4), 0);
-			}
-		}, Vector::bank, null, true);
+		if (closestNormal == null) {
+			closestNormal = new HardwareEvaluable<>(() -> args -> {
+				if (cache == null) {
+					return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
+				} else {
+					Pair pos = (Pair) args[0];
+					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+					if (n < 0) return ZeroVector.getEvaluable().evaluate();
+					int a = (int) cache.get(n).getB();
+					if (a < 0) return ZeroVector.getEvaluable().evaluate();
+					return new Vector(data.get(a).get(4), 0);
+				}
+			}, new MemoryDataDestination<>(Vector::bank), null, true);
+		}
+
+		return closestNormal;
 	}
 }

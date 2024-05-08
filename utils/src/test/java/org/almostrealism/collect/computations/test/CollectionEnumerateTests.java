@@ -79,26 +79,24 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
-			PackedCollection<?> output = enumerated.get().evaluate();
-			System.out.println(output.getShape());
+		CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
+		PackedCollection<?> output = enumerated.get().evaluate();
+		System.out.println(output.getShape());
 
-			Assert.assertEquals(count, output.getShape().length(0));
-			Assert.assertEquals(size, output.getShape().length(1));
-			Assert.assertEquals(size, output.getShape().length(2));
-			Assert.assertEquals(1, output.getShape().length(3));
+		Assert.assertEquals(count, output.getShape().length(0));
+		Assert.assertEquals(size, output.getShape().length(1));
+		Assert.assertEquals(size, output.getShape().length(2));
+		Assert.assertEquals(1, output.getShape().length(3));
 
-			for (int i = 0; i < count; i++) {
-				for (int x = 0; x < size; x++) {
-					for (int y = 0; y < size; y++) {
-						double expected = input.valueAt(x, y, i);
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, x, y, 0));
-						Assert.assertEquals(expected, output.valueAt(i, x, y, 0), 0.0001);
-					}
+		for (int i = 0; i < count; i++) {
+			for (int x = 0; x < size; x++) {
+				for (int y = 0; y < size; y++) {
+					double expected = input.valueAt(x, y, i);
+					System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, x, y, 0));
+					Assert.assertEquals(expected, output.valueAt(i, x, y, 0), 0.0001);
 				}
 			}
-		});
+		}
 	}
 
 	@Test

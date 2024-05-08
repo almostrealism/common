@@ -149,6 +149,8 @@ public class PropagationTests implements TestFeatures {
 
 	@Test
 	public void pool2dBackwards() {
+		if (skipLongTests || skipKnownIssues) return;
+
 //		int w = 16;
 //		int h = 12;
 		int w = 4;

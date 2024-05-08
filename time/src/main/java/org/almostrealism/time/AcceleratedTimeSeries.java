@@ -16,7 +16,7 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
