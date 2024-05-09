@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
@@ -29,7 +30,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public class MetalProgram implements OperationInfo, ConsoleFeatures {
+public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures {
 	public static boolean enableProgramMonitoring = false;
 	public static boolean enableLargeProgramMonitoring = false;
 
@@ -83,9 +84,18 @@ public class MetalProgram implements OperationInfo, ConsoleFeatures {
 	}
 
 	public MTLComputePipelineState newComputePipelineState() {
+		if (function == null) {
+			throw new HardwareException("MetalProgram unavailable");
+		}
+
 		return device.newComputePipelineState(function);
 	}
 
+	public boolean isDestroyed() {
+		return function == null;
+	}
+
+	@Override
 	public void destroy() {
 		function.release();
 		function = null;

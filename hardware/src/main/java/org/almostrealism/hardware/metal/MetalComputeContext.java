@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,13 +21,13 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
+import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.ArrayList;
-import java.util.List;
-
-public class MetalComputeContext extends AbstractComputeContext {
+public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
 
 	private static String includes = "#include <metal_stdlib>\n" +
@@ -43,25 +43,24 @@ public class MetalComputeContext extends AbstractComputeContext {
 									"using metal::cos;\n" +
 									"using metal::tan;\n";
 
-	private MTLDevice mainDevice, kernelDevice;
+	private MTLDevice mainDevice;
 	private MTLCommandQueue queue;
 	private MTLCommandQueue fastQueue;
-	private MTLCommandQueue kernelQueue;
 
 	private MetalCommandRunner runner;
 
-	private List<MetalOperatorMap> instructionSets;
+	private FrequencyCache<String, MetalOperatorMap> instructionSets;
 
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
-		this.instructionSets = new ArrayList<>();
+		this.instructionSets = new FrequencyCache<>(100, 0.4);
+		this.instructionSets.setEvictionListener((name, inst) -> inst.destroy());
 	}
 
-	protected void init(MTLDevice mainDevice, MTLDevice kernelDevice) {
+	protected void init(MTLDevice mainDevice) {
 		if (queue != null) return;
 
 		this.mainDevice = mainDevice;
-		this.kernelDevice = kernelDevice;
 
 		if (Hardware.enableVerbose) {
 			System.out.println("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
@@ -79,12 +78,6 @@ public class MetalComputeContext extends AbstractComputeContext {
 				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
 		}
 
-		if (kernelDevice != null) {
-			kernelQueue = kernelDevice.newCommandQueue();
-			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal kernel command queue initialized");
-		}
-
 		this.runner = new MetalCommandRunner(queue);
 	}
 
@@ -95,6 +88,11 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
+		if (instructionSets.containsKey(scope.getName())) {
+			warn("Recompiling instruction set " + scope.getName());
+			instructionSets.evict(scope.getName());
+		}
+
 		long start = System.nanoTime();
 		StringBuilder buf = new StringBuilder();
 
@@ -106,34 +104,34 @@ public class MetalComputeContext extends AbstractComputeContext {
 			buf.append(enc.apply(scope));
 
 			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-			instructionSets.add(instSet);
+			instructionSets.put(scope.getName(), instSet);
 			return instSet;
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
 		}
 	}
 
+	protected void accessed(String key) { instructionSets.get(key); }
+
 	@Override
 	public boolean isCPU() { return false; }
 
 	public MTLDevice getMtlDevice() { return mainDevice; }
 	public MTLCommandQueue getMtlQueue() { return queue; }
-	public MTLCommandQueue getMtlQueue(boolean kernel) { return kernel ? getKernelMtlQueue() : getMtlQueue(); }
-	public MTLCommandQueue getFastMtlQueue() { return fastQueue == null ? getMtlQueue() : fastQueue; }
-	public MTLCommandQueue getKernelMtlQueue() { return kernelQueue == null ? getMtlQueue() : kernelQueue; }
-
-	public MetalCommandRunner getCommandRunner() {
-		return runner;
-	}
+	public MetalCommandRunner getCommandRunner() { return runner; }
 
 	@Override
 	public void destroy() {
-		this.instructionSets.forEach(InstructionSet::destroy);
+		this.instructionSets.forEach((name, inst) -> inst.destroy());
+		this.instructionSets = null;
+
 		if (queue != null) queue.release();
 		if (fastQueue != null) fastQueue.release();
-		if (kernelQueue != null) kernelQueue.release();
+
 		queue = null;
 		fastQueue = null;
-		kernelQueue = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.collect.DefaultTraversalOrdering;
+import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -231,7 +232,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		if (start + shape.getTotalSize() > getShape().getTotalSize()) {
+		int required = shape.getOrder() == null ? shape.getTotalSize() :
+				shape.getOrder().getLength().orElse(shape.getTotalSize());
+
+		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
 
@@ -240,6 +244,13 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		} else {
 			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
 		}
+	}
+
+	public PackedCollection<T> repeat(int count) {
+		int len = getShape().getTotalSize();
+		TraversalPolicy shape = getShape().prependDimension(count)
+				.withOrder(new RepeatTraversalOrdering(len));
+		return range(shape);
 	}
 
 	public PackedCollection<T> value(int pos) {

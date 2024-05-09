@@ -24,10 +24,12 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -37,6 +39,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
 	public static boolean enableLargeSlice = true;
+	public static boolean enableShortCircuit = true;
 
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
@@ -125,6 +128,33 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 		// return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
 		return idx.withIndex(g, ((Expression<?>) globalIndex).imod(limit));
+	}
+
+	@Override
+	public Evaluable<T> get() {
+		if (!enableShortCircuit || sliceShape.getTotalSizeLong() != getShape().getTotalSizeLong()) {
+			return super.get();
+		}
+
+		Evaluable<T> ev = (Evaluable) getInputs().get(1).get();
+
+		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
+
+		if (ev instanceof Provider) {
+			return new Provider<>(null) {
+				@Override
+				public T get() {
+					return (T) ((PackedCollection) ((Provider) ev).get()).repeat(r);
+				}
+			};
+		}
+
+		HardwareEvaluable<T> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
+		hev.setShortCircuit(args -> {
+			T out = hev.getKernel().getValue().evaluate(args);
+			return (T) out.repeat(r);
+		});
+		return hev;
 	}
 
 	@Override

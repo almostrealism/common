@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,8 @@ public class MetalDataContext implements DataContext<MemoryData> {
 	private final long maxReservation;
 	private final int offHeapSize;
 
-	private MTLDevice mainDevice, kernelDevice;
-	private MetalDeviceInfo mainDeviceInfo, kernelDeviceInfo;
+	private MTLDevice mainDevice;
+	private MetalDeviceInfo mainDeviceInfo;
 
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
@@ -70,7 +70,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
-		mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
+		mainDeviceInfo = deviceInfo(mainDevice);
 	}
 
 	private void start() {
@@ -92,7 +92,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		} else {
 			if (start != null) start.run();
 			cc = new MetalComputeContext(this);
-			((MetalComputeContext) cc).init(mainDevice, kernelDevice);
+			((MetalComputeContext) cc).init(mainDevice);
 		}
 
 		return cc;
@@ -109,8 +109,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		return mainDevice;
 	}
 
-	public MetalDeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
-	public MetalDeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
+	public MetalDeviceInfo getDeviceInfo() { return mainDeviceInfo; }
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
@@ -202,9 +201,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();
 		if (mainDevice != null) mainDevice.release();
-		if (kernelDevice != null) kernelDevice.release();
 		mainDevice = null;
-		kernelDevice = null;
 	}
 
 	protected MetalDeviceInfo deviceInfo(MTLDevice device) {

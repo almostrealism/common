@@ -242,18 +242,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			compile();
 		}
 
-		long start = System.nanoTime();
+		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
+		AcceleratedProcessDetails process = getProcessDetails(output, args);
+		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
+		long start = System.nanoTime();
 		Execution operator = getOperator();
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {
 			throw new UnsupportedOperationException();
+		} else if (operator.isDestroyed()) {
+			throw new HardwareException("Operator has already been destroyed");
 		}
 
-		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
-		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
 		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
@@ -270,7 +272,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
+		acceptMetric.addEntry(System.nanoTime() - start);
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 

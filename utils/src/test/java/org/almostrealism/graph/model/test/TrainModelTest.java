@@ -311,7 +311,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 				!DynamicIndexProjectionProducerComputation.enableChainDelta)
 			return;
 
-		int dim = 18; // 28;
+		int dim = 22; // 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();

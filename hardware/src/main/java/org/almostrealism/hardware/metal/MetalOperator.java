@@ -198,6 +198,11 @@ public class MetalOperator extends HardwareOperator {
 		return null;
 	}
 
+	@Override
+	public boolean isDestroyed() {
+		return prog == null || prog.isDestroyed();
+	}
+
 	public void destroy() {
 		if (kernel != null) kernel.release();
 		kernel = null;
