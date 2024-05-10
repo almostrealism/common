@@ -38,8 +38,9 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	public static boolean enableUniqueIndexOptimization = true;
 	public static boolean enableInputIsolation = true;
+	public static boolean enableIsolation = true;
 	public static boolean enableLargeSlice = true;
-	public static boolean enableShortCircuit = true;
+	public static boolean enableShortCircuit = false;
 
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
@@ -141,12 +142,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
 
 		if (ev instanceof Provider) {
-			return new Provider<>(null) {
-				@Override
-				public T get() {
-					return (T) ((PackedCollection) ((Provider) ev).get()).repeat(r);
-				}
-			};
+			return p((Provider) ev, v ->
+					(T) ((PackedCollection) v).repeat(r));
 		}
 
 		HardwareEvaluable<T> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
@@ -164,12 +161,23 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		if (!enableInputIsolation ||
-				!(getInputs().get(1) instanceof Computation) ||
-				getInputs().get(1) instanceof CollectionProducerComputation.IsolatedProcess)
+		Producer in = (Producer) getInputs().get(1);
+		if (in instanceof ReshapeProducer) in = ((ReshapeProducer<?>) in).getComputation();
+
+		boolean computable = in instanceof Computation;
+
+		if (!enableIsolation && !computable) {
+			return generate(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
+//			return generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
+		}
+
+		if (!enableInputIsolation || !computable)
 			return super.isolate();
 
-		return generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1)))).isolate();
+		Process<Process<?, ?>, Evaluable<? extends T>> isolated =
+				generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
+
+		return enableIsolation ? isolated.isolate() : isolated;
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

@@ -25,7 +25,6 @@ import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -68,7 +67,12 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				throw new UnsupportedOperationException();
 			}
 
-			return nameForType(type) + " " + destination + "[" + arrayLength + "]";
+			String annotation = annotationForLocalArray(type, arrayLength);
+			if (annotation != null && !annotation.isEmpty()) {
+				return annotation + " " + nameForType(type) + " " + destination + "[" + arrayLength + "]";
+			} else {
+				return nameForType(type) + " " + destination + "[" + arrayLength + "]";
+			}
 		} else {
 			return nameForType(type) + " " + destination + " = " + expression;
 		}
@@ -77,6 +81,10 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	@Override
 	public String assignment(String destination, String expression) {
 		return destination + " = " + expression;
+	}
+
+	public String annotationForLocalArray(Class type, String length) {
+		return null;
 	}
 
 	@Override
@@ -167,7 +175,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			} else if (arg.isDisableOffset() && type == ParamType.SIZE) {
 				out.accept(arg.getArraySize().getExpression(this));
 			} else {
-				out.accept(argumentPre(arg, enableType, enableAnnotation, type.getType()));
+				out.accept(argumentPre(arg, enableType, enableAnnotation, type.getType(), access));
 
 				out.accept(type.getPrefix());
 				out.accept(arguments.get(i).getName());
@@ -191,7 +199,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		for (int i = 0; i < arguments.size(); i++) {
 			Variable<?, ?> arg = arguments.get(i);
 
-			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType));
+			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType, access));
 
 			out.accept(prefix);
 			out.accept(arguments.get(i).getName());
@@ -205,14 +213,14 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation) {
-		return argumentPre(arg, enableType, enableAnnotation, null);
+		return argumentPre(arg, enableType, enableAnnotation, null, null);
 	}
 
-	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
+	protected String argumentPre(Variable arg, boolean enableType, boolean enableAnnotation, Class replaceType, Accessibility access) {
 		StringBuilder buf = new StringBuilder();
 
-		if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
-			buf.append(annotationForPhysicalScope(arg.getPhysicalScope()));
+		if (enableAnnotation && annotationForPhysicalScope(access, arg.getPhysicalScope()) != null) {
+			buf.append(annotationForPhysicalScope(access, arg.getPhysicalScope()));
 			buf.append(" ");
 		}
 

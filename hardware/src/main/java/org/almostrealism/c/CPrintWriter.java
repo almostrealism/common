@@ -219,8 +219,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected String annotationForAssignment(ExpressionAssignment<?> assignment) {
 		PhysicalScope scope = assignment.getPhysicalScope();
-		if (language.annotationForPhysicalScope(scope) != null) {
-			return language.annotationForPhysicalScope(scope) + " ";
+		if (language.annotationForPhysicalScope(null, scope) != null) {
+			return language.annotationForPhysicalScope(null, scope) + " ";
 		}
 
 		return "";

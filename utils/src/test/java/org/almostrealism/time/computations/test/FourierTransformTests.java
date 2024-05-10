@@ -16,8 +16,10 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -25,10 +27,14 @@ import org.junit.Test;
 public class FourierTransformTests implements TestFeatures {
 	@Test
 	public void compile() {
-		int bins = 512;
+		// MetalProgram.enableLargeProgramMonitoring = true;
 
-		PackedCollection<?> input = new PackedCollection<>(bins, 2);
-		FourierTransform ft = new FourierTransform(bins, cp(input));
-		ft.get().evaluate();
+		int bins = 256;
+
+		cc(() -> {
+			PackedCollection<?> input = new PackedCollection<>(bins, 2);
+			FourierTransform ft = new FourierTransform(bins, cp(input));
+			ft.get().evaluate();
+		}, ComputeRequirement.GPU);
 	}
 }

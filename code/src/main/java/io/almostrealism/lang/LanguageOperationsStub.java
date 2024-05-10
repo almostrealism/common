@@ -16,9 +16,9 @@
 
 package io.almostrealism.lang;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
 
 public class LanguageOperationsStub implements LanguageOperations {
@@ -72,7 +72,7 @@ public class LanguageOperationsStub implements LanguageOperations {
 	}
 
 	@Override
-	public String annotationForPhysicalScope(PhysicalScope scope) {
+	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		return "none";
 	}
 

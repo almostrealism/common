@@ -21,7 +21,6 @@ import io.almostrealism.code.Precision;
 import io.almostrealism.lang.DefaultLanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.hardware.Hardware;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -56,7 +55,7 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	}
 
 	@Override
-	public String annotationForPhysicalScope(PhysicalScope scope) {
+	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		return null;
 	}
 
@@ -75,15 +74,15 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 				if (!arguments.isEmpty()) {
 					renderArguments(arguments, out, true, true, access, ParamType.ARRAY);
 					out.accept(", ");
-					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+					out.accept(annotationForPhysicalScope(access, PhysicalScope.GLOBAL));
 					out.accept(" int *offsetArr");
 					out.accept(argumentPost(arguments.size(), true, access));
 					out.accept(", ");
-					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+					out.accept(annotationForPhysicalScope(access, PhysicalScope.GLOBAL));
 					out.accept(" int *sizeArr");
 					out.accept(argumentPost(arguments.size() + 1, true, access));
 					out.accept(", ");
-					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+					out.accept(annotationForPhysicalScope(access, PhysicalScope.GLOBAL));
 					out.accept(" int *dim0Arr");
 					out.accept(argumentPost(arguments.size() + 2, true, access));
 				}

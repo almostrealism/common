@@ -33,6 +33,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+	public static boolean enableRecursion = false;
+	public static boolean enableRadix2Recursion = false;
+
+	private int varIdx = 0;
+
 	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
 		super(null, new TraversalPolicy(bins, 2), input);
 	}
@@ -71,162 +76,188 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		calculateTransform.getParameters().add(inverseTransform);
 		calculateTransform.getParameters().add(isFirstSplit);
 
-		ArrayVariable<Double> radix2 = calculateTransform.declareArray(this, "radix2", e(size / 2));
-		ArrayVariable<Double> radix4Part1 = calculateTransform.declareArray(this, "radix4Part1", e(size / 4));
-		ArrayVariable<Double> radix4Part2 = calculateTransform.declareArray(this, "radix4Part2", e(size / 4));
-		ArrayVariable<Double> radix2FFT = calculateTransform.declareArray(this, "radix2FFT", e(size / 2));
-		ArrayVariable<Double> radix4Part1FFT = calculateTransform.declareArray(this, "radix4Part1FFT", e(size / 4));
-		ArrayVariable<Double> radix4Part2FFT = calculateTransform.declareArray(this, "radix4Part2FFT", e(size / 4));
+		return populateCalculateTransform(calculateTransform, output, input,
+							len.ref(), inverseTransform, isFirstSplit.ref(), size);
+	}
+
+	protected Scope<?> populateCalculateTransform(Scope<?> calculateTransform,
+												 ArrayVariable<Double> output, ArrayVariable<Double> input,
+												 Expression<?> len, Variable<Integer, ?> inverseTransform,
+												 Expression<?> isFirstSplit,
+												 int size) {
+		ArrayVariable<Double> radix2 = size >= 2 ?
+				calculateTransform.declareArray(this,"radix2_" + varIdx++, e(size / 2)) : null;
+		ArrayVariable<Double> radix4Part1 =
+				size >= 4 ?
+						calculateTransform.declareArray(this, "radix4Part1_" + varIdx++, e(size / 4)) : null;
+		ArrayVariable<Double> radix4Part2 =
+				size >= 4 ?
+				calculateTransform.declareArray(this, "radix4Part2_" + varIdx++, e(size / 4)) : null;
+		ArrayVariable<Double> radix2FFT =
+				size > 2 ?
+				calculateTransform.declareArray(this, "radix2FFT_" + varIdx++, e(size / 2)) : null;
+		ArrayVariable<Double> radix4Part1FFT =
+				size >= 4 ?
+				calculateTransform.declareArray(this, "radix4Part1FFT_" + varIdx++, e(size / 4)) : null;
+		ArrayVariable<Double> radix4Part2FFT =
+				size >= 4 ?
+				calculateTransform.declareArray(this, "radix4Part2FFT_" + varIdx++, e(size / 4)) : null;
 
 		Cases cases = new Cases<>(); {
-			Scope<?> four = cases.addCase(len.ref().greaterThanOrEqual(e(4)), new Scope<>());
-			{
-				Expression halfN = four.declareInteger("halfN", len.ref().divide(e(2)));
-				Expression quarterN = four.declareInteger("quarterN", len.ref().divide(e(4)));
-				Expression tripleQuarterN = four.declareInteger("tripleQuarterN", quarterN.multiply(e(3)));
-
-				Expression an = e(2).multiply(pi()).divide(len.ref());
-				Expression angle = four.declareDouble("angle", conditional(inverseTransform.ref().lessThanOrEqual(e(0)), an.minus(), an));
-				Expression i = four.declareDouble("i", conditional(inverseTransform.ref().lessThanOrEqual(e(0)), e(1), e(-1)));
-
-				Repeated loop = new Repeated<>();
+			if (size >= 4) {
+				Scope<?> four = cases.addCase(len.greaterThanOrEqual(e(4)), new Scope<>());
 				{
-					InstanceReference k = Variable.integer("k").ref();
-					loop.setIndex(k.getReferent());
-					loop.setCondition(k.lessThan(quarterN));
-					loop.setInterval(e(1));
+					Expression halfN = four.declareInteger("halfN_" + varIdx++, len.divide(e(2)));
+					Expression quarterN = four.declareInteger("quarterN_" + varIdx++, len.divide(e(4)));
+					Expression tripleQuarterN = four.declareInteger("tripleQuarterN_" + varIdx++, quarterN.multiply(e(3)));
 
-					Scope<?> body = new Scope<>();
+					Expression an = e(2).multiply(pi()).divide(len);
+					Expression angle = four.declareDouble("angle_" + varIdx++, conditional(inverseTransform.ref().lessThanOrEqual(e(0)), an.minus(), an));
+					Expression i = four.declareDouble("i_" + varIdx++, conditional(inverseTransform.ref().lessThanOrEqual(e(0)), e(1), e(-1)));
+
+					Repeated loop = new Repeated<>();
 					{
-						Expression kPlusTripleQuarterN = body.declareInteger("kPlusTripleQuarterN", k.add(tripleQuarterN));
-						Expression kPlusHalfN = body.declareInteger("kPlusHalfN", k.add(halfN));
-						Expression kPlusQuarterN = body.declareInteger("kPlusQuarterN", k.add(quarterN));
-						Expression k2 = k.multiply(2);
-						Expression kPlusQuarterN2 = kPlusQuarterN.multiply(2);
-						Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
-						Expression kPlusTripleQuarterN2 = kPlusTripleQuarterN.multiply(2);
+						InstanceReference k = Variable.integer("k" + varIdx++).ref();
+						loop.setIndex(k.getReferent());
+						loop.setCondition(k.lessThan(quarterN));
+						loop.setInterval(e(1));
 
-						Expression ar = input.valueAt(k2);
-						Expression ai = input.valueAt(k2.add(1));
-						Expression br = input.valueAt(kPlusQuarterN2);
-						Expression bi = input.valueAt(kPlusQuarterN2.add(1));
-						Expression cr = input.valueAt(kPlusHalfN2);
-						Expression ci = input.valueAt(kPlusHalfN2.add(1));
-						Expression dr = input.valueAt(kPlusTripleQuarterN2);
-						Expression di = input.valueAt(kPlusTripleQuarterN2.add(1));
-
-						Expression arPlusCr = ar.add(cr);
-						Expression aiPlusCi = ai.add(ci);
-						Expression brPlusDr = br.add(dr);
-						Expression biPlusDi = bi.add(di);
-
-						body.assign(radix2.valueAt(k2), arPlusCr);
-						body.assign(radix2.valueAt(k2.add(1)), aiPlusCi);
-						body.assign(radix2.valueAt(kPlusQuarterN2), brPlusDr);
-						body.assign(radix2.valueAt(kPlusQuarterN2.add(1)), biPlusDi);
-
-						Expression bMinusD_r = br.subtract(dr);
-						Expression bMinusD_i = bi.subtract(di);
-						Expression aMinusC_r = ar.subtract(cr);
-						Expression aMinusC_i = ai.subtract(ci);
-
-						Expression imaginaryTimesSubR = body.declareDouble("imaginaryTimesSubR", i.multiply(bMinusD_i).minus());
-						Expression imaginaryTimesSubI = body.declareDouble("imaginaryTimesSubI", i.multiply(bMinusD_r));
-
-						Expression angleK = body.declareDouble("angleK", angle.multiply(k));
-						Expression omegaR = body.declareDouble("omegaR", angleK.cos());
-						Expression omegaI = body.declareDouble("omegaI", angleK.sin());
-
-						Expression angleK3 = angleK.multiply(3);
-						Expression omegaToPowerOf3R = body.declareDouble("omegaToPowerOf3R", angleK3.cos());
-						Expression omegaToPowerOf3I = body.declareDouble("omegaToPowerOf3I", angleK3.sin());
-
-						Expression aMinusCMinusItsR = aMinusC_r.subtract(imaginaryTimesSubR);
-						Expression aMinusCMinusItsI = aMinusC_i.subtract(imaginaryTimesSubI);
-						Expression aMinusCPlusItsR = aMinusC_r.add(imaginaryTimesSubR);
-						Expression aMinusCPlusItsI = aMinusC_i.add(imaginaryTimesSubI);
-
-						Expression radix4Part1Exp[] = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
-						body.assign(radix4Part1.valueAt(k2), radix4Part1Exp[0]);
-						body.assign(radix4Part1.valueAt(k2.add(1)), radix4Part1Exp[1]);
-
-						Expression radix4Part2Exp[] = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
-						body.assign(radix4Part2.valueAt(k2), radix4Part2Exp[0]);
-						body.assign(radix4Part2.valueAt(k2.add(1)), radix4Part2Exp[1]);
-
-						loop.add(body);
-					}
-
-					four.getChildren().add(loop);
-				}
-
-				Scope recursion = new Scope();
-				{
-					recursion.getStatements().add(calculateTransform.call(radix2FFT.ref(), radix2.ref(), halfN, inverseTransform.ref(), e(0)));
-					recursion.getStatements().add(calculateTransform.call(radix4Part1FFT.ref(), radix4Part1.ref(), quarterN, inverseTransform.ref(), e(0)));
-					recursion.getStatements().add(calculateTransform.call(radix4Part2FFT.ref(), radix4Part2.ref(), quarterN, inverseTransform.ref(), e(0)));
-
-					four.getChildren().add(recursion);
-				}
-
-				Repeated loop2 = new Repeated<>();
-				{
-					InstanceReference k = Variable.integer("k").ref();
-					loop2.setIndex(k.getReferent());
-					loop2.setCondition(k.lessThan(quarterN));
-					loop2.setInterval(e(1));
-
-					Scope<?> body = new Scope<>();
-					{
-						Expression doubleK = body.declareInteger("doubleK", k.multiply(2));
-						Expression quadrupleK = body.declareInteger("quadrupleK", doubleK.multiply(2));
-
-						Scope first = new Scope<>();
+						Scope<?> body = new Scope<>();
 						{
-							first.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK).divide(len.ref()));
-							first.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)).divide(len.ref()));
-							first.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK).divide(len.ref()));
-							first.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)).divide(len.ref()));
-							first.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN)).divide(len.ref()));
-							first.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).add(1)).divide(len.ref()));
-							first.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK).divide(len.ref()));
-							first.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)).divide(len.ref()));
+							Expression kPlusTripleQuarterN = body.declareInteger("kPlusTripleQuarterN_" + varIdx++, k.add(tripleQuarterN));
+							Expression kPlusHalfN = body.declareInteger("kPlusHalfN_" + varIdx++, k.add(halfN));
+							Expression kPlusQuarterN = body.declareInteger("kPlusQuarterN_" + varIdx++, k.add(quarterN));
+							Expression k2 = k.multiply(2);
+							Expression kPlusQuarterN2 = kPlusQuarterN.multiply(2);
+							Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
+							Expression kPlusTripleQuarterN2 = kPlusTripleQuarterN.multiply(2);
+
+							Expression ar = input.valueAt(k2);
+							Expression ai = input.valueAt(k2.add(1));
+							Expression br = input.valueAt(kPlusQuarterN2);
+							Expression bi = input.valueAt(kPlusQuarterN2.add(1));
+							Expression cr = input.valueAt(kPlusHalfN2);
+							Expression ci = input.valueAt(kPlusHalfN2.add(1));
+							Expression dr = input.valueAt(kPlusTripleQuarterN2);
+							Expression di = input.valueAt(kPlusTripleQuarterN2.add(1));
+
+							Expression arPlusCr = ar.add(cr);
+							Expression aiPlusCi = ai.add(ci);
+							Expression brPlusDr = br.add(dr);
+							Expression biPlusDi = bi.add(di);
+
+							body.assign(radix2.valueAt(k2), arPlusCr);
+							body.assign(radix2.valueAt(k2.add(1)), aiPlusCi);
+							body.assign(radix2.valueAt(kPlusQuarterN2), brPlusDr);
+							body.assign(radix2.valueAt(kPlusQuarterN2.add(1)), biPlusDi);
+
+							Expression bMinusD_r = br.subtract(dr);
+							Expression bMinusD_i = bi.subtract(di);
+							Expression aMinusC_r = ar.subtract(cr);
+							Expression aMinusC_i = ai.subtract(ci);
+
+							Expression imaginaryTimesSubR = body.declareDouble("imaginaryTimesSubR_" + varIdx++, i.multiply(bMinusD_i).minus());
+							Expression imaginaryTimesSubI = body.declareDouble("imaginaryTimesSubI_" + varIdx++, i.multiply(bMinusD_r));
+
+							Expression angleK = body.declareDouble("angleK_" + varIdx++, angle.multiply(k));
+							Expression omegaR = body.declareDouble("omegaR_" + varIdx++, angleK.cos());
+							Expression omegaI = body.declareDouble("omegaI_" + varIdx++, angleK.sin());
+
+							Expression angleK3 = angleK.multiply(3);
+							Expression omegaToPowerOf3R = body.declareDouble("omegaToPowerOf3R_" + varIdx++, angleK3.cos());
+							Expression omegaToPowerOf3I = body.declareDouble("omegaToPowerOf3I_" + varIdx++, angleK3.sin());
+
+							Expression aMinusCMinusItsR = aMinusC_r.subtract(imaginaryTimesSubR);
+							Expression aMinusCMinusItsI = aMinusC_i.subtract(imaginaryTimesSubI);
+							Expression aMinusCPlusItsR = aMinusC_r.add(imaginaryTimesSubR);
+							Expression aMinusCPlusItsI = aMinusC_i.add(imaginaryTimesSubI);
+
+							Expression radix4Part1Exp[] = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
+							body.assign(radix4Part1.valueAt(k2), radix4Part1Exp[0]);
+							body.assign(radix4Part1.valueAt(k2.add(1)), radix4Part1Exp[1]);
+
+							Expression radix4Part2Exp[] = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
+							body.assign(radix4Part2.valueAt(k2), radix4Part2Exp[0]);
+							body.assign(radix4Part2.valueAt(k2.add(1)), radix4Part2Exp[1]);
+
+							loop.add(body);
 						}
 
-						Scope alt = new Scope<>();
-						{
-							alt.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK));
-							alt.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)));
-							alt.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK));
-							alt.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)));
-							alt.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN).multiply(2)));
-							alt.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).multiply(2).add(1)));
-							alt.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK));
-							alt.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)));
-						}
-
-						body.addCase(inverseTransform.ref().greaterThan(e(0)).and(isFirstSplit.ref().greaterThan(e(0))), first, alt);
-
-						loop2.add(body);
+						four.getChildren().add(loop);
 					}
 
-					four.getChildren().add(loop2);
+					four.getChildren().add(
+							recursion(calculateTransform, radix2, radix4Part1, radix4Part2,
+									radix2FFT, radix4Part1FFT, radix4Part2FFT,
+									halfN, quarterN, inverseTransform, size));
+
+					Repeated loop2 = new Repeated<>();
+					{
+						InstanceReference k = Variable.integer("k").ref();
+						loop2.setIndex(k.getReferent());
+						loop2.setCondition(k.lessThan(quarterN));
+						loop2.setInterval(e(1));
+
+						Scope<?> body = new Scope<>();
+						{
+							Expression doubleK = body.declareInteger("doubleK_" + varIdx++, k.multiply(2));
+							Expression quadrupleK = body.declareInteger("quadrupleK_" + varIdx++, doubleK.multiply(2));
+
+							Scope first = new Scope<>();
+							{
+								first.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK).divide(len));
+								first.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)).divide(len));
+								first.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK).divide(len));
+								first.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)).divide(len));
+								first.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN)).divide(len));
+								first.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).add(1)).divide(len));
+								first.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK).divide(len));
+								first.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)).divide(len));
+							}
+
+							Scope alt = new Scope<>();
+							{
+								alt.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK));
+								alt.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)));
+								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK));
+								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)));
+								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN).multiply(2)));
+								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).multiply(2).add(1)));
+								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK));
+								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)));
+							}
+
+							body.addCase(inverseTransform.ref().greaterThan(e(0)).and(isFirstSplit.greaterThan(e(0))), first, alt);
+
+							loop2.add(body);
+						}
+
+						four.getChildren().add(loop2);
+					}
 				}
 			}
 
-			Scope<?> two = cases.addCase(len.ref().greaterThanOrEqual(e(2)), new Scope<>());
-			{
-				Scope calculateRadix2 = radix2(size);
-				calculateTransform.getRequiredScopes().add(calculateRadix2);
-				two.getStatements().add(
-						calculateRadix2.call(output.ref(), input.ref(),
-							len.ref(), inverseTransform.ref(), isFirstSplit.ref()));
+			if (size >= 2) {
+				Scope<?> two = cases.addCase(len.greaterThanOrEqual(e(2)), new Scope<>());
+				{
+					if (enableRadix2Recursion) {
+						Scope calculateRadix2 = radix2(size);
+						calculateTransform.getRequiredScopes().add(calculateRadix2);
+						two.getStatements().add(
+								calculateRadix2.call(output.ref(), input.ref(),
+										len, inverseTransform.ref(), isFirstSplit));
+					} else {
+						populateRadix2(two,
+										output, input, len,
+										inverseTransform, isFirstSplit, size);
+					}
+				}
 			}
 
-			Scope<?> last = cases.addCase(null, new Scope<>());
+			Scope last = cases.addCase(null, new Scope<>());
 			{
 				InstanceReference i = Variable.integer("i").ref();
-				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.ref().multiply(2))));
+				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
 					inOut.assign(output.valueAt(i), input.valueAt(i));
 					inOutLoop.add(inOut);
@@ -235,11 +266,56 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				last.add(inOutLoop);
 			}
 
-			calculateTransform.add(cases);
+			if (size < 2) {
+				calculateTransform.add(last);
+			} else {
+				calculateTransform.add(cases);
+			}
 		}
 
 		return calculateTransform;
 	}
+
+	protected Scope recursion(Scope<?> calculateTransform,
+								 ArrayVariable<Double> radix2,
+								 ArrayVariable<Double> radix4Part1, ArrayVariable<Double> radix4Part2,
+								 ArrayVariable<Double> radix2FFT,
+								 ArrayVariable<Double> radix4Part1FFT, ArrayVariable<Double> radix4Part2FFT,
+								 Expression<?> halfN, Expression<?> quarterN,
+								 Variable<Integer, ?> inverseTransform,
+								 int size) {
+
+		Scope recursion = new Scope();
+
+		if (enableRecursion) {
+			recursion.getStatements().add(calculateTransform
+					.call(radix2FFT.ref(), radix2.ref(),
+							halfN, inverseTransform.ref(), e(0)));
+
+			recursion.getStatements().add(calculateTransform
+					.call(radix4Part1FFT.ref(), radix4Part1.ref(),
+							quarterN, inverseTransform.ref(), e(0)));
+
+			recursion.getStatements().add(calculateTransform
+					.call(radix4Part2FFT.ref(), radix4Part2.ref(),
+							quarterN, inverseTransform.ref(), e(0)));
+		} else if (size >= 4) {
+			recursion.getChildren().add(
+					populateCalculateTransform(new Scope<>(), radix2FFT, radix2,
+							halfN, inverseTransform, e(0), size / 2));
+
+			recursion.getChildren().add(
+					populateCalculateTransform(new Scope<>(), radix4Part1FFT, radix4Part1,
+							quarterN, inverseTransform, e(0), size / 4));
+
+			recursion.getChildren().add(
+					populateCalculateTransform(new Scope<>(), radix4Part2FFT, radix4Part2,
+							quarterN, inverseTransform, e(0), size / 4));
+		}
+
+		return recursion;
+	}
+
 
 	protected Scope<?> radix2(int size) {
 		ArrayVariable<Double> input = new ArrayVariable<>(this, Double.class, "input", e(size));
@@ -259,15 +335,22 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		radix2.getParameters().add(inverseTransform);
 		radix2.getParameters().add(isFirstSplit);
 
-		ArrayVariable<Double> even = radix2.declareArray(this, "even", e(size / 2));
-		ArrayVariable<Double> odd = radix2.declareArray(this, "odd", e(size / 2));
-		ArrayVariable<Double> evenFft = radix2.declareArray(this, "evenFft", e(size / 2));
-		ArrayVariable<Double> oddFft = radix2.declareArray(this, "oddFft", e(size / 2));
+		return populateRadix2(radix2, output, input, len.ref(), inverseTransform, isFirstSplit.ref(), size);
+	}
+
+	protected <T> Scope<T> populateRadix2(Scope<T> radix2, ArrayVariable<Double> output, ArrayVariable<Double> input,
+							  Expression<?> len, Variable<Integer, ?> inverseTransform,
+							  Expression<?> isFirstSplit, int size) {
+
+		ArrayVariable<Double> even = radix2.declareArray(this, "even_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> odd = radix2.declareArray(this, "odd_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> evenFft = radix2.declareArray(this, "evenFft_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> oddFft = radix2.declareArray(this, "oddFft_" + varIdx++, e(size / 2));
 
 		Cases cases = new Cases<>(); {
-			Scope<?> main = cases.addCase(len.ref().greaterThanOrEqual(e(2)), new Scope<>(), null);
-			Expression halfN = main.declareInteger("halfN", len.ref().divide(e(2)));
-			Expression angle = main.declareDouble("angle", e(2).multiply(pi()).divide(len.ref()));
+			Scope<?> main = cases.addCase(len.greaterThanOrEqual(e(2)), new Scope<>(), null);
+			Expression halfN = main.declareInteger("halfN_" + varIdx++, len.divide(e(2)));
+			Expression angle = main.declareDouble("angle_" + varIdx++, e(2).multiply(pi()).divide(len));
 			main.addCase(inverseTransform.ref().eq(e(0)), assign(angle, angle.minus()));
 
 			Repeated evenOdd = new Repeated<>(); {
@@ -277,10 +360,10 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				evenOdd.setInterval(e(1));
 
 				Scope<?> body = new Scope(); {
-					Expression<?> kPlusHalfN = body.declareInteger("kPlusHalfN", k.add(halfN));
-					Expression<?> angleK = body.declareDouble("angleK", k.multiply(k));
-					Expression<?> omegaR = body.declareDouble("omegaR", angleK.cos());
-					Expression<?> omegaI = body.declareDouble("omegaI", angleK.sin());
+					Expression<?> kPlusHalfN = body.declareInteger("kPlusHalfN_" + varIdx++, k.add(halfN));
+					Expression<?> angleK = body.declareDouble("angleK_" + varIdx++, k.multiply(k));
+					Expression<?> omegaR = body.declareDouble("omegaR_" + varIdx++, angleK.cos());
+					Expression<?> omegaI = body.declareDouble("omegaI_" + varIdx++, angleK.sin());
 
 					Expression k2 = k.multiply(2);
 					Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
@@ -288,8 +371,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					body.assign(even.valueAt(k2), input.valueAt(k2).add(input.valueAt(kPlusHalfN2)));
 					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add(input.valueAt(kPlusHalfN2.add(1))));
 
-					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr", input.valueAt(k2).subtract(input.valueAt(kPlusHalfN2)));
-					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi", input.valueAt(k2.add(1)).subtract(input.valueAt(kPlusHalfN2.add(1))));
+					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.valueAt(k2).subtract(input.valueAt(kPlusHalfN2)));
+					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.valueAt(k2.add(1)).subtract(input.valueAt(kPlusHalfN2.add(1))));
 
 					Expression oddExp[] = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
 					body.assign(odd.valueAt(k2), oddExp[0]);
@@ -301,35 +384,27 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				main.add(evenOdd);
 			}
 
-			Scope recursion = new Scope(); {
-				Method<?> evenFftCall = radix2.call(evenFft.ref(), even.ref(), halfN, inverseTransform.ref(), e(0));
-				recursion.getStatements().add(evenFftCall);
-
-				Method<?> oddFftCall = radix2.call(oddFft.ref(), odd.ref(), halfN, inverseTransform.ref(), e(0));
-				recursion.getStatements().add(oddFftCall);
-
-				main.getChildren().add(recursion);
-			}
+			main.getChildren().add(recursionRadix2(radix2, evenFft, even, oddFft, odd, halfN, inverseTransform, size));
 
 			Repeated loop2 = new Repeated<>(); {
-				InstanceReference k = Variable.integer("k").ref();
+				InstanceReference k = Variable.integer("k" + varIdx++).ref();
 				loop2.setIndex(k.getReferent());
 				loop2.setCondition(k.lessThan(halfN));
 				loop2.setInterval(e(1));
 
 				Scope<?> body = new Scope(); {
 					Expression k2 = k.multiply(2);
-					Expression doubleK = body.declareInteger("doubleK", k.multiply(2));
+					Expression doubleK = body.declareInteger("doubleK_" + varIdx++, k.multiply(2));
 
 					Scope first = new Scope<>(); {
 						first.assign(output.valueAt(doubleK.multiply(2)),
-										evenFft.valueAt(k2).divide(len.ref()));
+										evenFft.valueAt(k2).divide(len));
 						first.assign(output.valueAt(doubleK.multiply(2).add(1)),
-										evenFft.valueAt(k2.add(1)).divide(len.ref()));
+										evenFft.valueAt(k2.add(1)).divide(len));
 						first.assign(output.valueAt(doubleK.add(1).multiply(2)),
-										oddFft.valueAt(k2).divide(len.ref()));
+										oddFft.valueAt(k2).divide(len));
 						first.assign(output.valueAt(doubleK.add(1).multiply(2).add(1)),
-										oddFft.valueAt(k2.add(1)).divide(len.ref()));
+										oddFft.valueAt(k2.add(1)).divide(len));
 					}
 
 					Scope alt = new Scope<>(); {
@@ -344,7 +419,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					}
 
 					body.addCase(inverseTransform.ref().greaterThan(e(0))
-							.and(isFirstSplit.ref().greaterThan(e(0))),
+							.and(isFirstSplit.greaterThan(e(0))),
 							first, alt);
 
 					loop2.add(body);
@@ -354,8 +429,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 			}
 
 			Scope<?> base = cases.addCase(null, new Scope<>(), null); {
-				InstanceReference i = Variable.integer("i").ref();
-				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.ref().multiply(2))));
+				InstanceReference i = Variable.integer("i" + varIdx++).ref();
+				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
 					inOut.assign(output.valueAt(i), input.valueAt(i));
 					inOutLoop.add(inOut);
@@ -368,5 +443,30 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		}
 
 		return radix2;
+	}
+
+	public Scope recursionRadix2(Scope<?> radix2,
+									ArrayVariable<Double> evenFft, ArrayVariable<Double> even,
+									ArrayVariable<Double> oddFft, ArrayVariable<Double> odd,
+									Expression<?> halfN,
+									Variable<Integer, ?> inverseTransform,
+									int size) {
+		Scope recursion = new Scope();
+
+		if (enableRadix2Recursion) {
+			Method<?> evenFftCall = radix2.call(evenFft.ref(), even.ref(), halfN, inverseTransform.ref(), e(0));
+			recursion.getStatements().add(evenFftCall);
+
+			Method<?> oddFftCall = radix2.call(oddFft.ref(), odd.ref(), halfN, inverseTransform.ref(), e(0));
+			recursion.getStatements().add(oddFftCall);
+		} else if (size >= 4) {
+			recursion.getChildren().add(
+					populateRadix2(new Scope<>(), evenFft, even, halfN, inverseTransform, e(0), size / 2));
+
+			recursion.getChildren().add(
+					populateRadix2(new Scope<>(), oddFft, odd, halfN, inverseTransform, e(0), size / 2));
+		}
+
+		return recursion;
 	}
 }
