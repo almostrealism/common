@@ -36,6 +36,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -262,13 +263,27 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 	}
 
+	protected Evaluable<O> getEvaluable() {
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			return CollectionProducerComputation.super.get();
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
+	}
+
 	@Override
 	public Evaluable<O> get() {
 		if (evaluable == null) {
 			this.evaluable = new HardwareEvaluable<>(
-											CollectionProducerComputation.super::get,
-											getDestination(),
-											shortCircuit, true);
+					this::getEvaluable,
+					getDestination(),
+					shortCircuit, true);
 			this.evaluable.setDestinationProcessor(destination -> {
 				if (destination instanceof Shape) {
 					Shape out = (Shape) destination;
