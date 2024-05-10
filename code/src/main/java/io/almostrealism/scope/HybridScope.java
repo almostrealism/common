@@ -34,6 +34,10 @@ public class HybridScope<T> extends Scope<T> {
 	public HybridScope(OperationAdapter operation) {
 		super(operation.getFunctionName(), operation.getMetadata());
 		this.explicit = new ExplicitScope<T>(operation);
+
+		if (operation.getComputeRequirements() != null) {
+			setComputeRequirements(operation.getComputeRequirements());
+		}
 	}
 
 	public HybridScope(ExplicitScope<T> explicit, CodeGenerator generator) {

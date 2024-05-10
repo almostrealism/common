@@ -126,6 +126,14 @@ public class ReshapeProducer<T extends Shape<T>>
 		return Countable.isFixedCount(producer);
 	}
 
+	public Producer<T> getComputation() {
+		if (producer instanceof ReshapeProducer) {
+			return ((ReshapeProducer) producer).getComputation();
+		} else {
+			return producer;
+		}
+	}
+
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
@@ -260,12 +268,7 @@ public class ReshapeProducer<T extends Shape<T>>
 		Evaluable<T> ev = producer.get();
 
 		if (ev instanceof Provider) {
-			return new Provider<>(null) {
-				@Override
-				public T get() {
-					return apply((Shape<T>) ((Provider) ev).get());
-				}
-			};
+			return p((Provider) ev, v -> (Shape<T>) apply((T) v));
 		}
 
 		HardwareEvaluable<T> hev = new HardwareEvaluable<>(producer::get, null, null, false);

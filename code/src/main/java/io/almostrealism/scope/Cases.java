@@ -75,8 +75,13 @@ public class Cases<T> extends Scope<T> {
 
 		for (int i = 0; i < getChildren().size(); i++) {
 			if (i < getConditions().size()) {
+				String c = getConditions().get(i).getExpression(w.getLanguage());
+				if ("false".equals(c)) {
+					throw new UnsupportedOperationException();
+				}
+
 				String pre = i > 0 ? "else if (" : "if (";
-				w.println(pre + getConditions().get(i).getExpression(w.getLanguage()) + ") {");
+				w.println(pre + c + ") {");
 			} else {
 				w.println(" else {");
 			}

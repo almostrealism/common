@@ -170,6 +170,17 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
+		Optional<Boolean> v = condition.getSimplified().booleanValue();
+		if (v.isPresent()) {
+			if (v.get()) {
+				add(scope);
+			} else if (altScope != null) {
+				add(altScope);
+			}
+
+			return scope;
+		}
+
 		Cases cases = new Cases<>();
 		cases.addCase(condition, scope);
 		if (altScope != null) cases.add(altScope);
@@ -271,6 +282,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	public ArrayVariable<?> declareArray(NameProvider np, String name, Expression<Integer> size) {
+		if (size.intValue().orElse(1) <= 0) {
+			throw new IllegalArgumentException("Array size cannot be less than 1");
+		}
+
 		getStatements().add(new ArrayDeclaration(Double.class, name, size));
 
 		ArrayVariable v = new ArrayVariable<>(np, Double.class, name, size);
@@ -552,6 +567,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.setComputeRequirements(getComputeRequirements());
 		scope.getChildren().addAll(children);
 		return scope;
 	}

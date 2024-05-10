@@ -46,6 +46,7 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -80,6 +81,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
 	boolean enableAxisAlignment = true;
+	boolean enableStrictAssignmentSize = true;
 
 	Console console = Computation.console.child();
 
@@ -145,6 +147,24 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	default <T, V> Provider<T> p(Supplier<V> ev, Function<V, T> func) {
+		if (ev instanceof CollectionProvider) {
+			return new CollectionProvider(null) {
+				@Override
+				public T get() {
+					return func.apply((V) ((CollectionProvider) ev).get());
+				}
+			};
+		} else {
+			return new Provider<>(null) {
+				@Override
+				public T get() {
+					return func.apply((V) ((Provider) ev).get());
+				}
+			};
+		}
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
 		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
 		c.setMem(0, values);
@@ -206,7 +226,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, true);
+			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, enableStrictAssignmentSize);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {

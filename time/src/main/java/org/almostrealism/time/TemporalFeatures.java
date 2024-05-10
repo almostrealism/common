@@ -16,6 +16,7 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -26,6 +27,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
 
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -75,7 +77,9 @@ public interface TemporalFeatures {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 
-	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input) {
-		return new FourierTransform(bins, input);
+	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
+		FourierTransform fft = new FourierTransform(bins, input);
+		if (requirements.length > 0) fft.setComputeRequirements(List.of(requirements));
+		return fft;
 	}
 }
