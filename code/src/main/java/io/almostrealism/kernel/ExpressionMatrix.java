@@ -51,7 +51,7 @@ public class ExpressionMatrix<T> implements ConsoleFeatures {
 	public ExpressionMatrix(Index row, Index col,
 							Expression<T> expression) {
 		this(row, col);
-		populate(expression.getSimplified());
+		populate(expression == null ? null : expression.getSimplified());
 	}
 
 	protected ExpressionMatrix(Index row, Index col,
@@ -361,7 +361,8 @@ public class ExpressionMatrix<T> implements ConsoleFeatures {
 			return null;
 		}
 
-		return new ExpressionMatrix<>(row, col, (Expression) null);
+//		return new ExpressionMatrix<>(row, col, (Expression) null);
+		return new ExpressionMatrix<>(row, col, expression);
 	}
 
 	public static <T, O> ExpressionMatrix<O> create(Index row, Index col, Expression<T> expression,

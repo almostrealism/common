@@ -22,7 +22,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
@@ -302,10 +302,10 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	public void trainSmall() throws IOException {
 		if (skipLongTests) return;
 		if (!trainingTests &&
-				!DynamicIndexProjectionProducerComputation.enableChainDelta)
+				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
 
-		int dim = 24; // 28;
+		int dim = 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();

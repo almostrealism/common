@@ -34,15 +34,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class OperationProfileNode extends OperationProfile implements Tree<OperationProfileNode> {
 	private static Function<OperationMetadata, String> metadataDetail =
 			OperationProfile.appendContext(
+					OperationProfile.appendShape(
 							meta -> meta.getShortDescription() == null ?
-									meta.getDisplayName() : meta.getShortDescription());
+									meta.getDisplayName() : meta.getShortDescription()));
 
 	private CompilationProfile compilation;
 	private Map<String, OperationProfileNode> children;

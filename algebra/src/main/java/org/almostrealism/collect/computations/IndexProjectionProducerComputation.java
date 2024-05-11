@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
-	public static boolean enableDelegatedIsolate = false;
+	public static boolean enableDelegatedIsolate = true;
 	public static boolean enableInputIsolate = false;
 
 	private UnaryOperator<Expression<?>> indexProjection;
