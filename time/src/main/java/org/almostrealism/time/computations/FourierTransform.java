@@ -33,8 +33,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
-	public static boolean enableRecursion = false;
-	public static boolean enableRadix2Recursion = false;
+	public static boolean enableRecursion = true;
 
 	private int varIdx = 0;
 
@@ -240,7 +239,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 			if (size >= 2) {
 				Scope<?> two = cases.addCase(len.greaterThanOrEqual(e(2)), new Scope<>());
 				{
-					if (enableRadix2Recursion) {
+					if (enableRecursion) {
 						Scope calculateRadix2 = radix2(size);
 						calculateTransform.getRequiredScopes().add(calculateRadix2);
 						two.getStatements().add(
@@ -453,7 +452,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 									int size) {
 		Scope recursion = new Scope();
 
-		if (enableRadix2Recursion) {
+		if (enableRecursion) {
 			Method<?> evenFftCall = radix2.call(evenFft.ref(), even.ref(), halfN, inverseTransform.ref(), e(0));
 			recursion.getStatements().add(evenFftCall);
 
