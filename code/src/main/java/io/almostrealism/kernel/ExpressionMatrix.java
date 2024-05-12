@@ -28,6 +28,7 @@ import java.util.function.Predicate;
 
 public class ExpressionMatrix<T> implements ConsoleFeatures {
 	public static boolean enableUnsequencedMatrices = false;
+	public static long maxMatrixSize = (long) 10e7;
 
 	private final Index row;
 	private final Index col;
@@ -359,9 +360,10 @@ public class ExpressionMatrix<T> implements ConsoleFeatures {
 			return new ExpressionMatrix<>(row, col, seq);
 		} else if (Index.child(row, col, (long) Integer.MAX_VALUE) == null) {
 			return null;
+		} else if (row.getLimit().getAsLong() * col.getLimit().getAsLong() > maxMatrixSize) {
+			return null;
 		}
 
-//		return new ExpressionMatrix<>(row, col, (Expression) null);
 		return new ExpressionMatrix<>(row, col, expression);
 	}
 

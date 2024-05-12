@@ -42,6 +42,11 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		if (index.isFP()) {
+			warn("FP index - " + index.getExpressionSummary());
+			index = index.toInt();
+		}
+
 		Expression pos[] = getPosition(index.imod(getPositionShape().getTotalSizeLong()));
 		return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
 	}

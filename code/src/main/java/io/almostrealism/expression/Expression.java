@@ -306,6 +306,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return "(" + getExpression(lang) + ")";
 	}
 
+	public String getExpressionSummary() {
+		if (depth < 10) return getExpression(lang);
+		return getClass().getSimpleName() + "<" +
+					getType().getSimpleName() +
+				">[depth=" + depth + "]";
+	}
+
 	public List<Expression> find(String text) {
 		List<Expression> found = new ArrayList<>();
 		for (Expression e : getChildren()) {

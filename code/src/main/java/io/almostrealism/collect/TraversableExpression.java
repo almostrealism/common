@@ -46,7 +46,7 @@ public interface TraversableExpression<T> extends Computable, ExpressionFeatures
 
 		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
 		if (indices == null) {
-			warn("Unable to create ExpressionMatrix for " + targetIndex);
+			warn("Unable to create ExpressionMatrix for " + targetIndex.getExpressionSummary());
 			return null;
 		}
 

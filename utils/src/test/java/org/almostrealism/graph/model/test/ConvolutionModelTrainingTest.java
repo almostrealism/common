@@ -41,7 +41,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures {
-	static boolean large = false;
+	static boolean large = true;
 	static int rows, cols;
 
 	static {
@@ -49,10 +49,8 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			rows = 54;
 			cols = 54;
 		} else {
-//			rows = 28;
-//			cols = 28;
-			rows = 22;
-			cols = 22;
+			rows = 30;
+			cols = 30;
 		}
 
 		if (TestUtils.getTrainTests()) {
