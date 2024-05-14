@@ -124,8 +124,10 @@ public class Heap {
 		end = 0;
 		data.destroy();
 
-		while (!stages.isEmpty()) {
-			stages.pop().destroy();
+		if (stages != null) {
+			while (!stages.isEmpty()) {
+				stages.pop().destroy();
+			}
 		}
 
 		if (dependencies != null) {
