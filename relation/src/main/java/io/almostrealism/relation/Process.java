@@ -32,7 +32,7 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 		return Process.of(this);
 	}
 
-	default boolean isIsolationTarget() {
+	default boolean isIsolationTarget(ProcessContext context) {
 		return false;
 	}
 

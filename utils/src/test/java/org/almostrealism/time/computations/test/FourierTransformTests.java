@@ -32,6 +32,11 @@ public class FourierTransformTests implements TestFeatures {
 
 	@Test
 	public void compileGpu() {
+		if (FourierTransform.enableRecursion) {
+			if (skipKnownIssues) return;
+			throw new UnsupportedOperationException("Recursion is not supported on the GPU");
+		}
+
 		compile(ComputeRequirement.GPU);
 	}
 

@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
@@ -46,7 +45,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
 		process = process.optimize(ctx);
-		if (process.isIsolationTarget())
+		if (process.isIsolationTarget(ctx))
 			process = isolate(process);
 		return process;
 	}

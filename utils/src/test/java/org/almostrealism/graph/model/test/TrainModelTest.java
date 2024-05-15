@@ -314,8 +314,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainMedium() throws IOException {
-		if (skipLongTests) return;
-		if (!trainingTests) return;
+		if (skipLongTests || !trainingTests) return;
 
 		int dim = 54;
 		int filters = 8;
@@ -326,14 +325,14 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainLarge() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests || !trainingTests) return;
 
 		try {
 			int dim = 72;
 			int filters = 8;
 			Tensor<Double> t = tensor(shape(dim, dim));
 			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, filters, 3, 10));
+			train(input, model(dim, dim, 3, filters, 4, 10));
 		} finally {
 			ParallelProcess.isolationFlags.clear();
 		}
@@ -341,7 +340,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainProgressive() throws IOException {
-		if (!trainingTests) return;
+		if (skipLongTests || !trainingTests) return;
 
 		double size = 10;
 
