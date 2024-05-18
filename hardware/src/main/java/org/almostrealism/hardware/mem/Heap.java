@@ -34,39 +34,33 @@ import java.util.stream.Stream;
 public class Heap {
 	private static ThreadLocal<Heap> defaultHeap = new ThreadLocal<>();
 
-	private List<Bytes> entries;
-	private Bytes data;
-	private int end;
+	private MemoryProvider memory;
+	private int stageSize;
 
-	private HeapDependencies dependencies;
-	private Stack<HeapDependencies> stages;
+	private HeapStage root;
+	private Stack<HeapStage> stages;
 
-	public Heap(int totalSize) {
-		this(null, totalSize);
+	public Heap(int size) {
+		this(null, size, size / 4);
 	}
 
-	public Heap(MemoryProvider memory, int totalSize) {
-		entries = new ArrayList<>();
-		data = memory == null ? new Bytes(totalSize) : Bytes.of(memory.allocate(totalSize), totalSize);
-		dependencies = new HeapDependencies();
+	public Heap(int rootSize, int stageSize) {
+		this(null, rootSize, stageSize);
 	}
 
-	public synchronized Bytes allocate(int count) {
-		if (end + count > data.getMemLength()) {
-			throw new IllegalArgumentException("No room remaining in Heap");
-		}
-
-		Bytes allocated = new Bytes(count, data, end);
-		end = end + count;
-		entries.add(allocated);
-		return allocated;
+	public Heap(MemoryProvider memory, int rootSize, int stageSize) {
+		this.memory = memory;
+		this.stageSize = stageSize;
+		this.root = new HeapStage(rootSize);
 	}
 
-	public Bytes get(int index) { return entries.get(index); }
+	public HeapStage getStage() {
+		return (stages == null || stages.isEmpty()) ? root : stages.peek();
+	}
 
-	public Bytes getBytes() { return data; }
-
-	public Stream<Bytes> stream() { return entries.stream(); }
+	public Bytes allocate(int count) {
+		return getStage().allocate(count);
+	}
 
 	public <T> Callable<T> wrap(Callable<T> r) {
 		return () -> {
@@ -110,7 +104,7 @@ public class Heap {
 			stages = new Stack<>();
 		}
 
-		stages.push(new HeapDependencies());
+		stages.push(new HeapStage(stageSize));
 	}
 
 	protected void pop() {
@@ -120,36 +114,72 @@ public class Heap {
 	}
 
 	public synchronized void destroy() {
-		entries.clear();
-		end = 0;
-		data.destroy();
-
 		if (stages != null) {
 			while (!stages.isEmpty()) {
 				stages.pop().destroy();
 			}
 		}
 
-		if (dependencies != null) {
-			dependencies.destroy();
-			dependencies = null;
-		}
+		root.destroy();
 	}
 
 	private List<Supplier> getDependentOperations() {
 		if (stages != null && !stages.isEmpty()) {
-			return stages.peek().dependentOperations;
+			return stages.peek().dependencies.dependentOperations;
 		}
 
-		return dependencies == null ? null : dependencies.dependentOperations;
+		return root.dependencies == null ? null : root.dependencies.dependentOperations;
 	}
 
 	private List<OperationAdapter> getCompiledDependencies() {
 		if (stages != null && !stages.isEmpty()) {
-			return stages.peek().compiledDependencies;
+			return stages.peek().dependencies.compiledDependencies;
 		}
 
-		return dependencies == null ? null : dependencies.compiledDependencies;
+		return root.dependencies == null ? null : root.dependencies.compiledDependencies;
+	}
+
+	public class HeapStage implements Destroyable {
+		private List<Bytes> entries;
+		private Bytes data;
+		private int end;
+
+		HeapDependencies dependencies;
+
+		public HeapStage(int size) {
+			entries = new ArrayList<>();
+			data = memory == null ? new Bytes(size) : Bytes.of(memory.allocate(size), size);
+			dependencies = new HeapDependencies();
+		}
+
+		public synchronized Bytes allocate(int count) {
+			if (end + count > data.getMemLength()) {
+				throw new IllegalArgumentException("No room remaining in Heap");
+			}
+
+			Bytes allocated = new Bytes(count, data, end);
+			end = end + count;
+			entries.add(allocated);
+			return allocated;
+		}
+
+		public Bytes get(int index) { return entries.get(index); }
+
+		public Bytes getBytes() { return data; }
+
+		public Stream<Bytes> stream() { return entries.stream(); }
+
+		@Override
+		public void destroy() {
+			entries.clear();
+			end = 0;
+			data.destroy();
+
+			if (dependencies != null) {
+				dependencies.destroy();
+				dependencies = null;
+			}
+		}
 	}
 
 	private class HeapDependencies implements Destroyable {
