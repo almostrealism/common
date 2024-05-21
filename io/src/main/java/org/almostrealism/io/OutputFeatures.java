@@ -16,6 +16,7 @@
 
 package org.almostrealism.io;
 
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -35,6 +36,10 @@ public interface OutputFeatures {
 					throw new RuntimeException(e);
 				}
 			};
+		} catch (FileNotFoundException e) {
+			System.out.println("Output destination does not exist - " +
+								e.getMessage());
+			return s -> {};
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
