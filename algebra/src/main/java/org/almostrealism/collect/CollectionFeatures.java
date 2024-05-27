@@ -38,6 +38,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -81,6 +82,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
 	boolean enableAxisAlignment = true;
+	boolean enableVariableRepeat = false;
 	boolean enableStrictAssignmentSize = true;
 
 	Console console = Computation.console.child();
@@ -368,7 +370,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 						producers.stream().map(this::shape).collect(Collectors.toList()),
 						producers,
 						(i, p) -> traverse(i, (Producer) p),
-						(i, p) -> (Producer) repeat(i, (Producer) p),
+						(i, p) -> {
+							if (enableVariableRepeat || Countable.isFixedCount(p)) {
+								return (Producer) repeat(i, (Producer) p);
+							} else {
+								return p;
+							}
+						},
 						processor);
 	}
 
