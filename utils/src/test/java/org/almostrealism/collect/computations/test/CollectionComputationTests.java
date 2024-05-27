@@ -57,6 +57,15 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void divideIntegers() {
+		PackedCollection<?> result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
+
+		assertEquals(3.0, result.toDouble(0));
+		assertEquals(6.0, result.toDouble(1));
+		assertEquals(12.0, result.toDouble(2));
+	}
+
+	@Test
 	public void index() {
 		PackedCollection<?> x = pack(1, 1, 1, 2, 2, 2);
 		PackedCollection<?> y = pack(0, 1, 2, 0, 1, 2);
