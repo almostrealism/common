@@ -688,7 +688,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
 		if (enableAxisAlignment) {
 			return compute(shape -> args ->
-					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+					mod(shape, args[1], args[2]),
 					null, a, b);
 		} else {
 			TraversalPolicy shape = shape(1);

@@ -189,6 +189,8 @@ public class CollectionComputationTests implements TestFeatures {
 			op.get().run();
 		});
 
+		buffer.traverse().print();
+
 		for (int i = 0; i < count; i++) {
 			for (int j = 0; j < size; j++) {
 				if (j == (int) bufferIndices.valueAt(i)) {
@@ -200,6 +202,20 @@ public class CollectionComputationTests implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	@Test
+	public void addModAssignment() {
+		int size = 3;
+		PackedCollection<?> indices = pack(2, 4, 6);
+		PackedCollection<?> lengths = pack(2, 3, 4);
+
+		a(cp(indices), mod(add(p(indices), c(1).repeat(size)), cp(lengths))).get().run();
+		indices.print();
+
+		assertEquals(1.0, indices.toDouble(0));
+		assertEquals(2.0, indices.toDouble(1));
+		assertEquals(3.0, indices.toDouble(2));
 	}
 
 	@Test
