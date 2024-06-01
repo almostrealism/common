@@ -19,6 +19,7 @@ package org.almostrealism.time;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
@@ -42,6 +43,8 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	private Supplier<Runnable> setup, run;
 	private Runnable s, r;
 
+	private OperationProfile profile;
+
 	public TemporalRunner(Temporal o, int iter) {
 		this(((Setup) o).setup(), o.tick(), iter);
 	}
@@ -60,7 +63,20 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 		}
 
 		this.run = loop(tick, iter);
+
+		if (enableFlatten && setup instanceof OperationList) {
+			setup = ((OperationList) setup).flatten();
+		}
+
 		this.setup = setup;
+	}
+
+	public OperationProfile getProfile() {
+		return profile;
+	}
+
+	public void setProfile(OperationProfile profile) {
+		this.profile = profile;
 	}
 
 	@Override
@@ -84,12 +100,8 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	public void compile() {
 		if (s != null || r != null) return;
 
-		s = setup.get();
-		r = run.get();
-
-		// TODO  These probably should be removed completely
-		if (s instanceof OperationAdapter && !((OperationAdapter) s).isCompiled()) ((OperationAdapter<?>) s).compile();
-		if (r instanceof OperationAdapter && !((OperationAdapter) r).isCompiled()) ((OperationAdapter<?>) r).compile();
+		s = setup instanceof OperationList ? ((OperationList) setup).get(profile) : setup.get();
+		r = run instanceof OperationList ? ((OperationList) run).get(profile) : run.get();
 	}
 
 	@Override

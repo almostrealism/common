@@ -165,14 +165,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void initKernelMetrics(OperationProfile profile) {
-		if (profile instanceof OperationProfileNode) {
-			AbstractComputeContext.compilationProfile = ((OperationProfileNode) profile).getCompilationProfile();
-		} else {
-			AbstractComputeContext.compilationProfile = new CompilationProfile("default",
-					OperationProfile.appendContext(OperationMetadata::getDisplayName));
-		}
-
-		HardwareOperator.profile = profile;
+		Hardware.getLocalHardware().assignProfile(profile);
 		AcceleratedComputationOperation.clearTimes();
 	}
 
