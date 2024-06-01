@@ -16,16 +16,12 @@
 
 package org.almostrealism.time.computations.test;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class TemporalFeaturesTest implements TestFeatures {
-	@Test
-	public void lowPassCoefficients() {
-		int filterOrder = 30;
-		int sampleRate = 44100;
-		double cutoff = 3000;
-
+	protected double[] lowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
 		double[] coefficients = new double[filterOrder + 1];
 		double normalizedCutoff = 2 * cutoff / sampleRate;
 
@@ -41,10 +37,40 @@ public class TemporalFeaturesTest implements TestFeatures {
 			coefficients[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / filterOrder);
 		}
 
+		return coefficients;
+	}
+
+	@Test
+	public void lowPassCoefficients() {
+		int filterOrder = 30;
+		int sampleRate = 44100;
+		double cutoff = 3000;
+
+		double[] coefficients = lowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double result[] = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
 
 		for (int i = 0; i < filterOrder + 1; i++) {
 			assertEquals(coefficients[i], result[i]);
+		}
+	}
+
+	@Test
+	public void lowPassCoefficientsMultiple() {
+		int filterOrder = 30;
+		int sampleRate = 44100;
+		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+
+		PackedCollection<?> result = lowPassCoefficients(cp(cutoffs.traverse(1)), sampleRate, filterOrder).get().evaluate();
+
+		int len = filterOrder + 1;
+
+		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
+			double[] coefficients = lowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
+
+			for (int i = 0; i < filterOrder + 1; i++) {
+				assertEquals(coefficients[i], resultCoefficients[i]);
+			}
 		}
 	}
 }

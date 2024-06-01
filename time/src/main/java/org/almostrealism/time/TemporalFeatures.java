@@ -120,6 +120,12 @@ public interface TemporalFeatures extends GeometryFeatures {
 	}
 
 	default MultiOrderFilter lowPass(Producer<PackedCollection<?>> series,
+									  Producer<PackedCollection<?>> cutoff,
+									  int sampleRate) {
+		return lowPass(series, cutoff, sampleRate, 40);
+	}
+
+	default MultiOrderFilter lowPass(Producer<PackedCollection<?>> series,
 									 Producer<PackedCollection<?>> cutoff,
 									 int sampleRate, int order) {
 		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
@@ -128,6 +134,12 @@ public interface TemporalFeatures extends GeometryFeatures {
 		}
 
 		return MultiOrderFilter.create(series, lowPassCoefficients(cutoff, sampleRate, order));
+	}
+
+	default MultiOrderFilter highPass(Producer<PackedCollection<?>> series,
+									  Producer<PackedCollection<?>> cutoff,
+									  int sampleRate) {
+		return highPass(series, cutoff, sampleRate, 40);
 	}
 
 	default MultiOrderFilter highPass(Producer<PackedCollection<?>> series,
