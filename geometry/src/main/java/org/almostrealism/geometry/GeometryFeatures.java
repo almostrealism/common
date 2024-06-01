@@ -16,7 +16,9 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -25,7 +27,6 @@ import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.List;
@@ -36,22 +37,43 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 
-	default ExpressionComputation sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValueRelative(0));
+	default <T extends PackedCollection<?>> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		return compute("sin",
+				shape -> args -> sin(shape, args[1]),
+				null, (Producer) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		return compute("cos",
+				shape -> args -> cos(shape, args[1]),
+				null, (Producer) input);
+	}
+
+	@Deprecated
+	default ExpressionComputation relativeSin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
+				new Sine(args.get(1).getValueRelative(0));
+		return new ExpressionComputation(List.of(exp), input);
+	}
+
+	@Deprecated
+	default ExpressionComputation relativeCos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
+				new Cosine(args.get(1).getValueRelative(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
 	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
 														 Producer<PackedCollection<?>> wavelength,
 														 Producer<PackedCollection<?>> amp) {
-		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
+		return relativeSin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
 	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
 																							 Producer<PackedCollection<?>> wavelength,
 																							 Producer<PackedCollection<?>> phase,
 																							 Producer<PackedCollection<?>> amp) {
-		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
+		return relativeSin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
 	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {

@@ -14,7 +14,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-algebra</artifactId>
+			<artifactId>ar-geometry</artifactId>
 			<version>0.63</version>
 		</dependency>
 	</dependencies>

@@ -54,7 +54,7 @@ public class Max extends BinaryExpression<Double> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.conditional(target.getShape(),
+		return conditional(target.getShape(),
 				getLeft().greaterThan(getRight()),
 				getLeft().delta(target),
 				getRight().delta(target));

@@ -67,15 +67,6 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		throw new UnsupportedOperationException();
 	}
 
-	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
-											CollectionExpression positive, CollectionExpression negative) {
-		return create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
-	}
-
-	static CollectionExpression zeros(TraversalPolicy shape) {
-		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
-	}
-
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
 	}

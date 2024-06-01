@@ -17,21 +17,27 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
+import org.almostrealism.time.computations.MultiOrderFilter;
 
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
-public interface TemporalFeatures {
+public interface TemporalFeatures extends GeometryFeatures {
 	default Frequency bpm(double bpm) {
 		return Frequency.forBPM(bpm);
 	}
@@ -81,5 +87,57 @@ public interface TemporalFeatures {
 		FourierTransform fft = new FourierTransform(bins, input);
 		if (requirements.length > 0) fft.setComputeRequirements(List.of(requirements));
 		return fft;
+	}
+
+	default CollectionProducer<PackedCollection<?>> lowPassCoefficients(
+			Producer<PackedCollection<?>> cutoff,
+			int sampleRate, int filterOrder) {
+		CollectionProducer<PackedCollection<?>> normalizedCutoff =
+				c(2).multiply(cutoff).divide(sampleRate);
+
+		int center = filterOrder / 2;
+		CollectionProducer<PackedCollection<?>> index =
+				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
+		CollectionProducer<PackedCollection<?>> k = index.subtract(c(center));
+
+		CollectionProducer<PackedCollection<?>> coeff =
+				sin(c(PI).multiply(k).multiply(normalizedCutoff)).divide(c(PI).multiply(k));
+		coeff = equals(index, c(center), normalizedCutoff, coeff);
+
+		CollectionProducer<PackedCollection<?>> alt =
+				c(0.54).subtract(c(0.46).multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
+		return coeff.multiply(alt);
+	}
+
+	default CollectionProducer<PackedCollection<?>> highPassCoefficients(
+			Producer<PackedCollection<?>> cutoff,
+			int sampleRate, int filterOrder) {
+		int center = filterOrder / 2;
+		CollectionProducer<PackedCollection<?>> index =
+				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
+		return equals(index, c(center), c(1.0), c(0.0))
+				.subtract(lowPassCoefficients(cutoff, sampleRate, filterOrder));
+	}
+
+	default MultiOrderFilter lowPass(Producer<PackedCollection<?>> series,
+									 Producer<PackedCollection<?>> cutoff,
+									 int sampleRate, int order) {
+		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
+		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
+			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
+		}
+
+		return MultiOrderFilter.create(series, lowPassCoefficients(cutoff, sampleRate, order));
+	}
+
+	default MultiOrderFilter highPass(Producer<PackedCollection<?>> series,
+									  Producer<PackedCollection<?>> cutoff,
+									  int sampleRate, int order) {
+		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
+		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
+			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
+		}
+
+		return MultiOrderFilter.create(series, highPassCoefficients(cutoff, sampleRate, order));
 	}
 }

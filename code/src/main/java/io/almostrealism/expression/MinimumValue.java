@@ -53,6 +53,6 @@ public class MinimumValue extends StaticReference<Double> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.zeros(target.getShape());
+		return zeros(target.getShape());
 	}
 }

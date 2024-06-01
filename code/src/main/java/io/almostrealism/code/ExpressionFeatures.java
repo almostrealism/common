@@ -17,12 +17,14 @@
 package io.almostrealism.code;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Epsilon;
@@ -34,6 +36,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
@@ -161,6 +164,35 @@ public interface ExpressionFeatures {
 
 	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
 		return new UniformCollectionExpression(shape, Mod::of, in, mod);
+	}
+
+	default CollectionExpression sin(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> new Sine(args[0]), input);
+	}
+
+	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default TraversableExpression<Boolean> equals(TraversalPolicy shape,
+												 TraversableExpression<Double> a, TraversableExpression<Double> b) {
+		return idx -> equals(a.getValueAt(idx), b.getValueAt(idx));
+	}
+
+	default CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
+											TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
+		return CollectionExpression.create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
+	}
+
+	default CollectionExpression conditional(TraversalPolicy shape, TraversableExpression<Boolean> condition,
+											 TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
+		return CollectionExpression.create(shape, idx ->
+				condition.getValueAt(idx)
+					.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
+	}
+
+	default CollectionExpression zeros(TraversalPolicy shape) {
+		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
 	}
 
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {

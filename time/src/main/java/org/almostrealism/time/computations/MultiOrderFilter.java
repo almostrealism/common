@@ -21,6 +21,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
@@ -30,6 +33,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+
+import java.util.List;
 
 public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	private int filterOrder;
@@ -87,26 +92,9 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 		return scope;
 	}
 
-	public static MultiOrderFilter createLowPass(Producer<PackedCollection<?>> series,
-												 Producer<PackedCollection<?>> cutoff,
-												 int sampleRate, int order) {
-		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
-		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
-			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
-		}
-
-		return create(series, lowPassCoefficients(cutoff, sampleRate, order));
-	}
-
-	public static MultiOrderFilter createHighPass(Producer<PackedCollection<?>> series,
-												  Producer<PackedCollection<?>> cutoff,
-												  int sampleRate, int order) {
-		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
-		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
-			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
-		}
-
-		return create(series, highPassCoefficients(cutoff, sampleRate, order));
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection<?>>> generate(List<Process<?, ?>> children) {
+		return new MultiOrderFilter(getShape(), (Producer) children.get(1),(Producer) children.get(2));
 	}
 
 	public static MultiOrderFilter create(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
@@ -116,45 +104,5 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 		}
 
 		return new MultiOrderFilter(shape.traverseEach(), series, coefficients);
-	}
-
-	private static CollectionProducer<PackedCollection<?>> lowPassCoefficients(
-																	Producer<PackedCollection<?>> cutoff,
-																	int sampleRate, int filterOrder) {
-		return new DynamicCollectionProducer<>(new TraversalPolicy(filterOrder + 1), args -> {
-			double[] coefficients = new double[filterOrder + 1];
-			double normalizedCutoff = 2 * cutoff.get().evaluate().toDouble(0) / sampleRate;
-
-			for (int i = 0; i <= filterOrder; i++) {
-				if (i == filterOrder / 2) {
-					coefficients[i] = normalizedCutoff;
-				} else {
-					int k = i - filterOrder / 2;
-					coefficients[i] = Math.sin(Math.PI * k * normalizedCutoff) / (Math.PI * k);
-				}
-
-				// Hamming window
-				coefficients[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / filterOrder);
-			}
-
-			return PackedCollection.of(coefficients);
-		}, false);
-	}
-
-	private static CollectionProducer<PackedCollection<?>> highPassCoefficients(
-																	Producer<PackedCollection<?>> cutoff,
-																	int sampleRate, int filterOrder) {
-		CollectionProducer<PackedCollection<?>> lp = lowPassCoefficients(cutoff, sampleRate, filterOrder);
-
-		return new DynamicCollectionProducer<>(lp.getShape(), args -> {
-			double lowPassCoefficients[] = lp.get().evaluate().toArray();
-
-			double[] highPassCoefficients = new double[filterOrder + 1];
-			for (int i = 0; i <= filterOrder; i++) {
-				highPassCoefficients[i] = ((i == filterOrder / 2) ? 1.0 : 0.0) - lowPassCoefficients[i];
-			}
-
-			return PackedCollection.of(highPassCoefficients);
-		}, false);
 	}
 }
