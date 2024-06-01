@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -36,6 +37,11 @@ public class Epsilon extends StaticReference<Double> {
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
+	}
+
+	@Override
+	public ExpressionAssignment<Double> assign(Expression exp) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

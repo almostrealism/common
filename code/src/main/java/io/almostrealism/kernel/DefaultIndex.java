@@ -16,6 +16,8 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
@@ -68,6 +70,11 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	@Override
 	public Number value(IndexValues indexValues) {
 		return indexValues.getIndex(getName());
+	}
+
+	@Override
+	public ExpressionAssignment<Integer> assign(Expression exp) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

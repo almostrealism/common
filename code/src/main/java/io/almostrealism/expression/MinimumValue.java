@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -43,6 +44,11 @@ public class MinimumValue extends StaticReference<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.getPrecision().stringForDouble(lang.getPrecision().minValue());
+	}
+
+	@Override
+	public ExpressionAssignment<Double> assign(Expression exp) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

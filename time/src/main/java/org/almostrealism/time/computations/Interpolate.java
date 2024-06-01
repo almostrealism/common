@@ -52,6 +52,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		this.indexForTime = indexForTime;
 	}
 
+	// TODO  Probably unnecessary
 	@Override
 	public TraversalPolicy getShape() {
 		return new TraversalPolicy(1);

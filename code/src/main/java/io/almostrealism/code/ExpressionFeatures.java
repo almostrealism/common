@@ -84,6 +84,11 @@ public interface ExpressionFeatures {
 			public String getExpression(LanguageOperations lang) {
 				return lang.pi();
 			}
+
+			@Override
+			public ExpressionAssignment<Double> assign(Expression exp) {
+				throw new UnsupportedOperationException();
+			}
 		};
 	}
 

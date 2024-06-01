@@ -24,6 +24,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTree;
+import java.io.IOException;
 import java.util.function.Consumer;
 
 public class OperationProfileUI {
@@ -64,5 +65,15 @@ public class OperationProfileUI {
 		frame.setSize(1200, 900);
 		frame.setVisible(true);
 		return frame;
+	}
+
+	public static void main(String args[]) throws IOException {
+		OperationProfileUI.display(OperationProfileNode.load(args[0]));
+
+		try {
+			Thread.sleep(24 * 60 * 60 * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 	}
 }
