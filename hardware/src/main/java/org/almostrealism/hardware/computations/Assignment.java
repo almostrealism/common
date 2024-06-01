@@ -26,6 +26,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
@@ -102,6 +103,22 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return scope;
+	}
+
+	@Override
+	public Process<Process<?, ?>, Runnable> optimize(ProcessContext ctx, Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.optimize(ctx, process);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.isolate(process);
 	}
 
 	@Override

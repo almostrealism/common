@@ -18,13 +18,9 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
@@ -38,7 +34,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new TraversableExpressionComputation<>(shape.traverseEach(),
+		return new TraversableExpressionComputation<>(null, shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
 

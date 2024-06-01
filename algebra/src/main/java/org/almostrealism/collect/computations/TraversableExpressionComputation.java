@@ -46,24 +46,24 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Deprecated
 	@SafeVarargs
-	public TraversableExpressionComputation(TraversalPolicy shape,
-										BiFunction<TraversableExpression[], Expression, Expression> expression,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											BiFunction<TraversableExpression[], Expression, Expression> expression,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(name, shape, validateArgs(args));
 		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
 	}
 
 	@SafeVarargs
-	public TraversableExpressionComputation(TraversalPolicy shape,
-										Function<TraversableExpression[], CollectionExpression> expression,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											Function<TraversableExpression[], CollectionExpression> expression,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(name, shape, validateArgs(args));
 		this.expression = expression;
 	}
 
-	public TraversableExpressionComputation(TraversalPolicy shape,
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
 											CollectionExpression expression) {
-		super(shape);
+		super(name, shape);
 		this.expression = (arguments) -> expression;
 	}
 
@@ -93,7 +93,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getName(), getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setShortCircuit(getShortCircuit())
@@ -141,7 +141,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 			}
 		};
 
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(null, value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? (T) v : postprocessor.apply(v, 0);

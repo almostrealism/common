@@ -137,7 +137,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(shape,
+		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(null, shape,
 				(args, i) ->
 						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
 				collection, (Supplier) index);

@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
-import io.almostrealism.collect.IndexProjectionCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -62,7 +61,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 											  boolean relative,
 											  Producer<?> collection,
 											  Producer<?>... inputs) {
-		super(shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
+		super(null, shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
 		this.indexProjection = indexProjection;
 		this.relative = relative;
 	}

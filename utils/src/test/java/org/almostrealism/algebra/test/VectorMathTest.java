@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
@@ -135,5 +136,20 @@ public class VectorMathTest implements TestFeatures {
 		assertEquals(9, result.getX());
 		assertEquals(16, result.getY());
 		assertEquals(25, result.getZ());
+	}
+
+	@Test
+	public void normalize() {
+		PackedCollection<?> v = new PackedCollection<>(3).randFill();
+		PackedCollection<?> result = _normalize(cp(v)).evaluate();
+		double length = result.doubleStream().map(d -> d * d).sum();
+		assertEquals(1.0, length);
+	}
+
+	@Test
+	public void normalizeRandom() {
+		PackedCollection<?> result = _normalize(new Random(shape(2))).evaluate();
+		double length = result.doubleStream().map(d -> d * d).sum();
+		assertEquals(1.0, length);
 	}
 }
