@@ -39,6 +39,7 @@ import java.util.stream.Stream;
 
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
 	public static boolean enableStrictSizes = true;
+	public static boolean enableDivisibleSizes = true;
 
 	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
 
@@ -430,7 +431,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
-				int repeat = shape.getTotalSize() / shapes.get(i).getTotalSize();
+				int repeat;
+
+				if (enableDivisibleSizes && shape.getTotalSize() % shapes.get(i).getTotalSize() != 0) {
+					repeat = 0;
+				} else {
+					repeat = shape.getTotalSize() / shapes.get(i).getTotalSize();
+				}
+
 
 				V v = traversalFunction.apply(matchDepths[i], values.get(i));
 				if (repeat > 1) v = expandFunction.apply(repeat, v);
