@@ -40,6 +40,17 @@ public class TemporalFeaturesTest implements TestFeatures {
 		return coefficients;
 	}
 
+	protected double[] highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
+		double lowPassCoefficients[] = lowPassCoefficients(cutoff, sampleRate, filterOrder);
+
+		double[] highPassCoefficients = new double[filterOrder + 1];
+		for (int i = 0; i <= filterOrder; i++) {
+			highPassCoefficients[i] = ((i == filterOrder / 2) ? 1.0 : 0.0) - lowPassCoefficients[i];
+		}
+
+		return highPassCoefficients;
+	}
+
 	@Test
 	public void lowPassCoefficients() {
 		int filterOrder = 30;
@@ -60,12 +71,32 @@ public class TemporalFeaturesTest implements TestFeatures {
 		int sampleRate = 44100;
 		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection<?> result = lowPassCoefficients(cp(cutoffs.traverse(1)), sampleRate, filterOrder).get().evaluate();
+		PackedCollection<?> result = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
 
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
 			double[] coefficients = lowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
+
+			for (int i = 0; i < filterOrder + 1; i++) {
+				assertEquals(coefficients[i], resultCoefficients[i]);
+			}
+		}
+	}
+
+	@Test
+	public void highPassCoefficientsMultiple() {
+		int filterOrder = 30;
+		int sampleRate = 44100;
+		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+
+		PackedCollection<?> result = highPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
+
+		int len = filterOrder + 1;
+
+		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
+			double[] coefficients = highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {

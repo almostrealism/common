@@ -98,14 +98,16 @@ public interface TemporalFeatures extends GeometryFeatures {
 		int center = filterOrder / 2;
 		CollectionProducer<PackedCollection<?>> index =
 				c(IntStream.range(0, filterOrder + 1).mapToDouble(i -> i).toArray());
-		CollectionProducer<PackedCollection<?>> k = index.subtract(c(center));
+		CollectionProducer<PackedCollection<?>> k = index.subtract(c(center)).multiply(c(PI));
+		k = k.repeat(shape(cutoff).getSize());
 
 		CollectionProducer<PackedCollection<?>> coeff =
-				sin(c(PI).multiply(k).multiply(normalizedCutoff)).divide(c(PI).multiply(k));
+				sin(k.multiply(normalizedCutoff)).divide(k);
 		coeff = equals(index, c(center), normalizedCutoff, coeff);
 
 		CollectionProducer<PackedCollection<?>> alt =
-				c(0.54).subtract(c(0.46).multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
+				c(0.54).subtract(c(0.46)
+						.multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
 		return coeff.multiply(alt);
 	}
 

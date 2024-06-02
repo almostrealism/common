@@ -73,6 +73,20 @@ public class CollectionMathTests implements TestFeatures {
 	}
 
 	@Test
+	public void doubleBroadcastProduct() {
+		PackedCollection<?> a = new PackedCollection<>(shape(6)).randFill();
+		PackedCollection<?> b = new PackedCollection<>(shape(40)).randFill();
+
+		PackedCollection<?> result = cp(a).multiply(cp(b).repeat(6)).get().evaluate();
+
+		for (int i = 0; i < 6; i++) {
+			for (int j = 0; j < 40; j++) {
+				assertEquals(a.valueAt(i) * b.valueAt(j), result.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
 	public void sum() {
 		int size = 768;
 

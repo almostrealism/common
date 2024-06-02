@@ -48,7 +48,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 			throw new UnsupportedOperationException();
 		}
 
-		this.filterOrder = shape(coefficients).length(0) - 1;
+		this.filterOrder = shape(coefficients).getSize() - 1;
 	}
 
 	@Override
@@ -72,8 +72,11 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 			{
 				Expression index = body.declareInteger("index", kernel().add(i.subtract(e(filterOrder / 2))));
 
+				Expression coeff = coefficients.getShape().getDimensions() == 1 ?
+						coefficients.getValueAt(i) : coefficients.getValue(kernel(), i);
+
 				body.addCase(index.greaterThanOrEqual(e(0)).and(index.lessThan(input.length())),
-						result.assign(result.add(input.getValueAt(index).multiply(coefficients.getValueAt(i)))));
+						result.assign(result.add(input.getValueAt(index).multiply(coeff))));
 			}
 
 			loop.add(body);
@@ -94,7 +97,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection<?>>> generate(List<Process<?, ?>> children) {
-		return new MultiOrderFilter(getShape(), (Producer) children.get(1),(Producer) children.get(2));
+		return new MultiOrderFilter(getShape(), (Producer) children.get(1), (Producer) children.get(2));
 	}
 
 	public static MultiOrderFilter create(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
