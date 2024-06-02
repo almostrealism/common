@@ -43,12 +43,13 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 		super(null, shape, new Producer[] { series, coefficients });
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
+		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);
 
-		if (seriesShape.getSizeLong() <= 1) {
+		if (seriesShape.getSizeLong() <= 1 || coeffShape.getSizeLong() <= 1) {
 			throw new UnsupportedOperationException();
 		}
 
-		this.filterOrder = shape(coefficients).getSize() - 1;
+		this.filterOrder = coeffShape.getSize() - 1;
 	}
 
 	@Override

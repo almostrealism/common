@@ -104,4 +104,33 @@ public class TemporalFeaturesTest implements TestFeatures {
 			}
 		}
 	}
+
+	@Test
+	public void lowPassCoefficientsArguments() {
+		int filterOrder = 30;
+		int sampleRate = 44100;
+		PackedCollection<?> cutoffs = pack(1000, 2000, 3000);
+
+		PackedCollection<?> result = new PackedCollection<>(shape(cutoffs.getShape().getTotalSize(), (filterOrder + 1)));
+		lowPassCoefficients(
+				v(shape(1), 0), sampleRate, filterOrder)
+				.get().into(result.traverse(1)).evaluate(cutoffs);
+
+//		PackedCollection<?> result =
+//				lowPassCoefficients(
+//					v(shape(1), 0), sampleRate, filterOrder)
+//				.get().evaluate(cutoffs);
+
+		int len = filterOrder + 1;
+
+		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
+			double[] coefficients = lowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
+
+			for (int i = 0; i < filterOrder + 1; i++) {
+				log(coefficients[i] + " vs " + resultCoefficients[i]);
+				assertEquals(coefficients[i], resultCoefficients[i]);
+			}
+		}
+	}
 }

@@ -101,6 +101,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 		CollectionProducer<PackedCollection<?>> k = index.subtract(c(center)).multiply(c(PI));
 		k = k.repeat(shape(cutoff).getSize());
 
+		normalizedCutoff = normalizedCutoff.traverse(1).repeat(shape(index).getSize());
+
 		CollectionProducer<PackedCollection<?>> coeff =
 				sin(k.multiply(normalizedCutoff)).divide(k);
 		coeff = equals(index, c(center), normalizedCutoff, coeff);
@@ -108,7 +110,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 		CollectionProducer<PackedCollection<?>> alt =
 				c(0.54).subtract(c(0.46)
 						.multiply(cos(c(2).multiply(PI).multiply(index).divide(filterOrder))));
-		return coeff.multiply(alt);
+		return coeff.multiply(alt).consolidate();
 	}
 
 	default CollectionProducer<PackedCollection<?>> highPassCoefficients(
