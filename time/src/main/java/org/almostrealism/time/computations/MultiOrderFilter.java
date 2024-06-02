@@ -45,7 +45,11 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
 		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);
 
-		if (seriesShape.getSizeLong() <= 1 || coeffShape.getSizeLong() <= 1) {
+		if (seriesShape.getSizeLong() <= 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		if (coeffShape.getSizeLong() <= 1) {
 			throw new UnsupportedOperationException();
 		}
 
