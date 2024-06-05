@@ -28,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 
@@ -221,8 +222,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				long time = System.nanoTime() - start; start = System.nanoTime();
 				AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
 
-				if (created.get() != null)
+				if (created.get() != null) {
 					created.get().add(kernelArgs[i]);
+				} else {
+					Heap.addCreatedMemory(kernelArgs[i]);
+				}
 
 				kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
 

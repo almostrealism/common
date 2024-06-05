@@ -19,6 +19,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
 
 import java.util.ArrayList;
@@ -139,6 +140,14 @@ public class Heap {
 		return root.dependencies == null ? null : root.dependencies.compiledDependencies;
 	}
 
+	private List<MemoryData> getCreatedMemory() {
+		if (stages != null && !stages.isEmpty()) {
+			return stages.peek().dependencies.createdMemory;
+		}
+
+		return root.dependencies == null ? null : root.dependencies.createdMemory;
+	}
+
 	public class HeapStage implements Destroyable {
 		private List<Bytes> entries;
 		private Bytes data;
@@ -185,10 +194,12 @@ public class Heap {
 	private class HeapDependencies implements Destroyable {
 		private List<Supplier> dependentOperations;
 		private List<OperationAdapter> compiledDependencies;
+		private List<MemoryData> createdMemory;
 
 		public HeapDependencies() {
 			dependentOperations = new ArrayList<>();
 			compiledDependencies = new ArrayList<>();
+			createdMemory = new ArrayList<>();
 		}
 
 		@Override
@@ -205,6 +216,11 @@ public class Heap {
 			if (compiledDependencies != null) {
 				compiledDependencies.forEach(OperationAdapter::destroy);
 				compiledDependencies = null;
+			}
+
+			if (createdMemory != null) {
+				createdMemory.forEach(MemoryData::destroy);
+				createdMemory = null;
 			}
 		}
 	}
@@ -243,6 +259,14 @@ public class Heap {
 		}
 
 		return operation;
+	}
+
+	public static <T extends MemoryData> T addCreatedMemory(T memory) {
+		if (getDefault() != null) {
+			getDefault().getCreatedMemory().add(memory);
+		}
+
+		return memory;
 	}
 }
 
