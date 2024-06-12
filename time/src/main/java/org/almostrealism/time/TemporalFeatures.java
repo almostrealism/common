@@ -38,6 +38,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface TemporalFeatures extends GeometryFeatures {
+	boolean enableFlatSetup = true;
+
 	default Frequency bpm(double bpm) {
 		return Frequency.forBPM(bpm);
 	}
@@ -55,8 +57,18 @@ public interface TemporalFeatures extends GeometryFeatures {
 
 		if (t instanceof Lifecycle || t instanceof Setup) {
 			OperationList o = new OperationList("TemporalFeature Iteration");
-			if (t instanceof Setup) o.add(((Setup) t).setup());
+			if (t instanceof Setup) {
+				Supplier<Runnable> setup = ((Setup) t).setup();
+
+				if (enableFlatSetup && setup instanceof OperationList) {
+					o.addAll((OperationList) setup);
+				} else {
+					o.add(setup);
+				}
+			}
+
 			o.add(tk);
+
 			if (resetAfter && t instanceof Lifecycle) o.add(() -> ((Lifecycle) t)::reset);
 			return o;
 		} else {
