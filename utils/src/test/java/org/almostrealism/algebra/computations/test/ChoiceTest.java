@@ -20,23 +20,23 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ChoiceTest implements TestFeatures {
 	@Test
 	public void oneOrTwo() {
-		try {
-			PackedCollection<Scalar> bank = Scalar.scalarBank(2);
-			bank.set(0, 1.0);
-			bank.set(1, 2.0);
+		PackedCollection<Scalar> bank = Scalar.scalarBank(2);
+		bank.set(0, 1.0);
+		bank.set(1, 2.0);
+
+		HardwareOperator.verboseLog(() -> {
 			ScalarChoice choice = new ScalarChoice(2, scalar(0.7), v(bank));
 			Evaluable<Scalar> ev = choice.get();
 			assertEquals(2.0, ev.evaluate());
-		} catch (HardwareException e) {
-			System.out.println(e.getProgram());
-			e.printStackTrace();
-		}
+		});
 	}
 }

@@ -63,7 +63,7 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 				this.health.setTarget(target.get());
 				if (enableVerbose) log("Running " + this.health.getClass().getSimpleName());
 				healthResult = this.health.computeHealth();
-				if (enableVerbose)  log("Completed " + this.health.getClass().getSimpleName());
+				if (enableVerbose) log("Completed " + this.health.getClass().getSimpleName());
 				scoring.pushScore(healthResult);
 
 				if (healthListener != null) {

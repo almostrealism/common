@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
@@ -25,6 +26,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -37,7 +39,7 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	private final int total;
 
 	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
-		super(null, new TraversalPolicy(count, 2), input);
+		super(null, new TraversalPolicy(count, 2), adjustInput(input));
 		this.count = count;
 		this.total = total;
 	}
@@ -68,5 +70,17 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	@Override
 	public PackedCollection<Scalar> postProcessOutput(MemoryData output, int offset) {
 		return Scalar.scalarBank(output.getMemLength() / 2, output, offset);
+	}
+
+	protected static Producer<PackedCollection<Scalar>>
+			adjustInput(Producer<PackedCollection<Scalar>> input) {
+		if (!(input instanceof Shape)) return input;
+
+		TraversalPolicy shape = ((Shape) input).getShape();
+		if (shape.getSize() == 2 && shape.getTraversalAxis() > 0) {
+			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) input);
+		}
+
+		return input;
 	}
 }

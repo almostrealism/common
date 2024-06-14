@@ -21,7 +21,7 @@ import org.almostrealism.time.Temporal;
 
 import java.util.List;
 
-public interface Population<G, T, O extends Temporal> {
+public interface Population<G, O extends Temporal> {
 
 	List<Genome<G>> getGenomes();
 	

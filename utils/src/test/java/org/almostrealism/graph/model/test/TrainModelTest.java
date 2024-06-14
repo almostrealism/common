@@ -280,7 +280,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 2, 2, 2, 10));
+		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
 	@Test

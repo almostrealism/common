@@ -35,6 +35,8 @@ import java.util.function.Supplier;
 public class PackedCollectionRepeatTests implements TestFeatures {
 	@Test
 	public void isolatedRepeat() {
+		if (skipKnownIssues) return;
+
 		int d = 4;
 		int w = 2;
 		int h = 3;

@@ -59,7 +59,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	public static double quaternaryOffspringPotential = 0.25;
 	public static double lowestHealth = 0.0;
 
-	private Population<G, T, O> population;
+	private Population<G, O> population;
 	private Function<List<Genome<G>>, Population> children;
 
 	private Supplier<Supplier<Genome<G>>> generatorSupplier;
@@ -79,7 +79,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		this(null, h, children, breeder, generator);
 	}
 
-	public PopulationOptimizer(Population<G, T, O> p, Supplier<HealthComputation<O, S>> h,
+	public PopulationOptimizer(Population<G, O> p, Supplier<HealthComputation<O, S>> h,
 							   Function<List<Genome<G>>, Population> children,
 							   Supplier<GenomeBreeder<G>> breeder, Supplier<Supplier<Genome<G>>> generator) {
 		this.population = p;
@@ -89,9 +89,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		this.generatorSupplier = generator;
 	}
 
-	public void setPopulation(Population<G, T, O> population) { this.population = population; }
+	public void setPopulation(Population<G, O> population) { this.population = population; }
 
-	public Population<G, T, O> getPopulation() { return this.population; }
+	public Population<G, O> getPopulation() { return this.population; }
 
 	public void resetHealth() {
 		health = null;
@@ -212,7 +212,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		genomes.add(g);
 	}
 
-	private synchronized void orderByHealth(Population<G, T, O> pop) {
+	private synchronized void orderByHealth(Population<G, O> pop) {
 		if (THREADS > 1) throw new UnsupportedOperationException();
 
 		ExecutorService s = Executors.newFixedThreadPool(THREADS);
