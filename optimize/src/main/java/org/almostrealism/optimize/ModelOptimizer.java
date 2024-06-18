@@ -25,6 +25,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 public class ModelOptimizer implements CodeFeatures {
@@ -144,6 +145,34 @@ public class ModelOptimizer implements CodeFeatures {
 				return;
 			}
 		}
+	}
+
+	public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator) {
+		Dataset<?> data = dataset.get();
+
+		double totalLoss = 0.0;
+		int success = 0;
+		int count = 0;
+
+		for (ValueTarget<?> target : data) {
+			PackedCollection<?> input = target.getInput();
+
+			PackedCollection<?> valid = target.getExpectedOutput();
+			PackedCollection<?> out = model.forward(input);
+			PackedCollection<?> l = loss.evaluate(out, valid);
+
+			double ls = l.doubleStream().sum();
+			totalLoss += ls;
+			count++;
+
+			if (validator.test(target.getExpectedOutput(), out))
+				success++;
+
+			if (receptor != null)
+				receptor.push(p(l)).get().run();
+		}
+
+		return success / (double) count;
 	}
 
 	@Override

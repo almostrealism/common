@@ -277,6 +277,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return Math.sqrt(lengthSq());
 	}
 
+	public int argmax() {
+		return IntStream.range(0, getMemLength())
+				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
+				.orElse(-1);
+	}
+
 	@Override
 	public PackedCollection<T> traverse(int axis) {
 		return reshape(getShape().traverse(axis));

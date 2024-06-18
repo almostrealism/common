@@ -24,17 +24,21 @@ import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
+import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -63,15 +67,9 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 	}
 
-	@Test
-	public void train() throws FileNotFoundException {
-		if (!trainingTests) return;
-
+	public List<ValueTarget<PackedCollection<?>>> generateDataset(TraversalPolicy outShape) {
 		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
 
-		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2);
-		model.setLearningRate(1e-4);
-		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
 		log("Adding circles...");
 		for (int i = 0; i < 500; i++) {
@@ -111,18 +109,79 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			}
 		}
 
-		optimize("convolution2d_" + rows * cols, model,
-				() -> {
-					Collections.shuffle(data);
-					return Dataset.of(data);
-				}, 3500, data.size(), 0.05);
+		return data;
 	}
 
-	public void optimize(String name, Model model, Supplier<Dataset<?>> data,
-						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+	public List<ValueTarget<PackedCollection<?>>> loadDataset(File imagesDir, TraversalPolicy outShape) throws IOException {
+		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
 
-		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+		for (File file : imagesDir.listFiles()) {
+			if (file.getName().endsWith(".png")) {
+				PackedCollection<?> input = GraphicsConverter.loadGrayscale(file);
+
+				boolean circle = file.getName().contains("circle");
+
+				if (outShape.getTotalSize() == 2) {
+					data.add(ValueTarget.of(input,
+							circle ? PackedCollection.of(1.0, 0.0) :
+									PackedCollection.of(0.0, 1.0)));
+				} else {
+					int v = circle ? 0 : 1;
+
+					data.add(ValueTarget.of(input,
+							new PackedCollection<>(outShape).fill(pos -> pos[0] % 2 == v ? 1.0 : 0.0)));
+				}
+			}
+		}
+		
+		return data;
+	}
+
+	@Test
+	public void train() throws IOException {
+		if (!trainingTests) return;
+
+		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2);
+		model.setLearningRate(0.001);
+		TraversalPolicy outShape = model.lastBlock().getOutputShape();
+
+		List<ValueTarget<PackedCollection<?>>> data;
+
+		File imagesDir = new File("generated_images");
+		if (!imagesDir.exists()) {
+			log("Generated images not available");
+			data = generateDataset(outShape);
+		} else {
+			log("Loading generated images...");
+			data = loadDataset(imagesDir, outShape);
+		}
+
+		Collections.shuffle(data);
+		Dataset<PackedCollection<?>> all = Dataset.of(data);
+		List<Dataset<PackedCollection<?>>> split = all.split(0.8);
+
+		optimize("convolution2d_" + rows * cols, model,
+				() -> split.get(0), () -> split.get(1),
+				10, data.size(), 0.05);
+	}
+
+	public void optimize(String name, Model model,
+						 Supplier<Dataset<?>> trainData,
+						 Supplier<Dataset<?>> testData,
+						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
+		CompiledModel compiled = model.compile();
+		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
+
+		for (int i = 0; i < epochs; i++) {
+			train(name, optimizer, 1, steps, lossTarget);
+			validate(compiled, testData);
+		}
+	}
+
+	public void train(String name, ModelOptimizer optimizer,
+						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
+		try (CSVReceptor<PackedCollection<?>> receptor =
+					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 			optimizer.setReceptor(receptor);
 			optimizer.setLogFrequency(25);
 
@@ -130,5 +189,11 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			optimizer.optimize(epochs);
 			log("Completed " + optimizer.getTotalIterations() + " epochs");
 		}
+	}
+
+	public void validate(CompiledModel model, Supplier<Dataset<?>> data) {
+		ModelOptimizer optimizer = new ModelOptimizer(model, data);
+		double accuracy = optimizer.accuracy((expected, actual) -> expected.argmax() == actual.argmax());
+		log("Accuracy: " + accuracy);
 	}
 }

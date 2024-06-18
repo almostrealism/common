@@ -23,12 +23,17 @@ import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
 import java.awt.image.MemoryImageSource;
 import java.awt.image.RenderedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.function.Function;
 
+import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
 
@@ -68,6 +73,7 @@ public class GraphicsConverter {
 	 * converted to the standard RGB color model if it is not already
 	 * and the alpha channel will be ignored.
 	 */
+	@Deprecated
 	public static RGB[][] convertToRGBArray(Image image) {
 		image = new ImageIcon(image).getImage();
 		BufferedImage bufferedImage = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
@@ -138,7 +144,8 @@ public class GraphicsConverter {
 		
 		return rgb;
 	}
-	
+
+	@Deprecated
 	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage) {
 		return GraphicsConverter.convertToRGBArray(bufferedImage, 0, 0,
 													bufferedImage.getWidth(),
@@ -166,7 +173,8 @@ public class GraphicsConverter {
 		
 		return rgb;
 	}
-	
+
+	@Deprecated
 	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage,
 											int xoff, int yoff, int w, int h) {
 		RGB rgbArray[][] = new RGB[w][h];
@@ -188,6 +196,81 @@ public class GraphicsConverter {
 		}
 		
 		return rgbArray;
+	}
+
+	public static PackedCollection<RGB> loadRgb(File file) throws IOException {
+		BufferedImage image = ImageIO.read(file);
+
+		int width = image.getWidth();
+		int height = image.getHeight();
+
+		PackedCollection<RGB> dest = new PackedCollection<>(
+				new TraversalPolicy(height, width, 3).traverse(2));
+		loadRgb(dest, image, 0, 0, width, height);
+		return dest;
+	}
+
+	public static void loadRgb(PackedCollection<RGB> rgbDestination,
+							   BufferedImage bufferedImage,
+							   int xOff, int yOff, int w, int h) {
+		TraversalPolicy destShape = rgbDestination.getShape();
+		if (destShape.getDimensions() != 3) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy slice = new TraversalPolicy(1, 1, 3).traverseEach();
+
+		for(int r = 0; r < h; r++) {
+			for(int c = 0; c < w; c++) {
+				int color = bufferedImage.getRGB(xOff + c, yOff + r);
+
+				int rChannel = (color >> 16) & 255;
+				int gChannel = (color >> 8) & 255;
+				int bChannel = color & 255;
+
+				rgbDestination.range(slice, destShape.index(r, c, 0))
+						.set(0, rChannel / 255d, gChannel / 255d, bChannel / 255d);
+			}
+		}
+	}
+
+	public static PackedCollection<RGB> loadGrayscale(File file) throws IOException {
+		BufferedImage image = ImageIO.read(file);
+
+		int width = image.getWidth();
+		int height = image.getHeight();
+
+		PackedCollection<RGB> dest = new PackedCollection<>(
+				new TraversalPolicy(height, width, 1).traverse(2));
+		loadGrayscale(dest, image, 0, 0, width, height);
+		return dest;
+	}
+
+	public static void loadGrayscale(
+								PackedCollection<?> rgbDestination,
+							    BufferedImage bufferedImage,
+							    int xOff, int yOff, int w, int h) {
+		TraversalPolicy destShape = rgbDestination.getShape();
+		if (destShape.getDimensions() != 3) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy slice = new TraversalPolicy(1, 1, 1).traverseEach();
+
+		for(int r = 0; r < h; r++) {
+			for(int c = 0; c < w; c++) {
+				int color = bufferedImage.getRGB(xOff + c, yOff + r);
+
+				int rChannel = (color >> 16) & 255;
+				int gChannel = (color >> 8) & 255;
+				int bChannel = color & 255;
+
+				double g = (rChannel / 255d) + (gChannel / 255d) + (bChannel / 255d);
+				g /= 3;
+
+				rgbDestination.range(slice, destShape.index(r, c, 0)).set(0, g);
+			}
+		}
 	}
 
 	public static double[] histogram(BufferedImage bufferedImage,

@@ -18,8 +18,26 @@ package org.almostrealism.optimize;
 
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> {
 	static <T extends MemoryData> Dataset<T> of(Iterable<ValueTarget<T>> targets) {
 		return () -> targets.iterator();
+	}
+
+	default List<Dataset<T>> split(double ratio) {
+		List<ValueTarget<T>> a = new ArrayList<>();
+		List<ValueTarget<T>> b = new ArrayList<>();
+
+		forEach(v -> {
+			if (Math.random() < ratio) {
+				a.add(v);
+			} else {
+				b.add(v);
+			}
+		});
+
+		return List.of(of(a), of(b));
 	}
 }
