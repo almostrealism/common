@@ -33,6 +33,7 @@ import java.util.function.Supplier;
 
 public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	public static boolean enableDeltaTraverseEach = false;
 	public static boolean enableChainDelta = false;
 
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
@@ -95,15 +96,23 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
+			int traversalAxis = shape.getTraversalAxis();
 
 			BiFunction<TraversableExpression[], Expression, Expression> project = (args, idx) -> {
 				Expression pos[] = overallShape.position(idx);
 				return deltaShape.index(projectIndex(args, pos[0]), pos[1]);
 			};
 
-			return new DynamicIndexProjectionProducerComputation(
-					shape, project, relative, delta,
-					getInputs().stream().skip(2).toArray(Producer[]::new));
+			if (enableDeltaTraverseEach) {
+				return traverse(traversalAxis,
+						new DynamicIndexProjectionProducerComputation(
+								shape.traverseEach(), project, relative, delta,
+								getInputs().stream().skip(2).toArray(Producer[]::new)));
+			} else {
+				return new DynamicIndexProjectionProducerComputation(
+						shape, project, relative, delta,
+						getInputs().stream().skip(2).toArray(Producer[]::new));
+			}
 		}
 	}
 }
