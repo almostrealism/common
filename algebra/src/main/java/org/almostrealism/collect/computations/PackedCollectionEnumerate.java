@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
@@ -28,6 +29,7 @@ import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	public static boolean enablePreferIsolation = true;
 
 	private TraversalPolicy inputShape;
 	private TraversalPolicy strideShape;
@@ -46,6 +48,15 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public int getMemLength() { return 1; }
+
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		if (enablePreferIsolation && getParallelism() > minCount) {
+			return true;
+		}
+
+		return super.isIsolationTarget(context);
+	}
 
 	@Override
 	protected Expression<?> projectIndex(Expression<?> index) {
