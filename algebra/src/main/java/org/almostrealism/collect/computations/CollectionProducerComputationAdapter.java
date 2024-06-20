@@ -35,7 +35,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
+												Supplier<Evaluable<? extends I>>... arguments) {
 		super(name, outputShape, arguments);
 	}
 

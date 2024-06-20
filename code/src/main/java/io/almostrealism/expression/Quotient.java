@@ -213,7 +213,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];
 
-		List<Expression> operands = new ArrayList<>();
+		List<Expression<?>> operands = new ArrayList<>();
 		operands.add(values[0]);
 		for (int i = 1; i < values.length; i++) {
 			if (values[i].intValue().orElse(-1) != 1) {
@@ -222,6 +222,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.size() == 1) return operands.get(0);
+
+		// When dividing a product that includes a constant value,
+		// by the same constant value, the result can be simplified
+		// to a product of the remaining values without the constant
+		if (operands.size() == 2 &&
+				operands.get(0) instanceof Product &&
+				operands.get(1).longValue().isPresent()) {
+			long constant = operands.get(0).getChildren().stream()
+					.mapToLong(e -> e.longValue().orElse(1))
+					.reduce(1, (a, b) -> a * b);
+
+			if (constant == operands.get(1).longValue().getAsLong()) {
+				return Product.of(operands.get(0).getChildren().stream()
+						.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
+			}
+		}
+
 		return new Quotient(operands);
 	}
 

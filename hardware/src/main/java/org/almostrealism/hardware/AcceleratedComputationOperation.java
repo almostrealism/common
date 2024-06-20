@@ -42,13 +42,16 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
+		implements NameProvider, KernelStructureContext, Countable {
+	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
 	public static TimingMetric compileProfile = console.timing("computationCompile");
 
 	private Computation<T> computation;
@@ -202,11 +205,15 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 
 		long start = System.nanoTime();
+		if (verboseCompile) log("Compiling " + getFunctionName());
+
 		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope(this).simplify(this);
 		compileProfile.addEntry(getFunctionName(), System.nanoTime() - start);
 		scope.convertArgumentsToRequiredScopes(this);
 		postCompile();
+
+		if (verboseCompile) log("Done compiling " + getFunctionName());
 		return scope;
 	}
 

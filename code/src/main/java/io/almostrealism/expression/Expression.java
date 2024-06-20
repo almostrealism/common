@@ -77,6 +77,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	private Class<T> type;
 	private List<Expression<?>> children;
+	private Set<Index> indices;
 
 	private int depth;
 	private boolean isSimple;
@@ -103,6 +104,9 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
+
+	@Override
+	public int treeDepth() { return depth; }
 
 	public boolean isInt() { return getType() == Integer.class; }
 	public boolean isFP() { return getType() == Double.class; }
@@ -151,10 +155,21 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public Set<Index> getIndices() {
 		if (this instanceof Index) return Set.of((Index) this);
+		if (indices != null)
+			return indices;
 
-		return getChildren().stream()
-				.flatMap(e -> e.getIndices().stream())
-				.collect(Collectors.toSet());
+		for (Expression<?> e : getChildren()) {
+			Set<Index> indices = e.getIndices();
+
+			if (this.indices == null || this.indices.isEmpty()) {
+				this.indices = indices;
+			} else if (!indices.isEmpty() && !Objects.equals(this.indices, indices)) {
+				this.indices = new HashSet<>(this.indices);
+				this.indices.addAll(indices);
+			}
+		}
+
+		return indices;
 	}
 
 	public boolean contains(Index idx) {
@@ -502,6 +517,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		Expression v = (Expression) obj;
 		if (type != v.getType()) return false;
+		if (!Objects.equals(getClass(), v.getClass())) return false;
+		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
 
 		LanguageOperationsStub lang = new LanguageOperationsStub();
 		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;

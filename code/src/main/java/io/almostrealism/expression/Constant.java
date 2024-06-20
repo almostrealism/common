@@ -22,8 +22,10 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
@@ -32,6 +34,11 @@ public class Constant<T> extends Expression<T> {
 
 	@Override
 	public boolean isValue(IndexValues values) { return true; }
+
+	@Override
+	public Set<Index> getIndices() {
+		return Collections.emptySet();
+	}
 
 	@Override
 	public boolean contains(Index idx) { return false; }

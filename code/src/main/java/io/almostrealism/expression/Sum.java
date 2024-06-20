@@ -41,6 +41,7 @@ import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
+	public static int maxOppositeDetectionDepth = 10;
 
 	protected Sum(Stream<Expression<? extends Number>> values) {
 		super("+", (Stream) values);
@@ -241,7 +242,14 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public static <T> Expression<T> of(Expression... values) {
 		List<Expression> operands =
 				Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+
 		i: if (operands.size() == 2) {
+			// A sum which contains a value and its opposite can be replaced with zero
+			if (checkOpposite(operands.get(0), operands.get(1))) {
+				return (Expression) new IntegerConstant(0);
+			}
+
+			// Detect the presence of an index child
 			int index[] = IntStream.range(0, 2).filter(i -> operands.get(i) instanceof DefaultIndex &&
 					!(operands.get(i) instanceof KernelIndex)).toArray();
 			if (index.length != 1) break i;
@@ -269,6 +277,20 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
-		return operands.size() == 1 ? operands.get(0) : (Expression) new Sum(operands);
+		return operands.size() == 1 ? (Expression) operands.get(0) : (Expression) new Sum(operands);
+	}
+
+	private static boolean checkOpposite(Expression a, Expression b) {
+		if (a.treeDepth() > maxOppositeDetectionDepth || b.treeDepth() > maxOppositeDetectionDepth) {
+			return false;
+		}
+
+		if (a instanceof Minus) {
+			if (a.getChildren().get(0).equals(b)) return true;
+		} else if (b instanceof Minus) {
+			if (b.getChildren().get(0).equals(a)) return true;
+		}
+
+		return false;
 	}
 }

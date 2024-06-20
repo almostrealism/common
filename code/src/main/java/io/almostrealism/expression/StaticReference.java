@@ -17,12 +17,15 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 public class StaticReference<T> extends Expression<T> {
 	private String expression;
@@ -52,6 +55,12 @@ public class StaticReference<T> extends Expression<T> {
 		} else {
 			return null;
 		}
+	}
+
+	@Override
+	public Set<Index> getIndices() {
+		if (this instanceof Index) return Set.of((Index) this);
+		return Collections.emptySet();
 	}
 
 	public String getExpression(LanguageOperations lang) { return expression; }

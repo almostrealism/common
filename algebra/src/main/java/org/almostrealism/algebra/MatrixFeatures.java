@@ -34,7 +34,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new TraversableExpressionComputation<>(null, shape.traverseEach(),
+		return new TraversableExpressionComputation<>("identity", shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
 
