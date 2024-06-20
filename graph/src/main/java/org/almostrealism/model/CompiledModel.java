@@ -57,7 +57,7 @@ public class CompiledModel implements CodeFeatures {
 	public PackedCollection<?> backward(PackedCollection<?> gradient) {
 		updateGradient.accept(gradient);
 		backward.run();
-		return retrieveGradient.get();
+		return retrieveGradient == null ? null : retrieveGradient.get();
 	}
 
 	public static CompiledModel compile(Model model) {
