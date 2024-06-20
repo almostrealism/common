@@ -66,38 +66,45 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
+		if (next == null) {
+			log("Gradient will not be computed for " + getName() +
+					" because there is no provided Receptor");
+		}
+
 		TraversalPolicy shape = shape(input);
 
 		Supplier<CollectionProducer<PackedCollection<?>>> function = () -> (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
 		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
-		PackedCollection<?> gradOut = new PackedCollection<>(shape);
+		PackedCollection<?> gradOut = next == null ? null : new PackedCollection<>(shape);
 
 		int inSize = shape.getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
 
 		OperationList op = new OperationList("Gradient Propagation");
 
-		Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
-				.reshape(outSize, inSize)
-				.traverse(1)
-				.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
-				.enumerate(1, 1)
-				.sum(1)
-				.reshape(shape(inSize))
-				.each();
+		if (next != null) {
+			Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
+					.reshape(outSize, inSize)
+					.traverse(1)
+					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
+					.enumerate(1, 1)
+					.sum(1)
+					.reshape(shape(inSize))
+					.each();
 
-		if (enableDiagnosticGrad) {
-			op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
-				Evaluable<PackedCollection<?>> grad = (Evaluable) Process.optimized(deltaOutDeltaIn).get();
-				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+			if (enableDiagnosticGrad) {
+				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
+					Evaluable<PackedCollection<?>> grad = (Evaluable) Process.optimized(deltaOutDeltaIn).get();
+					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
-				return () -> {
-					inputGrad.into(gradIn).evaluate();
-					grad.into(gradOut).evaluate();
-				};
-			}));
-		} else {
-			op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
+					return () -> {
+						inputGrad.into(gradIn).evaluate();
+						grad.into(gradOut).evaluate();
+					};
+				}));
+			} else {
+				op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
+			}
 		}
 
 		for (int i = 0; i < weights.length; i++) {

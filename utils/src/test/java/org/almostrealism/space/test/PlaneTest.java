@@ -73,7 +73,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
 		HardwareOperator.verboseLog(() -> {
-			Assert.assertTrue(((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue() < 0);
+			Assert.assertTrue(intersection.getDistance().get().evaluate().getValue() < 0);
 		});
 	}
 

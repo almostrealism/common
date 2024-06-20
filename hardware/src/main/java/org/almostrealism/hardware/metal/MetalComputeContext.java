@@ -53,7 +53,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
-		this.instructionSets = new FrequencyCache<>(100, 0.4);
+		this.instructionSets = new FrequencyCache<>(500, 0.4);
 		this.instructionSets.setEvictionListener((name, inst) -> inst.destroy());
 	}
 

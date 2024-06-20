@@ -14,6 +14,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class CompiledModel implements CodeFeatures {
+	public static boolean enableCaptureGradientOutput = false;
+
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
 
@@ -76,9 +78,15 @@ public class CompiledModel implements CodeFeatures {
 		model.lastBlock().getForward().setReceptor(out ->
 				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength()));
 
-		PackedCollection<?> gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
-		model.firstBlock().getBackward().setReceptor(out ->
-				Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+		PackedCollection<?> gradOut;
+
+		if (enableCaptureGradientOutput) {
+			gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
+			model.firstBlock().getBackward().setReceptor(out ->
+					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+		} else {
+			gradOut = null;
+		}
 
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) model.forward().push(in.get());
 		if (p instanceof OperationList) p = ((OperationList) p).flatten();
@@ -98,7 +106,7 @@ public class CompiledModel implements CodeFeatures {
 		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
 		return new CompiledModel(in.getShape(), grad.getShape(), in, () -> output,
-									p.get(), grad, () -> gradOut, q == null ? null : q.get());
+									p.get(), grad, gradOut == null ? null : () -> gradOut, q == null ? null : q.get());
 	}
 
 	protected static class InputManager implements Consumer<PackedCollection<?>>,

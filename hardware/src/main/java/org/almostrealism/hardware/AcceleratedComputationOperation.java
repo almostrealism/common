@@ -189,6 +189,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return scope;
 		}
 
+		if (verboseCompile) log("Compiling " + getFunctionName());
+
 		prepareScope();
 
 		if (getComputation() instanceof OperationAdapter
@@ -200,12 +202,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
-	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
+	protected synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 
 		long start = System.nanoTime();
-		if (verboseCompile) log("Compiling " + getFunctionName());
 
 		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope(this).simplify(this);

@@ -155,8 +155,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public Set<Index> getIndices() {
 		if (this instanceof Index) return Set.of((Index) this);
-		if (indices != null)
-			return indices;
+		if (indices != null) return indices;
+		if (getChildren().isEmpty()) return Collections.emptySet();
 
 		for (Expression<?> e : getChildren()) {
 			Set<Index> indices = e.getIndices();
@@ -498,7 +498,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 						.orElse(indices.stream().findFirst().orElse(null));
 			}
 
-			if (target == null || simplified[i].isValue(new IndexValues().put(target, 0))) {
+			IndexValues v = new IndexValues();
+			if (target != null) v.put(target, 0);
+
+			if (simplified[i].isValue(v)) {
 				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}
