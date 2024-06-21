@@ -16,7 +16,7 @@
 
 package org.almostrealism.ui;
 
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfileNode;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 

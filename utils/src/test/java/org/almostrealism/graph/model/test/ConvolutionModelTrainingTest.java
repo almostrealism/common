@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
@@ -168,13 +169,19 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 	public void optimize(String name, Model model,
 						 Supplier<Dataset<?>> trainData,
 						 Supplier<Dataset<?>> testData,
-						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		CompiledModel compiled = model.compile();
-		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
+						 int epochs, int steps, double lossTarget) throws IOException {
+		OperationProfileNode profile = new OperationProfileNode("CNN " + cols + "x" + rows);
 
-		for (int i = 0; i < epochs; i++) {
-			train(name, optimizer, 1, steps, lossTarget);
-			validate(compiled, testData);
+		try {
+			CompiledModel compiled = model.compile(profile);
+			ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
+
+			for (int i = 0; i < epochs; i++) {
+				train(name, optimizer, 1, steps, lossTarget);
+				validate(compiled, testData);
+			}
+		} finally {
+			profile.save("results/logs/cnn_" + cols + "x" + rows + ".xml");
 		}
 	}
 

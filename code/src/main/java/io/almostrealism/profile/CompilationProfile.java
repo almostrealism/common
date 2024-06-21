@@ -17,7 +17,6 @@
 package io.almostrealism.profile;
 
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
 
 import java.util.HashMap;
 import java.util.Map;

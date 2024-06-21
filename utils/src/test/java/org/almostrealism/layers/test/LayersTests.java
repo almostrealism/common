@@ -17,19 +17,13 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
@@ -37,7 +31,6 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.List;

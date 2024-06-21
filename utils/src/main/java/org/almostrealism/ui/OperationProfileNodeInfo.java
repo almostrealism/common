@@ -16,7 +16,7 @@
 
 package org.almostrealism.ui;
 
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.io.MetricBase;
 
 import java.util.function.Function;

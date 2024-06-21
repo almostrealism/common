@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;

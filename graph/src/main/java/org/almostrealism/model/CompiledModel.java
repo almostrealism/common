@@ -1,6 +1,6 @@
 package org.almostrealism.model;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;

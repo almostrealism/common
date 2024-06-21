@@ -16,7 +16,7 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;

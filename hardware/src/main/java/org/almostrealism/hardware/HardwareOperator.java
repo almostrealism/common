@@ -21,7 +21,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;

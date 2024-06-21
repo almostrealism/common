@@ -18,10 +18,8 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.profile.CompilationProfile;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -34,7 +32,6 @@ import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 

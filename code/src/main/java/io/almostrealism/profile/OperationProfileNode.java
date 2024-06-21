@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
-import io.almostrealism.profile.CompilationProfile;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.TimingMetric;

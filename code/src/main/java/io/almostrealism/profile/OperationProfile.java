@@ -14,8 +14,11 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
+import io.almostrealism.code.Computation;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

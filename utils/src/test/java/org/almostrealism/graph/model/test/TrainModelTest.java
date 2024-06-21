@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;

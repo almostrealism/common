@@ -19,7 +19,7 @@ package org.almostrealism.time;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;

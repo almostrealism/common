@@ -16,9 +16,7 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.kernel.KernelPreferences;
-import org.almostrealism.collect.CollectionFeatures;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;

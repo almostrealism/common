@@ -16,15 +16,11 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

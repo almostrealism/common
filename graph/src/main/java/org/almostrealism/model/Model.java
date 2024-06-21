@@ -16,7 +16,7 @@
 
 package org.almostrealism.model;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
