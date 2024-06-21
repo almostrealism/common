@@ -172,8 +172,6 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default void logKernelMetrics(OperationProfile profile) {
 		if (profile != null) profile.print();
-		if (HardwareOperator.profile != null && HardwareOperator.profile != profile)
-			HardwareOperator.profile.print();
 
 		AcceleratedComputationOperation.printTimes();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +

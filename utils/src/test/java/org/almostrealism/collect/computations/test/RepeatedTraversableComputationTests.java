@@ -29,7 +29,8 @@ import java.util.stream.IntStream;
 public class RepeatedTraversableComputationTests implements TestFeatures {
 	@Test
 	public void add() {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator");
+		OperationProfile profile = new OperationProfile("HardwareOperator");
+		HardwareOperator.timingListener = profile.getTimingListener();
 
 		int len = 60000;
 
@@ -68,6 +69,6 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 			assertEquals(expected, actual);
 		});
 
-		HardwareOperator.profile.print();
+		profile.print();
 	}
 }

@@ -79,31 +79,13 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public void setKey(Function<OperationMetadata, String> key) { this.key = key; }
 
+	public OperationTimingListener getTimingListener() {
+		return this::recordDuration;
+	}
+
 	public void print() { log(summary()); }
 
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
-
-	public long recordDuration(Runnable r) {
-		long start = System.nanoTime();
-		r.run();
-		long end = System.nanoTime();
-
-		OperationMetadata metadata = null;
-		if (r instanceof OperationInfo) {
-			metadata = ((OperationInfo) r).getMetadata();
-
-			if (metadata == null) {
-				System.out.println("Warning: " + r.getClass().getSimpleName() + " has no metadata");
-			}
-		}
-
-		if (metadata == null) {
-			metadata = new OperationMetadata(r.getClass().getSimpleName(), r.getClass().getSimpleName());
-		}
-
-		recordDuration(metadata, end - start);
-		return end - start;
-	}
 
 	public void recordDuration(OperationMetadata metadata, long nanos) {
 		initMetric();

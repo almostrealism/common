@@ -23,6 +23,7 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
@@ -40,7 +41,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 
-	public static OperationProfile profile;
+	public static OperationTimingListener timingListener;
 	public static long cpuCompileCount, gpuCompileCount;
 	public static long cpuOpCount, gpuOpCount;
 	public static long cpuOpTime, gpuOpTime;
@@ -175,12 +176,12 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	protected void recordDuration(Runnable r, boolean countOp) {
 		long duration = -1;
 
-		if (profile == null) {
+		if (timingListener == null) {
 			r.run();
 		} else if (r instanceof OperationInfo) {
-			duration = profile.recordDuration(r);
+			duration = timingListener.recordDuration(r);
 		} else {
-			duration = profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
+			duration = timingListener.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
 		}
 
 		if (countOp && duration > 0) {

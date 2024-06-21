@@ -25,6 +25,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -422,14 +423,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
-		private OperationProfile profiles;
+		private OperationProfile profile;
+		private OperationTimingListener timingListener;
 
 		public Runner(OperationMetadata metadata, List<Runnable> run,
-					  List<ComputeRequirement> requirements, OperationProfile profiles) {
+					  List<ComputeRequirement> requirements, OperationProfile profile) {
 			this.metadata = metadata;
 			this.run = run;
 			this.requirements = requirements;
-			this.profiles = profiles;
+			this.profile = profile;
+			this.timingListener = profile == null ? null : profile.getTimingListener();
 		}
 
 		@Override
@@ -444,17 +447,17 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 				}
 
-				if (profiles == null) {
+				if (timingListener == null) {
 					for (int i = 0; i < run.size(); i++) {
 						run.get(i).run();
 					}
 				} else {
-					if (profiles instanceof OperationProfileNode) {
-						((OperationProfileNode) profiles).addChildren(getMetadata());
+					if (profile instanceof OperationProfileNode) {
+						((OperationProfileNode) profile).addChildren(getMetadata());
 					}
 
 					for (int i = 0; i < run.size(); i++) {
-						profiles.recordDuration(run.get(i));
+						timingListener.recordDuration(run.get(i));
 					}
 				}
 			} finally {

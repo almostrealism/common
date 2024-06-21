@@ -319,7 +319,7 @@ public final class Hardware {
 					OperationProfile.appendContext(OperationMetadata::getDisplayName));
 		}
 
-		HardwareOperator.profile = profile;
+		HardwareOperator.timingListener = profile.getTimingListener();
 	}
 
 	public synchronized void addContextListener(ContextListener l) {
