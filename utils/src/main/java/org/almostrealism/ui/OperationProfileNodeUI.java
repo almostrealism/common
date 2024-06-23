@@ -19,8 +19,12 @@ package org.almostrealism.ui;
 import io.almostrealism.profile.OperationProfileNode;
 
 import javax.swing.tree.DefaultMutableTreeNode;
+import java.util.Comparator;
 
 public class OperationProfileNodeUI extends DefaultMutableTreeNode {
+	public static final Comparator<OperationProfileNode> comparator =
+			Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed();
+
 	public OperationProfileNodeUI(OperationProfileNode root, OperationProfileNode node) {
 		super(new OperationProfileNodeInfo(root, node));
 		init();
@@ -30,7 +34,7 @@ public class OperationProfileNodeUI extends DefaultMutableTreeNode {
 		OperationProfileNodeInfo node = (OperationProfileNodeInfo) getUserObject();
 
 		if (node != null) {
-			node.getNode().getChildren().forEach(child -> add(new OperationProfileNodeUI(node.getRoot(), child)));
+			node.getNode().getChildren(comparator).forEach(child -> add(new OperationProfileNodeUI(node.getRoot(), child)));
 		}
 	}
 }

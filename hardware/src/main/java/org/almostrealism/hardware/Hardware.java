@@ -21,12 +21,9 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
-import io.almostrealism.profile.CompilationProfile;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -312,14 +309,8 @@ public final class Hardware {
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
 	public void assignProfile(OperationProfile profile) {
-		if (profile instanceof OperationProfileNode) {
-			AbstractComputeContext.compilationProfile = ((OperationProfileNode) profile).getCompilationProfile();
-		} else {
-			AbstractComputeContext.compilationProfile = new CompilationProfile("default",
-					OperationProfile.appendContext(OperationMetadata::getDisplayName));
-		}
-
-		HardwareOperator.timingListener = profile.getTimingListener();
+		HardwareOperator.timingListener = profile.getRuntimeListener();
+		AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
 	}
 
 	public synchronized void addContextListener(ContextListener l) {

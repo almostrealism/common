@@ -253,20 +253,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-	@Test
-	public void displayProfile() throws IOException {
-		if (!trainingTests) return;
-
-		OperationProfileUI.display(OperationProfileNode.load("results/logs/train.xml"));
-
-		try {
-			Thread.sleep(24 * 60 * 60 * 1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-	}
-
-
 	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
 		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
 		log("Created model (" + model.getBlocks().size() + " blocks)");

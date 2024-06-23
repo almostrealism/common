@@ -83,6 +83,14 @@ public class OperationProfile implements Named, ConsoleFeatures {
 		return this::recordDuration;
 	}
 
+	public OperationTimingListener getRuntimeListener() {
+		return getTimingListener();
+	}
+
+	public CompilationTimingListener getCompilationListener() {
+		return (metadata, code, nanos) -> { };
+	}
+
 	public void print() { log(summary()); }
 
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }

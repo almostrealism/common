@@ -453,7 +453,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				} else {
 					if (profile instanceof OperationProfileNode) {
-						((OperationProfileNode) profile).addChildren(getMetadata());
+						((OperationProfileNode) profile).addChild(getMetadata());
 					}
 
 					for (int i = 0; i < run.size(); i++) {

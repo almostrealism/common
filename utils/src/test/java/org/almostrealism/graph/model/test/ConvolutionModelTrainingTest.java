@@ -62,7 +62,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			NativeCompiler.enableLargeInstructionSetMonitoring = true;
 			MetalProgram.enableLargeProgramMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
-			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
@@ -163,7 +162,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		optimize("convolution2d_" + rows * cols, model,
 				() -> split.get(0), () -> split.get(1),
-				10, data.size(), 0.05);
+				1, data.size(), 0.05);
 	}
 
 	public void optimize(String name, Model model,
@@ -171,6 +170,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 						 Supplier<Dataset<?>> testData,
 						 int epochs, int steps, double lossTarget) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode("CNN " + cols + "x" + rows);
+		initKernelMetrics(profile);
 
 		try {
 			CompiledModel compiled = model.compile(profile);

@@ -28,7 +28,10 @@ import java.io.IOException;
 import java.util.function.Consumer;
 
 public class OperationProfileUI {
-	public static JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
+	private JScrollPane textScroll;
+	private JTextArea textArea;
+
+	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
 		JTree tree = new JTree(new OperationProfileNodeUI(root, root));
 
 		if (textDisplay != null) {
@@ -39,24 +42,40 @@ public class OperationProfileUI {
 						((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
 				if (node == null) return;
 
-				if (root.getOperationSources().containsKey(node.getNode().getName())) {
-					textDisplay.accept(root.getOperationSources().get(node.getNode().getName()));
-				} else {
-					TimingMetric metric = node.getNode().getMergedMetric();
-					textDisplay.accept(metric.summary(node.getNode().getName(), root::getMetadataDetail));
+				StringBuilder out = new StringBuilder();
+
+				TimingMetric metric = node.getNode().getMetric();
+				if (metric == null) metric = node.getNode().getMergedMetric();
+				if (metric != null) {
+					out.append(metric.summary(
+							root.getMetadataDetail(node.getNode().getName()),
+							root::getMetadataDetail));
 				}
+
+				if (root.getOperationSources().containsKey(node.getNode().getName())) {
+					out.append("\n---------\nSource:\n");
+					out.append(root.getOperationSources().get(node.getNode().getName()));
+				}
+
+				textDisplay.accept(out.toString());
 			});
 		}
 
 		return tree;
 	}
 
-	public static JFrame display(OperationProfileNode root) {
+	public JFrame display(OperationProfileNode root) {
 		JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 
-		JTextArea textArea = new JTextArea(80, 120);
-		body.setRightComponent(new JScrollPane(textArea));
-		body.setLeftComponent(new JScrollPane(createTree(root, textArea::setText)));
+		textArea = new JTextArea(80, 120);
+		textScroll = new JScrollPane(textArea);
+
+		body.setRightComponent(textScroll);
+		body.setLeftComponent(new JScrollPane(createTree(root, text -> {
+			textArea.setText(text);
+			textArea.setCaretPosition(0);
+			textScroll.getVerticalScrollBar().setValue(0);
+		})));
 
 		JFrame frame = new JFrame("OperationProfile - " + root.getName());
 		frame.getContentPane().add(body);
@@ -68,7 +87,9 @@ public class OperationProfileUI {
 	}
 
 	public static void main(String args[]) throws IOException {
-		OperationProfileUI.display(OperationProfileNode.load(args[0]));
+		OperationProfileUI profileDisplay = new OperationProfileUI();
+		profileDisplay.display(OperationProfileNode.load(args[0]))
+				.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		try {
 			Thread.sleep(24 * 60 * 60 * 1000);

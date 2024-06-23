@@ -42,9 +42,6 @@ public class OperationProfileNodeInfo {
 	@Override
 	public String toString() {
 		if (label == null) {
-			Double measuredDuration = root.getMergedMetric(true).getEntries().get(node.getName());
-			double selfDuration = measuredDuration == null ? node.getSelfDuration() : measuredDuration;
-
 			Function<Double, String> displayShort = duration ->
 					MetricBase.format.getValue().format(
 							duration > 180.0 ? (duration / 60.0) : duration) +
@@ -55,31 +52,17 @@ public class OperationProfileNodeInfo {
 							duration > 180.0 ? (duration / 60.0) : duration) +
 							(duration > 180.0 ? " minutes" : " seconds");
 
-			String name = root.getMetadataDetail(node.getName());
-			String result;
+			String result = root.getMetadataDetail(node.getName()) +
+					" - " + displayLong.apply(node.getTotalDuration());
 
-			if (measuredDuration != null) {
-				result = name + " - " + displayShort.apply(selfDuration) + " (measured)";
-			} else if (selfDuration > 0.0 && node.getTotalDuration() > selfDuration) {
-				result = name + " - " + displayLong.apply(selfDuration) +
-						" (+" + displayShort.apply(node.getTotalDuration() - selfDuration) + ")";
-			} else {
-				result = name + " - " + displayLong.apply(node.getTotalDuration());
+			double selfDuration = node.getSelfDuration();
+			if (selfDuration > 0.0 && node.getTotalDuration() > selfDuration) {
+				result = result + " total (" + displayShort.apply(selfDuration) + " self)";
 			}
 
-			if (root.getOperationSources().containsKey(node.getName())) {
-				if (measuredDuration == null) {
-					throw new UnsupportedOperationException();
-				}
-
-				Double value = root.getCompilationMetricEntries().get(node.getName());
-
-				if (value == null) {
-					return result + " (compiled)";
-				} else {
-					return result + " (" + displayShort.apply(value) +
-							" to compile)";
-				}
+			double measuredDuration = node.getMeasuredDuration();
+			if (measuredDuration > 0.0) {
+				result = result + " [" + displayShort.apply(measuredDuration) + " measured]";
 			}
 
 			label = result;

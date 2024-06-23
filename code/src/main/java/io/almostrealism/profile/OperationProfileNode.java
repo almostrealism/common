@@ -27,6 +27,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -44,10 +45,12 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 							meta -> meta.getShortDescription() == null ?
 									meta.getDisplayName() : meta.getShortDescription()));
 
-	private CompilationProfile compilation;
-	private Map<String, OperationProfileNode> children;
+	private List<OperationProfileNode> children;
+	private Map<String, String> operationSources;
+	private TimingMetric measuredTime;
+
 	private Map<String, String> metadataCache;
-	private FrequencyCache<String, OperationProfileNode> parentCache;
+	private FrequencyCache<String, OperationProfileNode> nodeCache;
 
 	public OperationProfileNode() { this("default"); }
 
@@ -58,68 +61,35 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	public OperationProfileNode(String name, Function<OperationMetadata, String> key) {
 		super(name, key);
 	}
-
-	protected void initChildren() {
-		if (children == null) {
-			children = new HashMap<>();
-		}
-	}
-
-	protected void initMetadataCache() {
-		if (metadataCache == null) {
-			metadataCache = new HashMap<>();
-		}
-	}
-
-	protected void initParentCache() {
-		initChildren();
-
-		if (parentCache == null) {
-			// log("Creating cache for " + getName() + " (" + children.size() + " children)");
-			parentCache = new FrequencyCache(60, 0.5);
-		}
-	}
-
+	
 	public void setName(String name) {
 		this.name = name;
 	}
 
 	public void setChildren(List<OperationProfileNode> children) {
-		initChildren();
 		children.forEach(this::addChild);
 	}
 
 	@Override
 	public Collection<OperationProfileNode> getChildren() {
+		return getChildren(null);
+	}
+
+	public Collection<OperationProfileNode> getChildren(Comparator<? super OperationProfileNode> comparator) {
 		if (children == null) return Collections.emptyList();
 
-		return children.values().stream()
-				.sorted(Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed())
+		return comparator == null ? children : children.stream()
+				.sorted(comparator)
 				.collect(Collectors.toList());
 	}
 
-	protected void addChild(OperationProfileNode node) {
-		initChildren();
-		children.put(node.getName(), node);
+	public OperationProfileNode addChild(OperationMetadata metadata) {
+		return getProfileNode(metadata);
 	}
 
-	public void addChildren(OperationMetadata metadata) {
-		if (metadata.getDisplayName() == null)
-			throw new IllegalArgumentException();
-
-		if (children != null && children.containsKey(metadata.getDisplayName()))
-			return;
-
-		if (!Objects.equals(getName(), metadata.getDisplayName())) {
-			addChild(OperationProfileNode.forMetadata(metadata, getKey()));
-			return;
-		}
-
-		if (metadata.getChildren() != null) {
-			metadata.getChildren().stream()
-					.map(v -> OperationProfileNode.forMetadata(v, getKey()))
-					.forEach(this::addChild);
-		}
+	protected void addChild(OperationProfileNode node) {
+		if (children == null) children = new ArrayList<>();
+		children.add(node);
 	}
 
 	public Map<String, String> getMetadata() {
@@ -130,6 +100,14 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		this.metadataCache = metadata;
 	}
 
+	public TimingMetric getMeasuredTime() {
+		return measuredTime;
+	}
+
+	public void setMeasuredTime(TimingMetric measuredTime) {
+		this.measuredTime = measuredTime;
+	}
+
 	public String getMetadataDetail(String name) {
 		if (metadataCache != null && metadataCache.containsKey(name)) {
 			return metadataCache.get(name);
@@ -138,23 +116,12 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		return name;
 	}
 
-	public void setCompilationProfile(CompilationProfile compilation) {
-		this.compilation = compilation;
-	}
-
-	public CompilationProfile getCompilationProfile() {
-		if (compilation == null) {
-			compilation = new CompilationProfile(getName(), getKey());
-		}
-
-		return compilation;
-	}
+	public double getMeasuredDuration() { return measuredTime == null ? 0 : measuredTime.getTotal(); }
 
 	public double getSelfDuration() { return super.getTotalDuration(); }
 
 	public double getChildDuration() {
 		return getChildren().stream()
-				.filter(c -> getMetric() == null || !getMetricEntries().containsKey(c.getName()))
 				.mapToDouble(OperationProfileNode::getTotalDuration)
 				.sum();
 	}
@@ -164,93 +131,104 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 		return getSelfDuration() + getChildDuration();
 	}
 
-	public void setCompilationMetricEntries(Map<String, Double> entries) {
-		if (entries ==  null || entries.isEmpty()) compilation = null;
-		getCompilationProfile().setMetricEntries(entries);
-	}
+	public TimingMetric getMergedMetric() {
+		if (measuredTime != null) return measuredTime;
+		if (getMetric() != null) return getMetric();
+		if (children == null) return null;
 
-	public Map<String, Double> getCompilationMetricEntries() {
-		return compilation == null ? null : getCompilationProfile().getMetricEntries();
+		TimingMetric metric = new TimingMetric();
+		getChildren().stream()
+				.map(OperationProfileNode::getMergedMetric)
+				.filter(Objects::nonNull)
+				.forEach(metric::addAll);
+		return metric;
 	}
-
-	public void setCompilationMetricCounts(Map<String, Integer> counts) {
-		if (counts == null || counts.isEmpty()) compilation = null;
-		getCompilationProfile().setMetricCounts(counts);
-	}
-
-	public Map<String, Integer> getCompilationMetricCounts() {
-		return compilation == null ? null : getCompilationProfile().getMetricCounts();
-	}
-
 
 	public void setOperationSources(Map<String, String> operationSources) {
-		if (operationSources == null || operationSources.isEmpty()) return;
-		getCompilationProfile().setOperationSources(operationSources);
+		this.operationSources = operationSources;
 	}
 
 	public Map<String, String> getOperationSources() {
-		if (compilation == null) return new HashMap<>();
-		return getCompilationProfile().getOperationSources();
+		return operationSources;
 	}
 
 	public OperationProfileNode getProfileNode(OperationMetadata metadata) {
-		if (children == null) {
-			return null;
-		} else if (children.containsKey(metadata.getDisplayName())) {
+		return getProfileNode(metadata, true);
+	}
+
+	public OperationProfileNode getProfileNode(OperationMetadata metadata, boolean top) {
+		OperationProfileNode node = null;
+
+		if (Objects.equals(metadata.getDisplayName(), getName())) {
 			return this;
-		} else if (parentCache != null && parentCache.containsKey(metadata.getDisplayName())) {
-			return parentCache.get(metadata.getDisplayName());
-		} else {
-			return getChildren().stream().map(v -> v.getProfileNode(metadata))
+		} else if (nodeCache != null && nodeCache.containsKey(metadata.getDisplayName())) {
+			node = nodeCache.get(metadata.getDisplayName());
+		} else if (children != null) {
+			node = getChildren().stream().map(v -> v.getProfileNode(metadata, false))
 					.filter(Objects::nonNull)
 					.findFirst()
 					.orElse(null);
 		}
-	}
 
-	public TimingMetric getMergedMetric() {
-		return getMergedMetric(false);
-	}
+		if (top) {
+			if (node == null) {
+				node = OperationProfileNode.forMetadata(metadata, getKey());
+				addChild(node);
+			}
 
-	public TimingMetric getMergedMetric(boolean includeSubsumed) {
-		TimingMetric metric = new TimingMetric(getName());
-		if (getMetric() != null)
-			metric.addAll(getMetric());
+			if (nodeCache == null) nodeCache = new FrequencyCache(60, 0.5);
+			nodeCache.put(metadata.getDisplayName(), node);
 
-		getChildren()
-				.stream()
-				.filter(c -> includeSubsumed || getMetric() == null || !getMetricEntries().containsKey(c.getName()))
-				.forEach(v -> metric.addAll(v.getMergedMetric(includeSubsumed)));
+			if (metadataCache == null) metadataCache = new HashMap<>();
+			metadataCache.put(metadata.getDisplayName(), metadataDetail.apply(metadata));
+		}
 
-		return metric;
+		return node;
 	}
 
 	@Override
 	public void recordDuration(OperationMetadata metadata, long nanos) {
-		if (children != null && children.containsKey(metadata.getDisplayName())) {
-			super.recordDuration(metadata, nanos);
+		if (Objects.equals(getName(), metadata.getDisplayName())) {
+			if (measuredTime == null) measuredTime = new TimingMetric();
+			measuredTime.addEntry(getKey().apply(metadata), nanos);
 			return;
 		}
 
-		OperationProfileNode node = getProfileNode(metadata);
-
-		if (node != null) {
-			initParentCache();
-			parentCache.put(metadata.getDisplayName(), node);
-
-			initMetadataCache();
-			metadataCache.put(metadata.getDisplayName(), metadataDetail.apply(metadata));
-
-			node.recordDuration(metadata, nanos);
-			return;
-		}
-
-		warn("No profile node found for " + metadata.getDisplayName());
-		addChildren(metadata);
-		recordDuration(metadata, nanos);
+		getProfileNode(metadata).recordDuration(metadata, nanos);
 	}
 
-	public String summary() { return getMergedMetric().summary(getName(), this::getMetadataDetail); }
+	public void recordCompilation(OperationMetadata metadata, String code, long nanos) {
+		if (operationSources == null) {
+			operationSources = new HashMap<>();
+		}
+
+		this.operationSources.put(metadata.getDisplayName(), code);
+
+		OperationProfileNode node = getProfileNode(metadata);
+		node.initMetric();
+		node.getMetric().addEntry(getKey().apply(metadata) + " compile", nanos);
+	}
+
+	@Override
+	public OperationTimingListener getRuntimeListener() {
+		return (metadata, nanos) -> {
+			OperationProfileNode node = getProfileNode(metadata);
+			node.initMetric();
+			node.getMetric().addEntry(getKey().apply(metadata) + " run", nanos);
+		};
+	}
+
+	@Override
+	public CompilationTimingListener getCompilationListener() {
+		return this::recordCompilation;
+	}
+
+	@Override
+	public String summary() {
+		if (getMetric() != null) return getMetric().summary(getName(), this::getMetadataDetail);
+		if (children != null) return getMergedMetric().summary(getName(), this::getMetadataDetail);
+		return super.summary();
+	}
 
 	public void save(String file) throws IOException {
 		save(new File(file));
@@ -271,7 +249,12 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 			return null;
 
 		OperationProfileNode node = new OperationProfileNode(metadata.getDisplayName(), key);
-		node.addChildren(metadata);
+		if (metadata.getChildren() != null) {
+			metadata.getChildren().stream()
+					.map(v -> OperationProfileNode.forMetadata(v, key))
+					.forEach(node::addChild);
+		}
+
 		return node;
 	}
 
