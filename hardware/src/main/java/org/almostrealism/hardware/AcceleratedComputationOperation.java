@@ -34,6 +34,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
@@ -191,15 +192,17 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (verboseCompile) log("Compiling " + getFunctionName());
 
-		prepareScope();
+		return new ExpressionCache().use(() -> {
+			prepareScope();
 
-		if (getComputation() instanceof OperationAdapter
-				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
-			return compile(c.getArgumentForInput(c.getInputs().get(0)));
-		} else {
-			return compile(null);
-		}
+			if (getComputation() instanceof OperationAdapter
+					&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
+				OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+				return compile(c.getArgumentForInput(c.getInputs().get(0)));
+			} else {
+				return compile(null);
+			}
+		});
 	}
 
 	protected synchronized Scope<T> compile(Variable<T, ?> outputVariable) {

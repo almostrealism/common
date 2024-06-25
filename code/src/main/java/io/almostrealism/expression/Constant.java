@@ -41,7 +41,7 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean contains(Index idx) { return false; }
+	public boolean containsIndex(Index idx) { return false; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return null; }

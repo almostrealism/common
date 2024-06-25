@@ -162,7 +162,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		optimize("convolution2d_" + rows * cols, model,
 				() -> split.get(0), () -> split.get(1),
-				1, data.size(), 0.05);
+				10, data.size(), 0.05);
 	}
 
 	public void optimize(String name, Model model,
@@ -174,13 +174,14 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 		try {
 			CompiledModel compiled = model.compile(profile);
-			ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
+			ModelOptimizer optimizer = new ModelOptimizer(compiled, trainData);
 
 			for (int i = 0; i < epochs; i++) {
 				train(name, optimizer, 1, steps, lossTarget);
 				validate(compiled, testData);
 			}
 		} finally {
+			logKernelMetrics(profile);
 			profile.save("results/logs/cnn_" + cols + "x" + rows + ".xml");
 		}
 	}

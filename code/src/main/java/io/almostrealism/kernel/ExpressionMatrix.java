@@ -171,12 +171,12 @@ public class ExpressionMatrix<T> implements ConsoleFeatures {
 				result[i][j] = evaluator.valueAt(i, j);
 				if (result[i][j] == null) continue j;
 
-				if (row != null && result[i][j].contains(row)) {
+				if (row != null && result[i][j].containsIndex(row)) {
 					rowDependent = true;
 					result[i][j] = result[i][j].withIndex(row, i);
 				}
 
-				if (col != null && result[i][j].contains(col)) {
+				if (col != null && result[i][j].containsIndex(col)) {
 					result[i][j] = result[i][j].withIndex(col, j);
 				}
 

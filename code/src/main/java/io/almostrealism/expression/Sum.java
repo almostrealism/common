@@ -27,6 +27,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -240,6 +241,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
+		return ExpressionCache.match(create(values));
+	}
+
+	protected static <T> Expression<T> create(Expression... values) {
 		List<Expression> operands =
 				Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
 

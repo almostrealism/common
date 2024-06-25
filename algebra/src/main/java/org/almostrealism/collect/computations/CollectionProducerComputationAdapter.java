@@ -49,7 +49,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			scope.getVariables().add(output.ref(i).assign(getValueAt(index)));
+			scope.getStatements().add(output.ref(i).assign(getValueAt(index)));
 		}
 
 		return scope;

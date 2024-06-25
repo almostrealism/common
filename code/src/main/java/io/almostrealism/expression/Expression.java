@@ -34,6 +34,7 @@ import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -52,7 +53,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ExpressionFeatures, ConsoleFeatures {
+public abstract class Expression<T> implements
+		KernelTree<Expression<?>>, SequenceGenerator, Signature,
+		ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static boolean enableArithmeticSequence = true;
@@ -64,7 +67,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
-	private static LanguageOperations lang;
+	protected static LanguageOperations lang;
 	private static FrequencyCache<String, IndexSequence> kernelSeqCache;
 
 	static {
@@ -77,15 +80,17 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	private Class<T> type;
 	private List<Expression<?>> children;
-	private Set<Index> indices;
-
 	private int depth;
+
+	private Set<Index> indices;
+	private Integer hashCode;
+
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
 
 	public Expression(Class<T> type) {
-		setType(type);
+		this.type = type;
 	}
 
 	public Expression(Class<T> type, Expression<?>... children) {
@@ -93,7 +98,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 			throw new IllegalArgumentException("Type is required");
 		}
 
-		setType(type);
+		this.type = type;
 		this.children = List.of(children);
 		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
 
@@ -102,6 +107,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		}
 	}
 
+	@Deprecated
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
@@ -137,8 +143,17 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				.collect(Collectors.toList()));
 	}
 
+	public Expression<T> replace(Expression target, Expression replacement) {
+		if (this.equals(target)) return replacement;
+
+		return generate(getChildren().stream()
+				.map(e -> e.replace(target, replacement))
+				.collect(Collectors.toList()));
+
+	}
+
 	public Expression<T> withIndex(Index index, Expression<?> e) {
-		if (!contains(index)) return this;
+		if (!containsIndex(index)) return this;
 
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
 			return (Expression) e;
@@ -172,14 +187,20 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return indices;
 	}
 
-	public boolean contains(Index idx) {
+	public boolean contains(Expression e) {
+		if (this.equals(e)) return true;
+		if (getChildren().isEmpty()) return false;
+		return getChildren().stream().anyMatch(c -> c.contains(e));
+	}
+
+	public boolean containsIndex(Index idx) {
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
 			return true;
 		} else if (getChildren().isEmpty()) {
 			return false;
 		}
 
-		return getChildren().stream().anyMatch(e -> e.contains(idx));
+		return getChildren().stream().anyMatch(e -> e.containsIndex(idx));
 	}
 
 	public boolean containsReference(Variable var) {
@@ -517,6 +538,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Expression)) return false;
+		if (this == obj) return true;
 
 		Expression v = (Expression) obj;
 		if (type != v.getType()) return false;
@@ -531,7 +553,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	@Override
-	public int hashCode() { return isNull() ? 0 : getExpression(new LanguageOperationsStub()).hashCode(); }
+	public String signature() { return getExpression(lang); }
+
+	@Override
+	public int hashCode() {
+		if (hashCode == null) hashCode = isNull() ? 0 : signature().hashCode();
+		return hashCode;
+	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {
 		if (kernelSeqCache != null && exp != null) {

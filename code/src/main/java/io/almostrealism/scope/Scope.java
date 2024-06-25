@@ -50,11 +50,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -72,6 +75,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	public static TimingMetric timing = console.timing("scope");
 
 	private String name;
+	private int refIdx;
 	private OperationMetadata metadata;
 	private List<ComputeRequirement> requirements;
 
@@ -200,7 +204,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
+	@Deprecated
 	public Set<KernelIndexChild> getKernelChildren() { return kernelChildren; }
+
+	@Deprecated
 	public void setKernelChildren(Set<KernelIndexChild> kernelChildren) { this.kernelChildren = kernelChildren; }
 
 	public List<Metric> getMetrics() { return metrics; }
@@ -555,6 +562,58 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
 
+		List<Expression<?>> frequent = Optional.ofNullable(ExpressionCache.getCurrent())
+				.filter(Predicate.not(ExpressionCache::isEmpty))
+				.map(ExpressionCache::getFrequentExpressions)
+				.orElse(Collections.emptyList());
+
+		List<Statement<?>> statements = new ArrayList<>();
+		Map<StaticReference, Expression<?>> replacements = new HashMap<>();
+
+		for (Expression<?> e : frequent) {
+			boolean inUse = scope.getStatements().stream()
+					.filter(ExpressionAssignment.class::isInstance)
+					.map(s -> (ExpressionAssignment) s)
+					.map(ExpressionAssignment::getExpression)
+					.anyMatch(exp -> exp.contains(e));
+			boolean alreadyDeclared = scope.getStatements().stream()
+					.filter(ExpressionAssignment.class::isInstance)
+					.map(s -> (ExpressionAssignment) s)
+					.filter(ExpressionAssignment::isDeclaration)
+					.map(ExpressionAssignment::getExpression)
+					.anyMatch(exp -> exp.equals(e));
+
+			if (inUse && !alreadyDeclared) {
+				StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
+				statements.add(new ExpressionAssignment(true, ref, e));
+				replacements.put(ref, e);
+			}
+		}
+
+		if (!statements.isEmpty()) {
+			for (Statement<?> s : scope.getStatements()) {
+				if (s instanceof ExpressionAssignment) {
+					ExpressionAssignment assignment = (ExpressionAssignment) s;
+
+					for (StaticReference r : replacements.keySet()) {
+						Expression<?> e = replacements.get(r);
+						if (assignment.getExpression().contains(e)) {
+							assignment = new ExpressionAssignment(
+									assignment.isDeclaration(),
+									assignment.getDestination(),
+									assignment.getExpression().replace(e, r));
+						}
+					}
+
+					statements.add(assignment);
+				} else {
+					statements.add(s);
+				}
+			}
+
+			scope.getStatements().clear();
+			scope.getStatements().addAll(statements);
+		}
 
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
@@ -567,6 +626,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.refIdx = refIdx;
+
 		scope.setComputeRequirements(getComputeRequirements());
 		scope.getChildren().addAll(children);
 		return scope;
@@ -582,6 +643,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return getName() == null ? 0 : getName().hashCode();
 	}
 
+	@Deprecated
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 
