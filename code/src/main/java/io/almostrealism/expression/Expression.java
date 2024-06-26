@@ -33,9 +33,11 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
@@ -80,10 +82,10 @@ public abstract class Expression<T> implements
 
 	private Class<T> type;
 	private List<Expression<?>> children;
-	private int depth;
+	private int depth, nodeCount;
+	private short hash;
 
 	private Set<Index> indices;
-	private Integer hashCode;
 
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
@@ -101,6 +103,13 @@ public abstract class Expression<T> implements
 		this.type = type;
 		this.children = List.of(children);
 		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
+		this.nodeCount = this.children.stream().mapToInt(e -> e.nodeCount).sum() + 1;
+
+		if (this.children.isEmpty()) {
+			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
+		} else {
+			hash = (short) this.children.stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
+		}
 
 		if (depth > maxDepth) {
 			throw new UnsupportedOperationException();
@@ -311,20 +320,20 @@ public abstract class Expression<T> implements
 		Expression<?> simplified = simplify(context);
 		if (simplified.isSimple()) return simplified;
 
-		String exp = simplified.getExpression(lang);
+		int hashCode = simplified.hashCode();
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify(context);
 			if (next.isSimple()) return next;
 
-			String nextExp = next.getExpression(lang);
+			int nextExp = next.hashCode();
 
-			if (nextExp.equals(exp)) {
+			if (nextExp == hashCode) {
 				break w;
 			}
 
 			simplified = next;
-			exp = nextExp;
+			hashCode = nextExp;
 		}
 
 		simplified.isSimple = true;
@@ -533,7 +542,9 @@ public abstract class Expression<T> implements
 		return simple;
 	}
 
-	public boolean isSeriesSimplificationTarget() { return true; }
+	public boolean isSeriesSimplificationTarget() {
+		return ScopeSettings.isSeriesSimplificationTarget(treeDepth());
+	}
 
 	@Override
 	public boolean equals(Object obj) {
@@ -557,8 +568,10 @@ public abstract class Expression<T> implements
 
 	@Override
 	public int hashCode() {
-		if (hashCode == null) hashCode = isNull() ? 0 : signature().hashCode();
-		return hashCode;
+		return Bits.put(0, 16, hash) +
+				Bits.put(16, 10, nodeCount) +
+				Bits.put(26, 4, depth) +
+				Bits.put(30, 2, getChildren().size());
 	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {

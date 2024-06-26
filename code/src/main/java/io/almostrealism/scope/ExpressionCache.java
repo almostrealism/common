@@ -25,20 +25,16 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class ExpressionCache {
-	public static int defaultSize = 100;
-	public static int frequencyThreshold = 100;
-	public static List<Integer> cacheDepths = List.of(9, 5);
-
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 
 	private FrequencyCache<String, Expression<?>> cache;
 
 	public ExpressionCache() {
-		cache = new FrequencyCache<>(defaultSize, 0.7);
+		cache = new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7);
 	}
 
 	public <T> Expression<T> get(Expression<T> expression) {
-		if (!cacheDepths.contains(expression.treeDepth()))
+		if (!ScopeSettings.isExpressionCacheTarget(expression.treeDepth()))
 			return expression;
 
 		String s = expression.signature();
@@ -53,7 +49,7 @@ public class ExpressionCache {
 
 	public List<Expression<?>> getFrequentExpressions() {
 		List<Expression<?>> expressions = cache
-				.valuesByFrequency(f -> f > frequencyThreshold)
+				.valuesByFrequency(f -> f > ScopeSettings.getExpressionCacheFrequencyThreshold())
 				.collect(Collectors.toList());
 		Collections.reverse(expressions);
 		return expressions;
