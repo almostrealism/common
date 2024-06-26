@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -27,7 +28,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Minus<T extends Number> extends UnaryExpression<T> {
-	public Minus(Expression<? extends Number> value) {
+	protected Minus(Expression<? extends Number> value) {
 		super((Class) value.getType(), "-", value);
 	}
 
@@ -85,6 +86,18 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 1)  throw new UnsupportedOperationException();
-		return new Minus(children.get(0));
+		return (Expression) Minus.of(children.get(0));
+	}
+
+	public static Expression<?> of(Expression<?> value) {
+		return ExpressionCache.match(value);
+	}
+
+	protected static Expression<?> create(Expression<?> value) {
+		if (value instanceof Minus) {
+			return value.getChildren().get(0);
+		}
+
+		return new Minus(value);
 	}
 }

@@ -124,7 +124,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
 			pos[i] = Quotient.of(remaining, s);
-			remaining = Sum.of(remaining, new Minus(Product.of(pos[i], s)));
+			remaining = Sum.of(remaining, Minus.of(Product.of(pos[i], s)));
 		}
 
 		return pos;

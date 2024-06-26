@@ -18,13 +18,11 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ExpressionCache;
@@ -43,10 +41,6 @@ import java.util.stream.Stream;
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
 	public static int maxOppositeDetectionDepth = 10;
-
-	protected Sum(Stream<Expression<? extends Number>> values) {
-		super("+", (Stream) values);
-	}
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);

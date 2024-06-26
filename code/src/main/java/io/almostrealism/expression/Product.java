@@ -25,6 +25,7 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,16 +36,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
-	protected Product(Stream<Expression<? extends Number>> values) {
-		super("*", (Stream) values);
-	}
-
 	protected Product(List<Expression<Double>> values) {
 		super((Class<T>) type(values), "*", (List) values);
-	}
-
-	protected Product(Expression<Double>... values) {
-		super((Class<T>) type(List.of(values)), "*", values);
 	}
 
 	@Override
@@ -291,6 +284,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
+		return ExpressionCache.match(create(values));
+	}
+
+	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];
 

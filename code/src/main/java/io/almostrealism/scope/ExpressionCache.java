@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 public class ExpressionCache {
 	public static int defaultSize = 100;
 	public static int frequencyThreshold = 100;
-	public static List<Integer> cacheDepths = List.of(7);
+	public static List<Integer> cacheDepths = List.of(9, 5);
 
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 

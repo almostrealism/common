@@ -23,6 +23,7 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -137,7 +138,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		CollectionExpression derivativeNumerator =
 				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
 		CollectionExpression derivativeDenominator =
-				new ConstantCollectionExpression(target.getShape(), new Product(denominator, denominator)); // [g(x)]^2
+				new ConstantCollectionExpression(target.getShape(),
+						new Product(List.of(denominator, denominator))); // [g(x)]^2
 		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
@@ -210,6 +212,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
+		return ExpressionCache.match(create(values));
+	}
+
+	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];
 

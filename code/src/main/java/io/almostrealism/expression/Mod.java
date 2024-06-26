@@ -22,6 +22,7 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -193,6 +194,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	public static Expression of(Expression input, Expression mod, boolean fp) {
+		return ExpressionCache.match(create(input, mod, fp));
+	}
+
+	protected static Expression create(Expression input, Expression mod, boolean fp) {
 		if (fp || mod.intValue().isEmpty()) return new Mod(input, mod, fp);
 
 		int m = mod.intValue().getAsInt();

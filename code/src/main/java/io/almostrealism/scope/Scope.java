@@ -51,6 +51,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -556,64 +557,17 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		UnaryOperator simplification = simplification(context);
 		scope.getMethods().addAll((List) getMethods()
 				.stream().map(simplification).collect(Collectors.toList()));
-		scope.getStatements().addAll((List) getStatements()
-				.stream().map(simplification).collect(Collectors.toList()));
+
+		scope.getStatements().addAll(processReplacements((List) getStatements()
+						.stream().map(simplification).collect(Collectors.toList()),
+				() -> Optional.ofNullable(ExpressionCache.getCurrent())
+						.filter(Predicate.not(ExpressionCache::isEmpty))
+						.map(ExpressionCache::getFrequentExpressions)
+						.orElse(Collections.emptyList())));
+
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
-
-		List<Expression<?>> frequent = Optional.ofNullable(ExpressionCache.getCurrent())
-				.filter(Predicate.not(ExpressionCache::isEmpty))
-				.map(ExpressionCache::getFrequentExpressions)
-				.orElse(Collections.emptyList());
-
-		List<Statement<?>> statements = new ArrayList<>();
-		Map<StaticReference, Expression<?>> replacements = new HashMap<>();
-
-		for (Expression<?> e : frequent) {
-			boolean inUse = scope.getStatements().stream()
-					.filter(ExpressionAssignment.class::isInstance)
-					.map(s -> (ExpressionAssignment) s)
-					.map(ExpressionAssignment::getExpression)
-					.anyMatch(exp -> exp.contains(e));
-			boolean alreadyDeclared = scope.getStatements().stream()
-					.filter(ExpressionAssignment.class::isInstance)
-					.map(s -> (ExpressionAssignment) s)
-					.filter(ExpressionAssignment::isDeclaration)
-					.map(ExpressionAssignment::getExpression)
-					.anyMatch(exp -> exp.equals(e));
-
-			if (inUse && !alreadyDeclared) {
-				StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
-				statements.add(new ExpressionAssignment(true, ref, e));
-				replacements.put(ref, e);
-			}
-		}
-
-		if (!statements.isEmpty()) {
-			for (Statement<?> s : scope.getStatements()) {
-				if (s instanceof ExpressionAssignment) {
-					ExpressionAssignment assignment = (ExpressionAssignment) s;
-
-					for (StaticReference r : replacements.keySet()) {
-						Expression<?> e = replacements.get(r);
-						if (assignment.getExpression().contains(e)) {
-							assignment = new ExpressionAssignment(
-									assignment.isDeclaration(),
-									assignment.getDestination(),
-									assignment.getExpression().replace(e, r));
-						}
-					}
-
-					statements.add(assignment);
-				} else {
-					statements.add(s);
-				}
-			}
-
-			scope.getStatements().clear();
-			scope.getStatements().addAll(statements);
-		}
 
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
@@ -656,6 +610,93 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		}
 
 		return kernelChildren;
+	}
+
+	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
+													 Supplier<List<Expression<?>>> replacementTargets) {
+		Set<Expression<?>> processed = new HashSet<>();
+		List<Statement<?>> declarations = new ArrayList<>();
+		Map<StaticReference, Expression<?>> replacements = new HashMap<>();
+
+		Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
+
+		while (!targets.isEmpty()) {
+			boolean updated = false;
+
+			// Replace all targets which are used, but not already declared
+			for (Expression<?> e : targets) {
+				boolean inUse = statements.stream()
+						.filter(ExpressionAssignment.class::isInstance)
+						.map(s -> (ExpressionAssignment) s)
+						.map(ExpressionAssignment::getExpression)
+						.anyMatch(exp -> exp.contains(e));
+				boolean alreadyDeclared = statements.stream()
+						.filter(ExpressionAssignment.class::isInstance)
+						.map(s -> (ExpressionAssignment) s)
+						.filter(ExpressionAssignment::isDeclaration)
+						.map(ExpressionAssignment::getExpression)
+						.anyMatch(exp -> exp.equals(e));
+
+				if (inUse && !alreadyDeclared) {
+					StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
+					declarations.add(new ExpressionAssignment(true, ref, e));
+					replacements.put(ref, e);
+					updated = true;
+				}
+
+				// Record the target, as it
+				// should not be visited again
+				processed.add(e);
+			}
+
+			// If any replacements were declared, update all
+			// the statements to include them
+			if (updated) {
+				List<Statement<?>> next = new ArrayList<>();
+
+				for (Statement<?> s : statements) {
+					if (s instanceof ExpressionAssignment) {
+						ExpressionAssignment assignment = (ExpressionAssignment) s;
+
+						for (StaticReference r : replacements.keySet()) {
+							Expression<?> e = replacements.get(r);
+							if (assignment.getExpression().contains(e)) {
+								assignment = new ExpressionAssignment(
+										assignment.isDeclaration(),
+										assignment.getDestination(),
+										assignment.getExpression().replace(e, r));
+							}
+						}
+
+						next.add(assignment);
+					} else {
+						next.add(s);
+					}
+				}
+
+				// The process will be repeated, but with the
+				// updated statements and any new targets that
+				// may have been identified in the process
+				statements = next;
+			}
+
+			// Reset the targets and prepare to review
+			// any new replacement opportunities that
+			// have not already been reviewed
+			targets.clear();
+			replacementTargets.get().stream()
+					.filter(Predicate.not(processed::contains))
+					.forEach(targets::add);
+		}
+
+		// If no replacements were made, return the statements
+		if (declarations.isEmpty()) return statements;
+
+		// Otherwise, combine the declarations with the updated statements
+		List<Statement<?>> result = new ArrayList<>();
+		result.addAll(declarations);
+		result.addAll(statements);
+		return result;
 	}
 
 	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {

@@ -625,7 +625,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
 		return new TraversableExpressionComputation<>(null, shape(a),
-				args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
+				args -> CollectionExpression.create(shape(a), index -> Minus.of(args[1].getValueAt(index))),
 				(Supplier) a);
 	}
 

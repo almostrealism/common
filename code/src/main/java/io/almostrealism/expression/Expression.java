@@ -382,7 +382,7 @@ public abstract class Expression<T> implements
 		throw new UnsupportedOperationException();
 	}
 
-	public Expression minus() { return new Minus(this); }
+	public Expression minus() { return Minus.of(this); }
 
 	public Expression add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
 	public Expression add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
