@@ -65,12 +65,14 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
+ * A {@link Scope} is the container for {@link Statement}s,
+ * {@link Method}s, and other {@link Scope}s.
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
+	public static final boolean enableReplacements = true;
 	public static final Console console = Console.root().child();
 
 	public static TimingMetric timing = console.timing("scope");
@@ -614,6 +616,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 
 	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
 													 Supplier<List<Expression<?>>> replacementTargets) {
+		if (!enableReplacements) return statements;
+
 		Set<Expression<?>> processed = new HashSet<>();
 		List<Statement<?>> declarations = new ArrayList<>();
 		Map<StaticReference, Expression<?>> replacements = new HashMap<>();
