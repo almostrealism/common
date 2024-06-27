@@ -393,7 +393,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 					log("\t\tbackprop\t\t\t" +
 							" | epoch = " + i / epochSize + "\t|\t" + remainingText);
 
-					if (first && Scope.timing.getTotal() > 180) {
+					if (first) {
 						AcceleratedComputationOperation.printTimes();
 					} else if (remaining > 900) {
 						return;

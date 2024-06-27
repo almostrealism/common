@@ -282,7 +282,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		KernelSeriesProvider.timingPos.clear();
 		KernelSeriesProvider.timingNeg.clear();
 		KernelTraversalProvider.timing.clear();
-		Scope.timing.clear();
 		compileProfile.clear();
 	}
 
@@ -301,10 +300,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();
-		}
-
-		if (verbose || Scope.timing.getTotal() > 60) {
-			Scope.timing.print();
 		}
 
 		if (verbose || compileProfile.getTotal() > 60) {

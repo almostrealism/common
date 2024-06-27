@@ -153,6 +153,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
+			if (profile instanceof OperationProfileNode) {
+				((OperationProfileNode) profile).addChild(getMetadata());
+			}
+
 			if (enableAutomaticOptimization && !isUniform()) {
 				return optimize().get();
 			} else if (isComputation()) {
@@ -167,7 +171,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						.filter(Objects::nonNull)
 						.filter(Predicate.not(OperationAdapter::isCompiled))
 						.forEach(OperationAdapter::compile);
-				return new Runner(getMetadata(), run, getComputeRequirements(), profiles);
+				return new Runner(getMetadata(), run, getComputeRequirements(),
+						profile == null ? null : profile.getTimingListener());
 			}
 		} finally {
 			if (getComputeRequirements() != null) {
@@ -423,16 +428,15 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
-		private OperationProfile profile;
 		private OperationTimingListener timingListener;
 
 		public Runner(OperationMetadata metadata, List<Runnable> run,
-					  List<ComputeRequirement> requirements, OperationProfile profile) {
+					  List<ComputeRequirement> requirements,
+					  OperationTimingListener timingListener) {
 			this.metadata = metadata;
 			this.run = run;
 			this.requirements = requirements;
-			this.profile = profile;
-			this.timingListener = profile == null ? null : profile.getTimingListener();
+			this.timingListener = timingListener;
 		}
 
 		@Override
@@ -452,10 +456,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						run.get(i).run();
 					}
 				} else {
-					if (profile instanceof OperationProfileNode) {
-						((OperationProfileNode) profile).addChild(getMetadata());
-					}
-
 					for (int i = 0; i < run.size(); i++) {
 						timingListener.recordDuration(run.get(i));
 					}

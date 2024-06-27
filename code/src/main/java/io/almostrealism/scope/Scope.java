@@ -31,8 +31,8 @@ import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -44,7 +44,6 @@ import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -75,7 +74,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	public static final boolean enableReplacements = true;
 	public static final Console console = Console.root().child();
 
-	public static TimingMetric timing = console.timing("scope");
+	public static OperationTimingListener timing;
 
 	private String name;
 	private int refIdx;
@@ -705,19 +704,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 
 	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {
 		return t -> {
-			String key = null;
-			if (t instanceof Tree) {
-				key = String.valueOf(((Tree) t).countNodes());
-			} else if (t instanceof ExpressionAssignment) {
-				key = String.valueOf(((ExpressionAssignment) t).getExpression().countNodes());
-			}
-
 			long start = System.nanoTime();
 
 			try {
 				return t.simplify(context);
 			} finally {
-				timing.addEntry(key, System.nanoTime() - start);
+				if (timing != null)
+					timing.recordDuration(getMetadata(), System.nanoTime() - start);
 			}
 		};
 	}

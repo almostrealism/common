@@ -123,6 +123,9 @@ public abstract class Expression<T> implements
 	@Override
 	public int treeDepth() { return depth; }
 
+	@Override
+	public int countNodes() { return nodeCount; }
+
 	public boolean isInt() { return getType() == Integer.class; }
 	public boolean isFP() { return getType() == Double.class; }
 
