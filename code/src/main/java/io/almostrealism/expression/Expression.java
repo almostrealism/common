@@ -87,13 +87,14 @@ public abstract class Expression<T> implements
 
 	private Set<Index> indices;
 
+	private boolean containsLong;
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
 
-	public Expression(Class<T> type) {
-		this.type = type;
-	}
+//	public Expression(Class<T> type) {
+//		this.type = type;
+//	}
 
 	public Expression(Class<T> type, Expression<?>... children) {
 		if (type == null) {
@@ -104,6 +105,9 @@ public abstract class Expression<T> implements
 		this.children = List.of(children);
 		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
 		this.nodeCount = this.children.stream().mapToInt(e -> e.nodeCount).sum() + 1;
+		this.containsLong = (getType() == Long.class ||
+								this.children.stream().anyMatch(e -> e.containsLong))
+							&& intValue().isEmpty();
 
 		if (this.children.isEmpty()) {
 			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
@@ -198,6 +202,8 @@ public abstract class Expression<T> implements
 
 		return indices;
 	}
+
+	public boolean containsLong() { return containsLong; }
 
 	public boolean contains(Expression e) {
 		if (this.equals(e)) return true;
@@ -546,7 +552,8 @@ public abstract class Expression<T> implements
 	}
 
 	public boolean isSeriesSimplificationTarget() {
-		return ScopeSettings.isSeriesSimplificationTarget(treeDepth());
+		return ScopeSettings.isSeriesSimplificationTarget(
+				getType(), treeDepth(), countNodes(), containsLong());
 	}
 
 	@Override
@@ -558,11 +565,10 @@ public abstract class Expression<T> implements
 		if (type != v.getType()) return false;
 		if (!Objects.equals(getClass(), v.getClass())) return false;
 		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
-
-		LanguageOperationsStub lang = new LanguageOperationsStub();
+		if (!Objects.equals(countNodes(), v.countNodes())) return false;
+		if (!Objects.equals(hash, v.hash)) return false;
 		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
 		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
-
 		return true;
 	}
 

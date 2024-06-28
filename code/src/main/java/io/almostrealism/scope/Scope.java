@@ -32,6 +32,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -74,7 +75,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	public static final boolean enableReplacements = true;
 	public static final Console console = Console.root().child();
 
-	public static OperationTimingListener timing;
+	public static ScopeTimingListener timing;
 
 	private String name;
 	private int refIdx;
@@ -706,11 +707,14 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return t -> {
 			long start = System.nanoTime();
 
+			OperationMetadata metadata = context instanceof OperationInfo ?
+					((OperationInfo) context).getMetadata() : getMetadata();
+
 			try {
 				return t.simplify(context);
 			} finally {
 				if (timing != null)
-					timing.recordDuration(getMetadata(), System.nanoTime() - start);
+					timing.recordDuration(metadata, getMetadata(), System.nanoTime() - start);
 			}
 		};
 	}

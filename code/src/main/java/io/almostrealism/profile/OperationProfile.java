@@ -87,8 +87,8 @@ public class OperationProfile implements Named, ConsoleFeatures {
 		return getTimingListener();
 	}
 
-	public OperationTimingListener getScopeListener() {
-		return (metadata, nanos) -> { };
+	public ScopeTimingListener getScopeListener() {
+		return (root, metadata, nanos) -> { };
 	}
 
 	public CompilationTimingListener getCompilationListener() {

@@ -24,8 +24,8 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -46,14 +46,14 @@ import java.util.function.Supplier;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
 	public static boolean enableVerbose = false;
-	public static int maxCount = ParallelProcess.maxCount << 2;
+
 	public static int defaultMaxExpressions = 16;
 	public static int defaultMaxEntries = 32; // 16;
 	public static int minNodeCountMatch = 12; // 6;
 	public static int minNodeCountCache = 128;
 
 	static {
-		if (8L * maxCount * defaultMaxEntries > Integer.MAX_VALUE) {
+		if (8L * ScopeSettings.maxKernelSeriesCount * defaultMaxEntries > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("Maximum cache size is greater than maximum possible memory reservation");
 		}
 	}
@@ -79,7 +79,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.matchFailures = new TreeSet<>();
 	}
 
-	public boolean isComputable() { return fixed && count <= maxCount; }
+	public boolean isComputable() { return fixed && count <= ScopeSettings.maxKernelSeriesCount; }
 
 	@Override
 	public OptionalInt getMaximumLength() {
@@ -88,7 +88,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	@Override
 	public long getSequenceComputationLimit() {
-		return maxCount;
+		return Math.min(
+				KernelSeriesProvider.super.getSequenceComputationLimit(),
+				ScopeSettings.sequenceComputationLimit);
 	}
 
 	@Override
@@ -181,7 +183,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		int count = Countable.count(c);
 		boolean fixed = Countable.isFixedCount(c);
 		return new KernelSeriesCache(count, fixed,
-				(enableCache && fixed && count < maxCount) ?
+				(enableCache && fixed && count < ScopeSettings.maxKernelSeriesCount) ?
 						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);
 	}
 }

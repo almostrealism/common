@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 public class ExpressionCache {
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 
-	private FrequencyCache<String, Expression<?>> cache;
+	private FrequencyCache<Expression<?>, Expression<?>> cache;
 
 	public ExpressionCache() {
 		cache = new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7);
@@ -37,10 +37,16 @@ public class ExpressionCache {
 		if (!ScopeSettings.isExpressionCacheTarget(expression.treeDepth()))
 			return expression;
 
-		String s = expression.signature();
-		Expression e = cache.get(s);
+//		String s = expression.signature();
+//		Expression e = cache.get(s);
+//		if (e == null) {
+//			cache.put(s, expression);
+//			e = expression;
+//		}
+
+		Expression e = cache.get(expression);
 		if (e == null) {
-			cache.put(s, expression);
+			cache.put(expression, expression);
 			e = expression;
 		}
 
