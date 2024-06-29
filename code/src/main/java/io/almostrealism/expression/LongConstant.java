@@ -38,6 +38,7 @@ public class LongConstant extends Constant<Long> {
 	public LongConstant(Long value) {
 		super(Long.class);
 		this.value = value;
+		init();
 	}
 
 	@Override

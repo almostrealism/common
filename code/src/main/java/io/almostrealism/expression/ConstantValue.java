@@ -22,5 +22,6 @@ public class ConstantValue<T> extends Constant<T> {
 	public ConstantValue(Class<T> type, T value) {
 		super(type);
 		this.value = value;
+		init();
 	}
 }

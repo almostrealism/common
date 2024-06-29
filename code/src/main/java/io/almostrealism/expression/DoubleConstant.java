@@ -33,6 +33,7 @@ public class DoubleConstant extends Constant<Double> {
 	public DoubleConstant(Double value) {
 		super(Double.class);
 		this.value = value;
+		init();
 	}
 
 	@Override

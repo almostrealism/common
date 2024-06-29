@@ -34,6 +34,7 @@ public class IntegerConstant extends Constant<Integer> {
 	public IntegerConstant(Integer value) {
 		super(Integer.class);
 		this.value = value;
+		init();
 	}
 
 	@Override

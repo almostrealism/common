@@ -24,6 +24,7 @@ public class ArraySize<T> extends Expression<T> {
 	public ArraySize(int size) {
 		super(null);
 		this.size = size;
+		init();
 	}
 
 	@Override

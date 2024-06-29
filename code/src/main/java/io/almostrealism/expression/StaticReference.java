@@ -34,12 +34,14 @@ public class StaticReference<T> extends Expression<T> {
 	public StaticReference(Class<T> type, String expression) {
 		super(type);
 		this.expression = expression;
+		init();
 	}
 
 	public StaticReference(Class<T> type, String expression, Variable referent) {
 		super(type);
 		this.expression = expression;
 		this.referent = referent;
+		init();
 	}
 
 	public String getName() { return expression; }

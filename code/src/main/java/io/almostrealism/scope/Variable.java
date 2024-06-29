@@ -182,6 +182,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public int hashCode() { return name.hashCode(); }
 
 	public static Variable<Integer, ?> integer(String name) {
-		return new Variable<>(name, null, new Constant<>(Integer.class), null);
+		return new Variable<>(name, null, Constant.forType(Integer.class), null);
 	}
 }

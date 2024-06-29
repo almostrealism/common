@@ -92,9 +92,9 @@ public abstract class Expression<T> implements
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
 
-//	public Expression(Class<T> type) {
-//		this.type = type;
-//	}
+	public Expression(Class<T> type) {
+		this.type = type;
+	}
 
 	public Expression(Class<T> type, Expression<?>... children) {
 		if (type == null) {
@@ -103,17 +103,25 @@ public abstract class Expression<T> implements
 
 		this.type = type;
 		this.children = List.of(children);
-		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
-		this.nodeCount = this.children.stream().mapToInt(e -> e.nodeCount).sum() + 1;
-		this.containsLong = (getType() == Long.class ||
-								this.children.stream().anyMatch(e -> e.containsLong))
-							&& intValue().isEmpty();
+		init();
+	}
 
-		if (this.children.isEmpty()) {
+	protected void init() {
+		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
+		this.nodeCount = getChildren().stream().mapToInt(e -> e.nodeCount).sum() + 1;
+		this.containsLong = (getType() == Long.class ||
+				getChildren().stream().anyMatch(e -> e.containsLong))
+				&& intValue().isEmpty();
+
+		if (getChildren().isEmpty()) {
 			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
 		} else {
-			hash = (short) this.children.stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
+			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
 		}
+
+//		if (depth > 25) {
+//			System.out.println("!");
+//		}
 
 		if (depth > maxDepth) {
 			throw new UnsupportedOperationException();

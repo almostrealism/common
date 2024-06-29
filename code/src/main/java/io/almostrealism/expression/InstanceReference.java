@@ -50,6 +50,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public InstanceReference(Variable<T, ?> referent) {
 		super(referent.getType());
 		this.var = referent;
+		init();
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
@@ -57,6 +58,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;
+		init();
 	}
 
 	public Variable<T, ?> getReferent() { return var; }

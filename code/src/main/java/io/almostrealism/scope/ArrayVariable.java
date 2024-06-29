@@ -45,7 +45,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
 		this.names = np;
 		setArraySize(arraySize);
-		if (type != null) setExpression(new Constant<>(type));
+		if (type != null) setExpression(Constant.forType(type));
 	}
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
@@ -53,7 +53,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, scope, new Constant<>(type), p);
+		super(name, scope, Constant.forType(type), p);
 		this.names = np;
 	}
 

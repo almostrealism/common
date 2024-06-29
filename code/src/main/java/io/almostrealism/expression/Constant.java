@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-public class Constant<T> extends Expression<T> {
+public abstract class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
 		super(type);
 	}
@@ -88,5 +88,9 @@ public class Constant<T> extends Expression<T> {
 		} else {
 			return new ConstantValue(value.getClass(), value);
 		}
+	}
+
+	public static <T> Constant<T> forType(Class<T> type) {
+		return new ConstantValue<>(type, null);
 	}
 }

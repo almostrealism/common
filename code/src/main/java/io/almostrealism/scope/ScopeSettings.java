@@ -22,11 +22,13 @@ public class ScopeSettings {
 	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
-	public static boolean isSeriesSimplificationTarget(Class<?> type, int depth, int nodeCount, boolean containsLong) {
-		// return depth > 4 && depth % 3 == 2;
-		return containsLong || type == Boolean.class ||
-				(depth > 6 && depth % 2 == 1) || nodeCount > 100;
-		// return depth > 4;
+	public static boolean isSeriesSimplificationTarget(
+			Class<?> type, int depth, int nodeCount, boolean containsLong) {
+		return
+				containsLong ||
+				type == Boolean.class ||
+				(depth > 8 && depth % 2 == 1) ||
+				nodeCount > 100;
 	}
 
 	public static int getExpressionCacheSize() { return 150; }
@@ -34,6 +36,6 @@ public class ScopeSettings {
 	public static int getExpressionCacheFrequencyThreshold() { return 40; }
 
 	public static boolean isExpressionCacheTarget(int depth) {
-		return depth == 5 || depth == 7 || depth == 9;
+		return depth == 7 || depth == 9 || depth == 11;
 	}
 }
