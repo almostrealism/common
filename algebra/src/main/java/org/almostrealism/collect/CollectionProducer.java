@@ -168,6 +168,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return expIgnoreZero((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log() {
+		return log((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
 		return sq((Producer) this);
 	}

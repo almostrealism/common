@@ -119,10 +119,6 @@ public abstract class Expression<T> implements
 			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
 		}
 
-//		if (depth > 25) {
-//			System.out.println("!");
-//		}
-
 		if (depth > maxDepth) {
 			throw new UnsupportedOperationException();
 		}
@@ -423,7 +419,7 @@ public abstract class Expression<T> implements
 	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
-	public Exp exp() { return new Exp((Expression) this); }
+	public Expression<Double> exp() { return Exp.of((Expression) this); }
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;

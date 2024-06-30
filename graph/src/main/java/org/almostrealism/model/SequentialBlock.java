@@ -108,12 +108,6 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return add(accum(getOutputShape(), value.getForward(), requirements));
 	}
 
-	public CellularLayer product(Block value) {
-		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
-		return add(product(value.getOutputShape(), value.getForward()));
-	}
-
 	public CellularLayer product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();

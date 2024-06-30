@@ -188,7 +188,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 
 	public void train(String name, ModelOptimizer optimizer,
 						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		try (CSVReceptor<PackedCollection<?>> receptor =
+		try (CSVReceptor<Double> receptor =
 					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 			optimizer.setReceptor(receptor);
 			optimizer.setLogFrequency(25);

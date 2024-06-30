@@ -30,6 +30,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.Logarithm;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
@@ -642,15 +643,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				null, shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
+				"exp", shape(value), (args, index) -> Exp.of(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				null, shape(value), (args, index) ->
-					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), new Exp(args[1].getValueAt(index))),
+				"expIgnoreZero", shape(value), (args, index) ->
+					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), Exp.of(args[1].getValueAt(index))),
 				(Supplier) value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(
+			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		return new TraversableExpressionComputation<>(
+				"log", shape(value), (args, index) -> Logarithm.of(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sq(Producer<T> value) {

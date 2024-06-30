@@ -14,23 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.model;
+package org.almostrealism.optimize;
 
-import org.almostrealism.CodeFeatures;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
-public interface ModelFeatures extends CodeFeatures {
-	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
-		Model model = new Model(shape(r, c));
+public interface LossProvider {
+	double loss(PackedCollection<?> output, PackedCollection<?> target);
 
-		for (int i = 0; i < convLayers; i++) {
-			model.addLayer(convolution2d(convSize, convFilters));
-			model.addLayer(pool2d(2));
-		}
-
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-//		model.addLayer(logSoftmax());
-		model.addLayer(softmax());
-		return model;
-	}
+	Producer<PackedCollection<?>> gradient(
+			Producer<PackedCollection<?>> output,
+			Producer<PackedCollection<?>> target);
 }

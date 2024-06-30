@@ -174,7 +174,7 @@ public class GradientDescentTests implements TestFeatures {
 		i: for (int i = 0; i < 6; i++) {
 			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
-			try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+			try (CSVReceptor<Double> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 				optimizer.setReceptor(receptor);
 				optimizer.setLogFrequency(2);
 

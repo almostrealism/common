@@ -71,8 +71,8 @@ public interface ExpressionFeatures {
 		return expressionForDouble(value);
 	}
 
-	default Exp exp(Expression expression) {
-		return new Exp(expression);
+	default Expression<Double> exp(Expression expression) {
+		return Exp.of(expression);
 	}
 
 	default Epsilon epsilon() { return new Epsilon(); }

@@ -231,12 +231,17 @@ public interface LayerFeatures extends MatrixFeatures {
 		}, requirements);
 	}
 
-	default CellularLayer accum(Producer<PackedCollection<?>> value) {
-		TraversalPolicy shape = shape(value);
-//		return layer("accum", shape, shape, Cell.of((input, next) -> {
-//			return next == null ? new OperationList() : next.push(add(traverseEach(input), traverseEach(value)));
-//		}), null);
-		throw new UnsupportedOperationException();
+	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
+		return shape -> logSoftmax(shape.getTotalSize(), requirements);
+	}
+
+	default CellularLayer logSoftmax(int size, ComputeRequirement... requirements) {
+		TraversalPolicy shape = shape(size);
+		return layer("logSoftmax", shape, shape, input ->
+				c(input).traverse(1).exp().divide(
+							c(input).traverse(1).exp().traverse(0).sum())
+						.log(),
+				requirements);
 	}
 
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
@@ -253,22 +258,9 @@ public interface LayerFeatures extends MatrixFeatures {
 
 	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		TraversalPolicy shape = shape(value);
-		return layer("product", shape, shape, input -> {
-			return multiply(traverseEach(input), traverseEach(value));
-		}, requirements);
-	}
-
-	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
-//		return layer("product", shape, shape, Cell.of((input, next) -> {
-//			CaptureReceptor r = new CaptureReceptor();
-//			value.setReceptor(r);
-//
-//			OperationList ops = new OperationList();
-//			ops.add(value.push(input));
-//			if (next != null) ops.add(next.push(multiply(traverseEach(input), traverseEach(r.getReceipt()))));
-//			return ops;
-//		}), null, requirements);
-		throw new UnsupportedOperationException();
+		return layer("product", shape, shape,
+					input -> multiply(traverseEach(input), traverseEach(value)),
+				requirements);
 	}
 
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
