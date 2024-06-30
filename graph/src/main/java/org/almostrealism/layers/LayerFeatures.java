@@ -238,9 +238,8 @@ public interface LayerFeatures extends MatrixFeatures {
 	default CellularLayer logSoftmax(int size, ComputeRequirement... requirements) {
 		TraversalPolicy shape = shape(size);
 		return layer("logSoftmax", shape, shape, input ->
-				c(input).traverse(1).exp().divide(
-							c(input).traverse(1).exp().traverse(0).sum())
-						.log(),
+				c(input).traverse(1).subtract(
+							c(input).traverse(1).exp().traverse(0).sum().log()),
 				requirements);
 	}
 

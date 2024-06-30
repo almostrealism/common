@@ -30,6 +30,7 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
 import org.almostrealism.util.TestFeatures;
@@ -141,7 +142,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 	public void train() throws IOException {
 		if (!trainingTests) return;
 
-		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2);
+		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2, true);
 		model.setLearningRate(0.001);
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
@@ -175,6 +176,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		try {
 			CompiledModel compiled = model.compile(profile);
 			ModelOptimizer optimizer = new ModelOptimizer(compiled, trainData);
+			optimizer.setLossFunction(new NegativeLogLikelihood());
 
 			for (int i = 0; i < epochs; i++) {
 				train(name, optimizer, 1, steps, lossTarget);

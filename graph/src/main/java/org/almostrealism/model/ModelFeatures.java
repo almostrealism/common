@@ -20,6 +20,11 @@ import org.almostrealism.CodeFeatures;
 
 public interface ModelFeatures extends CodeFeatures {
 	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
+		return convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize, false);
+	}
+
+	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+									 int denseSize, boolean logSoftmax) {
 		Model model = new Model(shape(r, c));
 
 		for (int i = 0; i < convLayers; i++) {
@@ -29,8 +34,7 @@ public interface ModelFeatures extends CodeFeatures {
 
 		model.addBlock(flatten());
 		model.addLayer(dense(denseSize));
-//		model.addLayer(logSoftmax());
-		model.addLayer(softmax());
+		model.addLayer(logSoftmax ? logSoftmax() : softmax());
 		return model;
 	}
 }

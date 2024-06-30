@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -87,6 +88,11 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 1)  throw new UnsupportedOperationException();
 		return (Expression) Minus.of(children.get(0));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		return minus(target.getShape(), getChildren().get(0).delta(target));
 	}
 
 	public static Expression<?> of(Expression<?> value) {

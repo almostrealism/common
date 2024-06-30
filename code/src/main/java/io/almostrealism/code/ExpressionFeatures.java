@@ -34,6 +34,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sine;
@@ -160,6 +161,14 @@ public interface ExpressionFeatures {
 		UniformCollectionExpression quotient = new UniformCollectionExpression(shape, Quotient::of, expressions);
 		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 		return quotient;
+	}
+
+	default CollectionExpression reciprocal(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> args[0].reciprocal(), input);
+	}
+
+	default CollectionExpression minus(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> Minus.of(args[0]), input);
 	}
 
 	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {

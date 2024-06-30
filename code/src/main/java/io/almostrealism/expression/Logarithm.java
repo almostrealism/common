@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -50,6 +52,14 @@ public class Logarithm extends Expression<Double> {
 		}
 
 		return new Logarithm((Expression<Double>) children.get(0));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		Expression<?> in = getChildren().get(0);
+		CollectionExpression delta = in.delta(target);
+		CollectionExpression u = new ConstantCollectionExpression(target.getShape(), in);
+		return quotient(target.getShape(), delta, u);
 	}
 
 	public static <T> Expression<T> of(Expression<Double> input) {
