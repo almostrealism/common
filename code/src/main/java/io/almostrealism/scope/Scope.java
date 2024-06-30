@@ -72,7 +72,6 @@ import java.util.stream.IntStream;
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
-	public static final boolean enableReplacements = true;
 	public static final Console console = Console.root().child();
 
 	public static ScopeTimingListener timing;
@@ -616,7 +615,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 
 	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
 													 Supplier<List<Expression<?>>> replacementTargets) {
-		if (!enableReplacements) return statements;
+		if (!ScopeSettings.enableReplacements) return statements;
 
 		Set<Expression<?>> processed = new HashSet<>();
 		List<Statement<?>> declarations = new ArrayList<>();

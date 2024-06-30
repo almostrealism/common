@@ -19,6 +19,8 @@ package io.almostrealism.scope;
 import io.almostrealism.relation.ParallelProcess;
 
 public class ScopeSettings {
+	public static final boolean enableReplacements = true;
+
 	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
@@ -27,7 +29,7 @@ public class ScopeSettings {
 		return
 				containsLong ||
 				type == Boolean.class ||
-				(depth > 8 && depth % 2 == 1) ||
+				(depth > 5 && depth % 2 == 0) ||
 				nodeCount > 100;
 	}
 

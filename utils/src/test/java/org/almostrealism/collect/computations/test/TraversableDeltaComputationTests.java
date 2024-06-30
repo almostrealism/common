@@ -281,19 +281,21 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
 		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
 
-		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
-		PackedCollection<?> out = c.delta(cp(vector)).evaluate();
-		System.out.println(out.getShape().toStringDetail());
-		out.print();
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
+			PackedCollection<?> out = c.delta(cp(vector)).evaluate();
+			System.out.println(out.getShape().toStringDetail());
+			out.print();
 
-		assertEquals(2.0, out.toDouble(0));
-		assertEquals(0.0, out.toDouble(1));
-		assertEquals(0.0, out.toDouble(2));
-		assertEquals(3.0, out.toDouble(3));
-		assertEquals(4.0, out.toDouble(4));
-		assertEquals(0.0, out.toDouble(5));
-		assertEquals(0.0, out.toDouble(6));
-		assertEquals(5.0, out.toDouble(7));
+			assertEquals(2.0, out.toDouble(0));
+			assertEquals(0.0, out.toDouble(1));
+			assertEquals(0.0, out.toDouble(2));
+			assertEquals(3.0, out.toDouble(3));
+			assertEquals(4.0, out.toDouble(4));
+			assertEquals(0.0, out.toDouble(5));
+			assertEquals(0.0, out.toDouble(6));
+			assertEquals(5.0, out.toDouble(7));
+		});
 	}
 
 	@Test
