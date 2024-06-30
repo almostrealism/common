@@ -57,5 +57,10 @@ public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Ru
 
 		@Override
 		public Runnable get() { return op.get(); }
+
+		@Override
+		public long getOutputSize() {
+			return op.getOutputSize();
+		}
 	}
 }

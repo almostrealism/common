@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
@@ -74,7 +75,8 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
-		return count > isolationCountThreshold;
+		return count > isolationCountThreshold &&
+				getOutputSize() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	@Override

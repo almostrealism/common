@@ -120,6 +120,15 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public long getOutputSize() {
+		if (producer instanceof Process) {
+			return ((Process) producer).getOutputSize();
+		}
+
+		return 0;
+	}
+
+	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override

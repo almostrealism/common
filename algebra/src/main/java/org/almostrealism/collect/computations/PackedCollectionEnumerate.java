@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
@@ -51,7 +52,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
-		if (enablePreferIsolation && getParallelism() > minCount) {
+		if (enablePreferIsolation && getParallelism() > minCount &&
+				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
 			return true;
 		}
 

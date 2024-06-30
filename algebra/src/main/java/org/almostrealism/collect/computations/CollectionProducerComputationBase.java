@@ -213,6 +213,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
+	public long getOutputSize() {
+		return getShape().getTotalSizeLong();
+	}
+
+	@Override
 	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
 		if (getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
 			warn("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
