@@ -36,6 +36,7 @@ import java.util.List;
 
 public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
+	public static int largeAllocationSize = 20 * 1024 * 1024 + 2;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("mtlAllocationSizes", 1024 * 1024);
@@ -69,7 +70,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 
 	@Override
 	public MetalMemory allocate(int size) {
-		if (enableLargeAllocationLogging && size > (20 * 1024 * 1024 + 2)) {
+		if (enableLargeAllocationLogging && size >  largeAllocationSize) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 

@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
@@ -65,6 +66,11 @@ public class StaticReference<T> extends Expression<T> {
 		dependencies.add(referent);
 		dependencies.addAll(super.getDependencies());
 		return dependencies;
+	}
+
+	@Override
+	public ExpressionAssignment<T> assign(Expression exp) {
+		return new ExpressionAssignment<>(this, exp);
 	}
 
 	@Override

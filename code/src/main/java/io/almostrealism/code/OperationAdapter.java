@@ -22,7 +22,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -31,9 +30,7 @@ import io.almostrealism.scope.Variable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -130,9 +127,13 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = new OperationMetadata(getFunctionName(), getName());
+		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
 
 		purgeVariables();
+	}
+
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return metadata;
 	}
 
 	/**

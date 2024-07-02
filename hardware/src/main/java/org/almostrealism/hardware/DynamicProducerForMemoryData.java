@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -28,7 +30,9 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T>
+		implements ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+		OperationInfo {
 
 	private final IntFunction<MemoryBank<T>> destination;
 
@@ -50,7 +54,13 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	}
 
 	@Override
-	public int getCount() { return 1; }
+	public OperationMetadata getMetadata() {
+		return OperationInfo.metadataForProcess(this,
+				new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+	}
+
+	@Override
+	public long getCountLong() { return 1; }
 
 	public IntFunction<MemoryBank<T>> getDestinationFactory() { return destination; }
 

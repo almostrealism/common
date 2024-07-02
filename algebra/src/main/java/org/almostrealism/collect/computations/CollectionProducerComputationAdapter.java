@@ -18,7 +18,8 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
@@ -34,13 +35,13 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
-		super(null, outputShape, arguments);
+	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+		super(name, outputShape, arguments);
 	}
 
 	@Override
-	public Scope<O> getScope() {
-		Scope<O> scope = super.getScope();
+	public Scope<O> getScope(KernelStructureContext context) {
+		Scope<O> scope = super.getScope(context);
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {

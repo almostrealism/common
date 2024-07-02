@@ -6,12 +6,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.BiFunction;
@@ -20,7 +18,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	protected <T extends PackedCollection<?>> TraversableExpressionComputation<T> pairSum(Producer a) {
 		TraversalPolicy shape = shape(a);
 
-		return new TraversableExpressionComputation<>(shape(a).replace(shape(1)),
+		return new TraversableExpressionComputation<>(null, shape(a).replace(shape(1)),
 				(BiFunction<TraversableExpression[], Expression, Expression>)
 						(args, index) ->
 								Sum.of(args[1].getValueRelative(new IntegerConstant(0)),

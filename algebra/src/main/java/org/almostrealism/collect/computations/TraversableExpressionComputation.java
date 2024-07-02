@@ -20,6 +20,7 @@ import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -31,38 +32,48 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableChainRule = false;
+	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
+	@Deprecated
 	@SafeVarargs
-	public TraversableExpressionComputation(TraversalPolicy shape,
-										BiFunction<TraversableExpression[], Expression, Expression> expression,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											BiFunction<TraversableExpression[], Expression, Expression> expression,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(name, shape, validateArgs(args));
 		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
 	}
 
 	@SafeVarargs
-	public TraversableExpressionComputation(TraversalPolicy shape,
-										Function<TraversableExpression[], CollectionExpression> expression,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											Function<TraversableExpression[], CollectionExpression> expression,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(name, shape, validateArgs(args));
 		this.expression = expression;
+	}
+
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											CollectionExpression expression) {
+		super(name, shape);
+		this.expression = (arguments) -> expression;
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index));
+	}
+
+	@Override
+	public boolean isConstant() {
+		return getInputs().size() <= 1;
 	}
 
 	@Override
@@ -82,7 +93,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getName(), getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setShortCircuit(getShortCircuit())
@@ -100,6 +111,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {
@@ -125,7 +141,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 			}
 		};
 
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(null, value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? (T) v : postprocessor.apply(v, 0);

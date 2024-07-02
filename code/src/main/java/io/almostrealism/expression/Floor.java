@@ -16,12 +16,13 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
@@ -45,15 +46,15 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt v = getChildren().get(0).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) return v;
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getChildren().get(0).isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values);
 	}
 
 	@Override

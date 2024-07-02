@@ -17,6 +17,7 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.expression.ArraySize;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.ParallelProcess;
@@ -78,8 +79,8 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		this.lang = manager.getLanguage();
 		this.ranks = getRanks();
@@ -263,7 +264,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 		if (v instanceof ArrayVariable) {
 			if (v.getProducer() instanceof ParallelProcess
-					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
+					&& ((ParallelProcess) v.getProducer()).getCountLong() > 1) {
 				String kernelOffset = getKernelIndex((ArrayVariable) v, kernelIndex);
 
 				if (pos.equals("0") || pos.equals("(0)")) {

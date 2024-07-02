@@ -16,12 +16,14 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class MinimumValue extends StaticReference<Double> {
 
@@ -30,8 +32,8 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of(0);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of(0);
 	}
 
 	@Override
@@ -45,7 +47,12 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
+	public ExpressionAssignment<Double> assign(Expression exp) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.zeros(target.getShape());
+		return zeros(target.getShape());
 	}
 }

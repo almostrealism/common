@@ -16,126 +16,271 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
-import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.util.ArrayItem;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.Mask;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.util.Sequence;
+import org.almostrealism.io.TimingMetric;
 
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Objects;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
+import java.util.function.LongUnaryOperator;
 import java.util.function.UnaryOperator;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
-public class IndexSequence extends ArrayItem<Number> {
-	private Base64.Encoder encoder = Base64.getEncoder();
+public interface IndexSequence extends Sequence<Number> {
+	boolean enableGranularityDetection = true;
+	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
 
-	protected IndexSequence(Number[] values) {
-		super(values, Number[]::new);
+	default IndexSequence map(UnaryOperator<Number> op) {
+		return ArrayIndexSequence.of(getType(), values().map(op).toArray(Number[]::new), lengthLong());
 	}
 
-	protected IndexSequence(Number value, int len) {
-		super(value, len, Number[]::new);
+	default IndexSequence mapInt(IntUnaryOperator op) {
+		return map(n -> Integer.valueOf(op.applyAsInt(n.intValue())));
 	}
 
-	public IndexSequence map(UnaryOperator<Number> op) {
-		return IndexSequence.of(stream().map(op).toArray(Number[]::new));
+	default IndexSequence mapLong(LongUnaryOperator op) {
+		return map(n -> Long.valueOf(op.applyAsLong(n.longValue())));
+
 	}
 
-	public IndexSequence mapInt(IntUnaryOperator op) {
-		return IndexSequence.of(intStream().map(op).boxed().toArray(Number[]::new));
+	default IndexSequence mapDouble(DoubleUnaryOperator op) {
+		return map(n -> Double.valueOf(op.applyAsDouble(n.doubleValue())));
 	}
 
-	public IndexSequence mapDouble(DoubleUnaryOperator op) {
-		return IndexSequence.of(doubleStream().map(op).boxed().toArray(Number[]::new));
+	default IndexSequence multiply(long operand) {
+		return mapLong(n -> n * operand);
 	}
 
-	public IndexSequence subset(int len) {
-		if (len == length()) return this;
-		return new IndexSequence(Arrays.copyOf(toArray(), len));
+	default IndexSequence divide(long operand) {
+		return mapLong(n -> n / operand);
 	}
 
-	public IntStream intStream() {
+	default IndexSequence minus() {
+		return map(n -> -n.doubleValue());
+	}
+
+	default IndexSequence mod(int m) {
+		if (m < 0)
+			throw new IllegalArgumentException();
+		if (m > max() && m > Math.abs(min())) return this;
+
+		return mapInt(i -> i % m);
+	}
+
+	default IndexSequence eq(IndexSequence other) {
+		if (lengthLong() != other.lengthLong()) throw new IllegalArgumentException();
+
+		if (isConstant() && other.isConstant()) {
+			return ArrayIndexSequence.of(valueAt(0).doubleValue() == other.valueAt(0).doubleValue() ?
+					Integer.valueOf(1) : Integer.valueOf(0), lengthLong());
+		}
+
+		if (getGranularity() != other.getGranularity() && lengthLong() > Integer.MAX_VALUE) {
+			return null;
+		}
+
+		if (getMod() == other.getMod()) {
+			return ArrayIndexSequence.of(getType(), IntStream.range(0, getMod())
+					.parallel()
+					.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
+							Integer.valueOf(1) : Integer.valueOf(0))
+					.toArray(Number[]::new), lengthLong());
+		}
+
+		return ArrayIndexSequence.of(getType(), IntStream.range(0, length())
+				.parallel()
+				.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
+						Integer.valueOf(1) : Integer.valueOf(0))
+				.toArray(Number[]::new));
+	}
+
+	IndexSequence subset(long len);
+
+	default boolean congruent(IndexSequence other) {
+		if (equals(other)) return true;
+
+		IndexSequence comp = eq(other);
+		if (!comp.isConstant() || comp.valueAt(0).intValue() != 1) return false;
+		return true;
+	}
+
+	default IntStream intStream() {
 		return stream().mapToInt(Number::intValue);
 	}
 
-	public DoubleStream doubleStream() {
+	default LongStream longStream() {
+		return stream().mapToLong(Number::longValue);
+	}
+
+	default DoubleStream doubleStream() {
 		return stream().mapToDouble(Number::doubleValue);
 	}
 
-	public IntStream matchingIndices(double value) {
-		return IntStream.range(0, length()).filter(i -> valueAt(i).doubleValue() == value);
+	default IntStream intValues() {
+		return values().mapToInt(Number::intValue);
 	}
 
-	public boolean isConstant() { return single() != null; }
-
-	public int getGranularity() {
-		if (single() != null) return length();
-
-		int granularity = 1;
-
-		i: for (int i = 0; i < length() - 1; i++) {
-			if (!Objects.equals(valueAt(i), valueAt(i + 1))) {
-				granularity = i + 1;
-				break i;
-			}
-		}
-
-		if (granularity == 1) return granularity;
-
-		int sections = length() / granularity;
-
-		for (int i = 0; i < sections; i++) {
-			for (int j = 1; j < granularity & i * granularity + j < length(); j++) {
-				if (!Objects.equals(valueAt(i * granularity), valueAt(i * granularity + j))) {
-					return 1;
-				}
-			}
-		}
-
-		return granularity;
+	default LongStream longValues() {
+		return values().mapToLong(Number::longValue);
 	}
 
-	public String signature() {
+	default DoubleStream doubleValues() {
+		return values().mapToDouble(Number::doubleValue);
+	}
+
+	default LongStream matchingIndices(double value) {
+		return LongStream.range(0, lengthLong()).filter(i -> valueAt(i).doubleValue() == value);
+	}
+
+	@Override
+	default Number[] distinct() {
+		return values().distinct().toArray(Number[]::new);
+	}
+
+	default long min() {
+		if (isConstant()) return valueAt(0).longValue();
+
+		if (valueAt(0) instanceof Integer) {
+			return intValues().min().orElseThrow();
+		} else if (valueAt(0) instanceof Long) {
+			return longValues().min().orElseThrow();
+		} else {
+			return (long) Math.ceil(doubleValues().min().orElseThrow());
+		}
+	}
+
+	default long max() {
+		if (isConstant()) return valueAt(0).longValue();
+
+		if (valueAt(0) instanceof Integer) {
+			return intValues().max().orElseThrow();
+		} else if (valueAt(0) instanceof Long) {
+			return longValues().max().orElseThrow();
+		} else {
+			return (long) Math.ceil(doubleValues().max().orElseThrow());
+		}
+	}
+
+	boolean isConstant();
+
+	int getGranularity();
+
+	int getMod();
+
+	default Expression<? extends Number> getExpression(Index index) {
+		if (index instanceof Expression) {
+			return getExpression((Expression) index, !((Expression) index).isFP());
+		} else {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	default Expression getExpression(Expression index, boolean isInt) {
 		long start = System.nanoTime();
 
 		try {
-			if (single() == null) {
-				ByteBuffer byteBuffer = ByteBuffer.allocate(Double.SIZE / Byte.SIZE * length());
-				DoubleBuffer doubleBuffer = byteBuffer.asDoubleBuffer();
-				doubleBuffer.put(doubleStream().toArray());
-				return encoder.encodeToString(byteBuffer.array());
-			} else {
-				ByteBuffer byteBuffer = ByteBuffer.allocate(Double.SIZE / Byte.SIZE);
-				DoubleBuffer doubleBuffer = byteBuffer.asDoubleBuffer();
-				doubleBuffer.put(single().doubleValue());
-				return encoder.encodeToString(byteBuffer.array());
+			if (isConstant()) {
+				return isInt ? new IntegerConstant(intAt(0)) : new DoubleConstant(doubleAt(0));
 			}
+
+			Number distinct[] = distinct();
+			if (distinct.length == 1) {
+				Scope.console.features(KernelSeriesMatcher.class).warn("Constant sequence not detected by IndexSequence");
+				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
+			}
+
+			if (distinct.length == 2 && distinct[0].intValue() == 0) {
+				int first = (int) matchingIndices(distinct[1].intValue())
+						.filter(i -> i < Integer.MAX_VALUE)
+						.findFirst().orElse(-1);
+				if (first < 0) throw new UnsupportedOperationException();
+
+				int tot = doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
+
+				long cont = doubleStream().skip(first).limit(tot).distinct().count();
+
+				Expression<Boolean> condition = null;
+
+				if (tot == 1) {
+					condition = index.eq(new IntegerConstant(first));
+				} else if (cont == 1) {
+					condition =
+							index.greaterThanOrEqual(new IntegerConstant(first)).and(
+									index.lessThan(new IntegerConstant(first + tot)));
+				}
+
+				if (condition != null) {
+					if (isInt) {
+						if (distinct[1].longValue() < Integer.MAX_VALUE && distinct[1].longValue() > Integer.MIN_VALUE) {
+							return Mask.of(condition, new IntegerConstant(distinct[1].intValue()));
+						} else {
+							return Mask.of(condition, new LongConstant(distinct[1].longValue()));
+						}
+					} else {
+						return Mask.of(condition, new DoubleConstant(distinct[1].doubleValue()));
+					}
+				}
+			}
+
+			int granularity = enableGranularityDetection ? getGranularity() : 1;
+			if (lengthLong() % granularity != 0) {
+				granularity = 1;
+			}
+
+			double initial = doubleAt(0);
+			double delta = doubleAt(granularity) - doubleAt(0);
+			boolean isArithmetic = true;
+			for (int i = 2 * granularity; i < getMod(); i += granularity) {
+				if (doubleAt(i) - doubleAt(i - 1) != delta) {
+					isArithmetic = false;
+					break;
+				}
+			}
+
+			if (isArithmetic) {
+				Expression<?> r = index;
+
+				if (getMod() != lengthLong()) {
+					r = r.imod(getMod());
+				}
+
+				if (granularity > 1) {
+					r = r.toInt().divide(new IntegerConstant(granularity));
+				}
+
+				if (isInt) {
+					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
+					if (initial != 0.0) r = r.add(new IntegerConstant((int) initial));
+				} else {
+					if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
+					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
+				}
+
+				if (getMod() != lengthLong()) {
+					IndexSequence newSeq = r.sequence((Index) index, lengthLong());
+
+					if (!newSeq.congruent(this)) {
+						r.sequence((Index) index, lengthLong());
+						throw new RuntimeException();
+					} else {
+						Scope.console.features(KernelSeriesMatcher.class)
+								.warn("Sequence replacement using mod is experimental");
+					}
+				}
+
+				return r;
+			}
+
+			return null;
 		} finally {
-			KernelSeriesProvider.timingPos.addEntry("signature", System.nanoTime() - start);
+			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
-	}
-
-	public static IndexSequence of(Expression<?> exp, IndexValues values, int len) {
-		return values.apply(exp).sequence(new KernelIndex(), len);
-	}
-
-	public static IndexSequence of(SequenceGenerator source, Index index, int len) {
-		return of(IntStream.range(0, len).parallel()
-				.mapToObj(i -> source.value(new IndexValues().put(index, i))).toArray(Number[]::new));
-	}
-
-	public static IndexSequence of(Number[] values) {
-		return new IndexSequence(values);
-	}
-
-	public static IndexSequence of(Number value, int len) {
-		return new IndexSequence(value, len);
 	}
 }

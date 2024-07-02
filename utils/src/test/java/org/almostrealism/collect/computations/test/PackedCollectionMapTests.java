@@ -39,8 +39,6 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void map2d() {
-		if (!CollectionFeatures.enableAxisAlignment) return;
-
 		int n = 5;
 		int m = 2;
 

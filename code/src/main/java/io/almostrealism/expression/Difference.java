@@ -16,10 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -29,13 +30,13 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		List<OptionalInt> values = getChildren().stream()
+	public OptionalLong upperBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalInt.empty();
-		return OptionalInt.of(IntStream.range(0, values.size())
-				.map(i -> i == 0 ? values.get(i).getAsInt() : -1 * values.get(i).getAsInt())
+		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		return OptionalLong.of(IntStream.range(0, values.size())
+				.mapToLong(i -> i == 0 ? values.get(i).getAsLong() : -1 * values.get(i).getAsLong())
 				.reduce(0, (a, b) -> a + b));
 	}
 

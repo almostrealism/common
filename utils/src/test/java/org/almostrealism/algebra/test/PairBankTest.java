@@ -37,10 +37,8 @@ public class PairBankTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
-		CLOperator.verboseLog(() -> {
-			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-			System.out.println(Arrays.toString(destination.toArray(0, 8)));
-		});
+		concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
+		System.out.println(Arrays.toString(destination.toArray(0, 8)));
 
 		assertEquals(3.0, destination.valueAt(2, 0));
 		assertEquals(3.0, destination.valueAt(2, 1));

@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.62</version>
+		<version>0.63</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
@@ -14,8 +14,8 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-algebra</artifactId>
-			<version>0.62</version>
+			<artifactId>ar-geometry</artifactId>
+			<version>0.63</version>
 		</dependency>
 	</dependencies>
 </project>

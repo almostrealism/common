@@ -14,28 +14,34 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class KernelIndex extends DefaultIndex {
 	public static boolean enableSimplification = true;
 
 	private static IndexSequence kernelSeq;
 
+	private KernelStructureContext context;
 	private int axis;
 
 	public KernelIndex() {
-		this(0);
+		this(null);
 	}
 
-	public KernelIndex(int axis) {
+	public KernelIndex(KernelStructureContext context) {
+		this(context, 0);
+	}
+
+	public KernelIndex(KernelStructureContext context, int axis) {
 		super(null);
+		this.context = context;
 		this.axis = axis;
 	}
 
@@ -47,15 +53,28 @@ public class KernelIndex extends DefaultIndex {
 		return lang.kernelIndex(axis);
 	}
 
+	public KernelStructureContext getContext() {
+		return context;
+	}
+
 	public int getKernelAxis() { return axis; }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
+		if (context == null) context = this.context;
+		if (context == null) return OptionalLong.empty();
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) { return true; }
+	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
+
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		OptionalInt v = e.intValue();
+		if (v.isPresent()) return withIndex(index, v.getAsInt());
+		return super.withIndex(index, e);
+	}
 
 	@Override
 	public Expression<Integer> withIndex(Index index, int value) {
@@ -82,12 +101,12 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		if (!(index instanceof KernelIndex)) {
-			return super.sequence(index, len);
+	public IndexSequence sequence(Index index, long len, long limit) {
+		if (!(index instanceof KernelIndex) || len > Integer.MAX_VALUE) {
+			return super.sequence(index, len, limit);
 		}
 
-		if (kernelSeq == null || kernelSeq.length() < len) {
+		if (kernelSeq == null || kernelSeq.lengthLong() < len) {
 			updateKernelSeq(len);
 		}
 
@@ -96,21 +115,23 @@ public class KernelIndex extends DefaultIndex {
 
 	@Override
 	public Expression<Integer> simplify(KernelStructureContext context) {
-		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsInt() == 1) {
+		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
 			return new IntegerConstant(0);
 		}
 
 		return super.simplify(context);
 	}
 
-	protected synchronized static void updateKernelSeq(int len) {
-		if (kernelSeq == null || kernelSeq.length() < len) {
-			Number seq[] = new Integer[len];
+	protected synchronized static void updateKernelSeq(long len) {
+		if (len > Integer.MAX_VALUE) return;
+
+		if (kernelSeq == null || kernelSeq.lengthLong() < len) {
+			Number seq[] = new Integer[(int) len];
 			for (int i = 0; i < len; i++) {
 				seq[i] = Integer.valueOf(i);
 			}
 
-			kernelSeq = IndexSequence.of(seq);
+			kernelSeq = ArrayIndexSequence.of(Integer.class, seq);
 		}
 	}
 }

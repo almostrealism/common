@@ -19,7 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -124,6 +124,21 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 			return (Expression) reference(index, false);
 		}
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		Supplier producer = getProducer();
+
+		if (producer instanceof Delegated) {
+			producer = (Producer) ((Delegated<?>) producer).getDelegate();
+		}
+
+		if (producer instanceof TraversableExpression) {
+			return ((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		}
+
+		return CollectionExpression.super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	public Expression<Double> get(Expression<?>... pos) {

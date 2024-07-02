@@ -28,7 +28,7 @@ import io.almostrealism.relation.Evaluable;
  * @author  Michael Murray
  */
 @Deprecated
-public class ScalarTable extends PackedCollection<PackedCollection<Scalar>> { // implements MemoryTable<Scalar> {
+public class ScalarTable extends PackedCollection<PackedCollection<Scalar>> {
 	public ScalarTable(int width, int count) {
 		super(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
 				Scalar.scalarBank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
@@ -56,16 +56,5 @@ public class ScalarTable extends PackedCollection<PackedCollection<Scalar>> { //
 			}
 		}
 		return out;
-	}
-
-	// TODO  ... see above ...
-
-	public static ScalarTable fromProducer(Evaluable<PackedCollection<Scalar>> producer, int width, int count) {
-		ScalarTable table = new ScalarTable(width, count);
-		for (int i = 0; i < table.getCount(); i++) {
-			table.set(i, producer.evaluate());
-		}
-
-		return table;
 	}
 }

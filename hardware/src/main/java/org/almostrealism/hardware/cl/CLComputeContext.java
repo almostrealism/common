@@ -21,7 +21,7 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
@@ -112,17 +112,23 @@ public class CLComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		if (enableFp64) buf.append(fp64);
 
-		ScopeEncoder enc = new ScopeEncoder(
-				p -> new OpenCLPrintWriter(p, getDataContext().getPrecision()),
-				Accessibility.EXTERNAL);
-		buf.append(enc.apply(scope));
+		try {
+			if (enableFp64) buf.append(fp64);
 
-		CLOperatorMap instSet = new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
-		instructionSets.add(instSet);
-		return instSet;
+			ScopeEncoder enc = new ScopeEncoder(
+					p -> new OpenCLPrintWriter(p, getDataContext().getPrecision()),
+					Accessibility.EXTERNAL);
+			buf.append(enc.apply(scope));
+
+			CLOperatorMap instSet = new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
+			instructionSets.add(instSet);
+			return instSet;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
@@ -34,10 +35,12 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
@@ -47,6 +50,16 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	 */
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
+
+	@Override
+	default long[] computeParallelism(Collection<? extends Process> children) {
+		return ParallelProcess.super.computeParallelism(children.stream()
+				.filter(f -> !(f instanceof MemoryDataDestinationProducer)).collect(Collectors.toList()));
+	}
+
+	default T createDestination(int len) {
+		throw new UnsupportedOperationException();
+	}
 
 	default T postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
@@ -79,7 +92,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	@Override
 	default Evaluable<T> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(ctx, getShape(), this, this::postProcessOutput);
+		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
+				ctx, getShape(), this,
+				this::createDestination, this::postProcessOutput);
 		ev.compile();
 		return ev;
 	}
@@ -101,7 +116,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	class IsolatedProcess<T extends PackedCollection<?>> implements Process<Process<?, ?>, Evaluable<? extends T>>, CollectionProducerBase<T, Producer<T>> {
+	class IsolatedProcess<T extends PackedCollection<?>> implements
+			Process<Process<?, ?>, Evaluable<? extends T>>,
+			CollectionProducerBase<T, Producer<T>>,
+			OperationInfo {
 		private CollectionProducer<T> op;
 
 		public IsolatedProcess(CollectionProducer<T> op) {
@@ -112,6 +130,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
 				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
 			}
+		}
+
+		@Override
+		public OperationMetadata getMetadata() {
+			return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
 		}
 
 		@Override
@@ -130,11 +153,19 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		}
 
 		@Override
+		public boolean isConstant() { return op.isConstant(); }
+
+		@Override
 		public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
 
 		@Override
 		public Producer<T> reshape(TraversalPolicy shape) {
 			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+			return this;
 		}
 	}
 }

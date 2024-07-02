@@ -16,7 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.Objects;
@@ -32,8 +36,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	protected abstract boolean compare(Number left, Number right);
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getLeft().isKernelValue(values) && getRight().isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getLeft().isValue(values) && getRight().isValue(values);
 	}
 
 	@Override
@@ -42,23 +46,34 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		if (!getLeft().isKernelValue(new IndexValues()) || !getRight().isKernelValue(new IndexValues())) {
-			return super.sequence(index, len);
+	public IndexSequence sequence(Index index, long len, long limit) {
+		IndexValues values = IndexValues.of(index);
+		if (!getLeft().isValue(values) || !getRight().isValue(values)) {
+			return super.sequence(index, len, limit);
 		}
 
 		if (index instanceof KernelIndex) {
-			int seq[] = checkSingle(getLeft(), getRight(), len);
-			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			int seq[] = checkSingle(getLeft(), getRight(), Math.toIntExact(len));
+			if (seq != null) return ArrayIndexSequence.of(seq);
 
-			seq = checkSingle(getRight(), getLeft(), len);
-			if (seq != null) return IndexSequence.of(IntStream.of(seq).mapToObj(i -> i).toArray(Number[]::new));
+			seq = checkSingle(getRight(), getLeft(), Math.toIntExact(len));
+			if (seq != null) return ArrayIndexSequence.of(seq);
 		}
 
-		IndexSequence l = getLeft().sequence(index, len);
-		IndexSequence r = getRight().sequence(index, len);
-		return IndexSequence.of(IntStream.range(0, len)
-				.mapToObj(i -> compare(l.valueAt(i), r.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
+		IndexSequence l = getLeft().sequence(index, len, limit);
+		if (l == null) return null;
+
+		IndexSequence r = getRight().sequence(index, len, limit);
+		if (r == null) return null;
+
+		return compare(l, r, len);
+	}
+
+	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
+		if (len > Integer.MAX_VALUE) return null;
+
+		return ArrayIndexSequence.of(Integer.class, IntStream.range(0, Math.toIntExact(len))
+				.mapToObj(i -> compare(left.valueAt(i), right.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
 	}
 

@@ -16,7 +16,7 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Statement;
@@ -75,8 +75,13 @@ public class Cases<T> extends Scope<T> {
 
 		for (int i = 0; i < getChildren().size(); i++) {
 			if (i < getConditions().size()) {
+				String c = getConditions().get(i).getExpression(w.getLanguage());
+				if ("false".equals(c)) {
+					throw new UnsupportedOperationException();
+				}
+
 				String pre = i > 0 ? "else if (" : "if (";
-				w.println(pre + getConditions().get(i).getExpression(w.getLanguage()) + ") {");
+				w.println(pre + c + ") {");
 			} else {
 				w.println(" else {");
 			}

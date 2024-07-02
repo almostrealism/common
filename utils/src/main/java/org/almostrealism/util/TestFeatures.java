@@ -19,21 +19,23 @@ package org.almostrealism.util;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.profile.CompilationProfile;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -112,7 +114,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				Producer<PackedCollection<?>> p = supply.get();
 				PackedCollection<?> output = p.get().evaluate();
 				System.out.println("TestFeatures: Output Shape = " + output.getShape() +
-						" [" + output.getShape().getCount() + "x" + output.getShape().getSize() + "]");
+						" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
 				System.out.println("TestFeatures: Validating kernel output...");
 				validate.accept(output);
 				outputRef.set(output);
@@ -158,8 +160,13 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void initKernelMetrics() {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator",
-				OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		initKernelMetrics(new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName)));
+	}
+
+	default void initKernelMetrics(OperationProfile profile) {
+		Hardware.getLocalHardware().assignProfile(profile);
+		AcceleratedComputationOperation.clearTimes();
 	}
 
 	default void logKernelMetrics() {
@@ -168,18 +175,28 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default void logKernelMetrics(OperationProfile profile) {
 		if (profile != null) profile.print();
-		if (HardwareOperator.profile != null) HardwareOperator.profile.print();
+		if (HardwareOperator.profile != null && HardwareOperator.profile != profile)
+			HardwareOperator.profile.print();
+
 		AcceleratedComputationOperation.printTimes();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
-				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries");
+				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries | "
+				+ (KernelSeriesCache.enableCache ? "on" : "off"));
 		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {
-		return p -> p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||
-				(p instanceof OperationAdapter && ((OperationAdapter) p).getFunctionName().equals(classSubstringOrFunctionName));
+		return p -> {
+			while (p instanceof ReshapeProducer) {
+				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+			}
+
+			return p.getClass().getSimpleName().contains(classSubstringOrFunctionName) ||
+					(p instanceof OperationAdapter && ((OperationAdapter) p).getFunctionName().equals(classSubstringOrFunctionName));
+		};
 	}
 
 	@Override

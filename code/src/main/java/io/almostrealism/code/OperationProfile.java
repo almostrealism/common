@@ -21,12 +21,13 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
+import java.util.Map;
 import java.util.function.Function;
 
 public class OperationProfile implements Named, ConsoleFeatures {
 	public static long id = 0;
 
-	private String name;
+	protected String name;
 	private TimingMetric metric;
 	private Function<OperationMetadata, String> key;
 
@@ -40,14 +41,36 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public OperationProfile(String name, Function<OperationMetadata, String> key) {
 		this.name = name;
-		this.metric = console().timing(name + "_prof" + id++);
 		setKey(key);
+	}
+
+	protected void initMetric() {
+		if (metric == null) {
+			metric = console().timing(name + "_prof" + id++);
+		}
 	}
 
 	@Override
 	public String getName() { return name; }
 
+	public void setMetricEntries(Map<String, Double> entries) {
+		initMetric();
+		metric.setEntries(entries);
+	}
+
+	public Map<String, Double> getMetricEntries() { return metric == null ? null : metric.getEntries(); }
+
+	public void setMetricCounts(Map<String, Integer> counts) {
+		initMetric();
+		metric.setCounts(counts);
+	}
+
+	public Map<String, Integer> getMetricCounts() { return metric == null ? null : metric.getCounts(); }
+
+	public void setMetric(TimingMetric metric) { this.metric = metric; }
 	public TimingMetric getMetric() { return metric; }
+
+	public double getTotalDuration() { return metric == null ? 0.0 : metric.getTotal(); }
 
 	public Function<OperationMetadata, String> getKey() { return key; }
 
@@ -55,7 +78,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public void print() { log(summary()); }
 
-	public String summary() { return metric.summary(getName()); }
+	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
 	public long recordDuration(Runnable r) {
 		long start = System.nanoTime();
@@ -80,10 +103,13 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public void recordDuration(OperationMetadata metadata, long nanos) {
-		metric.addEntry(key.apply(metadata), nanos);
+		initMetric();
+		metric.addEntry(getKey().apply(metadata), nanos);
 	}
 
-	public void clear() { metric.clear(); }
+	public void clear() {
+		if (metric != null) metric.clear();
+	}
 
 	@Override
 	public Console console() { return Computation.console; }

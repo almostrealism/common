@@ -20,15 +20,12 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
-import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -37,9 +34,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -51,11 +46,17 @@ import java.util.function.Supplier;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_CACHE").orElse(true);
 	public static boolean enableVerbose = false;
-	public static int maxCount = ParallelProcess.maxCount << 6;
+	public static int maxCount = ParallelProcess.maxCount << 2;
 	public static int defaultMaxExpressions = 16;
-	public static int defaultMaxEntries = 16;
-	public static int minNodeCountMatch = 6;
+	public static int defaultMaxEntries = 32; // 16;
+	public static int minNodeCountMatch = 12; // 6;
 	public static int minNodeCountCache = 128;
+
+	static {
+		if (8L * maxCount * defaultMaxEntries > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("Maximum cache size is greater than maximum possible memory reservation");
+		}
+	}
 
 	private int count;
 	private boolean fixed;
@@ -86,6 +87,11 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
+	public long getSequenceComputationLimit() {
+		return maxCount;
+	}
+
+	@Override
 	public Expression getSeries(Expression exp, Index index) {
 		if (!isComputable() || exp.isSingleIndexMasked()) {
 			return exp;
@@ -98,10 +104,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		if (result != null) return result;
 
 		result = KernelSeriesProvider.super.getSeries(exp, index);
-		if (result == exp) {
-//			if (exp.countNodes() >= minNodeCountMatch)
-//				throw new RuntimeException();
-		} else {
+		if (result != exp) {
 			expressions.put(e, result);
 		}
 
@@ -116,8 +119,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		if (n < minNodeCountMatch) return null;
 
 		IndexSequence seq = sequence.get();
+		if (seq == null) return null;
 
-		Expression result = KernelSeriesMatcher.match(index, seq, isInt);
+		Expression result = seq.getExpression(index, isInt);
 		if (result != null) return result;
 
 		if (!enableCache || cache == null || n < minNodeCountCache) {
@@ -125,10 +129,10 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 			return result;
 		}
 
-		if (seq.length() != count) {
+		if (seq.lengthLong() != count) {
 			matchFailures.add(exp.get());
 			if (enableVerbose)
-				warn("Cannot cache sequence of length " + seq.length() + " (length != " + count + ")");
+				warn("Cannot cache sequence of length " + seq.lengthLong() + " (length != " + count + ")");
 			return result;
 		}
 
@@ -157,7 +161,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 			if (result == null) {
 				matchFailures.add(exp.get());
 			} else {
-				result = result.add(new DoubleConstant(init));
+				if (init != 0.0) result = result.add(new DoubleConstant(init));
 				if (isInt) result = result.toInt();
 			}
 		}
@@ -166,11 +170,16 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
+	public void destroy() {
+		cacheManager.destroy();
+	}
+
+	@Override
 	public Console console() { return Hardware.console; }
 
 	public static KernelSeriesCache create(Computation<?> c, Function<MemoryData, ArrayVariable<?>> variableFactory) {
-		int count = ParallelProcess.count(c);
-		boolean fixed = ParallelProcess.isFixedCount(c);
+		int count = Countable.count(c);
+		boolean fixed = Countable.isFixedCount(c);
 		return new KernelSeriesCache(count, fixed,
 				(enableCache && fixed && count < maxCount) ?
 						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);

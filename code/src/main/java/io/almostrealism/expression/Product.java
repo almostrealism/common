@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,12 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.kernel.ArrayIndexSequence;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -26,7 +30,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,6 +45,20 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	protected Product(Expression<Double>... values) {
 		super((Class<T>) type(List.of(values)), "*", values);
+	}
+
+	@Override
+	public Expression withIndex(Index index, Expression<?> e) {
+		Expression<T> result = super.withIndex(index, e);
+		if (!(result instanceof Product)) return result;
+
+		if (result.getChildren().stream().allMatch(v -> v.doubleValue().isPresent())) {
+			double r = result.getChildren().stream()
+					.mapToDouble(v -> v.doubleValue().getAsDouble()).reduce(1.0, (a, b) -> a * b);
+			return result.getType() == Integer.class ? new IntegerConstant((int) r) : new DoubleConstant(r);
+		}
+
+		return result;
 	}
 
 	@Override
@@ -60,12 +78,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		List<OptionalInt> values = getChildren().stream()
+	public OptionalLong upperBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalInt.empty();
-		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(1, (a, b) -> a * b));
+		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
 	}
 
 	@Override
@@ -92,6 +110,33 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public IndexSequence sequence(Index index, long len, long limit) {
+		if (isFP()) return super.sequence(index, len, limit);
+
+		List<Expression<?>> constant = new ArrayList<>();
+		List<Expression<?>> variable = new ArrayList<>();
+
+		getChildren().forEach(e -> {
+			if (e.doubleValue().isPresent()) {
+				constant.add(e);
+			} else {
+				variable.add(e);
+			}
+		});
+
+		long value = constant.stream()
+				.mapToLong(e -> e.longValue().getAsLong())
+				.reduce(1L, (a, b) -> a * b);
+		if (variable.isEmpty()) return ArrayIndexSequence.of(value, len);
+		if (variable.size() != 1) return super.sequence(index, len, limit);
+
+		IndexSequence seq = variable.get(0).sequence(index, len, limit);
+		if (seq == null) return null;
+
+		return seq.multiply(value);
+	}
+
+	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return (Expression) Product.of(children.toArray(new Expression[0]));
 	}
@@ -106,27 +151,27 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 			for (int j = 0; j < operands.size(); j++) {
 				CollectionExpression op = i == j ? operands.get(j).delta(target) :
-						CollectionExpression.create(target.getShape(), operands.get(j));
+						new ConstantCollectionExpression(target.getShape(), operands.get(j));
 				product.add(op);
 			}
 
-			sum.add(CollectionExpression.product(target.getShape(), product));
+			sum.add(product(target.getShape(), product));
 		}
 
 		CollectionExpression result;
 
 		if (sum.isEmpty()) {
-			result = CollectionExpression.zeros(target.getShape());
+			result = zeros(target.getShape());
 		} else if (sum.size() == 1) {
 			result = sum.get(0);
 		} else {
-			result = CollectionExpression.sum(target.getShape(), sum);
+			result = sum(target.getShape(), sum);
 		}
 
 		return ExpressionMatchingCollectionExpression.create(
-				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				new ConstantCollectionExpression(target.getShape(), this),
 				target,
-				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
 				result);
 	}
 

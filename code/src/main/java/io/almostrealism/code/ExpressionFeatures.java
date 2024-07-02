@@ -16,9 +16,16 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.ProductCollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
-import io.almostrealism.expression.Constant;
+import io.almostrealism.expression.Cosine;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
@@ -26,10 +33,17 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sine;
+import io.almostrealism.expression.Sum;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
+
+import java.util.Collection;
 
 public interface ExpressionFeatures {
 
@@ -43,6 +57,14 @@ public interface ExpressionFeatures {
 
 	default Expression<Double> expressionForDouble(double value) {
 		return new DoubleConstant(value);
+	}
+
+	default Expression<? extends Number> e(long value) {
+		if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+			return new LongConstant(value);
+		}
+
+		return e(Math.toIntExact(value));
 	}
 
 	default Expression<Double> e(double value) {
@@ -64,6 +86,11 @@ public interface ExpressionFeatures {
 			@Override
 			public String getExpression(LanguageOperations lang) {
 				return lang.pi();
+			}
+
+			@Override
+			public ExpressionAssignment<Double> assign(Expression exp) {
+				throw new UnsupportedOperationException();
 			}
 		};
 	}
@@ -94,6 +121,78 @@ public interface ExpressionFeatures {
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		return Conditional.of(condition, (Expression) positive, (Expression) negative);
+	}
+
+	default CollectionExpression sum(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return sum(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression sum(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression sum = new UniformCollectionExpression(shape, Sum::of, expressions);
+		sum.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
+		return sum;
+	}
+
+	default CollectionExpression difference(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return difference(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression difference(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression difference = new UniformCollectionExpression(shape, Difference::of, expressions);
+		difference.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
+		return difference;
+	}
+
+	default CollectionExpression product(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return product(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression product(TraversalPolicy shape, TraversableExpression... expressions) {
+		if (expressions.length < 2) throw new IllegalArgumentException();
+		return new ProductCollectionExpression(shape, expressions);
+	}
+
+	default CollectionExpression quotient(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
+		return quotient(shape, expressions.toArray(TraversableExpression[]::new));
+	}
+
+	default CollectionExpression quotient(TraversalPolicy shape, TraversableExpression... expressions) {
+		UniformCollectionExpression quotient = new UniformCollectionExpression(shape, Quotient::of, expressions);
+		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
+		return quotient;
+	}
+
+	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
+		return new UniformCollectionExpression(shape, Mod::of, in, mod);
+	}
+
+	default CollectionExpression sin(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> new Sine(args[0]), input);
+	}
+
+	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default TraversableExpression<Boolean> equals(TraversalPolicy shape,
+												 TraversableExpression<Double> a, TraversableExpression<Double> b) {
+		return idx -> equals(a.getValueAt(idx), b.getValueAt(idx));
+	}
+
+	default CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
+											TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
+		return CollectionExpression.create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
+	}
+
+	default CollectionExpression conditional(TraversalPolicy shape, TraversableExpression<Boolean> condition,
+											 TraversableExpression<Double> positive, TraversableExpression<Double> negative) {
+		return CollectionExpression.create(shape, idx ->
+				condition.getValueAt(idx)
+					.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
+	}
+
+	default CollectionExpression zeros(TraversalPolicy shape) {
+		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
 	}
 
 	default Expression[] complexProduct(Expression aReal, Expression aImg, Expression bReal, Expression bImg) {

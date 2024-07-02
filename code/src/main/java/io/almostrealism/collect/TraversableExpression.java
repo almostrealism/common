@@ -18,14 +18,17 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
+import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.function.IntFunction;
-
-public interface TraversableExpression<T> extends ExpressionFeatures {
+public interface TraversableExpression<T> extends Computable, ExpressionFeatures, ConsoleFeatures {
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();
@@ -36,6 +39,55 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	default Expression<T> getValueRelative(Expression index) {
 		return getValueAt(index);
 	}
+
+	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (localIndex.getLimit().orElse(-1) == 1)
+			return new IntegerConstant(0);
+
+		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
+		if (indices == null) {
+			warn("Unable to create ExpressionMatrix for " + targetIndex.getExpressionSummary());
+			return null;
+		}
+
+		IndexSequence columnSeq = indices.columnSequence();
+		if (columnSeq != null) {
+			return columnSeq.getExpression(globalIndex);
+		}
+
+		Expression<?> column[] = indices.allColumnsMatch();
+		if (column != null) {
+			// TODO
+			throw new RuntimeException("localIndex is irrelevant");
+		}
+
+		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {
+			return null;
+		}
+
+		ExpressionMatrix<T> values = indices.apply(this::getValueAt);
+		if (values == null) {
+			// warn("Unable to create ExpressionMatrix for " + this);
+			return null;
+		}
+
+		return values.uniqueNonZeroOffset(globalIndex);
+	}
+
+	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		Expression offset = uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		if (offset == null) return null;
+
+		return ((Expression) globalIndex)
+				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
+				.add(offset);
+	}
+
+	default Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return uniqueNonZeroIndex(new KernelIndex(), localIndex, targetIndex);
+	}
+
+	default boolean isIndexIndependent() { return false; }
 
 	default boolean isTraversable() {
 		return true;
@@ -52,5 +104,19 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 		} else {
 			return null;
 		}
+	}
+
+	static boolean match(TraversableExpression<?> a, TraversableExpression<?> b) {
+		while (a instanceof RelativeTraversableExpression) {
+			a = ((RelativeTraversableExpression) a).getExpression();
+		}
+
+		while (b instanceof RelativeTraversableExpression) {
+			b = ((RelativeTraversableExpression) b).getExpression();
+		}
+
+		if (a == b) return true;
+		if (a == null || b == null) return false;
+		return a.equals(b);
 	}
 }

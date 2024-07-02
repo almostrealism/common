@@ -16,9 +16,8 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.relation.Parent;
 
 import java.util.ArrayList;
@@ -35,6 +34,10 @@ public class HybridScope<T> extends Scope<T> {
 	public HybridScope(OperationAdapter operation) {
 		super(operation.getFunctionName(), operation.getMetadata());
 		this.explicit = new ExplicitScope<T>(operation);
+
+		if (operation.getComputeRequirements() != null) {
+			setComputeRequirements(operation.getComputeRequirements());
+		}
 	}
 
 	public HybridScope(ExplicitScope<T> explicit, CodeGenerator generator) {

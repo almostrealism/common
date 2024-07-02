@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.model;
 
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -30,7 +29,6 @@ import org.almostrealism.layers.Learning;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -118,6 +116,8 @@ public class Model implements Setup, CodeFeatures {
 	public Block lastBlock() { return blocks.get(blocks.size() - 1); }
 
 	public TraversalPolicy getShape() { return shape; }
+
+	public TraversalPolicy getOutputShape() { return lastBlock().getOutputShape(); }
 
 	@Override
 	public Supplier<Runnable> setup() {

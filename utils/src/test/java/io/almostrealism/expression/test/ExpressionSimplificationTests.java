@@ -17,22 +17,22 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IndexValues;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
-import io.almostrealism.kernel.NoOpKernelStructureContext;
-import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.LanguageOperationsStub;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 
-public class ExpressionSimplificationTests implements ExpressionFeatures {
-	private OpenCLLanguageOperations lang = new OpenCLLanguageOperations(Precision.FP64);
+public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
+	private LanguageOperations lang = new LanguageOperationsStub();
 
 	@Test
 	public void productToInt() {
@@ -78,9 +78,10 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		Expression b = c.add(e(2));
 		Expression a = d.multiply(e(4));
 		Expression out = b.add(a).toInt();
-		out = new Mod(out, e(5), false);
+		out = Mod.of(out, e(5), false);
 
-		System.out.println(out.getSimpleExpression(lang));
+		String simple = out.getSimpleExpression(lang);
+		log(simple);
 	}
 
 	@Test
@@ -93,20 +94,35 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 	}
 
 	@Test
+	public void kernelProductMod1() {
+		Expression<?> e =
+				kernel().multiply(64800)
+				.add(kernel().imod(64800))
+				.imod(64800L * 64800L);
+		String simple = e.getSimplified().getExpression(lang);
+		log(simple);
+		Assert.assertEquals("kernel0 % " + 64800L * 64800L, simple);
+	}
+
+	@Test
+	public void kernelSumQuotient() {
+		int n = 4;
+
+		Expression<?> e =
+				kernel().multiply(n)
+						.add(kernel().imod(n))
+						.divide(n * n);
+		String simple = e.getSimplified().getExpression(lang);
+		log(simple);
+		Assert.assertEquals("kernel0 / " + n, simple);
+	}
+
+	@Test
 	public void kernelModProduct() {
-		boolean temp = false;
-
-		if (temp) {
-			// TODO  Remove - this is just for reference
-			int kernel0 = 1;
-			int result = (((kernel0 * 4) % (8)) % (4));
-			result = (((((kernel0 * 4) % (8)) % (4)) + (-(((kernel0 * 4) % (8)) % (4))) + (((kernel0 * 4) % (8)) / 4) + ((((kernel0 * 4) % (8)) % (4)) * 2) + (((kernel0 * 4) / 8) * 8)) / 2) % (4);
-		}
-
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
 		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
-		Assert.assertTrue(result.isKernelValue(new IndexValues()));
+		Assert.assertTrue(result.isValue(new IndexValues(0)));
 
 		String simple = new DefaultKernelStructureContext(64).simplify(result).getExpression(lang);
 		System.out.println(simple);

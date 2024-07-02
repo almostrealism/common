@@ -19,14 +19,13 @@ package org.almostrealism.space;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import io.almostrealism.relation.NodeGroup;
-import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.Gradient;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;

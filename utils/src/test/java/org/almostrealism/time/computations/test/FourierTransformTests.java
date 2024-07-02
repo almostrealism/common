@@ -16,19 +16,36 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
+import java.util.List;
+
 public class FourierTransformTests implements TestFeatures {
 	@Test
-	public void compile() {
-		int bins = 512;
+	public void compileCpu() {
+		compile(ComputeRequirement.CPU);
+	}
+
+	@Test
+	public void compileGpu() {
+		if (FourierTransform.enableRecursion) {
+			if (skipKnownIssues) return;
+			throw new UnsupportedOperationException("Recursion is not supported on the GPU");
+		}
+
+		compile(ComputeRequirement.GPU);
+	}
+
+	public void compile(ComputeRequirement requirement) {
+		int bins = 256;
 
 		PackedCollection<?> input = new PackedCollection<>(bins, 2);
 		FourierTransform ft = new FourierTransform(bins, cp(input));
+		ft.setComputeRequirements(List.of(requirement));
 		ft.get().evaluate();
 	}
 }

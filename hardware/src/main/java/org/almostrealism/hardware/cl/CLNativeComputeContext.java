@@ -20,9 +20,8 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.lang.ScopeEncoder;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
@@ -51,12 +50,18 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 		target.setParallelism(NativeExecution.PARALLELISM);
 
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw ->
-				new CLJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
-						getLanguage()), Accessibility.EXTERNAL).apply(scope));
-		getNativeCompiler().compile(target, buf.toString());
-		return target;
+
+		try {
+			buf.append(new ScopeEncoder(pw ->
+					new CLJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+							getLanguage()), Accessibility.EXTERNAL).apply(scope));
+			getNativeCompiler().compile(target, buf.toString());
+			return target;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

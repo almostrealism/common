@@ -17,14 +17,16 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.Computer;
 import io.almostrealism.code.DataContext;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
+import io.almostrealism.profile.CompilationProfile;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.jni.NativeCompiler;
+
+import java.util.function.Supplier;
 
 public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> implements ComputeContext<MemoryData> {
+	public static CompilationProfile compilationProfile;
+
 	private final T dc;
 
 	protected AbstractComputeContext(T dc) {
@@ -32,4 +34,10 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	}
 
 	public T getDataContext() { return dc; }
+
+	protected void recordCompilation(Scope<?> scope, Supplier<String> source, long nanos) {
+		if (compilationProfile != null) {
+			compilationProfile.recordCompilation(scope.getMetadata(), source.get(), nanos);
+		}
+	}
 }

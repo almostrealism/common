@@ -37,11 +37,13 @@ public class FrequencyCache<K, V> {
 		}
 
 		void accessed() {
+			FrequencyCache.this.count++;
 			this.frequency++;
 			this.time = clock;
 		}
 	}
 
+	private long count = 0;
 	private long clock = 0;
 	private final double frequencyBias;
 	private final Map<K, CacheEntry> cache;
@@ -93,6 +95,21 @@ public class FrequencyCache<K, V> {
 		}
 	}
 
+	public void evict(K key) {
+		CacheEntry e = cache.remove(key);
+		if (e == null) return;
+
+		reverseCache.remove(e.value);
+
+		if (evictionListener != null) {
+			evictionListener.accept(key, e.value);
+		}
+	}
+
+	public void forEach(BiConsumer<K, V> consumer) {
+		cache.forEach((k, v) -> consumer.accept(k, v.value));
+	}
+
 	protected void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
@@ -114,7 +131,8 @@ public class FrequencyCache<K, V> {
 	}
 
 	protected double score(CacheEntry entry) {
-		long age = clock - entry.time;
-		return frequencyBias * entry.frequency + (1 - frequencyBias) * age;
+		double age = (clock - entry.time) / (double) clock;
+		double f = entry.frequency / (double) count;
+		return frequencyBias * f + (1 - frequencyBias) * (1 - age);
 	}
 }

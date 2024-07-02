@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
@@ -27,6 +28,8 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
@@ -36,9 +39,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails> {
+public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable {
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelDestination = true;
+	public static boolean enableConstantCache = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;
@@ -57,7 +61,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private boolean allMemoryData;
 	private MemoryData memoryDataArgs[];
 
-	private int kernelSize;
+	private long kernelSize;
 	private Map<ArrayVariable<?>, MemoryData> mappings;
 	private MemoryData kernelArgs[];
 	private Evaluable kernelArgEvaluables[];
@@ -83,7 +87,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 	public boolean isKernel() { return kernel; }
 	public boolean isFixedCount() { return fixedCount; }
-	public int getCount() { return count; }
+	public long getCountLong() { return count; }
 
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
 		if (kernelArgEvaluables == null || output != this.output || !Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
@@ -98,9 +102,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			} else if (!enableArgumentKernelSize && isFixedCount()) {
 				kernelSize = getCount();
 			} else if (output != null) {
-				kernelSize = output.getCount();
-			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCount() > getCount()) {
-				kernelSize = ((MemoryBank) args[0]).getCount();
+				kernelSize = output.getCountLong();
+			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
+				kernelSize = ((MemoryBank) args[0]).getCountLong();
 			} else if (isFixedCount()) {
 				kernelSize = getCount();
 			} else {
@@ -137,8 +141,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				// If the kernel size can be inferred from this operation argument
 				// capture it from the argument to the evaluation
-				if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCount() > 1) {
-					kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
+				if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCountLong() > 1) {
+					kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCountLong();
 				}
 			}
 
@@ -148,6 +152,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelArgEvaluables[i] = ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
+				} else if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
+					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
 				}
 			}
 
@@ -199,6 +205,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		long start = System.nanoTime();
 
+		int size = Math.toIntExact(kernelSize);
+
 		/*
 		 * In the final pass, kernel arguments are evaluated in a way that ensures the
 		 * result is compatible with the kernel size inferred earlier.
@@ -208,14 +216,17 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			if (enableKernelDestination && kernelArgEvaluables[i] instanceof KernelizedEvaluable) {
 				kernelArgs[i] = kernelArgDestinations[i] == null ?
-						(MemoryData) kernelArgEvaluables[i].createDestination(kernelSize) :
-						(MemoryData) kernelArgDestinations[i].createDestination(kernelSize);
+						(MemoryData) kernelArgEvaluables[i].createDestination(size) :
+						(MemoryData) kernelArgDestinations[i].createDestination(size);
 
 				long time = System.nanoTime() - start; start = System.nanoTime();
 				AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
 
-				if (created.get() != null)
+				if (created.get() != null) {
 					created.get().add(kernelArgs[i]);
+				} else {
+					Heap.addCreatedMemory(kernelArgs[i]);
+				}
 
 				kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
 
@@ -226,7 +237,25 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		return new AcceleratedProcessDetails(kernelArgs, target, tempFactory, kernelSize);
+		return new AcceleratedProcessDetails(kernelArgs, target, tempFactory, size);
+	}
+
+	@Deprecated
+	private void reviewDestination(Evaluable e) {
+		MemoryDataDestination dest = null;
+
+		if (e instanceof MemoryDataDestination) {
+			dest = (MemoryDataDestination) e;
+		} else if (e instanceof HardwareEvaluable) {
+			Evaluable d = ((HardwareEvaluable<?>) e).getDestination();
+			if (d instanceof MemoryDataDestination) {
+				dest = (MemoryDataDestination) d;
+			}
+		}
+
+		if (dest == null) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {

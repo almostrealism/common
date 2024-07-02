@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 
 package io.almostrealism.relation;
 
-@FunctionalInterface
-public interface Factor<T> extends Function<T, T> {
-	Producer<T> getResultant(Producer<T> value);
+import io.almostrealism.uml.Signature;
 
-	default String signature() { throw new UnsupportedOperationException(); }
+@FunctionalInterface
+public interface Factor<T> extends Function<T, T>, Signature {
+	Producer<T> getResultant(Producer<T> value);
 
 	default Factor<T> andThen(Factor<T> next) {
 		throw new UnsupportedOperationException();

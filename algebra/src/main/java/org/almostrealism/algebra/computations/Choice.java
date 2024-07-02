@@ -16,6 +16,9 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -23,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -37,11 +41,11 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super(null, new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) choices);
+		super(null, new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
 		this.choiceCount = choiceCount;
 	}
 
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 		Consumer<String> code = scope.code();
@@ -58,5 +62,17 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		}
 
 		return scope;
+	}
+
+	protected static <T extends PackedCollection<?>> Supplier<Evaluable<? extends MemoryBank<T>>>
+			adjustChoices(int memLength, Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
+		if (!(choices instanceof Shape)) return choices;
+
+		TraversalPolicy shape = ((Shape) choices).getShape();
+		if (shape.getSize() == memLength && shape.getTraversalAxis() > 0) {
+			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) choices);
+		}
+
+		return choices;
 	}
 }

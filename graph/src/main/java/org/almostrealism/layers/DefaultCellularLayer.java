@@ -147,7 +147,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		OperationList op = new OperationList(name);
 		op.setComputeRequirements(getComputeRequirements());
 
-		if (shape.getCount() > 1) {
+		if (shape.getCountLong() > 1) {
 			if (shape.equalsIgnoreAxis(shape(out))) {
 				op.add(a(name, traverse(shape.getTraversalAxis(), (Producer) out), in));
 			} else {

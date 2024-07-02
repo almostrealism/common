@@ -23,8 +23,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Conditional<T extends Number> extends Expression<T> {
+	public static boolean enableSimplification = false;
 
 	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -37,14 +39,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt l = getChildren().get(1).upperBound(context);
-		OptionalInt r = getChildren().get(2).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong l = getChildren().get(1).upperBound(context);
+		OptionalLong r = getChildren().get(2).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
-			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
+			return OptionalLong.of(Math.max(l.getAsLong(), r.getAsLong()));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override
@@ -80,14 +82,16 @@ public class Conditional<T extends Number> extends Expression<T> {
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
 
+		if (!enableSimplification) return Conditional.of(condition, positive, negative);
+
 		boolean replaceCondition = false;
 		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
 			int len = context.getSeriesProvider().getMaximumLength().orElse(0);
-			OptionalInt max = condition.getIndices().stream()
-					.mapToInt(id -> id.upperBound(context).orElse(Integer.MAX_VALUE))
+			OptionalLong max = condition.getIndices().stream()
+					.mapToLong(id -> id.upperBound(context).orElse(Integer.MAX_VALUE))
 					.findFirst();
 			if (max.isPresent()) {
-				replaceCondition = max.getAsInt() < len;
+				replaceCondition = max.getAsLong() < len;
 			}
 		}
 
@@ -136,6 +140,10 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return Mask.of(condition.not(), negative);
 		}
 
-		return new Conditional(Double.class, condition, positive, negative);
+		if (positive.getType() == negative.getType()) {
+			return new Conditional<>(positive.getType(), condition, positive, negative);
+		} else {
+			return new Conditional(Double.class, condition, positive, negative);
+		}
 	}
 }

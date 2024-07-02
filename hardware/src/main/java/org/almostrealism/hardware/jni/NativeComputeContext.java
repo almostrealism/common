@@ -20,7 +20,7 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.lang.ScopeEncoder;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
@@ -64,25 +64,31 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 			accessor = new DefaultJNIMemoryAccessor();
 		}
 
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw ->
-				new CJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
-						getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
 
-		if (enableLargeScopeMonitoring) {
-			if (buf.length() > 240000) {
-				try {
-					Files.writeString(Path.of("large_scope.txt"), buf.toString());
-				} catch (IOException ex) {
-					throw new RuntimeException(ex);
+		try {
+			buf.append(new ScopeEncoder(pw ->
+					new CJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+							getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
+
+			if (enableLargeScopeMonitoring) {
+				if (buf.length() > 240000) {
+					try {
+						Files.writeString(Path.of("large_scope.txt"), buf.toString());
+					} catch (IOException ex) {
+						throw new RuntimeException(ex);
+					}
+
+					System.out.println("Wrote large Scope to large_scope.txt");
 				}
-
-				System.out.println("Wrote large Scope to large_scope.txt");
 			}
-		}
 
-		getNativeCompiler().compile(target, buf.toString());
-		return target;
+			getNativeCompiler().compile(target, buf.toString());
+			return target;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

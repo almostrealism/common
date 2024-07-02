@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -23,12 +25,13 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Equals extends Comparison {
+
 	public Equals(Expression<?> left, Expression<?> right) {
 		super(left, right);
 	}
 
 	public String getExpression(LanguageOperations lang) {
-		return "(" + getChildren().get(0).getExpression(lang) + ") == (" + getChildren().get(1).getExpression(lang) + ")";
+		return getChildren().get(0).getWrappedExpression(lang) + " == " + getChildren().get(1).getWrappedExpression(lang);
 	}
 
 	@Override
@@ -45,6 +48,11 @@ public class Equals extends Comparison {
 	@Override
 	protected boolean compare(Number left, Number right) {
 		return left.doubleValue() == right.doubleValue();
+	}
+
+	@Override
+	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
+		return left.eq(right);
 	}
 
 	@Override

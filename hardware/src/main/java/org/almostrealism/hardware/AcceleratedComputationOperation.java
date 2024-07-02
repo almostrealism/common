@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,11 +45,11 @@ import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
-	public static TimingMetric compileTime = console.timing("computationCompile");
+	public static TimingMetric compileProfile = console.timing("computationCompile");
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
@@ -83,8 +83,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public int getCount() {
-		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCount() : 1;
+	public long getCountLong() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCountLong() : 1;
 	}
 
 	@Override
@@ -118,8 +118,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public boolean isKernelStructureSupported() { return kernelStructureSupported; }
 
 	@Override
-	public OptionalInt getKernelMaximum() {
-		return isFixedCount() ? OptionalInt.of(getCount()) : OptionalInt.empty();
+	public OptionalLong getKernelMaximum() {
+		return isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
 	}
 
 	@Override
@@ -158,9 +158,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		getComputation().prepareScope(manager);
+	protected void prepareScope(ScopeInputManager manager) {
+		prepareScope(manager, this);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		getComputation().prepareScope(manager, context);
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
 				data -> manager.argumentForInput(this).apply(() -> new Provider<>(data)));
@@ -198,9 +203,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		long start = System.nanoTime();
 		// TODO  Should simplify be after converting arguments to required scopes?
-		scope = c.getScope().simplify(this);
-		compileTime.addEntry(getFunctionName(), System.nanoTime() - start);
-		scope.convertArgumentsToRequiredScopes();
+		scope = c.getScope(this).simplify(this);
+		compileProfile.addEntry(getFunctionName(), System.nanoTime() - start);
+		scope.convertArgumentsToRequiredScopes(this);
 		postCompile();
 		return scope;
 	}
@@ -215,6 +220,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
 		}
 
+		// kernelSeriesCache.destroy();
 		super.postCompile();
 	}
 
@@ -235,7 +241,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 		if ((getKernelMaximum().isPresent() && process.getKernelSize() !=
-					getKernelMaximum().getAsInt()) ||
+					getKernelMaximum().getAsLong()) ||
 				(kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
 					kernelSeriesCache.getMaximumLength().getAsInt())) {
 			throw new UnsupportedOperationException();
@@ -261,6 +267,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
+	public static void clearTimes() {
+		KernelSeriesProvider.timingPos.clear();
+		KernelSeriesProvider.timingNeg.clear();
+		KernelTraversalProvider.timing.clear();
+		Scope.timing.clear();
+		compileProfile.clear();
+	}
+
 	public static void printTimes() {
 		printTimes(false);
 	}
@@ -282,8 +296,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			Scope.timing.print();
 		}
 
-		if (verbose || compileTime.getTotal() > 60) {
-			compileTime.print();
+		if (verbose || compileProfile.getTotal() > 60) {
+			compileProfile.print();
 		}
 	}
 }

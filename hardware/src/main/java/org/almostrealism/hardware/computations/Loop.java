@@ -19,18 +19,14 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.DefaultIndex;
-import io.almostrealism.relation.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.OperationComputationAdapter;
-
-import java.util.Collection;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
@@ -57,29 +53,29 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		atom.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		atom.prepareScope(manager, context);
 	}
 
 	@Override
-	public int getCount() {
-		return atom instanceof Countable ? ((Countable) atom).getCount() : 1;
+	public long getCountLong() {
+		return atom instanceof Countable ? ((Countable) atom).getCountLong() : 1;
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		if (enableRepeated) {
 			Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
 			Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
 			scope.setInterval(e(1));
 			scope.setIndex(i);
 			scope.setCondition(i.ref().lessThan(e(iterations)));
-			scope.add(atom.getScope());
+			scope.add(atom.getScope(context));
 			return scope;
 		} else {
-			Scope<Void> atomScope = atom.getScope();
-			atomScope.convertArgumentsToRequiredScopes();
+			Scope<Void> atomScope = atom.getScope(context);
+			atomScope.convertArgumentsToRequiredScopes(context);
 
 			HybridScope<Void> scope = new HybridScope<>(this);
 			scope.setMetadata(getMetadata());

@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.RelativeArrayVariable;
@@ -57,8 +58,8 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	}
 
 	@Override
-	public Scope<O> getScope() {
-		Scope<O> scope = super.getScope();
+	public Scope<O> getScope(KernelStructureContext context) {
+		Scope<O> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 

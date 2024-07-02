@@ -68,17 +68,17 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	public int getMemLength() { return 1; }
 
 	@Override
-	public int getCount() {
-		return getShape().traverseEach().getCount();
+	public long getCountLong() {
+		return getShape().traverseEach().getCountLong();
 	}
 
 	// TODO  This custom destination creation should not be necessary
 	@Override
-	protected MemoryBank<?> createDestination(int len) {
+	public T createDestination(int len) {
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 
-		return new PackedCollection<>(getShape().traverseEach());
+		return (T) new PackedCollection<>(getShape().traverseEach());
 	}
 
 	@Override
@@ -123,6 +123,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 
 		@Override
-		public int getCount() { return getShape().getTotalSize(); }
+		public long getCountLong() { return getShape().getTotalSize(); }
 	}
 }

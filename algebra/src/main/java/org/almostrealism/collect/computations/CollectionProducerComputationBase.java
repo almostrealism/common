@@ -28,6 +28,7 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -35,12 +36,13 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,6 +65,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private Evaluable<O> shortCircuit;
 	private List<ScopeLifecycle> dependentLifecycles;
 
+	private HardwareEvaluable<O> evaluable;
+
 	protected CollectionProducerComputationBase() {
 	}
 
@@ -76,7 +80,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		this.name = name;
 		this.shape = outputShape.withOrder(null);
-		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination<>(this, this::adjustDestination), arguments));
+		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestinationProducer<>(this, this::adjustDestination), arguments));
 		init();
 	}
 
@@ -108,9 +112,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		if (dependentLifecycles != null) ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		if (dependentLifecycles != null) ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager, context);
 
 		// Result should always be first
 		// TODO  This causes cascading issues, as the output variable is reused by the referring
@@ -122,13 +126,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
-		if (dependentLifecycles != null) ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+
+		if (dependentLifecycles != null)
+			ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
 	}
 
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		if (dependentLifecycles != null) ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+
+		if (dependentLifecycles != null)
+			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+
+		this.evaluable = null;
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -182,8 +192,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return ((PackedCollection) existing).range(shape);
 	}
 
-	protected MemoryBank<?> createDestination(int len) {
-		return new PackedCollection<>(shapeForLength(len));
+	@Override
+	public O createDestination(int len) {
+		return (O) getDestination().createDestination(len);
 	}
 
 	@Override
@@ -197,8 +208,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public int getCount() {
-		return getShape().getCount();
+	public long getCountLong() {
+		return getShape().getCountLong();
 	}
 
 	@Override
@@ -252,29 +263,49 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 	}
 
+	protected Evaluable<O> getEvaluable() {
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			return CollectionProducerComputation.super.get();
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
+	}
+
 	@Override
 	public Evaluable<O> get() {
-		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
-		ev.setDestinationProcessor(destination -> {
-			if (destination instanceof Shape) {
-				Shape out = (Shape) destination;
+		if (evaluable == null) {
+			this.evaluable = new HardwareEvaluable<>(
+					this::getEvaluable,
+					getDestination(),
+					shortCircuit, true);
+			this.evaluable.setDestinationProcessor(destination -> {
+				if (destination instanceof Shape) {
+					Shape out = (Shape) destination;
 
-				if (getCount() > 1 || isFixedCount() || (out.getShape().getCount() > 1 && getCount() == 1)) {
-					for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
-						if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
-							return axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis);
+					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
+						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
+							if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
+								return (O) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
+							}
 						}
+					}
+
+					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+						throw new IllegalArgumentException();
 					}
 				}
 
-				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
-					throw new IllegalArgumentException();
-				}
-			}
+				return destination;
+			});
+		}
 
-			return destination;
-		});
-		return ev;
+		return evaluable;
 	}
 
 	@Override
@@ -289,7 +320,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public void destroy() {
 		super.destroy();
-		((MemoryDataDestination) getInputs().get(0)).destroy();
+		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
 	}
 

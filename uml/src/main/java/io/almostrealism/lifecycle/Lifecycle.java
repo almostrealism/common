@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,9 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.time;
+package io.almostrealism.lifecycle;
 
-import io.almostrealism.code.ProducerComputation;
+public interface Lifecycle {
+	default void reset() {
 
-public interface TemporalScalarProducerBase extends ProducerComputation<TemporalScalar>, TemporalScalarFeatures {
+	}
 }

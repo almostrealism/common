@@ -23,8 +23,6 @@ import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLOperator;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -62,7 +60,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
 		op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
 
-		Assert.assertEquals(10, op.getCount());
+		Assert.assertEquals(10, op.getCountLong());
 		op.get().run();
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
@@ -82,7 +80,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
 		op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
 
-		Assert.assertEquals(1, op.getCount());
+		Assert.assertEquals(1, op.getCountLong());
 		op.optimize().get().run();
 
 		for (int i = 0; i < x.getShape().length(0); i++) {

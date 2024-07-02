@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -25,12 +24,12 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 
+	private TraversalPolicy inputShape;
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
 
@@ -40,6 +39,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		super(computeShape(shape, stride, collection), null, collection);
+		this.inputShape = shape(collection);
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}
@@ -54,16 +54,15 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression block;
 
 		// Determine the current block
-		if (blockShape.getTotalSize() == 1) {
+		if (blockShape.getTotalSizeLong() == 1) {
 			block = index;
-		} else if (index.getType() == Integer.class ||
-				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-			block = index.divide(e(blockShape.getTotalSize()));
+		} else if (!index.isFP()) {
+			block = index.divide(e(blockShape.getTotalSizeLong()));
 		} else {
-			block = index.divide(e((double) blockShape.getTotalSize())).floor();
+			block = index.divide(e((double) blockShape.getTotalSizeLong())).floor();
 		}
 
-		index = index.toInt().imod(blockShape.getTotalSize());
+		index = index.toInt().imod(blockShape.getTotalSizeLong());
 
 		// Determine which slice to extract
 		// Starting over from the beginning for each new block
@@ -71,15 +70,14 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 		if (subsetShape.getTotalSize() == 1) {
 			slice = index;
-		} else if (index.getType() == Integer.class ||
-				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-			slice = index.divide(e(subsetShape.getTotalSize()));
+		} else if (!index.isFP()) {
+			slice = index.divide(e(subsetShape.getTotalSizeLong()));
 		} else {
-			slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+			slice = index.divide(e((double) subsetShape.getTotalSizeLong())).floor();
 		}
 
 		// Find the index in that slice
-		Expression offset = index.toInt().imod(subsetShape.getTotalSize());
+		Expression offset = index.toInt().imod(subsetShape.getTotalSizeLong());
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
@@ -92,9 +90,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		Expression blockOffset = getCollectionArgumentVariable(1).getShape().subset(subsetShape, offset, p);
+		Expression blockOffset = inputShape.subset(subsetShape, offset, p);
 
-		return block.multiply(e(blockShape.getTotalSize())).add(blockOffset);
+		return block.multiply(e(blockShape.getTotalSizeLong())).add(blockOffset);
 	}
 
 	@Override

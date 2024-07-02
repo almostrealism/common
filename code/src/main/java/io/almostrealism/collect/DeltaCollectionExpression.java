@@ -17,6 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
 
 public class DeltaCollectionExpression extends CollectionExpressionBase {
 	private final CollectionExpression deltaExpression;
@@ -30,7 +31,7 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 
 	@Override
 	public TraversalPolicy getShape() {
-		return deltaExpression.getShape();
+		return deltaExpression.getShape().append(targetExpression.getShape());
 	}
 
 	@Override
@@ -38,5 +39,13 @@ public class DeltaCollectionExpression extends CollectionExpressionBase {
 		return deltaExpression.getValueAt(index.divide(targetExpression.getShape().getTotalSize()))
 				.delta(targetExpression)
 				.getValueAt(index.imod(targetExpression.getShape().getTotalSize()));
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return deltaExpression.getValueAt(targetIndex.divide(targetExpression.getShape().getTotalSize()))
+				.delta(targetExpression)
+				.uniqueNonZeroOffset(globalIndex, localIndex,
+						targetIndex.imod(targetExpression.getShape().getTotalSize()));
 	}
 }

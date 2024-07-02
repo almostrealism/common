@@ -33,7 +33,7 @@ public class CLProgram implements OperationInfo {
 		this.ctx = ctx;
 		this.prog = prog;
 		this.metadata = (metadata == null ?
-				new OperationMetadata(null, null) : metadata)
+				new OperationMetadata((String) null, null) : metadata)
 					.withContextName(ctx.getDataContext().getName());
 		this.src = src;
 	}

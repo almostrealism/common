@@ -17,13 +17,15 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
 
+import java.util.Set;
 import java.util.function.IntFunction;
 
 public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
 	private final TraversalPolicy shape;
 	private final TraversableExpression<T> expression;
-	private final Expression offset;
+	private final Expression<?> offset;
 
 	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression,
 										 IntFunction<Expression> offset) {
@@ -71,6 +73,28 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 			return expression.getValueRelative(index);
 		} else {
 			return expression.getValueAt(offset.add(index));
+		}
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return expression.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression targetIndex) {
+		if (expression.isRelative()) {
+			return expression.uniqueNonZeroIndexRelative(localIndex, targetIndex);
+		} else {
+			Set<Index> indices = offset.getIndices();
+
+			if (indices.isEmpty()) {
+				return null;
+			} else if (indices.size() > 1) {
+				throw new UnsupportedOperationException();
+			}
+
+			return expression.uniqueNonZeroIndex(indices.iterator().next(), localIndex, offset.add(targetIndex));
 		}
 	}
 

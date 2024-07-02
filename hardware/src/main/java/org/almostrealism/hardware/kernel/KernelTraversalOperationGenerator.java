@@ -20,12 +20,13 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -36,7 +37,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -108,11 +109,11 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 			implements MemoryDataComputation<T>, ComputerFeatures {
 		private List<Expression> expressions;
-		private MemoryDataDestination destination;
+		private MemoryDataDestinationProducer destination;
 
 		public TraversalOperation() {
 			this.expressions = new ArrayList<>();
-			this.destination = new MemoryDataDestination<>(this, i -> new Bytes(expressions.size()));
+			this.destination = new MemoryDataDestinationProducer<>(this, i -> new Bytes(expressions.size()));
 			setInputs(destination);
 			init();
 		}
@@ -123,14 +124,14 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		public int getMemLength() { return expressions.size(); }
 
 		@Override
-		public int getCount() { return 1; }
+		public long getCountLong() { return 1; }
 
 		@Override
 		public boolean isFixedCount() { return true; }
 
 		@Override
-		public Scope<T> getScope() {
-			Scope<T> scope = super.getScope();
+		public Scope<T> getScope(KernelStructureContext context) {
+			Scope<T> scope = super.getScope(context);
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 			for (int i = 0; i < getMemLength(); i++) {
@@ -152,8 +153,8 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	}
 
 	public static KernelTraversalOperationGenerator create(Computation<?> c, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
-		int count = ParallelProcess.count(c);
-		boolean fixed = ParallelProcess.isFixedCount(c);
+		int count = Countable.count(c);
+		boolean fixed = Countable.isFixedCount(c);
 		return new KernelTraversalOperationGenerator(count, fixed, variableFactory);
 	}
 }

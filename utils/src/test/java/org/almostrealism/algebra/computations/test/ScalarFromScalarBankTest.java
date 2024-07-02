@@ -51,7 +51,7 @@ public class ScalarFromScalarBankTest implements TestFeatures {
 		ScalarBankPad pad = new ScalarBankPad(7, 4, v(bank));
 		PackedCollection<Scalar> padded = pad.get().evaluate();
 
-		assertEquals(7, padded.getCount());
+		assertEquals(7, padded.getCountLong());
 		assertEquals(1, padded.get(0));
 		assertEquals(2, padded.get(1));
 		assertEquals(4, padded.get(2));

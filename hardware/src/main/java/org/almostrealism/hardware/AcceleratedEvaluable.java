@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Execution;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
@@ -89,8 +90,8 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	public Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		// Result should always be first
 		ArrayVariable arg = getArgumentForInput((Supplier) getInputs().get(0));

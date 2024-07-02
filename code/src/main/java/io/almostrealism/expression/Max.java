@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Max extends BinaryExpression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
@@ -36,14 +37,14 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt l = getChildren().get(0).upperBound(context);
-		OptionalInt r = getChildren().get(1).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong l = getChildren().get(0).upperBound(context);
+		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
-			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
+			return OptionalLong.of(Math.max(l.getAsLong(), r.getAsLong()));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override
@@ -53,7 +54,7 @@ public class Max extends BinaryExpression<Double> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.conditional(target.getShape(),
+		return conditional(target.getShape(),
 				getLeft().greaterThan(getRight()),
 				getLeft().delta(target),
 				getRight().delta(target));

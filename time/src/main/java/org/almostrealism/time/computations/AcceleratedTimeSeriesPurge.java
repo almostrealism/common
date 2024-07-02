@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.Precision;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -55,7 +56,7 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression i = new StaticReference(Integer.class, "i");

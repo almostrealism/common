@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -56,7 +57,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 	}
 
 	@Override
-	public Scope<Scalar> getScope() {
+	public Scope<Scalar> getScope(KernelStructureContext context) {
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();

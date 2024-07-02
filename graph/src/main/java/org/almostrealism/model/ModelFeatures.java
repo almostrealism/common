@@ -14,14 +14,22 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package org.almostrealism.model;
 
-import io.almostrealism.kernel.SequenceGenerator;
+import org.almostrealism.CodeFeatures;
 
-import java.util.OptionalInt;
+public interface ModelFeatures extends CodeFeatures {
+	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
+		Model model = new Model(shape(r, c));
 
-public interface Index extends SequenceGenerator {
-	String getName();
+		for (int i = 0; i < convLayers; i++) {
+			model.addLayer(convolution2d(convSize, convFilters));
+			model.addLayer(pool2d(2));
+		}
 
-	OptionalInt getLimit();
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
+		return model;
+	}
 }

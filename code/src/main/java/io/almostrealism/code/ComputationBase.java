@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
@@ -28,23 +29,39 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T> {
 	private LanguageOperations lang;
+	private List<ComputeRequirement> requirements;
 
 	public ComputationBase() {
 		super(new Supplier[0]);
 	}
 
 	@Override
-	public int getCount() {
-		long p = getInputs().stream().mapToInt(ParallelProcess::count).distinct().count();
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return OperationInfo.metadataForProcess(this, metadata);
+	}
+
+	@Override
+	public List<ComputeRequirement> getComputeRequirements() {
+		return requirements;
+	}
+
+	public void setComputeRequirements(List<ComputeRequirement> requirements) {
+		this.requirements = requirements;
+	}
+
+	@Override
+	public long getCountLong() {
+		long p = getInputs().stream().mapToLong(Countable::countLong).distinct().count();
 
 		if (p == 1) {
-			return getInputs().stream().mapToInt(ParallelProcess::count).distinct().sum();
+			return getInputs().stream().mapToLong(Countable::countLong).distinct().sum();
 		}
 
 		throw new UnsupportedOperationException();
@@ -75,10 +92,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (getArgumentVariables() != null) return;
 		this.lang = manager.getLanguage();
-		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
 	}
 
@@ -132,8 +149,12 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	public Variable getOutputVariable() { return null; }
 
 	@Override
-	public Scope<O> getScope() {
+	public Scope<O> getScope(KernelStructureContext context) {
 		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
+		if (getComputeRequirements() != null) {
+			scope.setComputeRequirements(getComputeRequirements());
+		}
+
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}

@@ -16,9 +16,9 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
@@ -33,9 +33,6 @@ import io.almostrealism.relation.Producer;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
@@ -192,7 +189,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			}
 
 			@Override
-			public Scope<Scalar> getScope() {
+			public Scope<Scalar> getScope(KernelStructureContext context) {
 				Scope<Scalar> s = new Scope<>();
 				// TODO  This is not correct
 				// s.getVariables().add(new Variable("scalar", get().evaluate()));

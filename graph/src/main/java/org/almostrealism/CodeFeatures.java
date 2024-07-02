@@ -54,8 +54,7 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.TemporalScalarProducerBase;
-import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
+import org.almostrealism.time.TemporalScalar;
 
 import java.util.Arrays;
 import java.util.List;
@@ -107,10 +106,11 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new DynamicProducer<>(function);
 	}
 
-	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-		return new TemporalScalarExpressionComputation(
+	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
+		return new ExpressionComputation<>(
 				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
-					(Supplier) time, (Supplier) value);
+					(Supplier) time, (Supplier) value)
+				.setPostprocessor(TemporalScalar.postprocessor());
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }

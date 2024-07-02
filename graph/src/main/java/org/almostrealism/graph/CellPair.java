@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;

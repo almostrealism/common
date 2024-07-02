@@ -23,6 +23,8 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -67,7 +69,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	private boolean enableCompilation;
 	private String functionName;
-	private Integer count;
+	private String description;
+	private Long count;
 
 	private OperationMetadata metadata;
 	private OperationProfile profile;
@@ -80,7 +83,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public OperationList(String description, boolean enableCompilation) {
 		this.enableCompilation = enableCompilation;
 		this.functionName = "operations_" + functionCount++;
-		this.metadata = new OperationMetadata(functionName, description);
+		this.description = description;
 	}
 
 	@Override
@@ -90,7 +93,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public String getFunctionName() { return this.functionName; }
 
 	@Override
-	public OperationMetadata getMetadata() { return metadata; }
+	public OperationMetadata getMetadata() {
+		if (metadata == null) {
+			metadata = OperationInfo.metadataForProcess(this, new OperationMetadata(functionName, description));
+		}
+
+		return metadata;
+	}
 
 	public OperationProfile getProfile() { return profile; }
 	public void setProfile(OperationProfile profile) { this.profile = profile; }
@@ -116,14 +125,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public int getCount() {
+	public long getCountLong() {
 		if (count == null) {
 			if (isEmpty()) {
-				count = 0;
+				count = 0L;
 			} else if (isUniform() && get(0) instanceof Countable) {
-				count = ((Countable) get(0)).getCount();
+				count = ((Countable) get(0)).getCountLong();
 			} else {
-				count = 1;
+				count = 1L;
 			}
 		}
 
@@ -192,17 +201,17 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(stream(), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(stream(), manager, context);
 		if (!abortScope) {
 			if (abort == null) abort = new Abort(abortFlag::get);
 			abortScope = true;
-			abort.prepareScope(manager);
+			abort.prepareScope(manager, context);
 		}
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		if (!isComputation()) {
 			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
 		}
@@ -212,9 +221,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		if (getDepth() > abortableDepth) {
 			stream().flatMap(c -> Stream.of(c, abort))
-					.map(o -> ((Computation) o).getScope()).forEach(scope::add);
+					.map(o -> ((Computation) o).getScope(context)).forEach(scope::add);
 		} else {
-			stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
+			stream().map(o -> ((Computation) o).getScope(context)).forEach(scope::add);
 		}
 
 		return scope;
@@ -223,7 +232,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public OperationList generate(List<Process<?, ?>> children) {
 		OperationList list = new OperationList();
-		list.metadata = metadata;
 		list.enableCompilation = enableCompilation;
 		list.setComputeRequirements(getComputeRequirements());
 		children.forEach(c -> list.add((Supplier) c));
@@ -233,6 +241,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return stream()
+				.filter(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty())
 				.map(o -> o instanceof Process ? (Process<?, ?>) o : Process.of(o))
 				.collect(Collectors.toList());
 	}
@@ -265,7 +274,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				})
 				.collect(OperationList.collector());
-		flat.metadata = metadata;
 		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
@@ -275,16 +283,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
 		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
 
-		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
+		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
 		if (!match) return ParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
-		int currentCount = -1;
+		long currentCount = -1;
 
 		for (int i = 0; i < size(); i++) {
 			Supplier<Runnable> o = get(i);
-			int count = ParallelProcess.count(o);
+			long count = Countable.countLong(o);
 
 			if (currentCount == -1 || currentCount == count) {
 				current.add(o);
@@ -314,54 +322,63 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Supplier<Runnable> set(int index, Supplier<Runnable> element) {
 		count = null;
+		metadata = null;
 		return super.set(index, element);
 	}
 
 	@Override
 	public boolean add(Supplier<Runnable> runnableSupplier) {
 		count = null;
+		metadata = null;
 		return super.add(runnableSupplier);
 	}
 
 	@Override
 	public void add(int index, Supplier<Runnable> element) {
 		count = null;
+		metadata = null;
 		super.add(index, element);
 	}
 
 	@Override
 	public Supplier<Runnable> remove(int index) {
 		count = null;
+		metadata = null;
 		return super.remove(index);
 	}
 
 	@Override
 	public boolean remove(Object o) {
 		count = null;
+		metadata = null;
 		return super.remove(o);
 	}
 
 	@Override
 	public void clear() {
 		count = null;
+		metadata = null;
 		super.clear();
 	}
 
 	@Override
 	public boolean addAll(Collection<? extends Supplier<Runnable>> c) {
 		count = null;
+		metadata = null;
 		return super.addAll(c);
 	}
 
 	@Override
 	public boolean addAll(int index, Collection<? extends Supplier<Runnable>> c) {
 		count = null;
+		metadata = null;
 		return super.addAll(index, c);
 	}
 
 	@Override
 	protected void removeRange(int fromIndex, int toIndex) {
 		count = null;
+		metadata = null;
 		super.removeRange(fromIndex, toIndex);
 	}
 
@@ -369,6 +386,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public boolean removeAll(Collection<?> c) {
 		if (super.removeAll(c)) {
 			count = null;
+			metadata = null;
 			return true;
 		} else {
 			return false;
@@ -379,6 +397,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public boolean retainAll(Collection<?> c) {
 		if (super.retainAll(c)) {
 			count = null;
+			metadata = null;
 			return true;
 		} else {
 			return false;
@@ -430,6 +449,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						run.get(i).run();
 					}
 				} else {
+					if (profiles instanceof OperationProfileNode) {
+						((OperationProfileNode) profiles).addChildren(getMetadata());
+					}
+
 					for (int i = 0; i < run.size(); i++) {
 						profiles.recordDuration(run.get(i));
 					}

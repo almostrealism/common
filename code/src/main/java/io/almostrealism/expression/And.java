@@ -16,11 +16,13 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class And extends BinaryExpression<Integer> {
 
@@ -50,7 +52,7 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		return getChildren().get(1).upperBound(context);
 	}
 
@@ -70,8 +72,8 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getChildren().get(0).isKernelValue(values) && getChildren().get(1).isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values) && getChildren().get(1).isValue(values);
 	}
 
 	@Override

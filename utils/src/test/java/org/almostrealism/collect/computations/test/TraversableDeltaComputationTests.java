@@ -37,8 +37,8 @@ import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
 	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
 	}
 
 	@Test
@@ -276,32 +276,24 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void repeatMultiply1() {
-		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+		int dim = 2;
 
-		try {
-			TraversableExpressionComputation.enableChainRule = true;
+		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
+		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
 
-			int dim = 2;
+		CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
+		PackedCollection<?> out = c.delta(cp(vector)).evaluate();
+		System.out.println(out.getShape().toStringDetail());
+		out.print();
 
-			PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
-			PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
-
-			CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
-			PackedCollection<?> out = c.delta(cp(vector)).evaluate();
-			System.out.println(out.getShape().toStringDetail());
-			out.print();
-
-			assertEquals(2.0, out.toDouble(0));
-			assertEquals(0.0, out.toDouble(1));
-			assertEquals(0.0, out.toDouble(2));
-			assertEquals(3.0, out.toDouble(3));
-			assertEquals(4.0, out.toDouble(4));
-			assertEquals(0.0, out.toDouble(5));
-			assertEquals(0.0, out.toDouble(6));
-			assertEquals(5.0, out.toDouble(7));
-		} finally {
-			TraversableExpressionComputation.enableChainRule = chainRule;
-		}
+		assertEquals(2.0, out.toDouble(0));
+		assertEquals(0.0, out.toDouble(1));
+		assertEquals(0.0, out.toDouble(2));
+		assertEquals(3.0, out.toDouble(3));
+		assertEquals(4.0, out.toDouble(4));
+		assertEquals(0.0, out.toDouble(5));
+		assertEquals(0.0, out.toDouble(6));
+		assertEquals(5.0, out.toDouble(7));
 	}
 
 	@Test
@@ -346,6 +338,50 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(0.0, out.toDouble(i * dim * dim + j));
 				}
 			}
+		}
+	}
+
+	@Test
+	public void multiply() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+
+		CollectionProducer cdy = cp(v).multiply(p(f))
+				.delta(p(v));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		dout.traverse().print();
+
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(f.valueAt(j), dout.valueAt(i, j));
+				} else {
+					assertEquals(0.0, dout.valueAt(i, j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void multiplySum() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+
+		CollectionProducer cdy = cp(v).multiply(p(f))
+				.delta(p(v))
+				.sum(1);
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		System.out.println(dout.getShape().toStringDetail());
+		dout.print();
+
+		for (int n = 0; n < dim; n++) {
+			assertEquals(f.toDouble(n), dout.toDouble(n));
 		}
 	}
 
@@ -524,59 +560,43 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void sumMultiply() {
-		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+		int dim = 2;
 
-		try {
-			TraversableExpressionComputation.enableChainRule = true;
+		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.sum(1)
+				.multiply(2);
 
-			int dim = 2;
+		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+		// PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		PackedCollection<?> dout = dy.get().evaluate();
+		dout.print();
 
-			PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
-			CollectionProducer<PackedCollection<?>> c = cp(input)
-					.sum(1)
-					.multiply(2);
+		dout = dout.reshape(shape(2, 4));
 
-			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-			// PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-			PackedCollection<?> dout = dy.get().evaluate();
-			dout.print();
-
-			dout = dout.reshape(shape(2, 4));
-
-			assertEquals(2.0, dout.valueAt(0, 0));
-			assertEquals(2.0, dout.valueAt(0, 1));
-			assertEquals(0.0, dout.valueAt(0, 2));
-			assertEquals(0.0, dout.valueAt(0, 3));
-			assertEquals(0.0, dout.valueAt(1, 0));
-			assertEquals(0.0, dout.valueAt(1, 1));
-			assertEquals(2.0, dout.valueAt(1, 2));
-			assertEquals(2.0, dout.valueAt(1, 3));
-		} finally {
-			TraversableExpressionComputation.enableChainRule = chainRule;
-		}
+		assertEquals(2.0, dout.valueAt(0, 0));
+		assertEquals(2.0, dout.valueAt(0, 1));
+		assertEquals(0.0, dout.valueAt(0, 2));
+		assertEquals(0.0, dout.valueAt(0, 3));
+		assertEquals(0.0, dout.valueAt(1, 0));
+		assertEquals(0.0, dout.valueAt(1, 1));
+		assertEquals(2.0, dout.valueAt(1, 2));
+		assertEquals(2.0, dout.valueAt(1, 3));
 	}
 
 	@Test
 	public void enumerateMultiply() {
-		boolean chainRule = TraversableExpressionComputation.enableChainRule;
+		int dim = 5;
+		int size = 2;
 
-		try {
-			TraversableExpressionComputation.enableChainRule = true;
+		PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.enumerate(1, size, 1)
+				.multiply(2);
 
-			int dim = 5;
-			int size = 2;
-
-			PackedCollection<?> input = new PackedCollection<>(shape(dim, dim));
-			CollectionProducer<PackedCollection<?>> c = cp(input)
-					.enumerate(1, size, 1)
-					.multiply(2);
-
-			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-			PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-			assertEquals(80, dout.doubleStream().sum());
-		} finally {
-			TraversableExpressionComputation.enableChainRule = chainRule;
-		}
+		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+		assertEquals(80, dout.doubleStream().sum());
 	}
 
 	@Test
@@ -715,8 +735,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void enumerate2d() {
-		if (skipLongTests) return;
-
 		int dim = 6;
 		int size = 3;
 		int filterCount = 2;

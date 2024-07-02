@@ -33,6 +33,8 @@ import java.util.function.Supplier;
 
 public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	public static boolean enableChainDelta = false;
+
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 
 	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,
@@ -79,7 +81,29 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
 			return delta;
 		} else {
-			return super.delta(target);
+			TraversalPolicy outShape = getShape();
+			TraversalPolicy inShape = shape(getInputs().get(1));
+			TraversalPolicy targetShape = shape(target);
+
+			int outSize = outShape.getTotalSize();
+			int inSize = inShape.getTotalSize();
+			int targetSize = targetShape.getTotalSize();
+
+			TraversalPolicy deltaShape = shape(inSize, targetSize);
+			TraversalPolicy overallShape = shape(outSize, targetSize);
+
+			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+
+			TraversalPolicy shape = outShape.append(targetShape);
+
+			BiFunction<TraversableExpression[], Expression, Expression> project = (args, idx) -> {
+				Expression pos[] = overallShape.position(idx);
+				return deltaShape.index(projectIndex(args, pos[0]), pos[1]);
+			};
+
+			return new DynamicIndexProjectionProducerComputation(
+					shape, project, relative, delta,
+					getInputs().stream().skip(2).toArray(Producer[]::new));
 		}
 	}
 }

@@ -16,10 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Epsilon extends StaticReference<Double> {
 
@@ -33,8 +35,13 @@ public class Epsilon extends StaticReference<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of(1);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of(1);
+	}
+
+	@Override
+	public ExpressionAssignment<Double> assign(Expression exp) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

@@ -16,16 +16,22 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -37,6 +43,12 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public static boolean enableTransitiveDelta = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
+	private boolean replaceLoop;
+
+	private TraversableExpression<Double> inputArg;
+	private DefaultIndex row, ref;
+	private Expression uniqueOffset;
+	private Expression uniqueIndex;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
@@ -47,18 +59,79 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		this.count = count;
 	}
 
+	public boolean isReplaceLoop() {
+		return replaceLoop;
+	}
+
+	public void setReplaceLoop(boolean replaceLoop) {
+		this.replaceLoop = replaceLoop;
+	}
+
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression args[] = getTraversableArguments(index);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
-		Expression value = initial.apply(args, e(0));
+		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty())
+			return;
 
-		for (int i = 0; i < count; i++) {
-			value = expression.apply(value, args[1].getValueRelative(e(i)));
-			value = value.generate(value.flatten());
+		if (context == null) {
+			throw new UnsupportedOperationException();
 		}
 
-		return value;
+		if (isFixedCount()) {
+			inputArg = getCollectionArgumentVariable(1);
+			if (inputArg == null) return;
+			if (inputArg.isRelative()) {
+				throw new UnsupportedOperationException();
+			}
+
+			row = new DefaultIndex(getVariablePrefix() + "_g");
+			row.setLimit(getShape().getCountLong());
+
+			ref = new DefaultIndex(getVariablePrefix() + "_i");
+			getIndexLimit().ifPresent(ref::setLimit);
+
+			Expression index = Index.child(row, ref);
+			uniqueOffset = inputArg.uniqueNonZeroOffset(row, ref, index);
+			if (uniqueOffset == null) return;
+
+			uniqueIndex = row
+					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
+					.add(uniqueOffset);
+		}
+	}
+
+	@Override
+	public Scope<T> getScope(KernelStructureContext context) {
+		if (uniqueIndex == null) return super.getScope(context);
+
+		Scope<T> scope = new Scope<>(getFunctionName(), getMetadata());
+
+		Expression<?> out = getDestination(new KernelIndex(context), ref, e(0));
+		Expression<?> val = inputArg.getValueAt(uniqueIndex.withIndex(row, new KernelIndex(context)));
+		scope.getStatements().add(out.assign(val));
+		return scope;
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		if (uniqueIndex == null) {
+			TraversableExpression args[] = getTraversableArguments(index);
+
+			Expression value = initial.apply(args, e(0));
+
+			for (int i = 0; i < count; i++) {
+				value = expression.apply(value, args[1].getValueRelative(e(i)));
+				value = value.generate(value.flatten());
+			}
+
+			return value;
+		} else {
+			Expression uniqueIndex = index
+					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
+					.add(uniqueOffset.withIndex(row, index));
+			return inputArg.getValueAt(uniqueIndex);
+		}
 	}
 
 	@Override
@@ -66,6 +139,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
 									.referenceRelative(new IntegerConstant(0));
 		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (uniqueOffset == null)
+			return null;
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	@Override
@@ -100,8 +181,10 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new AggregatedProducerComputation<>(getShape(),
+		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
+		c.setReplaceLoop(replaceLoop);
+		return c;
 	}
 }

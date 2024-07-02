@@ -67,35 +67,6 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		throw new UnsupportedOperationException();
 	}
 
-	static CollectionExpression sum(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> Sum.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
-	}
-
-	static CollectionExpression difference(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> Difference.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
-	}
-
-	static CollectionExpression product(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> Product.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
-	}
-
-	static CollectionExpression quotient(TraversalPolicy shape, List<CollectionExpression> operands) {
-		return create(shape, idx -> Quotient.of(operands.stream().map(o -> o.getValueAt(idx)).toArray(Expression[]::new)));
-	}
-
-	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
-											CollectionExpression positive, CollectionExpression negative) {
-		return create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
-	}
-
-	static CollectionExpression zeros(TraversalPolicy shape) {
-		return create(shape, new IntegerConstant(0));
-	}
-
-	static CollectionExpression create(TraversalPolicy shape, Expression<?> valueAt) {
-		return create(shape, idx -> valueAt);
-	}
-
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
 	}

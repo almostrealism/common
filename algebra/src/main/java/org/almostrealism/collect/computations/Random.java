@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
@@ -27,12 +29,14 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
 
-public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
 	private static long seed;
 
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
+
+	private double[] values;
 
 	public Random(TraversalPolicy shape) {
 		this(shape, false);
@@ -42,6 +46,20 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
+	}
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return new OperationMetadata("Random", "Generate random values",
+				"Generate random values " + shape.toStringDetail());
+	}
+
+	protected void initValues() {
+		if (values == null) {
+			values = IntStream.range(0, getShape().getTotalSize())
+					.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
+					.toArray();
+		}
 	}
 
 	@Override
@@ -62,9 +80,8 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 			@Override
 			public Evaluable<PackedCollection<?>> withDestination(MemoryBank destination) {
 				return args -> {
-					destination.setMem(IntStream.range(0, getShape().getTotalSize())
-							.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
-							.toArray());
+					initValues();
+					destination.setMem(values);
 					return (PackedCollection<?>) destination;
 				};
 			}

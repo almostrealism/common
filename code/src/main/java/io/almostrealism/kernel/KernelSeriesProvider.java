@@ -19,27 +19,29 @@ package io.almostrealism.kernel;
 import io.almostrealism.code.CachedValue;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
-import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.expression.KernelIndexChild;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-public interface KernelSeriesProvider {
+public interface KernelSeriesProvider extends Destroyable {
 	TimingMetric timingPos = Scope.console.timing("kernelSeriesPos");
 	TimingMetric timingNeg = Scope.console.timing("kernelSeriesNeg");
 
 	LanguageOperations lang = new LanguageOperationsStub();
+
+	default long getSequenceComputationLimit() {
+		return Integer.MAX_VALUE;
+	}
 
 	default Expression getSeries(Expression exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
@@ -55,7 +57,7 @@ public interface KernelSeriesProvider {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 		if (!(index instanceof Expression)) return exp;
 
-		OptionalInt len = index.getLimit();
+		OptionalLong len = index.getLimit();
 
 		if (!len.isPresent()) {
 			len = index.upperBound(
@@ -63,16 +65,17 @@ public interface KernelSeriesProvider {
 					.stream().map(i -> i + 1).findFirst();
 		}
 
-		if (!len.isPresent()) return exp;
+		if (!len.isPresent() || len.getAsLong() > Integer.MAX_VALUE) return exp;
 
 		long start = System.nanoTime();
 
 		Expression result = null;
 
 		try {
-			if (exp.isKernelValue(new IndexValues().put(index, 0))) {
-				CachedValue<IndexSequence> seq = new CachedValue<>(args -> exp.sequence(index, ((Integer) args[0]).intValue()));
-				int l = len.getAsInt();
+			if (exp.isValue(new IndexValues().put(index, 0))) {
+				CachedValue<IndexSequence> seq = new CachedValue<>(args ->
+						exp.sequence(index, ((Number) args[0]).longValue(), getSequenceComputationLimit()));
+				int l = Math.toIntExact(len.getAsLong());
 
 				if (exp.getType() == Boolean.class) {
 					result = getSeries((Expression) index,
@@ -92,7 +95,7 @@ public interface KernelSeriesProvider {
 					result = getSeries((Expression) index,
 								() -> exp.getExpression(lang),
 								() -> seq.evaluate(Integer.valueOf(l)),
-								exp.getType() == Integer.class, exp::countNodes);
+								!exp.isFP(), exp::countNodes);
 				}
 			}
 		} finally {

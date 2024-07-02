@@ -18,10 +18,10 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.scope.Cases;
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.collect.CollectionProducer;
@@ -46,13 +46,13 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		choices.forEach(c -> c.prepareScope(manager));
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		choices.forEach(c -> c.prepareScope(manager, context));
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		Cases<Void> scope = new Cases<>(getName(), getMetadata());
 
 		double interval = 1.0 / choices.size();
@@ -62,7 +62,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 		IntStream.range(0, choices.size()).forEach(i -> {
 			double val = (i + 1) * interval;
 			scope.getConditions().add(decisionValue.valueAt(0).lessThanOrEqual(e(val)));
-			scope.getChildren().add(choices.get(i).getScope());
+			scope.getChildren().add(choices.get(i).getScope(context));
 		});
 
 		return scope;

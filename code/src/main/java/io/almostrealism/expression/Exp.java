@@ -17,11 +17,12 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
@@ -37,13 +38,13 @@ public class Exp extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		OptionalInt v = getChildren().get(0).upperBound(context);
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) {
-			return OptionalInt.of((int) Math.ceil(Math.exp(v.getAsInt())));
+			return OptionalLong.of((long) Math.ceil(Math.exp(v.getAsLong())));
 		}
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	public Number evaluate(Number... children) {
@@ -62,7 +63,7 @@ public class Exp extends Expression<Double> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		CollectionExpression delta = getChildren().get(0).delta(target);
-		CollectionExpression exp = CollectionExpression.create(target.getShape(), this);
-		return CollectionExpression.product(target.getShape(), List.of(delta, exp));
+		CollectionExpression exp = new ConstantCollectionExpression(target.getShape(), this);
+		return product(target.getShape(), List.of(delta, exp));
 	}
 }

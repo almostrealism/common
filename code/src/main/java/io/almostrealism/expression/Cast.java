@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -34,12 +35,6 @@ public class Cast<T> extends UnaryExpression<T> {
 	public String getTypeName() {
 		return typeName;
 	}
-
-//	@Override
-//	public Cast<Integer> toInt() {
-//		if (typeName.equals("int")) return this;
-//		return super.toInt();
-//	}
 
 	@Override
 	public OptionalInt intValue() {
@@ -60,8 +55,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getChildren().get(0).isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values);
 	}
 
 	@Override

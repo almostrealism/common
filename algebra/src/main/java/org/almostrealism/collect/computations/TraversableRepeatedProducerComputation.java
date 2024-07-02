@@ -24,6 +24,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -32,13 +33,15 @@ import java.util.function.Supplier;
 
 public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
+	@SafeVarargs
 	public TraversableRepeatedProducerComputation(TraversalPolicy shape, int count,
-										 BiFunction<TraversableExpression[], Expression, Expression> initial,
-										 BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-										 Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												  BiFunction<TraversableExpression[], Expression, Expression> initial,
+												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
+												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
@@ -67,6 +70,11 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	protected Expression<?> getExpression(TraversableExpression args[], Expression localIndex) {
 		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0));
 		return expression.apply(args, currentValue).getValueAt(localIndex);
+	}
+
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		return count > isolationCountThreshold;
 	}
 
 	@Override

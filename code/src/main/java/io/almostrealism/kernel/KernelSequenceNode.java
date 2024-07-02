@@ -17,9 +17,6 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Tree;
 
 import java.util.Collection;
@@ -57,13 +54,13 @@ public class KernelSequenceNode implements Tree<KernelSequenceNode> {
 
 	public static KernelSequenceNode generateTree(Expression<?> exp, IndexValues values, Set<Index> indices, int len) {
 		if (indices.isEmpty()) {
-			return new KernelSequenceNode(IndexSequence.of(exp, values, len));
+			return new KernelSequenceNode(ArrayIndexSequence.of(exp, values, len));
 		}
 
 		Index index = indices.iterator().next();
 		indices = indices.stream().filter(i -> !Objects.equals(i, index)).collect(Collectors.toSet());
 
-		int max = index.getLimit().orElseThrow();
+		int max = Math.toIntExact(index.getLimit().orElseThrow());
 
 		KernelSequenceNode children[] = new KernelSequenceNode[max];
 		for (int i = 0; i < max; i++) {

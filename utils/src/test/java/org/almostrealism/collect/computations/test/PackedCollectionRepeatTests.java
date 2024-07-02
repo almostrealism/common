@@ -1,5 +1,22 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -16,9 +33,33 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeatTests implements TestFeatures {
-	static {
-		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+	@Test
+	public void isolatedRepeat() {
+		if (skipKnownIssues) return;
+
+		int d = 4;
+		int w = 2;
+		int h = 3;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
+		v.fill(pos -> Math.random());
+
+		PackedCollection<?> out = cp(v).repeat(d).get().evaluate();
+
+		out.print();
+
+		for (int x = 0; x < d; x++) {
+			for (int y = 0; y < w; y++) {
+				for (int z = 0; z < h; z++) {
+					double expected = v.valueAt(y, z);
+					double actual = out.valueAt(x, y, z);
+					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+					assertEquals(expected, actual);
+				}
+			}
+		}
+
+		Assert.assertTrue(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
 	}
 
 	@Test
@@ -82,33 +123,25 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		boolean traverseEach = PackedCollectionRepeat.enableTraverseEach;
+		Supplier<Producer<PackedCollection<?>>> dense =
+				() -> cp(input).repeat(nodes).each().traverse(1).sum();
 
-		try {
-			PackedCollectionRepeat.enableTraverseEach = true;
+		Consumer<PackedCollection<?>> valid = output -> {
+			for (int i = 0; i < nodes; i++) {
+				double expected = 0;
 
-			Supplier<Producer<PackedCollection<?>>> dense =
-					() -> cp(input).repeat(nodes).each().traverse(1).sum();
-
-			Consumer<PackedCollection<?>> valid = output -> {
-				for (int i = 0; i < nodes; i++) {
-					double expected = 0;
-
-					for (int x = 0; x < size; x++) {
-						expected += input.valueAt(x);
-					}
-
-					double actual = output.valueAt(i);
-
-					System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+				for (int x = 0; x < size; x++) {
+					expected += input.valueAt(x);
 				}
-			};
 
-			kernelTest(dense, valid);
-		} finally {
-			PackedCollectionRepeat.enableTraverseEach = traverseEach;
-		}
+				double actual = output.valueAt(i);
+
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		};
+
+		kernelTest(dense, valid);
 	}
 
 	@Test

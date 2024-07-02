@@ -17,8 +17,14 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.ArithmeticIndexSequence;
+import io.almostrealism.kernel.ArrayIndexSequence;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -40,14 +46,16 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ConsoleFeatures {
+public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
+	public static boolean enableArithmeticSequence = true;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 	public static int maxDepth = 4096;
@@ -96,15 +104,24 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
+	public boolean isInt() { return getType() == Integer.class; }
+	public boolean isFP() { return getType() == Double.class; }
+
 	public boolean isNull() { return false; }
 	public boolean isMasked() { return false; }
 	public boolean isSingleIndex() { return false; }
 	public boolean isSingleIndexMasked() { return isMasked() && getChildren().get(0).isSingleIndex(); }
-	public boolean isKernelValue(IndexValues values) { return false; }
+	public boolean isValue(IndexValues values) { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
 	public OptionalInt intValue() { return OptionalInt.empty(); }
+
+	public OptionalLong longValue() {
+		OptionalInt intValue = intValue();
+		return intValue.isPresent() ? OptionalLong.of(intValue.getAsInt()) : OptionalLong.empty();
+	}
+
 	public OptionalDouble doubleValue() {
 		OptionalInt intValue = intValue();
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
@@ -116,14 +133,20 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				.collect(Collectors.toList()));
 	}
 
-	public Expression<T> withIndex(Index index, int value) {
+	public Expression<T> withIndex(Index index, Expression<?> e) {
+		if (!contains(index)) return this;
+
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
-			return (Expression) new IntegerConstant(value);
+			return (Expression) e;
 		}
 
 		return generate(getChildren().stream()
-				.map(e -> e.withIndex(index, value))
+				.map(c -> c.withIndex(index, e))
 				.collect(Collectors.toList()));
+	}
+
+	public Expression<T> withIndex(Index index, int value) {
+		return withIndex(index, new IntegerConstant(value));
 	}
 
 	public Set<Index> getIndices() {
@@ -134,19 +157,33 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				.collect(Collectors.toSet());
 	}
 
+	public boolean contains(Index idx) {
+		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
+			return true;
+		} else if (getChildren().isEmpty()) {
+			return false;
+		}
+
+		return getChildren().stream().anyMatch(e -> e.contains(idx));
+	}
+
+	public boolean containsReference(Variable var) {
+		return getChildren().stream().anyMatch(e -> e.containsReference(var));
+	}
+
 	public KernelSeries kernelSeries() {
 		return KernelSeries.infinite();
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
-		if (i.isPresent()) return i;
+		if (i.isPresent()) return OptionalLong.of(i.getAsInt());
 
 		OptionalDouble d = doubleValue();
-		if (d.isPresent()) return OptionalInt.of((int) Math.ceil(d.getAsDouble()));
+		if (d.isPresent()) return OptionalLong.of((long) Math.ceil(d.getAsDouble()));
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	public Number evaluate(Number... children) {
@@ -164,9 +201,30 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		throw new UnsupportedOperationException();
 	}
 
+	public IndexSequence sequence() {
+		Set<Index> indices = getIndices();
+		if (indices.size() != 1) throw new UnsupportedOperationException();
+
+		return sequence(indices.iterator().next(),
+				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);
+	}
+
+	public IndexSequence sequence(int len) {
+		Set<Index> indices = getIndices();
+		if (indices.size() != 1) throw new UnsupportedOperationException();
+
+		return sequence(indices.iterator().next(), len);
+	}
+
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		if (!isKernelValue(new IndexValues().put(index, 0))) {
+	public IndexSequence sequence(Index index, long len, long limit) {
+		if (len < 0) throw new IllegalArgumentException();
+
+		if (enableArithmeticSequence && equals(index)) {
+			return new ArithmeticIndexSequence(1, 1, len);
+		}
+
+		if (!isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
@@ -175,19 +233,25 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 		if (kernelSeqCache != null && exp != null) {
 			IndexSequence cached = kernelSeqCache.get(exp);
-			if (cached != null && cached.length() >= len) {
+			if (cached != null && cached.lengthLong() >= len) {
 				return cached.subset(len);
 			}
+		}
+
+		Class type = getType();
+		if (type == Boolean.class) type = Integer.class;
+		if (len > limit) {
+			return null;
 		}
 
 		IndexSequence seq;
 
 		if (enableBatchEvaluation) {
-			seq = IndexSequence.of(batchEvaluate(getChildren().stream()
-					.map(e -> e.sequence(index, len).toArray())
-					.collect(Collectors.toList()), len));
+			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
+					.map(e -> e.sequence(index, len, limit).toArray())
+					.collect(Collectors.toList()), Math.toIntExact(len)));
 		} else {
-			seq = IndexSequence.of(IntStream.range(0, len).parallel()
+			seq = ArrayIndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
 					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new));
 		}
 
@@ -209,10 +273,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		context = context.asNoOp();
 
 		Expression<?> simplified = simplify(context);
+		if (simplified.isSimple()) return simplified;
+
 		String exp = simplified.getExpression(lang);
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify(context);
+			if (next.isSimple()) return next;
+
 			String nextExp = next.getExpression(lang);
 
 			if (nextExp.equals(exp)) {
@@ -236,6 +304,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public String getWrappedExpression(LanguageOperations lang) {
 		return "(" + getExpression(lang) + ")";
+	}
+
+	public String getExpressionSummary() {
+		if (depth < 10) return getExpression(lang);
+		return getClass().getSimpleName() + "<" +
+					getType().getSimpleName() +
+				">[depth=" + depth + "]";
 	}
 
 	public List<Expression> find(String text) {
@@ -290,18 +365,33 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;
+
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return new DoubleConstant(Math.floor(v.getAsDouble()));
+
 		return new Floor((Expression) this);
 	}
 
 	public Expression ceil() {
 		if (getType() == Integer.class) return this;
+
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return new DoubleConstant(Math.ceil(v.getAsDouble()));
+
 		return new Ceiling((Expression) this);
 	}
 
-	public Mod mod(Expression<Double> operand) { return new Mod(this, operand); }
-	public Mod mod(Expression<?> operand, boolean fp) { return new Mod(this, operand, fp); }
-	public Mod<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
-	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
+	public Expression mod(Expression<Double> operand) { return Mod.of(this, operand); }
+	public Expression mod(Expression<?> operand, boolean fp) { return Mod.of(this, operand, fp); }
+	public Expression<Integer> imod(Expression<? extends Number> operand) { return mod(operand, false); }
+	public Expression<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
+	public Expression<Integer> imod(long operand) {
+		if (operand > Integer.MAX_VALUE) {
+			return imod(new LongConstant(operand));
+		} else {
+			return imod((int) operand);
+		}
+	}
 
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }
@@ -332,8 +422,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	}
 
 	public Expression<Integer> toInt() {
+		return toInt(false);
+	}
+
+	public Expression<Integer> toInt(boolean requireInt) {
+		boolean cast = requireInt ? getType() != Integer.class : isFP();
 		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return new Cast(Integer.class, "int", this);
+		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
 	}
 
 	public CollectionExpression delta(CollectionExpression target) {
@@ -388,7 +483,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 						.orElse(indices.stream().findFirst().orElse(null));
 			}
 
-			if (target == null || simplified[i].isKernelValue(new IndexValues().put(target, 0))) {
+			if (target == null || simplified[i].isValue(new IndexValues().put(target, 0))) {
 				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}

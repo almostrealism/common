@@ -19,11 +19,19 @@ package org.almostrealism.collect.computations.test;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
+//	static {
+//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
+//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
+//	}
+
 	@Test
 	public void broadcastProduct() {
 		PackedCollection<?> a = new PackedCollection<>(shape(10));
@@ -70,6 +78,48 @@ public class CollectionMathTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void doubleBroadcastProduct() {
+		int r = 6;
+		int c = 40;
+
+		PackedCollection<?> a = new PackedCollection<>(shape(r)).randFill();
+		PackedCollection<?> b = new PackedCollection<>(shape(c)).randFill();
+
+		PackedCollection<?> result = cp(a).multiply(cp(b).repeat(r)).get().evaluate();
+
+		for (int i = 0; i < r; i++) {
+			for (int j = 0; j < c; j++) {
+				assertEquals(a.valueAt(i) * b.valueAt(j), result.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void doubleBroadcastProductArguments() {
+		int r = 3;
+		int c = 4;
+
+		// PackedCollection<?> a = pack(1.0, 0.1, 0.01);
+		PackedCollection<?> a = new PackedCollection<>(shape(r)).randFill();
+		// PackedCollection<?> b = pack(1, 2, 3, 4);
+		PackedCollection<?> b = new PackedCollection<>(shape(c)).randFill();
+
+		PackedCollection<?> result =
+				cv(shape(r), 0).traverse(1).repeat(c)
+					.multiply(cv(shape(c), 1).repeat(r))
+				.get().evaluate(a, b);
+
+		result.traverse(1).print();
+
+		for (int i = 0; i < r; i++) {
+			for (int j = 0; j < c; j++) {
+				log(a.valueAt(i) + " * " + b.valueAt(j) + " = " + result.valueAt(i, j));
+				assertEquals(a.valueAt(i) * b.valueAt(j), result.valueAt(i, j));
+			}
+		}
 	}
 
 	@Test

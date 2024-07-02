@@ -17,7 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
@@ -27,7 +27,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArrayDeclaration;
-import io.almostrealism.expression.KernelIndexChild;
+import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
@@ -170,6 +170,17 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	public Scope<T> addCase(Expression<Boolean> condition, Scope<T> scope, Scope<T> altScope) {
+		Optional<Boolean> v = condition.getSimplified().booleanValue();
+		if (v.isPresent()) {
+			if (v.get()) {
+				add(scope);
+			} else if (altScope != null) {
+				add(altScope);
+			}
+
+			return scope;
+		}
+
 		Cases cases = new Cases<>();
 		cases.addCase(condition, scope);
 		if (altScope != null) cases.add(altScope);
@@ -271,6 +282,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	public ArrayVariable<?> declareArray(NameProvider np, String name, Expression<Integer> size) {
+		if (size.intValue().orElse(1) <= 0) {
+			throw new IllegalArgumentException("Array size cannot be less than 1");
+		}
+
 		getStatements().add(new ArrayDeclaration(Double.class, name, size));
 
 		ArrayVariable v = new ArrayVariable<>(np, Double.class, name, size);
@@ -344,7 +359,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
-	public List<String> convertArgumentsToRequiredScopes() {
+	public List<String> convertArgumentsToRequiredScopes(KernelStructureContext context) {
 		if (this.arguments != null) {
 			return Collections.emptyList();
 		}
@@ -358,7 +373,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		// is coincidentally in the correct order
 
 		List<String> convertedScopes = new ArrayList<>();
-		stream().map(Scope::convertArgumentsToRequiredScopes)
+		stream().map(tScope -> tScope.convertArgumentsToRequiredScopes(context))
 				.flatMap(List::stream).forEach(convertedScopes::add);
 
 		List<Argument<?>> args = new ArrayList<>();
@@ -414,7 +429,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 						return Collections.singletonList(arg);
 					}
 
-					Scope s = computation.getScope();
+					Scope s = computation.getScope(context);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);
 					}
@@ -434,7 +449,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					// Recursively convert the required Scope's arguments
 					// into required scopes themselves
 					// s.convertArgumentsToRequiredScopes();
-					convertedScopes.addAll(s.convertArgumentsToRequiredScopes());
+					convertedScopes.addAll(s.convertArgumentsToRequiredScopes(context));
 
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
@@ -552,6 +567,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.setComputeRequirements(getComputeRequirements());
 		scope.getChildren().addAll(children);
 		return scope;
 	}

@@ -38,6 +38,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -46,6 +47,7 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -72,13 +74,16 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableAxisAlignment = true;
-	boolean enableIndexProjection = false;
+	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableTraversableRepeated = true;
 	boolean enableCollectionIndexSize = false;
+	boolean enableAxisAlignment = true;
+	boolean enableVariableRepeat = false;
+	boolean enableStrictAssignmentSize = true;
 
 	Console console = Computation.console.child();
 
@@ -144,6 +149,24 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	default <T, V> Provider<T> p(Supplier<V> ev, Function<V, T> func) {
+		if (ev instanceof CollectionProvider) {
+			return new CollectionProvider(null) {
+				@Override
+				public T get() {
+					return func.apply((V) ((CollectionProvider) ev).get());
+				}
+			};
+		} else {
+			return new Provider<>(null) {
+				@Override
+				public T get() {
+					return func.apply((V) ((Provider) ev).get());
+				}
+			};
+		}
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
 		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
 		c.setMem(0, values);
@@ -177,7 +200,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 			@Override
 			public Producer reshape(TraversalPolicy shape) {
-				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
+				return CollectionFeatures.this.reshape(shape, this);
 			}
 		});
 	}
@@ -205,12 +228,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape);
+			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, enableStrictAssignmentSize);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
-				console.warn("Assignment destination (" + resultShape.getCount() +
-						") adjusted to match source (" + valueShape.getCount() + ")");
+				console.warn("Assignment destination (" + resultShape.getCountLong() +
+						") adjusted to match source (" + valueShape.getCountLong() + ")");
 			}
 
 			return a(traverse(axis, (Producer) result), value);
@@ -280,7 +303,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
 																			   Producer<T> collection,
 																			   Producer<PackedCollection<?>> index) {
-		TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
+		TraversableExpressionComputation exp = new TraversableExpressionComputation<>("valueAtIndex", shape,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
 				(Supplier) collection, index);
 		if (shape.getTotalSize() == 1) {
@@ -321,7 +344,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> index(TraversalPolicy shape,
 																				   TraversalPolicy shapeOf,
 																				   Producer<PackedCollection<?>>... pos) {
-		return new TraversableExpressionComputation(shape,
+		return new TraversableExpressionComputation("index", shape,
 				(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) -> {
 					Expression[] posExpr = new Expression[pos.length];
 					for (int i = 0; i < pos.length; i++) {
@@ -347,7 +370,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 						producers.stream().map(this::shape).collect(Collectors.toList()),
 						producers,
 						(i, p) -> traverse(i, (Producer) p),
-						(i, p) -> (Producer) repeat(i, (Producer) p),
+						(i, p) -> {
+							if (enableVariableRepeat || Countable.isFixedCount(p)) {
+								return (Producer) repeat(i, (Producer) p);
+							} else {
+								return p;
+							}
+						},
 						processor);
 	}
 
@@ -355,12 +384,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
 	}
 
-	default <T> int lowestCount(List<Producer<T>> producers) {
-		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).min().getAsInt();
+	default <T> long lowestCount(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
 	}
 
-	default <T> int highestCount(List<Producer<T>> producers) {
-		return producers.stream().map(this::shape).mapToInt(TraversalPolicy::getCount).max().getAsInt();
+	default <T> long highestCount(List<Producer<T>> producers) {
+		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
@@ -458,23 +487,23 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
 	default TraversableExpressionComputation<PackedCollection<?>> compute(TraversalPolicy shape, UnaryOperator<Expression> indexExpression) {
-		return new TraversableExpressionComputation<>(shape, (args, idx) -> indexExpression.apply(idx));
+		return new TraversableExpressionComputation<>(null, shape, (args, idx) -> indexExpression.apply(idx));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
-			BiFunction<TraversableExpression[], Expression, Expression> expression,
+			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Evaluable<T> shortCircuit, Producer<T>... arguments) {
 		CollectionProducerComputationBase<T, T> c =
 				(CollectionProducerComputationBase) alignTraversalAxes(List.of(arguments),
 				(shape, args) -> new TraversableExpressionComputation(
-							largestTotalSize(args), expression,
+						name, largestTotalSize(args), expression.apply(shape),
 							args.toArray(Supplier[]::new))
 						.setShortCircuit(shortCircuit));
-		int count = highestCount(List.of(arguments));
+		long count = highestCount(List.of(arguments));
 
-		if (c.getShape().getCount() != count) {
+		if (c.getShape().getCountLong() != count) {
 			for (int i = 0; i <= c.getShape().getDimensions(); i++) {
-				if (c.getShape().traverse(i).getCount() == count) {
+				if (c.getShape().traverse(i).getCountLong() == count) {
 					return c.traverse(i);
 				}
 			}
@@ -484,7 +513,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers() {
-		return new TraversableExpressionComputation<>(shape(1), (args, idx) -> idx) {
+		return new TraversableExpressionComputation<>(null, shape(1), (args, idx) -> idx) {
 			@Override
 			public boolean isFixedCount() {
 				return false;
@@ -496,35 +525,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 
-		return new TraversableExpressionComputation<>(shape(len).traverseEach(),
+		return new TraversableExpressionComputation<>("integers", shape(len).traverseEach(),
 				(args, idx) -> Sum.of(new DoubleConstant((double) from), idx));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> Sum.of(args[1].getValueAt(index), args[2].getValueAt(index)), null, a, b);
-		} else {
-			TraversalPolicy shape = shape(a);
-			int size = shape(b).getSize();
-
-			if (shape.getSize() != size) {
-				if (shape.getSize() == 1) {
-					return add(a, traverseEach((Producer) b));
-				} else if (size == 1) {
-					return add(traverseEach((Producer) a), b);
-				}
-
-				throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
-						" with a collection of size " + size);
-			}
-
-			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
-					args -> CollectionExpression.create(shape, index ->
-							Sum.of(args[1].getValueAt(index), args[2].getValueAt(index))),
-					(Supplier) a, (Supplier) b);
-			// exp.setShortCircuit(shortCircuit);
-			return exp;
-		}
+		return compute("add", shape -> args -> sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+				null, a, b);
 	}
 
 	@Deprecated
@@ -560,7 +567,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" from a collection of size " + shape.getSize());
 		}
 
-		return new TraversableExpressionComputation<>(shape,
+		return new TraversableExpressionComputation<>(null, shape,
 				args -> CollectionExpression.create(shape, index -> {
 					Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
 							epsilon(),
@@ -583,38 +590,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (enableAxisAlignment) {
-//			TraversalPolicy shapeA = shape(a);
-//			TraversalPolicy shapeB = shape(b);
-//			TraversalPolicy oldShape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
-//			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
-//
-//			System.out.println("Shape would have been " + oldShape.toStringDetail());
-
-			return compute((args, index) -> Product.of(args[1].getValueAt(index), args[2].getValueAt(index)), shortCircuit, a, b);
-		} else {
-			TraversalPolicy shapeA = shape(a);
-			TraversalPolicy shapeB = shape(b);
-			TraversalPolicy shape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
-			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
-
-			if (shape.getSize() != size) {
-				if (shape.getSize() != 1 && size != 1) {
-					throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
-							" with a collection of size " + size);
-				} else {
-					// TODO This should actually just call traverseEach (or repeat)
-					// TODO if the shapes don't match, but one size is = 1
-					System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
-							" with a collection of size " + size + " (will broadcast)");
-				}
-			}
-
-			return new TraversableExpressionComputation(shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-							Product.of(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) a, (Supplier) b).setShortCircuit(shortCircuit);
-		}
+		return compute("multiply", shape -> args->
+					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+				shortCircuit, a, b);
 	}
 
 	@Deprecated
@@ -642,26 +620,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)), null, a, b);
-		} else {
-			TraversalPolicy shape = shape(a);
-			int size = shape(b).getSize();
-			if (shape.getSize() != size) {
-				throw new IllegalArgumentException("Cannot divide a collection of size " + shape.getSize() +
-						" by a collection of size " + size);
-			}
-
-			if (shape(b).getCount() > shape(a).getCount()) shape = shape(b);
-
-			return new TraversableExpressionComputation<>(shape,
-					(args, index) -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) a, (Supplier) b);
-		}
+		return compute("divide", shape -> (args) -> CollectionExpression.create(shape, index -> Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index))), null, a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
-		return new TraversableExpressionComputation<>(shape(a),
+		return new TraversableExpressionComputation<>(null, shape(a),
 				args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
 				(Supplier) a);
 	}
@@ -671,34 +634,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
-		if (enableAxisAlignment) {
-			return compute((args, index) -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index)), null, base, exp);
-		} else {
-			if (shape(base).getSize() != 1 && shape(exp).getSize() != 1 && shape(base).getSize() != shape(exp).getSize()) {
-				throw new IllegalArgumentException("Cannot raise a collection of size " + shape(base).getSize() +
-						" to a collection of size " + shape(exp).getSize());
-			}
-
-			TraversalPolicy shape = shape(base);
-			if (shape.getSize() == 1 && shape(exp).getSize() > 1) shape = shape(exp);
-
-			return new TraversableExpressionComputation<>(shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-							new Exponent(args[1].getValueAt(index), args[2].getValueAt(index)),
-					(Supplier) base, (Supplier) exp);
-		}
+		return compute("pow", shape -> (args) ->
+				CollectionExpression.create(shape, index -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index))),
+				null, base, exp);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
+				null, shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				shape(value), (args, index) ->
+				null, shape(value), (args, index) ->
 					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), new Exp(args[1].getValueAt(index))),
 				(Supplier) value);
 	}
@@ -710,7 +660,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				shape(value), (args, index) -> new Floor(args[1].getValueAt(index)), (Supplier) value);
+				null, shape(value), (args, index) -> new Floor(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
@@ -719,7 +669,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			shape = shape(a);
 		}
 
-		return new TraversableExpressionComputation<>(shape,
+		return new TraversableExpressionComputation<>(null, shape,
 				(args, index) -> new Min(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
@@ -730,26 +680,32 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			shape = shape(a);
 		}
 
-		return new TraversableExpressionComputation<>(shape,
+		return new TraversableExpressionComputation<>(null, shape,
 				(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		TraversalPolicy shape = shape(1);
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		}
+	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
+		if (enableAxisAlignment) {
+			return compute("mod", shape -> args ->
+					mod(shape, args[1], args[2]),
+					null, a, b);
+		} else {
+			TraversalPolicy shape = shape(1);
+			if (shape(a).getSize() == shape(b).getSize()) {
+				shape = shape(a);
+			}
 
-		return new TraversableExpressionComputation<>(shape,
-				(args, index) -> new Mod(args[1].getValueAt(index), args[2].getValueAt(index)),
-				a, b);
+			return new TraversableExpressionComputation<>(null, shape,
+					(args, index) -> Mod.of(args[1].getValueAt(index), args[2].getValueAt(index)),
+					(Supplier) a, (Supplier)  b);
+		}
 	}
 
 	@Deprecated
 	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
+				Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
@@ -759,7 +715,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> abs(Producer<T> value) {
 		return new TraversableExpressionComputation<>(
-				shape(value), (args, index) -> new Absolute(args[1].getValueAt(index)), (Supplier) value);
+				null, shape(value), (args, index) -> new Absolute(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> magnitude(Producer<T> vector) {
@@ -775,10 +731,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				new DynamicIndexProjectionProducerComputation<>(shape(input).replace(shape(1)),
 						(args, idx) -> args[2].getValueAt(idx),
 						true, input, indexOfMax(input));
-		
-		if (enableIndexProjection) {
-			return (CollectionProducerComputationBase<T, T>) projection;
-		}
 
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
@@ -787,7 +739,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(args, index) -> minValue(),
 				(out, arg) -> new Max(out, arg),
 				(Supplier) input);
-		c.setDeltaAlternate(projection);
+		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;
 	}
 
@@ -820,10 +772,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
+		AggregatedProducerComputation<T> sum = new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> e(0.0),
 				(out, arg) -> out.add(arg),
 				(Supplier) input);
+		sum.setReplaceLoop(true);
+		return sum;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid(Producer<T> input) {
@@ -841,6 +795,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducer<T> equals(Producer<?> a, Producer<?> b,
+																		Producer<T> trueValue, Producer<T> falseValue) {
+		return compute("equals",
+				shape -> args ->
+						conditional(shape, equals(shape, args[1], args[2]), args[3], args[4]),
+				null, (Producer) a, (Producer) b, (Producer) trueValue, (Producer) falseValue);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
 																						 Producer<T> trueValue, Producer<T> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
@@ -854,7 +816,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			shape = shape(a);
 		}
 
-		return new TraversableExpressionComputation<>(shape,
+		return new TraversableExpressionComputation<>(null, shape,
 				(args, index) -> conditional(
 						greater(args[1].getValueAt(index), args[2].getValueAt(index), includeEqual),
 						args[3].getValueAt(index), args[4].getValueAt(index)),

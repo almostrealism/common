@@ -18,7 +18,7 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Node;
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 
 public interface Cellular extends Node, Setup, Lifecycle {
 }

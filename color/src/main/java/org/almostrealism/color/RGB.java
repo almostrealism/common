@@ -538,8 +538,8 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
-	public int getCount() {
-		return data.getShape().getCount();
+	public long getCountLong() {
+		return data.getShape().getCountLong();
 	}
 
 	@Override

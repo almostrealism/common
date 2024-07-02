@@ -80,6 +80,7 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 
 	@Override
 	public int getTriangleCount() { return triangles.length; }
+
 	@Override
 	public int getVertexCount() { return vertices.getCount(); }
 

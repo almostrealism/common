@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
-import java.util.stream.IntStream;
+import java.util.OptionalLong;
 
 public class DoubleConstant extends Constant<Double> {
 	private double value;
@@ -42,9 +44,6 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) { return true; }
-
-	@Override
 	public KernelSeries kernelSeries() {
 		return KernelSeries.constant(value);
 	}
@@ -55,13 +54,13 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		return IndexSequence.of(value, len);
+	public IndexSequence sequence(Index index, long len, long limit) {
+		return ArrayIndexSequence.of(value, len);
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of((int) Math.ceil(value));
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of((long) Math.ceil(value));
 	}
 
 	@Override

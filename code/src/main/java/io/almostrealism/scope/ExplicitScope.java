@@ -16,8 +16,7 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.CodePrintWriter;
-import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 

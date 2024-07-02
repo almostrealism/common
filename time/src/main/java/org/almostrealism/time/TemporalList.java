@@ -16,7 +16,7 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.ArrayList;

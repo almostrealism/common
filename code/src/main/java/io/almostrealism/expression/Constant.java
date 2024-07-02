@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,24 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.Objects;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
 		super(type);
 	}
+
+	@Override
+	public boolean isValue(IndexValues values) { return true; }
+
+	@Override
+	public boolean contains(Index idx) { return false; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return null; }
@@ -41,6 +51,35 @@ public class Constant<T> extends Expression<T> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(0));
+		return new ConstantCollectionExpression(target.getShape(), new IntegerConstant(0));
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (!(obj instanceof Constant)) {
+			return false;
+		}
+
+		return Objects.equals(((Constant<?>) obj).getType(), getType()) &&
+				Objects.equals(((Constant<?>) obj).getValue(), getValue());
+	}
+
+	@Override
+	public int hashCode() {
+		return String.valueOf(getValue()).hashCode();
+	}
+
+	public static <T> Constant<T> of(T value) {
+		if (value instanceof Integer) {
+			return (Constant<T>) new IntegerConstant((Integer) value);
+		} else if (value instanceof Long) {
+			return (Constant<T>) new LongConstant((Long) value);
+		} else if (value instanceof Double) {
+			return (Constant<T>) new DoubleConstant((Double) value);
+		} else if (value instanceof Boolean) {
+			return (Constant<T>) new BooleanConstant((Boolean) value);
+		} else {
+			return new ConstantValue(value.getClass(), value);
+		}
 	}
 }

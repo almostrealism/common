@@ -14,41 +14,67 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class DefaultIndex extends StaticReference<Integer> implements Index {
-	private OptionalInt limit;
+	private OptionalLong limit;
 
 	public DefaultIndex(String name) {
 		this(name, null);
 	}
 
-	public DefaultIndex(String name, Integer limit) {
-		super(Integer.class, name);
-		this.limit = limit == null ? OptionalInt.empty() : OptionalInt.of(limit);
+	public DefaultIndex(String name, int limit) {
+		this(name, (long) limit);
 	}
 
-	public void setLimit(int limit) { this.limit = OptionalInt.of(limit); }
+	public DefaultIndex(String name, Long limit) {
+		super(Integer.class, name);
+		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
+	}
+
+	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
+
+	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
 
 	@Override
-	public OptionalInt getLimit() { return limit; }
+	public OptionalLong getLimit() {
+		if (limit.isPresent()) {
+			return limit;
+		}
+
+		OptionalLong upperBound = upperBound(null);
+		if (upperBound.isPresent()) {
+			return OptionalLong.of(upperBound.getAsLong() + 1);
+		}
+
+		return OptionalLong.empty();
+	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) { return limit.stream().map(i -> i - 1).findFirst(); }
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return limit.stream().map(i -> i - 1).findFirst();
+	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
+	public boolean isValue(IndexValues values) {
 		return values.containsIndex(getName());
 	}
 
 	@Override
 	public Number value(IndexValues indexValues) {
 		return indexValues.getIndex(getName());
+	}
+
+	@Override
+	public ExpressionAssignment<Integer> assign(Expression exp) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

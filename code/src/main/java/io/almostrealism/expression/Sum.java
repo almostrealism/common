@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,20 +17,31 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
+	public static boolean enableMinusSimplification = true;
+
 	protected Sum(Stream<Expression<? extends Number>> values) {
 		super("+", (Stream) values);
 	}
@@ -44,12 +55,27 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		List<OptionalInt> values = getChildren().stream()
+	public Expression withIndex(Index index, Expression<?> e) {
+		Expression<T> result = super.withIndex(index, e);
+		if (!(result instanceof Sum)) return result;
+
+		if (result.getChildren().stream().allMatch(v -> v.doubleValue().isPresent())) {
+			double r = result.getChildren().stream()
+					.mapToDouble(v -> v.doubleValue().getAsDouble()).reduce(0.0, (a, b) -> a + b);
+			return result.getType() == Integer.class ? new IntegerConstant((int) r) : new DoubleConstant(r);
+		}
+
+		return result;
+	}
+
+	@Override
+	public OptionalLong upperBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalInt.empty();
-		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(0, (a, b) -> a + b));
+		if (values.size() != getChildren().size())
+			return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(0L, (a, b) -> a + b));
 	}
 
 	@Override
@@ -93,12 +119,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		CollectionExpression delta = CollectionExpression.sum(target.getShape(),
+		CollectionExpression delta = sum(target.getShape(),
 				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
 		return ExpressionMatchingCollectionExpression.create(
-				DefaultCollectionExpression.create(target.getShape(), idx -> this),
+				new ConstantCollectionExpression(target.getShape(), this),
 				target,
-				CollectionExpression.create(target.getShape(), idx -> new IntegerConstant(1)),
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
 				delta);
 	}
 
@@ -127,13 +153,39 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		Expression<?> simple = super.simplify(context);
 		if (!(simple instanceof Sum)) return simple;
 
-		List<Expression<?>> children = simple.flatten().stream()
+		List<Expression<?>> children = new ArrayList<>();
+
+		simple.flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
-				.collect(Collectors.toList());
+				.forEach(children::add);
 
 		if (children.size() == 1) return children.get(0);
 		if (children.size() == 0) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+		}
+
+		if (enableMinusSimplification) {
+			Set<Integer> removed = new HashSet<>();
+
+			i: for (int i = 0; i < children.size(); i++) {
+				if (removed.contains(i)) continue i;
+
+				if (children.get(i) instanceof Minus) {
+					j: for (int j = 0; j < children.size(); j++) {
+						if (i == j || removed.contains(j)) continue j;
+
+						if (children.get(j).equals(children.get(i).getChildren().get(0))) {
+							removed.add(i);
+							removed.add(j);
+							children.set(i, new IntegerConstant(0));
+							children.set(j, new IntegerConstant(0));
+							continue i;
+						}
+					}
+				}
+			}
+
+			if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 		}
 
 		if (context.getTraversalProvider() != null &&
@@ -201,18 +253,18 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			List<Expression> args = p.getChildren();
 			if (args.size() != 2) break i;
 
-			index = IntStream.range(0, 2).filter(i -> args.get(i) instanceof KernelIndex).toArray();
+			index = IntStream.range(0, 2).filter(i -> args.get(i) instanceof Index).toArray();
 			if (index.length != 1) break i;
 
 			Expression k = args.get(index[0] == 0 ? 1 : 0);
 			OptionalInt v = k.intValue();
 			if (!v.isPresent()) break i;
 
-			OptionalInt r = idx.getLimit();
+			OptionalLong r = idx.getLimit();
 			if (!r.isPresent()) break i;
 
-			if (v.getAsInt() == r.getAsInt()) {
-				return (Expression) new KernelIndexChild(idx);
+			if (v.getAsInt() == r.getAsLong()) {
+				return (Expression) Index.child((Index) args.get(index[0]), idx);
 			}
 		}
 

@@ -26,7 +26,9 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class ScalarChoice extends Choice<Scalar> implements ProducerComputation<Scalar> {
-	public ScalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
+	public ScalarChoice(int choiceCount,
+						Supplier<Evaluable<? extends Scalar>> decision,
+						Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		super(2, choiceCount, decision, choices);
 	}
 

@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.ArrayVariable;
@@ -43,7 +43,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 
 		if (v.getProducer() instanceof Countable ||
 				(v.getProducer() instanceof KernelSupport)) {
-			KernelIndex idx = new KernelIndex(kernelIndex);
+			KernelIndex idx = new KernelIndex(null, kernelIndex);
 			Expression dim = new StaticReference(Integer.class, getVariableDimName(v, kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);

@@ -19,9 +19,11 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -85,8 +87,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Scope<T> getScope() {
-		Scope<T> scope = super.getScope();
+	public Scope<T> getScope(KernelStructureContext context) {
+		Scope<T> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
@@ -112,8 +114,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
@@ -146,7 +148,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		}
 
 		if (mapped instanceof TraversableExpression) {
-			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
+			ScopeLifecycle.prepareScope(Stream.of(mapped), manager, context);
 			this.mapped = (TraversableExpression<Double>) mapped;
 		} else {
 			throw new UnsupportedOperationException();
@@ -204,7 +206,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
-		return CollectionExpression.create(sliceShape,
+		return DefaultCollectionExpression.create(sliceShape,
 				index -> {
 					// Determine which slice to extract
 					Expression slice;
@@ -236,7 +238,12 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-			super(shape, expression, args);
+			super(null, shape, expression, args);
+		}
+
+		@Override
+		public boolean isFixedCount() {
+			return false;
 		}
 	}
 }

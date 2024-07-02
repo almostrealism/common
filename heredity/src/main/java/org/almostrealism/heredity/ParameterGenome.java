@@ -17,13 +17,15 @@
 package org.almostrealism.heredity;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntFunction;
 
-public class ParameterGenome implements Genome<PackedCollection<?>> {
+public class ParameterGenome implements Genome<PackedCollection<?>>, ScalarFeatures {
 	private List<ConfigurableChromosome> chromosomes;
 	private AssignableGenome genome;
 
@@ -87,6 +89,26 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 		}
 
 		return new ParameterGenome(null, random);
+	}
+
+	public ParameterGenome variation(double min, double max, double rate, DoubleSupplier delta) {
+		AssignableGenome random = new AssignableGenome();
+
+		for (int x = 0; x < genome.length(); x++) {
+			for (int y = 0; y < genome.length(x); y++) {
+				for (int z = 0; z < genome.length(x, y); z++) {
+					double v = genome.get(x, y, z).toDouble(0);
+
+					if (Math.random() < rate) {
+						v = Math.min(max, Math.max(min, v + delta.getAsDouble()));
+					}
+
+					random.insert(new Scalar(v), x, y, z);
+				}
+			}
+		}
+
+		return new ParameterGenome(chromosomes, random);
 	}
 
 	public ParameterGenome random(List<ConfigurableChromosome> chromosomes) {

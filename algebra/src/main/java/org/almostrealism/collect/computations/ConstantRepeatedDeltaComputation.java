@@ -18,11 +18,11 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -75,8 +75,8 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
 	}
 

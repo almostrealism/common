@@ -16,7 +16,11 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.Process;
+
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 public interface OperationInfo {
 	OperationMetadata getMetadata();
@@ -39,5 +43,14 @@ public interface OperationInfo {
 		} else {
 			return String.valueOf(value);
 		}
+	}
+
+	static <P extends Process<?, ?>, T> OperationMetadata metadataForProcess(
+						Process<P, T> process, OperationMetadata metadata) {
+		List<OperationMetadata> children = process.getChildren().stream()
+				.filter(v -> v instanceof OperationInfo)
+				.map(v -> ((OperationInfo) v).getMetadata())
+				.filter(Objects::nonNull).collect(Collectors.toList());
+		return new OperationMetadata(metadata, children);
 	}
 }

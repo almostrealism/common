@@ -22,7 +22,9 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
@@ -52,7 +54,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
 										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
+		super(null, shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
@@ -64,8 +66,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
 	}
 
@@ -118,6 +120,16 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return getExpression(new IntegerConstant(0)).uniqueNonZeroIndexRelative(localIndex, targetIndex);
 	}
 
 	@Override

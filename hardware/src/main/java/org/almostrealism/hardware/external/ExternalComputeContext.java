@@ -20,11 +20,10 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.lang.ScopeEncoder;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
@@ -74,12 +73,18 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		inst.setComputeContext(this);
 		inst.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));
-		buf.append("\n");
-		buf.append(externalWrapper);
-		String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
-		return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
+
+		try {
+			buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));
+			buf.append("\n");
+			buf.append(externalWrapper);
+			String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
+			return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override

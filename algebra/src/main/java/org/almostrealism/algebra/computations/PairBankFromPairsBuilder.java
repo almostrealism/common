@@ -22,10 +22,9 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -71,9 +70,9 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 	}
 
 	@Override
-	public int getCount() {
+	public long getCountLong() {
 		// TODO  Does this need to be based on the Producer array?
-		return super.getCount();
+		return super.getCountLong();
 	}
 
 	@Override
@@ -88,9 +87,9 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(Stream.of(producers), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(producers), manager, context);
 	}
 
 	@Override

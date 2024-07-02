@@ -23,7 +23,7 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.CodePrintWriterAdapter;
+import io.almostrealism.lang.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
@@ -219,8 +219,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected String annotationForAssignment(ExpressionAssignment<?> assignment) {
 		PhysicalScope scope = assignment.getPhysicalScope();
-		if (language.annotationForPhysicalScope(scope) != null) {
-			return language.annotationForPhysicalScope(scope) + " ";
+		if (language.annotationForPhysicalScope(null, scope) != null) {
+			return language.annotationForPhysicalScope(null, scope) + " ";
 		}
 
 		return "";

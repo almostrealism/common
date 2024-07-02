@@ -22,6 +22,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Ceiling extends Expression<Double> {
 	public Ceiling(Expression<Double> input) {
@@ -45,14 +46,14 @@ public class Ceiling extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
+	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalDouble v = doubleValue();
-		if (v.isPresent()) return OptionalInt.of((int) Math.ceil(v.getAsDouble()));
+		if (v.isPresent()) return OptionalLong.of((long) Math.ceil(v.getAsDouble()));
 
-		OptionalInt u = getChildren().get(0).upperBound(context);
-		if (u.isPresent()) return OptionalInt.of((int) Math.ceil(u.getAsInt()));
+		OptionalLong u = getChildren().get(0).upperBound(context);
+		if (u.isPresent()) return OptionalLong.of((long) Math.ceil(u.getAsLong()));
 
-		return OptionalInt.empty();
+		return OptionalLong.empty();
 	}
 
 	@Override

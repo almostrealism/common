@@ -16,15 +16,22 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.expression.Index;
-import io.almostrealism.expression.IndexValues;
-
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public interface SequenceGenerator {
-	OptionalInt upperBound(KernelStructureContext context);
+	default OptionalLong getLimit() {
+		OptionalLong upperBound = upperBound(null);
+		if (upperBound.isEmpty()) return OptionalLong.empty();
+		return OptionalLong.of(upperBound.getAsLong() + 1);
+	}
+
+	OptionalLong upperBound(KernelStructureContext context);
 
 	Number value(IndexValues indexValues);
 
-	IndexSequence sequence(Index index, int len);
+	default IndexSequence sequence(Index index, long len) {
+		return sequence(index, len, len);
+	}
+
+	IndexSequence sequence(Index index, long len, long limit);
 }

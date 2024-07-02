@@ -137,7 +137,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(shape,
+		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(null, shape,
 				(args, i) ->
 						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
 				collection, (Supplier) index);
@@ -193,7 +193,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarMod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
 				args -> args.get(1).getValueRelative(1)),
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}

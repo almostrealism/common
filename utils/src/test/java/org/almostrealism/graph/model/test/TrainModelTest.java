@@ -16,39 +16,58 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.ModelFeatures;
+import org.almostrealism.ui.OperationProfileUI;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements TestFeatures, KernelAssertions {
+public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssertions {
 	private int convSize = 3;
 	private int poolSize = 2;
 	private int w = 10;
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
+	static {
+		if (TestUtils.getTrainTests()) {
+			NativeCompiler.enableLargeInstructionSetMonitoring = true;
+			MetalProgram.enableLargeProgramMonitoring = true;
+			MetalMemoryProvider.enableLargeAllocationLogging = true;
+			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
+
+			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
+		}
+	}
+
 	@Test
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (skipLongTests) return;
+		if (skipKnownIssues) return;
 
 		int size = 30;
 		int nodes = 10;
@@ -112,8 +131,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void conv() {
-		if (skipLongTests) return;
-
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 
@@ -151,8 +168,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool() {
-		if (skipLongTests) return;
-
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
@@ -173,8 +188,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void convPool() {
-		if (skipLongTests) return;
-
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -233,7 +246,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 					}
 
 					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -241,106 +254,123 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void trainSmallest() {
+	public void displayProfile() throws IOException {
 		if (!trainingTests) return;
 
-		GradientPropagation.enableDiagnosticGrad = true;
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
+		OperationProfileUI.display(OperationProfileNode.load("results/logs/train.xml"));
+
+		try {
+			Thread.sleep(24 * 60 * 60 * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+
+
+	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
+		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
+		log("Created model (" + model.getBlocks().size() + " blocks)");
+		return model;
+	}
+
+	@Test
+	public void trainSmallest() throws IOException {
+		if (skipLongTests) return;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 2, 2, 10));
+		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
 	@Test
-	public void trainVerySmall() {
-		if (!trainingTests) return;
+	public void trainVerySmall() throws IOException {
+		if (skipLongTests) return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
-		int dim = 8;
-		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, 4, 10));
+		try {
+			int dim = 8;
+			Tensor<Double> t = tensor(shape(dim, dim));
+			PackedCollection<?> input = t.pack();
+			train(input, model(dim, dim, 3, 4, 1, 10), 2);
+		} finally {
+			ParallelProcess.explicitIsolationTargets.clear();
+		}
 	}
 
 
 	@Test
-	public void trainSmall() {
-		if (!trainingTests) return;
+	public void trainSmall() throws IOException {
+		if (skipLongTests) return;
+		if (!trainingTests &&
+				!IndexProjectionProducerComputation.enableDelegatedIsolate)
+			return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
-		// ParallelProcess.isolationFlags.add(operationFilter("f_constantRepeatedProducerComputation_82"));
-
-		int dim = 16;
+		int dim = 28;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 10));
+		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
 	@Test
-	public void trainMedium() {
-		if (!trainingTests) return;
+	public void trainMedium() throws IOException {
+		if (skipLongTests || !trainingTests) return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
-		int dim = 32;
+		int dim = 54;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 10));
+		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
 	@Test
-	public void trainLarge() {
-		if (!trainingTests) return;
+	public void trainLarge() throws IOException {
+		if (skipLongTests || !trainingTests) return;
 
-		NativeCompiler.enableLargeInstructionSetMonitoring = true;
-		MetalProgram.enableLargeProgramMonitoring = true;
-
-		int dim = 64;
-		int filters = 8;
-		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 10));
+		try {
+			int dim = 72;
+			int filters = 8;
+			Tensor<Double> t = tensor(shape(dim, dim));
+			PackedCollection<?> input = t.pack();
+			train(input, model(dim, dim, 3, filters, 4, 10));
+		} finally {
+			ParallelProcess.isolationFlags.clear();
+		}
 	}
 
 	@Test
-	public void trainProgressive() {
-		if (!trainingTests) return;
+	public void trainProgressive() throws IOException {
+		if (skipLongTests || !trainingTests) return;
 
 		double size = 10;
 
-		while (size < 60) {
+		while (size < 75) {
 			int s = (int) size;
 
 			Tensor<Double> t = tensor(shape(s, s));
 			PackedCollection<?> input = t.pack();
-			train(input, model(s, s, 3, 8, 10));
+			train(input, model(s, s, 3, 8, 2, 10));
 
 			size = size * 1.2;
 		}
 	}
 
-	protected void train(PackedCollection<?> input, Model model) {
-		initKernelMetrics();
-		OperationProfile profile = new OperationProfile("Model");
+	protected void train(PackedCollection<?> input, Model model) throws IOException {
+		train(input, model, trainingTests ? 80 : 2);
+	}
+
+	protected void train(PackedCollection<?> input, Model model, int epochCount) throws IOException {
+		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
-		double epochMinutes = 0.0;
+		initKernelMetrics(profile);
 
+		double epochMinutes = 0.0;
 		int epochSize = 1000;
 
 		try {
-			int count = 100 * epochSize;
+			int count = epochCount * epochSize;
 
 			long start = 0;
 
@@ -386,17 +416,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 			}
 		} finally {
 			logKernelMetrics(profile);
+			profile.save("results/logs/train.xml");
 		}
-	}
-
-	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
-		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
-		log("Created model (" + model.getBlocks().size() + " blocks)");
-		return model;
 	}
 }

@@ -16,6 +16,7 @@
 
 package io.almostrealism.lang;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
 import io.almostrealism.scope.Method;
@@ -40,7 +41,7 @@ public interface LanguageOperations {
 
 	String assignment(String destination, String expression);
 
-	String annotationForPhysicalScope(PhysicalScope scope);
+	String annotationForPhysicalScope(Accessibility access, PhysicalScope scope);
 
 	String nameForType(Class<?> type);
 

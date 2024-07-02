@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
@@ -31,7 +32,7 @@ import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ProducerCache;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +64,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		this.memLength = memLength;
 
 		List inputs = new ArrayList();
-		inputs.add(new MemoryDataDestination(this, kernelDestination));
+		inputs.add(new MemoryDataDestinationProducer(this, kernelDestination));
 		inputs.add(leftOperand);
 		inputs.add(rightOperand);
 		inputs.add(trueValue);
@@ -79,7 +80,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public TraversalPolicy getShape() { return new TraversalPolicy(memLength); }
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	/**
 	 * @return  GLOBAL
@@ -100,7 +101,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	// TODO  They can be extracted from getTrueValueExpression and getFalseValueExpression
 	// TODO  and passed to the HybridScope directly.
 	@Override
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 

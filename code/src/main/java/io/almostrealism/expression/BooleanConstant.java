@@ -16,11 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.ArrayIndexSequence;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Optional;
-import java.util.stream.IntStream;
 
 public class BooleanConstant extends Constant<Boolean> {
 	private boolean value;
@@ -41,8 +42,8 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, int len) {
-		return IndexSequence.of(value ? 1 : 0, len);
+	public IndexSequence sequence(Index index, long len, long limit) {
+		return ArrayIndexSequence.of(value ? 1 : 0, len);
 	}
 
 	@Override

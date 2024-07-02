@@ -31,6 +31,7 @@ public class ModelOptimizer implements CodeFeatures {
 	private CompiledModel model;
 	private Supplier<Dataset<?>> dataset;
 	private Receptor<PackedCollection<?>> receptor;
+	private int logFrequency;
 
 	private Evaluable<PackedCollection<?>> dloss;
 	private Evaluable<PackedCollection<?>> loss;
@@ -69,6 +70,14 @@ public class ModelOptimizer implements CodeFeatures {
 
 	public void setReceptor(Receptor<PackedCollection<?>> receptor) {
 		this.receptor = receptor;
+	}
+
+	public int getLogFrequency() {
+		return logFrequency;
+	}
+
+	public void setLogFrequency(int logFrequency) {
+		this.logFrequency = logFrequency;
 	}
 
 	public void setLossTarget(double lossTarget) {
@@ -127,7 +136,9 @@ public class ModelOptimizer implements CodeFeatures {
 
 			double previousLoss = averageLoss;
 			averageLoss = totalLoss / count;
-			log("Average Loss = " + averageLoss);
+
+			if (logFrequency > 0 && totalIterations % logFrequency == 0)
+				log("Average Loss = " + averageLoss);
 
 			if (averageLoss < lossTarget || averageLoss == previousLoss) {
 				return;

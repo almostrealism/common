@@ -17,14 +17,15 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.DataContext;
-import io.almostrealism.uml.SuppliedValue;
+import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.lifecycle.SuppliedValue;
 import org.almostrealism.hardware.Hardware;
 
 import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public abstract class ContextSpecific<T> implements ContextListener {
+public abstract class ContextSpecific<T> implements ContextListener, Destroyable {
 	private Stack<SuppliedValue<T>> val;
 	private Supplier<T> supply;
 	private Consumer<T> disposal;
@@ -67,12 +68,15 @@ public abstract class ContextSpecific<T> implements ContextListener {
 	public void contextDestroyed(DataContext ctx) {
 		if (val.isEmpty()) return;
 
-		SuppliedValue<T> v = val.pop();
-		// TODO  This is disposing only the value on the current thread, not for *all* threads
-		if (disposal != null && v.isAvailable()) disposal.accept(v.getValue());
+		val.pop().applyAll(disposal);
 	}
 
+	@Override
 	public void destroy() {
+		while (!val.isEmpty()) {
+			val.pop().applyAll(disposal);
+		}
+
 		Hardware.getLocalHardware().removeContextListener(this);
 	}
 }

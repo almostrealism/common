@@ -19,47 +19,82 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Objects;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
+import java.util.Optional;
 
-public class ExpressionMatchingCollectionExpression extends CollectionExpressionBase {
-	public static BiFunction<Supplier, Supplier, Boolean> matcher;
+public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter implements ConsoleFeatures {
+	public static boolean enablePossibleMatch = true;
 
-	private CollectionExpression reference;
-	private CollectionExpression compareTo;
-	private Expression<?> index;
-	private CollectionExpression positive;
-	private CollectionExpression negative;
+	private final CollectionExpression reference;
+	private final CollectionExpression compareTo;
+	private final CollectionExpression positive;
+	private final CollectionExpression negative;
 
 	public ExpressionMatchingCollectionExpression(CollectionExpression reference,
 												  CollectionExpression compareTo,
-												  Expression<?> index,
 												  CollectionExpression positive,
 												  CollectionExpression negative) {
+		super(reference.getShape());
 		this.reference = reference;
 		this.compareTo = compareTo;
-		this.index = index;
 		this.positive = positive;
 		this.negative = negative;
 	}
 
 	@Override
-	public TraversalPolicy getShape() {
-		return reference.getShape();
+	public Expression<Double> getValueAt(Expression index) {
+		Expression<Boolean> comparison = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
+		return conditional(comparison, positive.getValueAt(index), negative.getValueAt(index));
 	}
 
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		if (this.index == null) {
-			Expression<Boolean> comparison = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
-			return conditional(comparison, positive.getValueAt(index), negative.getValueAt(index));
+	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		ExpressionMatrix<Boolean> comparison = ExpressionMatrix.create(globalIndex, localIndex, targetIndex,
+				i -> compareExpressions(reference.getValueAt(i), compareTo.getValueAt(i)));
+		if (comparison == null) return null;
+
+		Expression<Boolean> allMatch = comparison.allMatch();
+
+		if (allMatch != null) {
+			Optional<Boolean> alt = allMatch.booleanValue();
+
+			if (alt.isPresent()) {
+				if (alt.get()) {
+					return positive.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+				} else {
+					return negative.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+				}
+			}
 		} else {
-			return conditional(index.eq(this.index), positive.getValueAt(index), negative.getValueAt(index));
+			return comparison.uniqueMatchingOffset(globalIndex, e -> e.booleanValue().orElse(false));
 		}
+
+		return null;
 	}
+
+	@Override
+	public boolean isIndexIndependent() {
+		DefaultIndex index = generateTemporaryIndex();
+		Expression<Boolean> compare = compareExpressions(reference.getValueAt(index), compareTo.getValueAt(index));
+		Optional<Boolean> alt = compare.booleanValue();
+
+		if (alt.isPresent()) {
+			return alt.get() ? positive.isIndexIndependent() : negative.isIndexIndependent();
+		}
+
+		return false;
+	}
+
+	@Override
+	public Console console() { return Scope.console; }
 
 	public static Expression<Boolean> compareExpressions(Expression<?> a, Expression<?> b) {
 		if (a == null && b == null) return new BooleanConstant(true);
@@ -88,41 +123,33 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	}
 
 	public static CollectionExpression create(
-			CollectionExpression reference, CollectionExpression compareTo, Expression<?> index,
-			Expression<?> positive, Expression<?> negative) {
-		return create(reference, compareTo, index,
-				DefaultCollectionExpression.create(reference.getShape(), idx -> positive),
-				DefaultCollectionExpression.create(reference.getShape(), idx -> negative));
-	}
-
-	public static CollectionExpression create(
 			CollectionExpression reference, CollectionExpression compareTo,
 			Expression<?> positive, Expression<?> negative) {
 		return create(reference, compareTo,
-				DefaultCollectionExpression.create(reference.getShape(), idx -> positive),
-				DefaultCollectionExpression.create(reference.getShape(), idx -> negative));
+				new ConstantCollectionExpression(reference.getShape(), positive),
+				new ConstantCollectionExpression(reference.getShape(), negative));
 	}
 
 	public static CollectionExpression create(
 			CollectionExpression reference, CollectionExpression compareTo,
 			CollectionExpression positive, CollectionExpression negative) {
-		return create(reference, compareTo, null, positive, negative);
+		Optional<Boolean> comp = checkPossibleMatch(reference, compareTo);
+		if (comp.isEmpty())
+			return new ExpressionMatchingCollectionExpression(reference, compareTo, positive, negative);
+		return comp.orElseThrow() ? positive : negative;
 	}
 
-	public static CollectionExpression create(
-			CollectionExpression reference, CollectionExpression compareTo, Expression<?> index,
-			CollectionExpression positive, CollectionExpression negative) {
-		if (checkPossibleMatch(reference, compareTo)) {
-			return new ExpressionMatchingCollectionExpression(reference, compareTo, index, positive, negative);
-		} else {
-			return negative;
+	protected static Optional<Boolean> checkPossibleMatch(CollectionExpression reference, CollectionExpression compareTo) {
+		if (!enablePossibleMatch) return Optional.empty();
+
+		DefaultIndex index = generateTemporaryIndex();
+		Expression r = reference.getValueAt(index);
+		Expression c = compareTo.getValueAt(index);
+		Expression<Boolean> comparison = compareExpressions(r, c);
+		if (comparison instanceof BooleanConstant) {
+			return comparison.booleanValue();
 		}
-	}
 
-	protected static boolean checkPossibleMatch(CollectionExpression reference, CollectionExpression compareTo) {
-		Supplier referenceProducer = reference instanceof CollectionVariable ? ((CollectionVariable) reference).getProducer() : null;
-		Supplier compareToProducer = compareTo instanceof CollectionVariable ? ((CollectionVariable) compareTo).getProducer() : null;
-		if (matcher == null || referenceProducer == null || compareToProducer == null) return true;
-		return matcher.apply(referenceProducer, compareToProducer);
+		return Optional.empty();
 	}
 }

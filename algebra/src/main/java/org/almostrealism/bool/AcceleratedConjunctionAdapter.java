@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -74,11 +75,11 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(conjuncts.stream(), manager);
-		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager);
-		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		ScopeLifecycle.prepareScope(conjuncts.stream(), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager, context);
 
 		List<ArrayVariable<? extends MemoryData>> args = new ArrayList<>();
 		args.add((ArrayVariable<? extends MemoryData>) getOutputVariable());

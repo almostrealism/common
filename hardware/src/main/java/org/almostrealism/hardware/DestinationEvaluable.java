@@ -47,7 +47,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 
 			boolean enableLog = false;
 
-			for (int i = 0; i < destination.getCount(); i++) {
+			for (int i = 0; i < destination.getCountLong(); i++) {
 				T r = null;
 
 				try {
@@ -60,9 +60,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 
 					destination.set(i, r);
 				} catch (UnsupportedOperationException e) {
-					throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
+					throw new HardwareException("i = " + i + " of " + destination.getCountLong() + ", r = " + r, e);
 				} catch (CLException e) {
-					throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
+					throw new HardwareException("i = " + i + " of " + destination.getCountLong() + ", r = " + r, e);
 				}
 
 				if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " kernel results collected");

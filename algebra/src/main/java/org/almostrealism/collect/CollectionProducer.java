@@ -189,7 +189,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		throw new UnsupportedOperationException();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> mod) {
 		return mod((Producer) this, (Producer) mod);
 	}
 

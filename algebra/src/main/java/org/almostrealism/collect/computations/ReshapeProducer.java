@@ -17,12 +17,19 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducer;
@@ -40,7 +47,9 @@ import java.util.List;
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					ScopeLifecycle {
+					OperationInfo, ScopeLifecycle {
+	public static boolean enableDelegateIsolation = true;
+
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -60,6 +69,28 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public OperationMetadata getMetadata() {
+		if (producer instanceof OperationInfo) {
+			OperationMetadata child = ((OperationInfo) producer).getMetadata();
+			OperationMetadata metadata;
+
+			if (child == null) {
+				return null;
+			} else if (shape == null) {
+				metadata = new OperationMetadata(child.getDisplayName() + " {-> axis " + traversalAxis + "}",
+						"Reshape");
+			} else {
+				metadata = new OperationMetadata(child.getDisplayName() + " {-> " + getShape() + "}",
+						"Reshape");
+			}
+
+			return new OperationMetadata(metadata, List.of(child));
+		}
+
+		return null;
+	}
+
+	@Override
 	public TraversalPolicy getShape() {
 		if (shape == null) {
 			TraversalPolicy inputShape = ((Shape) producer).getShape();
@@ -70,11 +101,37 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public boolean isConstant() {
+		if (producer instanceof Computable) {
+			return ((Computable) producer).isConstant();
+		}
+
+		return false;
+	}
+
+	@Override
+	public long getParallelism() {
+		if (producer instanceof ParallelProcess) {
+			return ((ParallelProcess) producer).getParallelism();
+		}
+
+		return 1;
+	}
+
+	@Override
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public boolean isFixedCount() {
-		return ParallelProcess.isFixedCount(producer);
+		return Countable.isFixedCount(producer);
+	}
+
+	public Producer<T> getComputation() {
+		if (producer instanceof ReshapeProducer) {
+			return ((ReshapeProducer) producer).getComputation();
+		} else {
+			return producer;
+		}
 	}
 
 	@Override
@@ -92,8 +149,25 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+		if (producer instanceof Process) {
+			return generate(List.of(optimize(ctx, ((Process) producer))));
+		}
+
+		return this;
+	}
+
+	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		if (shape == null) {
+			if (enableDelegateIsolation && producer instanceof Process) {
+				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
+
+				if (isolated != producer) {
+					return generate(List.of(isolated));
+				}
+			}
+
 			return new CollectionProducerComputation.IsolatedProcess(this);
 		} else {
 			return this;
@@ -108,9 +182,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (producer instanceof ScopeLifecycle) {
-			((ScopeLifecycle) producer).prepareScope(manager);
+			((ScopeLifecycle) producer).prepareScope(manager, context);
 		}
 	}
 
@@ -134,6 +208,20 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return producer instanceof TraversableExpression ?
+				((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex) :
+				null;
+	}
+
+	@Override
+	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
+		return producer instanceof TraversableExpression ?
+				((TraversableExpression) producer).uniqueNonZeroIndexRelative(localIndex, targetIndex) :
+				TraversableExpression.super.uniqueNonZeroIndexRelative(localIndex, targetIndex);
 	}
 
 	@Override
@@ -180,12 +268,7 @@ public class ReshapeProducer<T extends Shape<T>>
 		Evaluable<T> ev = producer.get();
 
 		if (ev instanceof Provider) {
-			return new Provider<>(null) {
-				@Override
-				public T get() {
-					return apply((Shape<T>) ((Provider) ev).get());
-				}
-			};
+			return p((Provider) ev, v -> (Shape<T>) apply((T) v));
 		}
 
 		HardwareEvaluable<T> hev = new HardwareEvaluable<>(producer::get, null, null, false);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
 import org.almostrealism.c.CLanguageOperations;
@@ -43,7 +44,7 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	public String annotationForPhysicalScope(PhysicalScope scope) {
+	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		String volatilePrefix = Hardware.getLocalHardware().isMemoryVolatile() ? "volatile " : "";
 		if (scope != null) return volatilePrefix + (scope == PhysicalScope.LOCAL ? "__local" : "__global");
 		return null;

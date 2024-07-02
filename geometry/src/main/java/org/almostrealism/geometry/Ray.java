@@ -209,7 +209,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	@Deprecated
 	public static PackedCollection<Ray> bank(int count, Supplier<Evaluable<? extends Ray>> source) {
 		PackedCollection<Ray> bank = Ray.bank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
+		for (int i = 0; i < bank.getCountLong(); i++) {
 			bank.set(i, source.get().evaluate());
 		}
 

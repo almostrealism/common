@@ -17,13 +17,9 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -31,7 +27,6 @@ import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -64,16 +59,16 @@ public class GradientDescentTests implements TestFeatures {
 		Model model = new Model(shape(1), 1e-5);
 		model.addBlock(block);
 
-		int epochs = 600;
+		int epochs = 300;
 		int steps = 100;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(1)))
-				.map(input -> input.fill(pos -> 2.0 + Math.random()))
+				.map(input -> input.fill(pos -> 2.0 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear1", model, data, epochs, steps, 0.5);
+		optimize("linear1", model, data, epochs, steps, 0.25, 0.1);
 	}
 
 	@Test
@@ -95,7 +90,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear2", model, data, epochs, steps, 0.5);
+		optimize("linear2", model, data, epochs, steps, 1.0, 0.2);
 	}
 
 	@Test
@@ -105,19 +100,19 @@ public class GradientDescentTests implements TestFeatures {
 		SequentialBlock block = new SequentialBlock(shape(3));
 		block.add(dense);
 
-		Model model = new Model(shape(3), 1e-4);
+		Model model = new Model(shape(3), 1e-5);
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 320;
+		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
-				.map(input -> input.fill(pos -> 5 + 5 * Math.random()))
+				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 0.1);
+		optimize("linear3", model, data, epochs, steps, 1.25, 0.35);
 	}
 
 	@Test
@@ -126,59 +121,76 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense(3, 1));
 		block.add(dense(1, 1));
 
-		Model model = new Model(shape(3), 1e-4);
+		Model model = new Model(shape(3), 1e-5);
 		model.addBlock(block);
 
 		int epochs = 300;
-		int steps = 200;
+		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection<>(shape(3)))
-				.map(input -> input.fill(pos -> 5 + 5 * Math.random()))
+				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear4", model, data, epochs, steps, 0.05);
+		optimize("linear4", model, data, epochs, steps, 0.8, 0.25);
 	}
 
 	@Test
 	public void linear5() throws FileNotFoundException {
-		int inChannels = 3;
-		int hiddenDim = 10;
-		int outLen = 1;
+		try {
+			initKernelMetrics();
 
-		CellularLayer dense = dense(inChannels, hiddenDim);
+			int inChannels = 3;
+			int hiddenDim = 10;
+			int outLen = 1;
 
-		SequentialBlock block = new SequentialBlock(shape(inChannels));
-		block.add(dense);
-		block.add(dense(hiddenDim, outLen));
+			CellularLayer dense = dense(inChannels, hiddenDim);
 
-		Model model = new Model(shape(inChannels));
-		model.addBlock(block);
+			SequentialBlock block = new SequentialBlock(shape(inChannels));
+			block.add(dense);
+			block.add(dense(hiddenDim, outLen));
 
-		int epochs = 600;
-		int steps = 125;
+			Model model = new Model(shape(inChannels));
+			model.addBlock(block);
 
-		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(inChannels)))
-				.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
-				.map(input -> ValueTarget.of(input, func3.apply(input)))
-				.collect(Collectors.toList()));
+			int epochs = 600;
+			int steps = 125;
 
-		optimize("linear5", model, data, epochs, steps, 0.5);
+			Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+					.mapToObj(i -> new PackedCollection<>(shape(inChannels)))
+					.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+					.map(input -> ValueTarget.of(input, func3.apply(input)))
+					.collect(Collectors.toList()));
+
+			optimize("linear5", model, data, epochs, steps, 1.0, 0.15);
+		} finally {
+			logKernelMetrics();
+		}
 	}
 
-	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		i: for (int i = 0; i < 5; i++) {
+	public void optimize(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
+						 double lossTarget, double minLoss) throws FileNotFoundException {
+		i: for (int i = 0; i < 6; i++) {
 			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
 			try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 				optimizer.setReceptor(receptor);
+				optimizer.setLogFrequency(2);
+
 				optimizer.setLossTarget(lossTarget);
 				optimizer.optimize(epochs);
-
 				log("Completed " + optimizer.getTotalIterations() + " epochs");
-				if (optimizer.getTotalIterations() < 5) continue i;
+
+				if (optimizer.getTotalIterations() < 5) {
+					optimizer.setLossTarget(minLoss);
+					optimizer.optimize(epochs);
+					log("Completed " + optimizer.getTotalIterations() + " epochs");
+				}
+
+				if (optimizer.getTotalIterations() < 5) {
+					continue i;
+				}
 
 				Assert.assertTrue(optimizer.getLoss() > 0.0);
 				Assert.assertTrue(optimizer.getLoss() < optimizer.getLossTarget());

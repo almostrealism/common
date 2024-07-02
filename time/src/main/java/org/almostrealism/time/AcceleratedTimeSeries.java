@@ -16,19 +16,19 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
+public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> implements Lifecycle, HardwareFeatures {
 	public static final int defaultSize = 10 * 1024 * 1024; // 16 * 1024 * 1024;
 
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
@@ -40,7 +40,10 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 	}
 
 	public AcceleratedTimeSeries(int maxEntries) {
-		super(maxEntries + 1, defaultCacheLevel);
+		super(2, maxEntries + 1,
+				delegateSpec ->
+					new TemporalScalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				defaultCacheLevel);
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}
@@ -54,7 +57,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 	public boolean isEmpty() { return getLength() == 0; }
 
 	public void add(TemporalScalar value) {
-		if (getEndCursorIndex() >= (getCount() - 1)) {
+		if (getEndCursorIndex() >= (getCountLong() - 1)) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
@@ -64,7 +67,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 
 	@Deprecated
 	public void add(double time, double value) {
-		if (getEndCursorIndex() >= getCount() - 1) {
+		if (getEndCursorIndex() >= getCountLong() - 1) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 

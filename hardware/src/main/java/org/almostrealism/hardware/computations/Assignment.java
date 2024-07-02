@@ -18,11 +18,15 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
@@ -42,25 +46,36 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		metadata = super.prepareMetadata(metadata);
+
+		if (getInputs().get(0) instanceof Shape<?>) {
+			metadata = metadata.withShape(((Shape<?>) getInputs().get(0)).getShape());
+		}
+
+		return metadata;
+	}
+
+	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		purgeVariables();
 	}
 
 	@Override
-	public int getCount() {
-		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCount() : 1;
+	public long getCountLong() {
+		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCountLong() : 1;
 	}
 
 	@Override
-	public Scope<Void> getScope() {
-		Scope<Void> scope = super.getScope();
+	public Scope<Void> getScope(KernelStructureContext context) {
+		Scope<Void> scope = super.getScope(context);
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
@@ -91,11 +106,31 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
+	public Process<Process<?, ?>, Runnable> optimize(ProcessContext ctx, Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.optimize(ctx, process);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.isolate(process);
+	}
+
+	@Override
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		Assignment generated = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
-		generated.setMetadata(getMetadata());
-		return generated;
+		Assignment result = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+
+		if (getMetadata().getShortDescription() != null) {
+			result.getMetadata().setShortDescription(getMetadata().getShortDescription());
+		}
+
+		return result;
 	}
 }

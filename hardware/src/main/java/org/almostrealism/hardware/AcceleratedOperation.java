@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -132,7 +133,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public int getCount() { return -1; }
+	public long getCountLong() { return -1; }
 
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
 		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
@@ -167,6 +168,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
 	}
 
+	protected void prepareScope(ScopeInputManager manager) {
+		prepareScope(manager, null);
+	}
+
 	@Override
 	public Scope<?> compile() {
 		prepareScope();
@@ -184,11 +189,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (getArgumentVariables() != null) return;
 
 		if (getInputs() != null) {
-			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+			ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 			setArguments(getInputs().stream()
 					.map(manager.argumentForInput(this))
 					.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
@@ -237,18 +242,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			compile();
 		}
 
-		long start = System.nanoTime();
+		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
+		AcceleratedProcessDetails process = getProcessDetails(output, args);
+		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
+		long start = System.nanoTime();
 		Execution operator = getOperator();
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {
 			throw new UnsupportedOperationException();
+		} else if (operator.isDestroyed()) {
+			throw new HardwareException("Operator has already been destroyed");
 		}
 
-		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
-		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
 		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
@@ -265,7 +272,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
+		acceptMetric.addEntry(System.nanoTime() - start);
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 
@@ -280,14 +287,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		try {
-			if (isKernel()) {
-				apply(output, args);
-			} else {
-				throw new HardwareException("Kernel not supported");
-			}
-		} catch (CLException e) {
-			throw new HardwareException("Could not evaluate AcceleratedOperation", e);
+		if (isKernel()) {
+			apply(output, args);
+		} else {
+			throw new HardwareException("Kernel not supported");
 		}
 	}
 
@@ -324,6 +327,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	@Deprecated
 	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
 		CreatedMemoryData last = created.get();
 
@@ -339,6 +343,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	@Deprecated
 	public static <I, O> O apply(Supplier<I> input, Function<I, O> process) {
 		CreatedMemoryData data = new CreatedMemoryData();
 

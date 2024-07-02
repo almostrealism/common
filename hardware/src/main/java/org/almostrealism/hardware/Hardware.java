@@ -21,12 +21,17 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationProfileNode;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.profile.CompilationProfile;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jni.NativeDataContext;
@@ -309,6 +314,17 @@ public final class Hardware {
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
+	public void assignProfile(OperationProfile profile) {
+		if (profile instanceof OperationProfileNode) {
+			AbstractComputeContext.compilationProfile = ((OperationProfileNode) profile).getCompilationProfile();
+		} else {
+			AbstractComputeContext.compilationProfile = new CompilationProfile("default",
+					OperationProfile.appendContext(OperationMetadata::getDisplayName));
+		}
+
+		HardwareOperator.profile = profile;
+	}
+
 	public synchronized void addContextListener(ContextListener l) {
 		contextListeners.add(new WeakReference<>(l));
 	}
@@ -391,7 +407,7 @@ public final class Hardware {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 0; // 1024;
+			return 0;
 		}
 	}
 

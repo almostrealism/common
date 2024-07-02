@@ -57,6 +57,15 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void divideIntegers() {
+		PackedCollection<?> result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
+
+		assertEquals(3.0, result.toDouble(0));
+		assertEquals(6.0, result.toDouble(1));
+		assertEquals(12.0, result.toDouble(2));
+	}
+
+	@Test
 	public void index() {
 		PackedCollection<?> x = pack(1, 1, 1, 2, 2, 2);
 		PackedCollection<?> y = pack(0, 1, 2, 0, 1, 2);
@@ -119,7 +128,6 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integersIndexAssignmentOptimized() {
-		if (skipKnownIssues) return;
 		integersIndexAssignment(true);
 	}
 
@@ -180,6 +188,8 @@ public class CollectionComputationTests implements TestFeatures {
 			op.get().run();
 		});
 
+		buffer.traverse().print();
+
 		for (int i = 0; i < count; i++) {
 			for (int j = 0; j < size; j++) {
 				if (j == (int) bufferIndices.valueAt(i)) {
@@ -191,6 +201,20 @@ public class CollectionComputationTests implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	@Test
+	public void addModAssignment() {
+		int size = 3;
+		PackedCollection<?> indices = pack(2, 4, 6);
+		PackedCollection<?> lengths = pack(2, 3, 4);
+
+		a(cp(indices), mod(add(p(indices), c(1).repeat(size)), cp(lengths))).get().run();
+		indices.print();
+
+		assertEquals(1.0, indices.toDouble(0));
+		assertEquals(2.0, indices.toDouble(1));
+		assertEquals(3.0, indices.toDouble(2));
 	}
 
 	@Test
@@ -321,7 +345,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
-		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCount());
+		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCountLong());
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
 
@@ -435,7 +459,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCount() + " series");
+		System.out.println(series.traverse(1).getCountLong() + " series");
 
 		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(10, 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
@@ -449,7 +473,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void collectionMax() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCount() + " series");
+		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(shape(10), 0));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
@@ -466,7 +490,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void greaterThanMax() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCount() + " series");
+		System.out.println(series.traverse(0).getCountLong() + " series");
 
 		PackedCollection<?> dest = new PackedCollection(1);
 		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();

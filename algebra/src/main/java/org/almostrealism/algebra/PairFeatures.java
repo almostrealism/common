@@ -106,7 +106,7 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				}
 			}
 
-			return new TraversableExpressionComputation<>(shape,
+			return new TraversableExpressionComputation<>(null, shape,
 					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
 						Expression<?> pos = index.toInt().divide(2).multiply(2);
 

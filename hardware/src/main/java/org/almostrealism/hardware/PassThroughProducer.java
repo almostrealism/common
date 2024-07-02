@@ -19,6 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
@@ -31,7 +33,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,7 +60,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	private PassThroughProducer() {
-		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null, false)));
+		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
 		init();
 	}
 
@@ -78,7 +80,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public int getMemLength() { return getShape().getSize(); }
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public boolean isFixedCount() { return false; }
@@ -104,8 +106,8 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
 		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
@@ -113,8 +115,8 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public Scope<T> getScope() {
-		Scope<T> scope = super.getScope();
+	public Scope<T> getScope(KernelStructureContext context) {
+		Scope<T> scope = super.getScope(context);
 		for (int i = 0; i < getMemLength(); i++) {
 			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i))));
 		}
@@ -162,6 +164,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return null;
 	}
 
 	@Override

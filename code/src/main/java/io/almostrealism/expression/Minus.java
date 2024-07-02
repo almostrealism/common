@@ -16,9 +16,15 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Minus<T extends Number> extends UnaryExpression<T> {
 	public Minus(Expression<? extends Number> value) {
@@ -40,8 +46,20 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public boolean isKernelValue(IndexValues values) {
-		return getChildren().get(0).isKernelValue(values);
+	public boolean isValue(IndexValues values) {
+		return getChildren().get(0).isValue(values);
+	}
+
+	@Override
+	public OptionalLong upperBound(KernelStructureContext context) {
+		OptionalLong i = getChildren().get(0).upperBound(context);
+		if (i.isPresent()) {
+			long value = i.getAsLong();
+			if (value > 0) return OptionalLong.of(0);
+			return OptionalLong.of(-value);
+		}
+
+		return super.upperBound(context);
 	}
 
 	@Override
@@ -54,6 +72,14 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	@Override
 	public Number evaluate(Number... children) {
 		return -1 * children[0].doubleValue();
+	}
+
+	@Override
+	public IndexSequence sequence(Index index, long len, long limit) {
+		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
+		if (seq == null) return null;
+
+		return seq.minus();
 	}
 
 	@Override

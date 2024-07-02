@@ -19,10 +19,12 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -33,40 +35,33 @@ import java.util.stream.Stream;
 public class Heap {
 	private static ThreadLocal<Heap> defaultHeap = new ThreadLocal<>();
 
-	private List<Bytes> entries;
-	private Bytes data;
-	private int end;
+	private MemoryProvider memory;
+	private int stageSize;
 
-	private List<Supplier> dependentOperations;
-	private List<OperationAdapter> compiledDependencies;
+	private HeapStage root;
+	private Stack<HeapStage> stages;
 
-	public Heap(int totalSize) {
-		this(null, totalSize);
+	public Heap(int size) {
+		this(null, size, size / 4);
 	}
 
-	public Heap(MemoryProvider memory, int totalSize) {
-		entries = new ArrayList<>();
-		data = memory == null ? new Bytes(totalSize) : Bytes.of(memory.allocate(totalSize), totalSize);
-		dependentOperations = new ArrayList<>();
-		compiledDependencies = new ArrayList<>();
+	public Heap(int rootSize, int stageSize) {
+		this(null, rootSize, stageSize);
 	}
 
-	public synchronized Bytes allocate(int count) {
-		if (end + count > data.getMemLength()) {
-			throw new IllegalArgumentException("No room remaining in Heap");
-		}
-
-		Bytes allocated = new Bytes(count, data, end);
-		end = end + count;
-		entries.add(allocated);
-		return allocated;
+	public Heap(MemoryProvider memory, int rootSize, int stageSize) {
+		this.memory = memory;
+		this.stageSize = stageSize;
+		this.root = new HeapStage(rootSize);
 	}
 
-	public Bytes get(int index) { return entries.get(index); }
+	public HeapStage getStage() {
+		return (stages == null || stages.isEmpty()) ? root : stages.peek();
+	}
 
-	public Bytes getBytes() { return data; }
-
-	public Stream<Bytes> stream() { return entries.stream(); }
+	public Bytes allocate(int count) {
+		return getStage().allocate(count);
+	}
 
 	public <T> Callable<T> wrap(Callable<T> r) {
 		return () -> {
@@ -105,36 +100,149 @@ public class Heap {
 		}
 	}
 
+	protected void push() {
+		if (stages == null) {
+			stages = new Stack<>();
+		}
+
+		stages.push(new HeapStage(stageSize));
+	}
+
+	protected void pop() {
+		if (stages != null && !stages.isEmpty()) {
+			stages.pop().destroy();
+		}
+	}
+
 	public synchronized void destroy() {
-		entries.clear();
-		end = 0;
-		data.destroy();
-
-		if (dependentOperations != null) {
-			dependentOperations.forEach(ProducerCache::purgeEvaluableCache);
-			dependentOperations.forEach(o -> {
-				if (o instanceof Destroyable)
-					((Destroyable) o).destroy();
-			});
-			dependentOperations = null;
+		if (stages != null) {
+			while (!stages.isEmpty()) {
+				stages.pop().destroy();
+			}
 		}
 
-		if (compiledDependencies != null) {
-			compiledDependencies.forEach(OperationAdapter::destroy);
-			compiledDependencies = null;
-		}
+		root.destroy();
 	}
 
 	private List<Supplier> getDependentOperations() {
-		return dependentOperations;
+		if (stages != null && !stages.isEmpty()) {
+			return stages.peek().dependencies.dependentOperations;
+		}
+
+		return root.dependencies == null ? null : root.dependencies.dependentOperations;
 	}
 
 	private List<OperationAdapter> getCompiledDependencies() {
-		return compiledDependencies;
+		if (stages != null && !stages.isEmpty()) {
+			return stages.peek().dependencies.compiledDependencies;
+		}
+
+		return root.dependencies == null ? null : root.dependencies.compiledDependencies;
+	}
+
+	private List<MemoryData> getCreatedMemory() {
+		if (stages != null && !stages.isEmpty()) {
+			return stages.peek().dependencies.createdMemory;
+		}
+
+		return root.dependencies == null ? null : root.dependencies.createdMemory;
+	}
+
+	public class HeapStage implements Destroyable {
+		private List<Bytes> entries;
+		private Bytes data;
+		private int end;
+
+		HeapDependencies dependencies;
+
+		public HeapStage(int size) {
+			entries = new ArrayList<>();
+			data = memory == null ? new Bytes(size) : Bytes.of(memory.allocate(size), size);
+			dependencies = new HeapDependencies();
+		}
+
+		public synchronized Bytes allocate(int count) {
+			if (end + count > data.getMemLength()) {
+				throw new IllegalArgumentException("No room remaining in Heap");
+			}
+
+			Bytes allocated = new Bytes(count, data, end);
+			end = end + count;
+			entries.add(allocated);
+			return allocated;
+		}
+
+		public Bytes get(int index) { return entries.get(index); }
+
+		public Bytes getBytes() { return data; }
+
+		public Stream<Bytes> stream() { return entries.stream(); }
+
+		@Override
+		public void destroy() {
+			entries.clear();
+			end = 0;
+			data.destroy();
+
+			if (dependencies != null) {
+				dependencies.destroy();
+				dependencies = null;
+			}
+		}
+	}
+
+	private class HeapDependencies implements Destroyable {
+		private List<Supplier> dependentOperations;
+		private List<OperationAdapter> compiledDependencies;
+		private List<MemoryData> createdMemory;
+
+		public HeapDependencies() {
+			dependentOperations = new ArrayList<>();
+			compiledDependencies = new ArrayList<>();
+			createdMemory = new ArrayList<>();
+		}
+
+		@Override
+		public void destroy() {
+			if (dependentOperations != null) {
+				dependentOperations.forEach(ProducerCache::purgeEvaluableCache);
+				dependentOperations.forEach(o -> {
+					if (o instanceof Destroyable)
+						((Destroyable) o).destroy();
+				});
+				dependentOperations = null;
+			}
+
+			if (compiledDependencies != null) {
+				compiledDependencies.forEach(OperationAdapter::destroy);
+				compiledDependencies = null;
+			}
+
+			if (createdMemory != null) {
+				createdMemory.forEach(MemoryData::destroy);
+				createdMemory = null;
+			}
+		}
 	}
 
 	public static Heap getDefault() {
 		return defaultHeap.get();
+	}
+
+	public static void stage(Runnable r) {
+		Heap defaultHeap = getDefault();
+
+		if (defaultHeap == null) {
+			r.run();
+			return;
+		}
+
+		try {
+			defaultHeap.push();
+			r.run();
+		} finally {
+			defaultHeap.pop();
+		}
 	}
 
 	public static <T> Supplier<T> addOperation(Supplier<T> operation) {
@@ -151,6 +259,14 @@ public class Heap {
 		}
 
 		return operation;
+	}
+
+	public static <T extends MemoryData> T addCreatedMemory(T memory) {
+		if (getDefault() != null) {
+			getDefault().getCreatedMemory().add(memory);
+		}
+
+		return memory;
 	}
 }
 

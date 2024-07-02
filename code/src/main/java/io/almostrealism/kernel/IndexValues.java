@@ -14,11 +14,14 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.kernel;
+
+import io.almostrealism.expression.Expression;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class IndexValues {
 	private Integer kernelIndex;
@@ -83,11 +86,17 @@ public class IndexValues {
 		return exp;
 	}
 
+	public static IndexValues of(Index... indices) {
+		return of(Stream.of(indices));
+	}
+
 	public static IndexValues of(Collection<Index> indices) {
+		return of(indices.stream());
+	}
+
+	public static IndexValues of(Stream<Index> indices) {
 		IndexValues values = new IndexValues();
-		indices.stream()
-				.filter(idx -> !(idx instanceof KernelIndex))
-				.forEach(idx -> values.addIndex(idx.getName(), 0));
+		indices.forEach(idx -> values.put(idx, 0));
 		return values;
 	}
 }

@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -65,7 +66,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
 	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {
@@ -80,14 +81,14 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (p instanceof Computation) {
-			((Computation) p).prepareScope(manager);
+			((Computation) p).prepareScope(manager, context);
 		}
 	}
 
 	@Override
-	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
+	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }

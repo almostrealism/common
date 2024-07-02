@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -28,16 +30,22 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Objects;
 
 public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
+				OperationInfo,
 				CollectionFeatures {
 	private Shape value;
 
 	public CollectionProviderProducer(Shape value) {
 		this.value = value;
+	}
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return new OperationMetadata(OperationInfo.name(value), "Provided collection",
+				"Provide a collection " + value.getShape().toStringDetail());
 	}
 
 	@Override
