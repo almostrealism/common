@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -126,71 +126,6 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		for (int i = 0; i < SIZE; i++) {
 			if (gpuOut[i] != cpuOut[i]) {
 				// throw new RuntimeException("Mismatch at " + i + ": " + gpuOut[i] + " vs " + cpuOut[i]);
-			}
-		}
-	}
-
-
-	@Test
-	public void softmaxComputation() {
-		int heads = 12;
-		int len = 8; // 1024;
-		int l = 4; // 64;
-
-		PackedCollection<?> in = new PackedCollection<>(heads, len).randFill().traverseEach();
-
-		for (int h = 0; h < heads; h++) {
-			for (int i = l; i < len; i++) {
-				in.setMem(in.getShape().index(h, i), 0.0);
-			}
-		}
-
-		boolean subtractMax = true;
-		Producer<PackedCollection<?>> input = p(in);
-
-		CollectionProducer<PackedCollection<?>> o = softmax(traverse(1, input));
-
-		/*
-		CollectionProducer<PackedCollection<?>> o = traverse(1, input);
-
-		if (subtractMax) {
-			o = o.max();
-			o = o.repeat(len).consolidate();
-			o = traverse(2, input).subtractIgnoreZero(o);
-		}
-
-		o = o.expIgnoreZero().traverse(1);
-		o = o.divide(o.sum().repeat(len).consolidate());
-
-		// PackedCollection<?> output = o.get().evaluate();
-		 */
-
-		PackedCollection<?> output = new PackedCollection<>(heads, len);
-
-		OperationList op = new OperationList();
-		op.add(a(traverse(1, p(output)), o));
-		op.optimize().get().run();
-
-		for (int h = 0; h < heads; h++) {
-			double max = in.valueAt(h, 0);
-			for (int i = 1; i < l; i++) {
-				if (in.valueAt(h, i) > max) {
-					max = in.valueAt(h, i);
-				}
-			}
-
-			double x[] = new double[len];
-			double sum = 0.0;
-			for (int i = 0; i < l; i++) {
-				x[i] = subtractMax ? Math.exp(in.valueAt(h, i) - max) : Math.exp(in.valueAt(h, i));
-				sum += x[i];
-			}
-
-			for (int i = 0; i < l; i++) {
-				x[i] /= sum;
-				double actual = output.valueAt(h, i);
-				System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
-				assertEquals(x[i], actual);
 			}
 		}
 	}

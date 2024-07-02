@@ -36,16 +36,18 @@ public class NegativeLogLikelihood implements LossProvider {
 			Evaluable<PackedCollection<?>> valid = target.get();
 
 			return args -> {
-				PackedCollection<?> o = out.evaluate(args);
-				PackedCollection<?> v = valid.evaluate(args);
+				double o[] = out.evaluate(args).toArray();
+				int idx = valid.evaluate(args).argmax();
 
-				return PackedCollection.of(IntStream.range(0, o.getShape().getTotalSize()).mapToDouble(i -> {
-					if (i == v.argmax()) {
-						return -1.0;
+				PackedCollection grad = PackedCollection.of(IntStream.range(0, o.length).mapToDouble(i -> {
+					if (i == idx) {
+						return Math.exp(o[i]) - 1.0;
 					} else {
-						return 0.0;
+						return Math.exp(o[i]);
 					}
 				}).toArray());
+
+				return grad;
 			};
 		};
 	}

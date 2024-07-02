@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures {
 	static boolean large = true;
@@ -142,6 +143,8 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 	public void train() throws IOException {
 		if (!trainingTests) return;
 
+		int epochs = 10;
+
 		Model model = convolution2dModel(rows, cols, 3, 8, large ? 3 : 2, 2, true);
 		model.setLearningRate(0.001);
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
@@ -157,35 +160,50 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			data = loadDataset(imagesDir, outShape);
 		}
 
-		Collections.shuffle(data);
-		Dataset<PackedCollection<?>> all = Dataset.of(data);
-		List<Dataset<PackedCollection<?>>> split = all.split(0.8);
+		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("CNN " + cols + "x" + rows));
+		CompiledModel compiled = model.compile(profile);
 
-		optimize("convolution2d_" + rows * cols, model,
-				() -> split.get(0), () -> split.get(1),
-				10, data.size(), 0.05);
-	}
-
-	public void optimize(String name, Model model,
-						 Supplier<Dataset<?>> trainData,
-						 Supplier<Dataset<?>> testData,
-						 int epochs, int steps, double lossTarget) throws IOException {
-		OperationProfileNode profile = new OperationProfileNode("CNN " + cols + "x" + rows);
-		initKernelMetrics(profile);
+		StringBuilder results = new StringBuilder();
+		append(results, IntStream.range(0, epochs).toArray());
 
 		try {
-			CompiledModel compiled = model.compile(profile);
-			ModelOptimizer optimizer = new ModelOptimizer(compiled, trainData);
-			optimizer.setLossFunction(new NegativeLogLikelihood());
+			for (int i = 0; i < 10; i++) {
+				if (i > 0) compiled.reset();
 
-			for (int i = 0; i < epochs; i++) {
-				train(name, optimizer, 1, steps, lossTarget);
-				validate(compiled, testData);
+				Collections.shuffle(data);
+				Dataset<PackedCollection<?>> all = Dataset.of(data);
+				List<Dataset<PackedCollection<?>>> split = all.split(0.8);
+
+				double accuracy[] =
+						optimize("convolution2d_" + rows * cols, compiled,
+								() -> split.get(0), () -> split.get(1),
+								10, data.size(), 0.05);
+				append(results, accuracy);
 			}
 		} finally {
 			logKernelMetrics(profile);
 			profile.save("results/logs/cnn_" + cols + "x" + rows + ".xml");
 		}
+
+		System.out.println();
+		System.out.println(results);
+	}
+
+	public double[] optimize(String name, CompiledModel model,
+						 Supplier<Dataset<?>> trainData,
+						 Supplier<Dataset<?>> testData,
+						 int epochs, int steps, double lossTarget) throws IOException {
+		double accuracy[] = new double[epochs];
+
+		ModelOptimizer optimizer = new ModelOptimizer(model, trainData);
+		optimizer.setLossFunction(new NegativeLogLikelihood());
+
+		for (int i = 0; i < epochs; i++) {
+			train(name, optimizer, 1, steps, lossTarget);
+			accuracy[i] = validate(model, testData);
+		}
+
+		return accuracy;
 	}
 
 	public void train(String name, ModelOptimizer optimizer,
@@ -201,9 +219,26 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 	}
 
-	public void validate(CompiledModel model, Supplier<Dataset<?>> data) {
+	public double validate(CompiledModel model, Supplier<Dataset<?>> data) {
 		ModelOptimizer optimizer = new ModelOptimizer(model, data);
 		double accuracy = optimizer.accuracy((expected, actual) -> expected.argmax() == actual.argmax());
 		log("Accuracy: " + accuracy);
+		return accuracy;
+	}
+
+	protected static void append(StringBuilder buf, int values[]) {
+		for (int i = 0; i < values.length; i++) {
+			buf.append(values[i]);
+			buf.append(",");
+		}
+		buf.append("\n");
+	}
+
+	protected static void append(StringBuilder buf, double values[]) {
+		for (int i = 0; i < values.length; i++) {
+			buf.append(values[i]);
+			buf.append(",");
+		}
+		buf.append("\n");
 	}
 }

@@ -19,6 +19,8 @@ public class CompiledModel implements CodeFeatures {
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
 
+	private Runnable setup;
+
 	private Consumer<PackedCollection<?>> updateInput;
 	private Supplier<PackedCollection<?>> retrieveOutput;
 	private Runnable forward;
@@ -28,7 +30,7 @@ public class CompiledModel implements CodeFeatures {
 	private Runnable backward;
 
 	protected CompiledModel(TraversalPolicy inputShape, TraversalPolicy outputShape,
-							Consumer<PackedCollection<?>> updateInput,
+							Runnable setup, Consumer<PackedCollection<?>> updateInput,
 							Supplier<PackedCollection<?>> retrieveOutput,
 							Runnable forward,
 							Consumer<PackedCollection<?>> updateGradient,
@@ -36,6 +38,7 @@ public class CompiledModel implements CodeFeatures {
 							Runnable backward) {
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
+		this.setup = setup;
 		this.updateInput = updateInput;
 		this.retrieveOutput = retrieveOutput;
 		this.forward = forward;
@@ -60,6 +63,10 @@ public class CompiledModel implements CodeFeatures {
 		return retrieveGradient == null ? null : retrieveGradient.get();
 	}
 
+	public void reset() {
+		setup.run();
+	}
+
 	public static CompiledModel compile(Model model) {
 		return compile(model, true, null);
 	}
@@ -69,7 +76,7 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model, boolean backprop, OperationProfile profile) {
-		Process.optimized(model.setup()).get().run();
+		Runnable setup = Process.optimized(model.setup()).get();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
@@ -105,8 +112,13 @@ public class CompiledModel implements CodeFeatures {
 		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
 		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
-		return new CompiledModel(in.getShape(), grad.getShape(), in, () -> output,
-									p.get(), grad, gradOut == null ? null : () -> gradOut, q == null ? null : q.get());
+		CompiledModel compiled = new CompiledModel(in.getShape(), grad.getShape(),
+				setup, in,
+				() -> output, p.get(), grad,
+				gradOut == null ? null : () -> gradOut,
+				q == null ? null : q.get());
+		compiled.reset();
+		return compiled;
 	}
 
 	protected static class InputManager implements Consumer<PackedCollection<?>>,
