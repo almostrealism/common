@@ -67,7 +67,7 @@ public interface TraversableExpression<T> extends Computable, ExpressionFeatures
 
 		ExpressionMatrix<T> values = indices.apply(this::getValueAt);
 		if (values == null) {
-			warn("Unable to create ExpressionMatrix for " + this);
+			// warn("Unable to create ExpressionMatrix for " + this);
 			return null;
 		}
 
