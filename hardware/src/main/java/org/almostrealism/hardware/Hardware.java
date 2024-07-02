@@ -397,7 +397,7 @@ public final class Hardware {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 0;
+			return 1024;
 		}
 	}
 
