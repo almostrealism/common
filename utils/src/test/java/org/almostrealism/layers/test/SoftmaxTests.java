@@ -19,6 +19,7 @@ package org.almostrealism.layers.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -95,13 +96,22 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void logSoftmaxDelta() {
+		logSoftmaxDelta(false);
+	}
+
+	@Test
+	public void logSoftmaxDeltaOptimized() {
+		logSoftmaxDelta(true);
+	}
+
+	protected void logSoftmaxDelta(boolean optimize) {
 		PackedCollection<?> input = new PackedCollection(4).fill(2.0);
 
 		CollectionProducer<PackedCollection<?>> softmax = cp(input).traverse(1).subtract(
 				cp(input).traverse(1).exp().traverse(0).sum().log());
 		CollectionProducer<PackedCollection<?>> delta = softmax.delta(cp(input));
 
-		PackedCollection<?> result = delta.get().evaluate();
+		PackedCollection<?> result = (optimize ? Process.optimized(delta) : delta).get().evaluate();
 		result.print();
 
 		for (int i = 0; i < 4; i++) {
