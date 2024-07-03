@@ -41,9 +41,9 @@ public class NegativeLogLikelihood implements LossProvider {
 
 				PackedCollection grad = PackedCollection.of(IntStream.range(0, o.length).mapToDouble(i -> {
 					if (i == idx) {
-						return Math.exp(o[i]) - 1.0;
+						return -1.0;
 					} else {
-						return Math.exp(o[i]);
+						return 0.0;
 					}
 				}).toArray());
 

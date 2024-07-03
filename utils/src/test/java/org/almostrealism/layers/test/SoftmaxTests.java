@@ -16,21 +16,30 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.PropagationCell;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -139,11 +148,51 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	}
 
 	@Test
-	public void logSoftmaxBackwards() {
-		PackedCollection<?> input = new PackedCollection(10).fill(0.1);
-		// IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
+	public void logSoftmaxBackwards1() {
+		int size = 2;
 
-		PackedCollection<?> gradient = new PackedCollection<>(10);
+		PackedCollection<?> input = new PackedCollection(size);
+		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+
+		PackedCollection<?> gradient = new PackedCollection<>(size).fill(0.0, -1.0);
+
+		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+
+		double tot = input.doubleStream().map(Math::exp).sum();
+
+		double result[] = new double[size];
+
+		CellularLayer layer = logSoftmax(size);
+		layer.getBackward().setReceptor(grad -> () -> {
+			Evaluable<PackedCollection<?>> gr = grad.get();
+
+			return () -> {
+				PackedCollection<?> out = gr.evaluate();
+				out.print();
+
+				out.getMem(0, result, 0, result.length);
+			};
+		});
+		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		layer.getBackward().push(p(gradient)).get().run();
+
+		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
+		expected[1] -= 1.0;
+
+		for (int i = 0; i < result.length; i++) {
+			Assert.assertEquals(expected[i], result[i], 1e-5);
+		}
+	}
+
+	@Test
+	public void logSoftmaxBackwards2() {
+		int size = 10;
+
+		PackedCollection<?> input = new PackedCollection(size);
+		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+
+		PackedCollection<?> gradient = new PackedCollection<>(size);
 		gradient.setMem(3, 1.0);
 
 		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
@@ -153,7 +202,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double result[] = new double[10];
 
-		CellularLayer layer = logSoftmax(10);
+		CellularLayer layer = logSoftmax(size);
 		layer.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
@@ -167,11 +216,58 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		((PropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, 10).mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot).toArray();
+		double expected[] = IntStream.range(0, size).mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot).toArray();
 		expected[gradient.argmax()] += 1.0;
 
 		for (int i = 0; i < result.length; i++) {
 			Assert.assertEquals(expected[i], result[i], 1e-5);
+		}
+	}
+
+	@Test
+	public void logSoftmaxModel() throws IOException {
+		int size = 2;
+
+		PackedCollection<?> input = new PackedCollection(size);
+		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+
+		PackedCollection<?> gradient = new PackedCollection<>(size).fill(0.0, -1.0);
+
+		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+
+		double result[] = new double[size];
+
+		Model model = new Model(shape(size));
+		model.addLayer(new DefaultCellularLayer("blank", shape(2),
+				Cell.of((in, next) -> next.push(in)),
+				Cell.of((grad, next) -> () -> {
+					Evaluable<PackedCollection<?>> gr = grad.get();
+
+					return () -> {
+						PackedCollection<?> out = gr.evaluate();
+						out.print();
+
+						out.getMem(0, result, 0, result.length);
+					};
+				})));
+		model.addLayer(logSoftmax(size));
+
+		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("logSoftmaxModel"));
+		try {
+			CompiledModel compiled = model.compile(profile);
+			compiled.forward(input);
+			compiled.backward(gradient);
+
+			double tot = input.doubleStream().map(Math::exp).sum();
+			double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
+			expected[1] -= 1.0;
+
+			for (int i = 0; i < result.length; i++) {
+				Assert.assertEquals(expected[i], result[i], 1e-5);
+			}
+		} finally {
+			profile.save("results/logs/logSoftmaxModel.xml");
 		}
 	}
 

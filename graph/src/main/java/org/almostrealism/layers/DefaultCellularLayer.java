@@ -77,6 +77,13 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public DefaultCellularLayer(String name,
 								TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward,
+								Cell<PackedCollection<?>> backward) {
+		this(name, outputShape, forward, backward, Collections.emptyList(), new OperationList());
+	}
+
+	public DefaultCellularLayer(String name,
+								TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward,
 								Cell<PackedCollection<?>> backward,
 								List<PackedCollection<?>> weights,
 								Supplier<Runnable> setup) {

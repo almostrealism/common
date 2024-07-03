@@ -35,6 +35,7 @@ import java.util.stream.Stream;
 
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
 
+	public static boolean verbose = false;
 	public static boolean enableDiagnosticGrad = false;
 	public static boolean enableDiagnosticWeight = false;
 
@@ -66,7 +67,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
-		if (next == null) {
+		if (next == null && verbose) {
 			log("Gradient will not be computed for " + getName() +
 					" because there is no provided Receptor");
 		}
