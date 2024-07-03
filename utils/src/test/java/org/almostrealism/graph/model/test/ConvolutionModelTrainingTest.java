@@ -20,9 +20,8 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
-import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.model.CompiledModel;
@@ -61,8 +60,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 
 		if (TestUtils.getTrainTests()) {
-			NativeCompiler.enableLargeInstructionSetMonitoring = true;
-			MetalProgram.enableLargeProgramMonitoring = true;
+			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));

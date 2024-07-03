@@ -83,7 +83,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (matchInput(this, target) == process) return process;
+		if (matchingInputs(this, target).contains(process)) return process;
 		return super.optimize(ctx, process);
 	}
 

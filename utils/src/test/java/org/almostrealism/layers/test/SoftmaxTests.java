@@ -16,7 +16,6 @@
 
 package org.almostrealism.layers.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
@@ -24,7 +23,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
@@ -40,7 +38,6 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 

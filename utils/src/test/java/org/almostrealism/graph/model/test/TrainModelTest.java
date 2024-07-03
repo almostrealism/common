@@ -54,8 +54,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	static {
 		if (TestUtils.getTrainTests()) {
-			NativeCompiler.enableLargeInstructionSetMonitoring = true;
-			MetalProgram.enableLargeProgramMonitoring = true;
+			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 

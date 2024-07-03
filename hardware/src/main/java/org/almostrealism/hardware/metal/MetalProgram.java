@@ -21,6 +21,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -31,8 +32,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures {
-	public static boolean enableProgramMonitoring = false;
-	public static boolean enableLargeProgramMonitoring = false;
 
 	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");
 
@@ -60,7 +59,7 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 	public MTLFunction getFunction() { return function; }
 
 	public void compile() {
-		if (enableProgramMonitoring || (enableLargeProgramMonitoring && src.length() > 10000)) {
+		if (HardwareOperator.enableInstructionSetMonitoring || (HardwareOperator.enableLargeInstructionSetMonitoring && src.length() > 10000)) {
 			String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {

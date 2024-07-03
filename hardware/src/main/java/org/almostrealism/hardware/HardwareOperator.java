@@ -35,6 +35,9 @@ import java.util.stream.IntStream;
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
+	public static boolean enableInstructionSetMonitoring = false;
+	public static boolean enableLargeInstructionSetMonitoring = false;
+
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 

@@ -143,8 +143,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 		return (ComputationBase<T, T, Evaluable<T>>) producer.generate(newInputs);
 	}
 
-	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
-		if (!(producer instanceof ComputationBase)) return null;
+	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
+		if (!(producer instanceof ComputationBase)) return Collections.emptyList();
 
 		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
 		List<Producer<T>> matched = new ArrayList<>();
@@ -155,6 +155,12 @@ public interface DeltaFeatures extends MatrixFeatures {
 				matched.add((Producer<T>) input);
 			}
 		}
+
+		return matched;
+	}
+
+	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
+		List<Producer<T>> matched = matchingInputs(producer, target);
 
 		if (matched.size() == 1) {
 			return matched.get(0);
