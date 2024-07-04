@@ -23,6 +23,7 @@ import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.Random;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
@@ -131,9 +132,15 @@ public interface LayerFeatures extends MatrixFeatures {
 								.repeat(outputShape.length(0)).traverse(2))
 						.traverse()
 						.sum();
+
+		OperationList setup = new OperationList();
+		Random randn = randn(filterShape);
+		setup.add(() -> randn::refresh);
+		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+
 		return layer("convolution2d", inputShape, outputShape,
 				operator, List.of(filters),
-				a(p(filters.each()), divide(randn(filterShape).traverseEach(), c(size * size).traverse(0))),
+				setup,
 				requirements);
 	}
 
@@ -189,11 +196,19 @@ public interface LayerFeatures extends MatrixFeatures {
 		Factor<PackedCollection<?>> operator = input ->
 				bias ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
 
+		OperationList setup = new OperationList();
+		if (init) {
+			Random randn = randn(weightShape);
+			setup.add(() -> randn::refresh);
+			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).all())));
+			if (bias) {
+				setup.add(a(p(biases.each()), c(0.0)));
+			}
+		}
+
 		return layer("dense " + size, shape(size), shape(nodes),
 				operator, bias ? List.of(weights, biases) : List.of(weights),
-				init ?
-						a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()))
-						: new OperationList(),
+				setup,
 				requirements);
 	}
 
