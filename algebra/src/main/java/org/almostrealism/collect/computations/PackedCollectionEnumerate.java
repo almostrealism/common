@@ -163,6 +163,6 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		return new TraversalPolicy(dims);
+		return new TraversalPolicy(true, dims);
 	}
 }

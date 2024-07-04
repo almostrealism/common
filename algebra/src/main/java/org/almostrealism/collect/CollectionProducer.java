@@ -28,10 +28,25 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducerBase<T, CollectionProducer<T>>,
-		Shape<CollectionProducer<T>>, DeltaFeatures {
+		DeltaFeatures {
+
+	@Override
+	default CollectionProducer<T> reshape(int... dims) {
+		int inf[] = IntStream.range(0, dims.length).filter(i -> dims[i] < 0).toArray();
+		if (inf.length > 1) throw new IllegalArgumentException("Only one dimension can be inferred");
+		if (inf.length == 1) {
+			TraversalPolicy shape = shape(this);
+			int tot = shape.getTotalSize();
+			int known = IntStream.of(dims).filter(i -> i >= 0).reduce(1, (a, b) -> a * b);
+			return reshape(IntStream.range(0, dims.length).map(i -> i == inf[0] ? tot / known : dims[i]).toArray());
+		}
+
+		return CollectionProducerBase.super.reshape(dims);
+	}
 
 	@Override
 	CollectionProducer<T> traverse(int axis);
@@ -203,6 +218,30 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean(int axis) {
+		return mean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean() {
+		return mean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(int axis) {
+		return subtractMean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean() {
+		return subtractMean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance(int axis) {
+		return variance(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance() {
+		return variance((Producer) this);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid() {

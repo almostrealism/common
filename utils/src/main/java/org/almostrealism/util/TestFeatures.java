@@ -79,7 +79,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	private static void assertEquals(double a, double b, boolean positive) {
 //		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
 //		double fallbackGap = Math.pow(10, -3);
-		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon();
+		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
 
 		if (Math.abs(a - b) >= gap) {
@@ -106,16 +106,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			HardwareOperator.verboseLog(() -> {
-				System.out.println("TestFeatures: Running kernel evaluation...");
-				Producer<PackedCollection<?>> p = supply.get();
-				PackedCollection<?> output = p.get().evaluate();
-				System.out.println("TestFeatures: Output Shape = " + output.getShape() +
-						" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
-				System.out.println("TestFeatures: Validating kernel output...");
-				validate.accept(output);
-				outputRef.set(output);
-			});
+			System.out.println("TestFeatures: Running kernel evaluation...");
+			Producer<PackedCollection<?>> p = supply.get();
+			PackedCollection<?> output = p.get().evaluate();
+			System.out.println("TestFeatures: Output Shape = " + output.getShape() +
+					" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
+			System.out.println("TestFeatures: Validating kernel output...");
+			validate.accept(output);
+			outputRef.set(output);
 		} else {
 			outputRef.set(new PackedCollection<>(shape(supply.get())));
 		}
@@ -123,16 +121,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (operation) {
 			outputRef.get().clear();
 
-			HardwareOperator.verboseLog(() -> {
-				PackedCollection<?> output = outputRef.get();
+			PackedCollection<?> output = outputRef.get();
 
-				System.out.println("TestFeatures: Running kernel operation...");
-				OperationList op = new OperationList();
-				op.add(output.getAtomicMemLength(), supply.get(), p(output));
-				op.get().run();
-				System.out.println("TestFeatures: Validating kernel output...");
-				validate.accept(output);
-			});
+			System.out.println("TestFeatures: Running kernel operation...");
+			OperationList op = new OperationList();
+			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.get().run();
+			System.out.println("TestFeatures: Validating kernel output...");
+			validate.accept(output);
 		}
 
 		if (optimized) {

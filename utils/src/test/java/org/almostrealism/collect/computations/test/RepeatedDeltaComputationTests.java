@@ -118,7 +118,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
 				.reshape(2, 4);
-		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), shape(0, 1).traverse(), c) {
+		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), c) {
 			@Override
 			public Expression getValueAt(Expression index) {
 				return getTraversableArguments(index)[1].getValueAt(index.imod(2).multiply(4).add(index.divide(2)));
@@ -186,7 +186,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> in = new PackedCollection<>(10);
 
 		CollectionProducer<PackedCollection<?>> id = cp(new PackedCollection<>(10, 10));
-		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), shape(0, 1).traverse(), id) {
+		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), id) {
 			@Override
 			public Expression getValueAt(Expression index) {
 				// return super.getValueAt(index);

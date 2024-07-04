@@ -418,8 +418,8 @@ public abstract class Expression<T> implements
 
 	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }
 
-	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
-	public Expression<Double> exp() { return Exp.of((Expression) this); }
+	public Expression<Double> pow(Expression<Double> operand) { return Exponent.of((Expression) this, operand); }
+	public Expression<Double> exp() { return Exp.of(this); }
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;

@@ -17,11 +17,16 @@
 package org.almostrealism.model;
 
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.Component;
+
+import java.util.function.Supplier;
 
 public interface Block extends Component, Setup {
 	TraversalPolicy getInputShape();
@@ -29,6 +34,14 @@ public interface Block extends Component, Setup {
 	Cell<PackedCollection<?>> getForward();
 
 	Cell<PackedCollection<?>> getBackward();
+
+	default Runnable forward(PackedCollection<?> input) {
+		return getForward().push(CollectionFeatures.getInstance().cp(input)).get();
+	}
+
+	default Supplier<Runnable> forward(Producer<PackedCollection<?>> input) {
+		return getForward().push(input);
+	}
 
 	default <T extends Block> T append(T l) {
 		append(l.getForward());
@@ -45,5 +58,11 @@ public interface Block extends Component, Setup {
 	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {
 		getForward().setReceptor(next);
 		return next;
+	}
+
+	default CollectionReceptor andThen(PackedCollection<?> destination) {
+		CollectionReceptor r = new CollectionReceptor(destination);
+		getForward().setReceptor(r);
+		return r;
 	}
 }

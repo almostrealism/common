@@ -31,7 +31,7 @@ public class Epsilon extends StaticReference<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon());
+		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon(true));
 	}
 
 	@Override

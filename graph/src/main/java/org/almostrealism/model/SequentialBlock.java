@@ -14,6 +14,7 @@ import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class SequentialBlock implements Block, Learning, LayerFeatures {
@@ -58,6 +59,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			if (b instanceof Learning)
 				((Learning) b).setLearningRate(learningRate);
 		});
+	}
+
+	public <T extends Block> T add(Function<TraversalPolicy, T> factory) {
+		return add(factory.apply(getOutputShape()));
 	}
 
 	public <T extends Block> T add(T block) {

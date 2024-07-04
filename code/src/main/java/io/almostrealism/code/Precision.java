@@ -46,13 +46,17 @@ public enum Precision {
 	}
 
 	public double epsilon() {
+		return epsilon(false);
+	}
+
+	public double epsilon(boolean strict) {
 		switch (this) {
 			case FP16:
-				return 0.0009765625;
+				return strict ? 0.0009765625 : 1e-4;
 			case FP32:
-				return 1.1920928955078125e-7;
+				return strict ? 1.1920928955078125e-7 : 1e-5;
 			case FP64:
-				return 2.220446049250313e-16;
+				return strict ? 2.220446049250313e-16 : 1e-10;
 			default:
 				throw new RuntimeException("Unknown precision");
 		}

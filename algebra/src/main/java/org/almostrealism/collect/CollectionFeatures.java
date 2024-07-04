@@ -787,6 +787,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return sum;
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean(Producer<T> input) {
+		return sum(input).divide(c(shape(input).getSize()));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(Producer<T> input) {
+		Producer<T> mean = mean(input);
+		return subtract(input, mean);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance(Producer<T> input) {
+		return mean(sq(subtractMean(input)));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid(Producer<T> input) {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}

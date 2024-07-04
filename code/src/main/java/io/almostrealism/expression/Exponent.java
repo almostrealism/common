@@ -20,6 +20,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
@@ -88,5 +89,18 @@ public class Exponent extends Expression<Double> {
 		}
 
 		return (Expression<Double>) flat;
+	}
+
+	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
+		OptionalDouble exponentValue = exponent.doubleValue();
+		if (exponentValue.isPresent()) {
+			if (exponentValue.getAsDouble() == 0.0) {
+				return new DoubleConstant(1.0);
+			} else if (exponentValue.getAsDouble() == 1.0) {
+				return base;
+			}
+		}
+
+		return new Exponent(base, exponent);
 	}
 }

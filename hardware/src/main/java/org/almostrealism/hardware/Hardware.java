@@ -295,7 +295,7 @@ public final class Hardware {
 		Precision precision = Precision.FP64;
 
 		for (DataContext c : contexts) {
-			if (c.getPrecision().epsilon() > precision.epsilon()) {
+			if (c.getPrecision().epsilon(true) > precision.epsilon(true)) {
 				precision = c.getPrecision();
 			}
 		}

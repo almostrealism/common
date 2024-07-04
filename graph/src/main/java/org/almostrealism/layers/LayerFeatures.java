@@ -27,6 +27,7 @@ import org.almostrealism.collect.computations.Random;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
@@ -303,6 +304,25 @@ public interface LayerFeatures extends MatrixFeatures {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
 
+	default CellularLayer norm(int groups,
+							   PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   ComputeRequirement... requirements) {
+		TraversalPolicy shape = weights.getShape();
+		if (shape.getDimensions() != 1 || !shape.equals(biases.getShape()))
+			throw new IllegalArgumentException();
+
+		int size = shape.getTotalSize();
+
+		return layer("norm", shape, shape, input -> {
+			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+			CollectionProducer<?> in = c(input).reshape(-1, groups, size / groups);
+			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
+			// return (CollectionProducer) out.reshape(-1, size);
+			return out.reshape(-1, size).multiply(cp(weights)).add(cp(biases));
+		}, List.of(weights), requirements);
+	}
+
 	default CellularLayer rmsnorm(int size) {
 		return rmsnorm(new PackedCollection<>(shape(size)));
 	}
@@ -314,12 +334,6 @@ public interface LayerFeatures extends MatrixFeatures {
 
 		int size = shape.getTotalSize();
 
-//		return layer("rmsnorm", shape, shape, Cell.of((input, next) -> {
-//			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
-//			ss = ss.divide(c(size)).add(c(1e-5));
-//			ss = c(1.0).divide(ss.pow(c(0.5)));
-//			return next == null ? new OperationList() : next.push(multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss));
-//		}), null, List.of(weights), requirements);
 		return layer("rmsnorm", shape, shape, input -> {
 			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
