@@ -93,7 +93,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		return new CollectionReceptor(dest, pos);
 	}
 
-	default Function<TraversalPolicy, Block> flatten() {
+	default Function<TraversalPolicy, Block> flattened() {
 		return shape -> {
 			TraversalPolicy outputShape = shape.flatten();
 			return new DefaultBlock(shape, outputShape,
@@ -304,23 +304,54 @@ public interface LayerFeatures extends MatrixFeatures {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> norm(int groups, ComputeRequirement... requirements) {
+		return shape -> norm(shape, groups, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
+		return norm(shape, groups,
+				new PackedCollection<>(shape.getTotalSize()),
+				new PackedCollection<>(shape.getTotalSize()),
+				true, requirements);
+	}
+
 	default CellularLayer norm(int groups,
 							   PackedCollection<?> weights,
 							   PackedCollection<?> biases,
 							   ComputeRequirement... requirements) {
-		TraversalPolicy shape = weights.getShape();
-		if (shape.getDimensions() != 1 || !shape.equals(biases.getShape()))
+		return norm(groups, weights, biases, false, requirements);
+	}
+
+	default CellularLayer norm(int groups, PackedCollection<?> weights, PackedCollection<?> biases, boolean init, ComputeRequirement... requirements) {
+		return norm(shape(weights), groups, weights, biases, init, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int groups,
+							   PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   boolean init,
+							   ComputeRequirement... requirements) {
+		int size = shape.getTotalSize();
+
+		if (shape(weights).getTotalSize() != size ||
+				shape(biases).getTotalSize() != size)
 			throw new IllegalArgumentException();
 
-		int size = shape.getTotalSize();
+		PackedCollection<?> w = weights.flatten();
+		PackedCollection<?> b = biases.flatten();
+
+		OperationList setup = new OperationList();
+		if (init) {
+			setup.add(a(p(weights.each()), c(1)));
+			setup.add(a(p(biases.each()), c(0.0)));
+		}
 
 		return layer("norm", shape, shape, input -> {
 			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 			CollectionProducer<?> in = c(input).reshape(-1, groups, size / groups);
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
-			// return (CollectionProducer) out.reshape(-1, size);
-			return out.reshape(-1, size).multiply(cp(weights)).add(cp(biases));
-		}, List.of(weights), requirements);
+			return out.reshape(-1, size).multiply(cp(w)).add(cp(b));
+		}, List.of(weights, biases), setup, requirements);
 	}
 
 	default CellularLayer rmsnorm(int size) {

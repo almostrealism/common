@@ -335,7 +335,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
 		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
+		model.addBlock(flattened());
 		model.addLayer(dense(denseSize));
 		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");

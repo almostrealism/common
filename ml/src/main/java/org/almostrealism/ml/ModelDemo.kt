@@ -14,7 +14,7 @@ class ModelDemo : CodeFeatures {
         val model = Model(inputShape)
         model.addLayer(convolution2d(3, 8))
         model.addLayer(pool2d(2))
-        model.addBlock(flatten())
+        model.addBlock(flattened())
         model.addLayer(dense(10))
         model.addLayer(softmax())
         return model

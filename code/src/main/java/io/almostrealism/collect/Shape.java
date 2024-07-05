@@ -25,6 +25,10 @@ public interface Shape<T> extends Traversable<T> {
 
 	T reshape(TraversalPolicy shape);
 
+	default T flatten() {
+		return reshape(getShape().getTotalSize());
+	}
+
 	default T each() {
 		return traverseEach();
 	}

@@ -19,20 +19,29 @@ package org.almostrealism.model;
 import org.almostrealism.CodeFeatures;
 
 public interface ModelFeatures extends CodeFeatures {
-	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
-		return convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize, false);
+	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+									 int denseSize) {
+		return convolution2dModel(r, c, convSize, convFilters, convLayers,
+				-1, denseSize);
 	}
 
 	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
-									 int denseSize, boolean logSoftmax) {
+									 int groups, int denseSize) {
+		return convolution2dModel(r, c, convSize, convFilters, convLayers,
+				groups, denseSize, false);
+	}
+
+	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+									 int groups, int denseSize, boolean logSoftmax) {
 		Model model = new Model(shape(r, c));
 
 		for (int i = 0; i < convLayers; i++) {
 			model.addLayer(convolution2d(convSize, convFilters));
+			if (groups > 0) model.addLayer(norm(groups));
 			model.addLayer(pool2d(2));
 		}
 
-		model.addBlock(flatten());
+		model.addBlock(flattened());
 		model.addLayer(dense(denseSize));
 		model.addLayer(logSoftmax ? logSoftmax() : softmax());
 		return model;
