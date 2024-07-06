@@ -32,6 +32,7 @@ import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -72,6 +73,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	public PackedCollection(TraversalPolicy shape) {
 		this(shape, shape.getTraversalAxis(), null, 0);
+	}
+
+	public PackedCollection(PackedCollection<T> src) {
+		this(src.getShape(), src.getShape().getTraversalAxis(), src.supply);
+		new MemoryDataCopy("PackedCollection constructor", src, this).get().run();
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis) {
@@ -153,6 +159,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 				.mapToObj(DefaultTraversalOrdering::new)
 				.findFirst()
 				.orElseGet(DefaultTraversalOrdering::new);
+	}
+
+	public double toDouble() {
+		if (getShape().getTotalSizeLong() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return toDouble(0);
 	}
 
 	@Override

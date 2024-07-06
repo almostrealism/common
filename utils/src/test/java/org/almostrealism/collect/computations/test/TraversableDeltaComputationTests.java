@@ -184,8 +184,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void power1() {
-		HardwareOperator.enableInstructionSetMonitoring = true;
-
 		int dim = 3;
 
 		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()

@@ -328,7 +328,17 @@ public interface LayerFeatures extends MatrixFeatures {
 	}
 
 	default CellularLayer norm(int groups, PackedCollection<?> weights, PackedCollection<?> biases, boolean init, ComputeRequirement... requirements) {
-		return norm(shape(weights), groups, weights, biases, init, requirements);
+		TraversalPolicy shape;
+
+		if (weights != null) {
+			shape = shape(weights);
+		} else if (biases != null) {
+			shape = shape(biases);
+		} else {
+			throw new IllegalArgumentException();
+		}
+
+		return norm(shape, groups, weights, biases, init, requirements);
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups,
@@ -338,9 +348,10 @@ public interface LayerFeatures extends MatrixFeatures {
 							   ComputeRequirement... requirements) {
 		int size = shape.getTotalSize();
 
-		if ((weights != null && shape(weights).getTotalSize() != size ||
-				biases != null && shape(biases).getTotalSize() != size))
+		if ((weights != null && shape(weights).getTotalSize() != size) ||
+				(biases != null && shape(biases).getTotalSize() != size)) {
 			throw new IllegalArgumentException();
+		}
 
 		List<PackedCollection<?>> prop = new ArrayList<>();
 		if (weights != null) prop.add(weights);
