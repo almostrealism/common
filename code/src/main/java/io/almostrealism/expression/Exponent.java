@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -62,6 +65,25 @@ public class Exponent extends Expression<Double> {
 		}
 
 		return new Exponent((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		Expression base = getChildren().get(0);
+		Expression exp = getChildren().get(1);
+
+		TraversalPolicy ts = target.getShape();
+
+		CollectionExpression baseDelta = base.delta(target);
+		CollectionExpression expDelta = exp.delta(target);
+
+		CollectionExpression self = new ConstantCollectionExpression(target.getShape(), this);
+		CollectionExpression logBase = new ConstantCollectionExpression(target.getShape(), base.log());
+		CollectionExpression ratio = new ConstantCollectionExpression(target.getShape(), exp.divide(base));
+
+		CollectionExpression term1 = product(ts, baseDelta, ratio);
+		CollectionExpression term2 = product(ts, expDelta, logBase);
+		return product(ts, self, sum(ts, term1, term2));
 	}
 
 	@Override

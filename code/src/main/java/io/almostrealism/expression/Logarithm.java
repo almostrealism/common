@@ -62,7 +62,7 @@ public class Logarithm extends Expression<Double> {
 		return quotient(target.getShape(), delta, u);
 	}
 
-	public static <T> Expression<T> of(Expression<Double> input) {
+	public static <T> Expression<T> of(Expression input) {
 		if (input instanceof Exp) {
 			return (Expression<T>) input.getChildren().get(0);
 		}

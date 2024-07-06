@@ -33,6 +33,7 @@ import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
@@ -309,9 +310,13 @@ public interface LayerFeatures extends MatrixFeatures {
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
+		return norm(shape, groups, true, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
 		return norm(shape, groups,
-				new PackedCollection<>(shape.getTotalSize()),
-				new PackedCollection<>(shape.getTotalSize()),
+				trainable ? new PackedCollection<>(shape.getTotalSize()) : null,
+				trainable ? new PackedCollection<>(shape.getTotalSize()) : null,
 				true, requirements);
 	}
 
@@ -333,25 +338,34 @@ public interface LayerFeatures extends MatrixFeatures {
 							   ComputeRequirement... requirements) {
 		int size = shape.getTotalSize();
 
-		if (shape(weights).getTotalSize() != size ||
-				shape(biases).getTotalSize() != size)
+		if ((weights != null && shape(weights).getTotalSize() != size ||
+				biases != null && shape(biases).getTotalSize() != size))
 			throw new IllegalArgumentException();
 
-		PackedCollection<?> w = weights.flatten();
-		PackedCollection<?> b = biases.flatten();
+		List<PackedCollection<?>> prop = new ArrayList<>();
+		if (weights != null) prop.add(weights);
+		if (biases != null) prop.add(biases);
+
+		PackedCollection<?> w = weights == null ? null : weights.flatten();
+		PackedCollection<?> b = biases == null ? null : biases.flatten();
 
 		OperationList setup = new OperationList();
 		if (init) {
-			setup.add(a(p(weights.each()), c(1)));
-			setup.add(a(p(biases.each()), c(0.0)));
+			if (w != null) setup.add(a(p(w.each()), c(1)));
+			if (b != null) setup.add(a(p(b.each()), c(0.0)));
 		}
 
 		return layer("norm", shape, shape, input -> {
 			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+
 			CollectionProducer<?> in = c(input).reshape(-1, groups, size / groups);
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
-			return out.reshape(-1, size).multiply(cp(w)).add(cp(b));
-		}, List.of(weights, biases), setup, requirements);
+			out = out.reshape(-1, size);
+
+			if (w != null) out = out.multiply(cp(w));
+			if (b != null) out = out.add(cp(b));
+			return (CollectionProducer) out;
+		}, prop, setup, requirements);
 	}
 
 	default CellularLayer rmsnorm(int size) {

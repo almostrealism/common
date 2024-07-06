@@ -274,7 +274,9 @@ public final class Hardware {
 		if (provider != null) {
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof NativeDataContext) {
-					System.out.println("Hardware[" + c.getName() + "]: Enabling shared memory via " + provider);
+					System.out.println("Hardware[" + c.getName() +
+							"]: Enabling shared memory via " +
+							provider.getClass().getSimpleName());
 					((NativeDataContext) c).setDelegate(sharedMemoryCtx);
 					((NativeDataContext) c).setMemoryProvider(provider);
 				}

@@ -23,12 +23,8 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -36,10 +32,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
-	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-	}
 
 	@Test
 	public void polynomial0() {
@@ -188,6 +180,55 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 			PackedCollection<?> dout = dy.evaluate(v);
 			System.out.println(Arrays.toString(dout.toArray(0, 4 * dim)));
 		});
+	}
+
+	@Test
+	public void power1() {
+		HardwareOperator.enableInstructionSetMonitoring = true;
+
+		int dim = 3;
+
+		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()
+				.mapToDouble(d -> 1 + d / 2.0).toArray())
+				.reshape(4, dim).traverse();
+		PackedCollection<?> w = pack(4, 1, 2);
+		CollectionProducer<PackedCollection<?>> x = x(dim);
+
+		// x^3 + w^x + 1
+		CollectionProducer<PackedCollection<?>> c = x.pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(v);
+		out.print();
+
+		for (int n = 0; n < 4; n++) {
+			for (int i = 0; i < dim; i++) {
+				assertEquals(Math.pow(v.valueAt(n, i), 3) +
+								Math.pow(w.valueAt(i), v.valueAt(n, i)) + 1,
+						out.toDouble(n * dim + i));
+			}
+		}
+
+		// dy = f'(x)
+		//    = 3x^2 + w^x * log(w)
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
+
+		for (int n = 0; n < 4; n++) {
+			for (int i = 0; i < dim; i++) {
+				for (int j = 0; j < dim; j++) {
+					if (i == j) {
+						assertEquals(3 * Math.pow(v.valueAt(n, i), 2) +
+										Math.pow(w.valueAt(i), v.valueAt(n, i)) * Math.log(w.valueAt(i)),
+								dout.valueAt(n, i, j));
+					} else {
+						assertEquals(0.0, dout.valueAt(n, i, j));
+					}
+				}
+			}
+		}
 	}
 
 	@Test

@@ -16,8 +16,10 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Process;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.CellularLayer;
@@ -37,8 +39,8 @@ public class NormTests implements LayerFeatures, TestFeatures {
 
 		in = in.reshape(groups, groupSize, v);
 		out = out.reshape(groups, groupSize, v);
-		weights = weights.reshape(groups, groupSize, v);
-		biases = biases.reshape(groups, groupSize, v);
+		weights = weights == null ? null : weights.reshape(groups, groupSize, v);
+		biases = biases == null ? null : biases.reshape(groups, groupSize, v);
 
 		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
@@ -67,7 +69,11 @@ public class NormTests implements LayerFeatures, TestFeatures {
 				for (int k = 0; k < v; k++) {
 					double d = in.valueAt(i, j, k) - mean;
 					double norm = d / Math.sqrt(variance + eps);
-					double o = norm * weights.valueAt(i, j, k) + biases.valueAt(i, j, k);
+
+					double o = norm;
+					if (weights != null) o = o * weights.valueAt(i, j, k);
+					if (biases != null) o = o + biases.valueAt(i, j, k);
+
 					assertEquals(o, out.valueAt(i, j, k));
 				}
 			}
@@ -75,7 +81,54 @@ public class NormTests implements LayerFeatures, TestFeatures {
 	}
 
 	@Test
+	public void normComputation() {
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+
+		int c = 12;
+		int v = 10;
+		int groups = 4;
+
+		TraversalPolicy shape = shape(c, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape.getTotalSize());
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
+					return input
+							.subtractMean(2)
+							.divide(input.variance(2).add(c(eps)).sqrt())
+							.reshape(-1, shape.getTotalSize());
+				},
+				output -> {
+					validate(groups, c / groups, v, o, output, null, null);
+				}, false, false, true);
+	}
+
+	@Test
 	public void normLayer() {
+//		int c = 20;
+//		int v = 10;
+
+		int c = 12;
+		int v = 10;
+		int groups = 4;
+
+		PackedCollection<?> in = new PackedCollection<>(shape(c, v)).randnFill();
+		PackedCollection<?> out = new PackedCollection<>(shape(c, v));
+
+		CellularLayer layer = norm(shape(c, v), groups, false);
+		layer.andThen(out);
+
+		Process.optimized(layer.forward(cp(in))).get().run();
+		out.traverse(1).print();
+
+		int groupSize = c / groups;
+		validate(groups, groupSize, v, in, out, null, null);
+	}
+
+	@Test
+	public void normLayerTrainable() {
 //		int c = 20;
 //		int v = 10;
 
@@ -93,7 +146,6 @@ public class NormTests implements LayerFeatures, TestFeatures {
 		layer.andThen(out);
 
 		Process.optimized(layer.forward(cp(in))).get().run();
-
 		out.traverse(1).print();
 
 		int groupSize = c / groups;

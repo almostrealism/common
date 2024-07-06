@@ -174,7 +174,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	@Override
 	public TraversalPolicy traverse(int axis) {
-		TraversalPolicy p = new TraversalPolicy(order, dims);
+		TraversalPolicy p = new TraversalPolicy(order, true, dims);
 		p.traversalAxis = axis;
 		return p;
 	}

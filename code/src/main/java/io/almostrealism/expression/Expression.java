@@ -420,6 +420,7 @@ public abstract class Expression<T> implements
 
 	public Expression<Double> pow(Expression<Double> operand) { return Exponent.of((Expression) this, operand); }
 	public Expression<Double> exp() { return Exp.of(this); }
+	public Expression<Double> log() { return Logarithm.of(this); }
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;

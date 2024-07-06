@@ -39,6 +39,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::abs;\n" +
 									"using metal::pow;\n" +
 									"using metal::exp;\n" +
+									"using metal::log;\n" +
 									"using metal::sin;\n" +
 									"using metal::cos;\n" +
 									"using metal::tan;\n";
