@@ -44,6 +44,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
 	public static boolean enableConstantExtraction = true;
 	public static int maxOppositeDetectionDepth = 10;
+	public static int maxDistinctDetectionWidth = 8;
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
@@ -269,6 +270,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		} else {
 			operands = Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+		}
+
+		if (operands.size() > 1 && operands.size() < maxDistinctDetectionWidth && operands.stream().distinct().count() == 1) {
+			return (Expression) Product.of(operands.get(0), new IntegerConstant(operands.size()));
 		}
 
 		i: if (operands.size() == 2) {

@@ -43,6 +43,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -590,6 +591,27 @@ public abstract class Expression<T> implements
 				Bits.put(16, 10, nodeCount) +
 				Bits.put(26, 4, depth) +
 				Bits.put(30, 2, getChildren().size());
+	}
+
+	public static Comparator<? super Expression> depthOrder() {
+		return (a, b) -> {
+			int aDepth = a.treeDepth();
+			int bDepth = b.treeDepth();
+			if (aDepth == bDepth) return 0;
+			return aDepth < bDepth ? 1 : -1;
+		};
+	}
+
+	public static Expression[] sort(Expression... expressions) {
+		Expression result[] = IntStream.range(0, expressions.length)
+				.mapToObj(i -> expressions[i])
+				.sorted(depthOrder()).toArray(Expression[]::new);
+
+		if (result.length != expressions.length) {
+			throw new UnsupportedOperationException();
+		}
+
+		return result;
 	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {

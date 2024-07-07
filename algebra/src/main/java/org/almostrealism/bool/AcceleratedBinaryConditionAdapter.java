@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
 

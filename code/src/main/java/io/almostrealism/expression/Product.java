@@ -36,6 +36,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
+	public static boolean enableMinusDetection = true;
+
 	protected Product(List<Expression<Double>> values) {
 		super((Class<T>) type(values), "*", (List) values);
 	}
@@ -309,10 +311,19 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 		List<Expression> operands = Stream.of(values)
 				.filter(e -> e.intValue().orElse(-1) != 1)
+				.sorted(depthOrder())
 				.collect(Collectors.toList());
 
 		if (operands.isEmpty()) return new IntegerConstant(1);
 		if (operands.size() == 1) return operands.get(0);
+		if (enableMinusDetection && operands.size() == 2) {
+			if (operands.get(0).doubleValue().orElse(0.0) == -1.0) {
+				return Minus.of(operands.get(1));
+			} else if (operands.get(1).doubleValue().orElse(0.0) == -1.0) {
+				return Minus.of(operands.get(0));
+			}
+		}
+
 		return new Product(operands);
 	}
 }
