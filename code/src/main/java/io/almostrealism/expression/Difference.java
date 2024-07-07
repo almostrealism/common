@@ -23,8 +23,11 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class Difference<T extends Number> extends NAryExpression<T> {
+	public static boolean enableFactorySimplification = true;
+
 	public Difference(Expression<T>... values) {
 		super((Class<T>) type(List.of(values)), "-", values);
 	}
@@ -73,6 +76,20 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
-		return new Difference(values);
+		if (values.length == 0) throw new IllegalArgumentException();
+		if (!enableFactorySimplification) return new Difference(values);
+
+		Expression first = values[0];
+		if (first.doubleValue().orElse(-1.0) == 0.0) {
+			return Sum.of(values).minus();
+		}
+
+		values = Stream.of(values).skip(1)
+				.filter(e -> e.doubleValue().orElse(-1) != 0.0)
+				.toArray(Expression[]::new);
+		if (values.length == 0) return first;
+		if (values.length == 1) return new Difference(first, values[0]);
+		return new Difference(Stream.concat(Stream.of(first), Stream.of(values))
+				.toArray(Expression[]::new));
 	}
 }

@@ -29,6 +29,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -36,7 +37,7 @@ import java.util.stream.Stream;
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
-	public static boolean enableDiagnosticGrad = false;
+	public static boolean enableDiagnosticGrad = SystemUtils.isEnabled("AR_DIAGNOSTIC_GRADIENT").orElse(false);
 	public static boolean enableDiagnosticWeight = false;
 
 	private final Factor<PackedCollection<?>> operator;
@@ -67,6 +68,10 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
+		if (weights.length > 0 && learningRate == null) {
+			throw new IllegalArgumentException("Learning rate is required");
+		}
+
 		if (next == null && verbose) {
 			log("Gradient will not be computed for " + getName() +
 					" because there is no provided Receptor");

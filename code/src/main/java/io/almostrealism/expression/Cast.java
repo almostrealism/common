@@ -30,6 +30,10 @@ public class Cast<T> extends UnaryExpression<T> {
 	public Cast(Class<T> type, String typeName, Expression<?> operand) {
 		super(type, "(" + typeName + ")", operand);
 		this.typeName = typeName;
+
+		if (typeName == null) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	public String getTypeName() {

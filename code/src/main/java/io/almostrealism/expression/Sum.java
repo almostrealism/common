@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -40,6 +42,7 @@ import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
+	public static boolean enableConstantExtraction = true;
 	public static int maxOppositeDetectionDepth = 10;
 
 	protected Sum(List<Expression<? extends Number>> values) {
@@ -239,8 +242,34 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	protected static <T> Expression<T> create(Expression... values) {
-		List<Expression> operands =
-				Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+		double constant = 0.0;
+		List<Expression> operands;
+
+		boolean fp = false;
+
+		if (enableConstantExtraction) {
+			operands = new ArrayList<>();
+
+			e: for (Expression e : values) {
+				if (e.isFP()) fp = true;
+				if (e.longValue().orElse(-1) == 0) continue e;
+
+				OptionalDouble d = e.doubleValue();
+
+				if (d.isPresent()) {
+					constant += d.getAsDouble();
+				} else {
+					operands.add(e);
+				}
+			}
+
+			if (constant != 0.0) {
+				Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
+				operands.add(c);
+			}
+		} else {
+			operands = Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+		}
 
 		i: if (operands.size() == 2) {
 			// A sum which contains a value and its opposite can be replaced with zero

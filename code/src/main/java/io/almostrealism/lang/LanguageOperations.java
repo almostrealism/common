@@ -47,6 +47,10 @@ public interface LanguageOperations {
 
 	String renderMethod(Method<?> method);
 
+	default boolean isVariableOffsetSupported() {
+		return true;
+	}
+
 	default String getStatementTerminator() {
 		return "";
 	}

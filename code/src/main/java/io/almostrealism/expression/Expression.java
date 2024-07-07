@@ -97,13 +97,17 @@ public abstract class Expression<T> implements
 	}
 
 	public Expression(Class<T> type, Expression<?>... children) {
+		this(type, true, children);
+	}
+
+	protected Expression(Class<T> type, boolean init, Expression<?>... children) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
 		}
 
 		this.type = type;
 		this.children = List.of(children);
-		init();
+		if (init) init();
 	}
 
 	protected void init() {
@@ -408,7 +412,7 @@ public abstract class Expression<T> implements
 
 	public Expression add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
 	public Expression add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
-	public Expression subtract(Expression<? extends Number> operand) { return new Difference(this, operand); }
+	public Expression subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 
 	public Expression multiply(int operand) { return operand == 1 ? this : Product.of(this, new IntegerConstant(operand)); }
 	public Expression multiply(Expression<? extends Number> operand) { return Product.of(this, operand); }

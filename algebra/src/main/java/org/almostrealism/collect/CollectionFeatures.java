@@ -572,7 +572,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				args -> CollectionExpression.create(shape, index -> {
 					Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
 							epsilon(),
-							new Difference(args[1].getValueAt(index), args[2].getValueAt(index)));
+							Difference.of(args[1].getValueAt(index), args[2].getValueAt(index)));
 					return conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), difference);
 				}),
 				(Supplier) a, (Supplier) b);

@@ -73,7 +73,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				if (pos == null) {
 					// Reference to the whole array
 					return var.getName();
-				} else if (v.isDisableOffset()) {
+				} else if (v.isDisableOffset() || !lang.isVariableOffsetSupported()) {
 					// Reference to a specific element
 					return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
 				} else {

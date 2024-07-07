@@ -230,6 +230,316 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void variance() {
+		int c = 2;
+		int groups = 1;
+
+		PackedCollection<?> o = new PackedCollection<>(c).fill(1.0, 1.1);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, groups, c / groups);
+					CollectionProducer out = input.variance().repeat(c)
+							.reshape(-1, c);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					for (int i = 0; i < 2; i++) {
+						for (int j = 0; j < 2; j++) {
+							double out = output.valueAt(i, j);
+							double k0 = o.valueAt(0);
+							double k1 = o.valueAt(1);
+
+							double expected;
+
+							if (j == 0) {
+								expected = (k0 - k1) / 2;
+							} else {
+								expected = (k1 - k0) / 2;
+							}
+
+							log(expected + " vs " + out);
+							assertEquals(expected, out);
+						}
+					}
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide1() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.divide(input.mean().repeat(2))
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double k0 = o.valueAt(0);
+					double k1 = o.valueAt(1);
+
+					double sum = k0 + k1;
+					double sumSquared = sum * sum;
+
+					assertEquals(2 * k1 / sumSquared, output.valueAt(0, 0));
+					assertEquals(-2 * k0 / sumSquared, output.valueAt(0, 1));
+					assertEquals(-2 * k1 / sumSquared, output.valueAt(1, 0));
+					assertEquals(2 * k0 / sumSquared, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide2() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.divide(input.sq().mean().repeat(2))
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double k0 = o.valueAt(0);
+					double k1 = o.valueAt(1);
+
+					double sumSquares = k0 * k0 + k1 * k1;
+					double sumSquaresSquared = sumSquares * sumSquares;
+
+					assertEquals(2 * (k1 * k1 - k0 * k0) / sumSquaresSquared, output.valueAt(0, 0));
+					assertEquals(-4 * k0 * k1 / sumSquaresSquared, output.valueAt(0, 1));
+					assertEquals(-4 * k0 * k1 / sumSquaresSquared, output.valueAt(1, 0));
+					assertEquals(2 * (k0 * k0 - k1 * k1) / sumSquaresSquared, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide3() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(input.sq().mean().repeat(2))
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double k0 = o.valueAt(0);
+					double k1 = o.valueAt(1);
+
+					double sumSquares = k0 * k0 + k1 * k1;
+					double sumSquaresSquared = sumSquares * sumSquares;
+
+					assertEquals((-k0 * k0 + k1 * k1 + 2 * k0 * k1) / sumSquaresSquared, output.valueAt(0, 0));
+					assertEquals((-k0 * k0 + k1 * k1 - 2 * k0 * k1) / sumSquaresSquared, output.valueAt(0, 1));
+					assertEquals((k0 * k0 - k1 * k1 - 2 * k0 * k1) / sumSquaresSquared, output.valueAt(1, 0));
+					assertEquals((k0 * k0 - k1 * k1 + 2 * k0 * k1) / sumSquaresSquared, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide4() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		double eps = 1e-5;
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.divide(input.add(c(eps)).sqrt())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					for (int i = 0; i < 2; i++) {
+						for (int j = 0; j < 2; j++) {
+							double x = o.valueAt(i);
+							double actual = output.valueAt(i, j);
+							double expected = 0.0;
+
+							if (i == j) {
+								expected = (x + 2 * eps) / (2 * Math.pow(x + eps, 3.0 / 2.0));
+							}
+
+							assertEquals(expected, actual);
+						}
+					}
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide5() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		double eps = 1e-5;
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.divide(input.sq().add(c(eps)).sqrt())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					for (int i = 0; i < 2; i++) {
+						for (int j = 0; j < 2; j++) {
+							double x = o.valueAt(i);
+							double actual = output.valueAt(i, j);
+							double expected = 0.0;
+
+							if (i == j) {
+								expected = eps / (Math.pow(x*x + eps, 3.0 / 2.0));
+								log(expected + " vs " + actual);
+							}
+
+							assertEquals(expected, actual);
+						}
+					}
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide8() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(input.variance())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double k0 = o.valueAt(0);
+					double k1 = o.valueAt(1);
+
+					double diffSquared = Math.pow(k0 - k1, 2);
+
+					assertEquals(-2 / diffSquared, output.valueAt(0, 0));
+					assertEquals(2 / diffSquared, output.valueAt(0, 1));
+					assertEquals(2 / diffSquared, output.valueAt(1, 0));
+					assertEquals(-2 / diffSquared, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+
+	@Test
+	public void divide9() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+//		PackedCollection<?> o = new PackedCollection<>(2).fill(5.0, 10);
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(input.variance().sqrt())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					assertEquals(0.0, output.valueAt(0, 0));
+					assertEquals(0.0, output.valueAt(0, 1));
+					assertEquals(0.0, output.valueAt(1, 0));
+					assertEquals(0.0, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide10() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		PackedCollection<?> b = new PackedCollection<>(2);
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(input.variance().sqrt())
+							.reshape(-1, 2)
+							.add(cp(b));
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					assertEquals(0.0, output.valueAt(0, 0));
+					assertEquals(0.0, output.valueAt(0, 1));
+					assertEquals(0.0, output.valueAt(1, 0));
+					assertEquals(0.0, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide11() {
+//		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 10);
+		double eps = 1e-5;
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(mean(input.subtractMean()).add(c(eps)).sqrt())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+//					assertEquals(0.0, output.valueAt(0, 0));
+//					assertEquals(0.0, output.valueAt(0, 1));
+//					assertEquals(0.0, output.valueAt(1, 0));
+//					assertEquals(0.0, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
+	public void divide12() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+		double eps = 1e-5;
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							// .divide(mean(pow(subtractMean(input), c(2.0))).add(c(eps)).sqrt())
+							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					assertEquals(0.0, output.valueAt(0, 0));
+					assertEquals(0.0, output.valueAt(0, 1));
+					assertEquals(0.0, output.valueAt(1, 0));
+					assertEquals(0.0, output.valueAt(1, 1));
+				}, false, true, false);
+	}
+
+	@Test
 	public void enumerate() {
 		int count = 1;
 		int dim = 2;

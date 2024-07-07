@@ -23,6 +23,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.util.TestFeatures;
@@ -49,6 +50,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		String e = e(1).divide(e(2)).getSimpleExpression(lang);
 		System.out.println(e);
 		Assert.assertTrue(e.length() < 12);
+	}
+
+	@Test
+	public void constantSum() {
+		// 1 + (- ((2.0 - 0) / 4.0))
+		Expression out = e(1).add(e(2.0).subtract(e(0)).divide(e(4.0)).minus());
+		System.out.println(out.getExpression(lang));
+
+		out = out.simplify(new NoOpKernelStructureContext());
+		Assert.assertEquals("0.5", out.getExpression(lang));
 	}
 
 	@Test
