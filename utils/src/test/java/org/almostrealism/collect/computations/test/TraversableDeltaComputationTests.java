@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -28,6 +29,8 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -417,7 +420,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void divide8() {
+	public void divide6() {
 		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
 
 		kernelTest(() -> {
@@ -443,20 +446,33 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				}, false, true, false);
 	}
 
+	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply, BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+		double x = 1.0;
+		double y = 1.02 * Math.pow(2, 5);
+
+		PackedCollection<?> o = new PackedCollection<>(2);
+
+		for (int i = 0; i < 10; i++) {
+			y = y / 2.0;
+			o.fill(x, y);
+
+			log("Iteration " + i + " y = " + y);
+			kernelTest(() -> supply.getResultant(cp(o)),
+					out -> validate.accept(o, out),
+					false, true, false);
+		}
+	}
 
 	@Test
-	public void divide9() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
-//		PackedCollection<?> o = new PackedCollection<>(2).fill(5.0, 10);
-
-		kernelTest(() -> {
-					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+	public void divide7() {
+		recursiveDivisionTest(in -> {
+					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
 							.divide(input.variance().sqrt())
 							.reshape(-1, 2);
 					return out.delta(input);
 				},
-				output -> {
+				(input, output) -> {
 					output = output.reshape(2, 2);
 					output.traverse(1).print();
 
@@ -464,23 +480,22 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(0.0, output.valueAt(0, 1));
 					assertEquals(0.0, output.valueAt(1, 0));
 					assertEquals(0.0, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
 	@Test
-	public void divide10() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+	public void divide8() {
 		PackedCollection<?> b = new PackedCollection<>(2);
 
-		kernelTest(() -> {
-					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+		recursiveDivisionTest(in -> {
+					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
 							.divide(input.variance().sqrt())
 							.reshape(-1, 2)
 							.add(cp(b));
 					return out.delta(input);
 				},
-				output -> {
+				(input, output) -> {
 					output = output.reshape(2, 2);
 					output.traverse(1).print();
 
@@ -488,11 +503,11 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(0.0, output.valueAt(0, 1));
 					assertEquals(0.0, output.valueAt(1, 0));
 					assertEquals(0.0, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
 	@Test
-	public void divide11() {
+	public void divide9() {
 //		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
 		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 10);
 		double eps = 1e-5;
@@ -507,36 +522,61 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				output -> {
 					output = output.reshape(2, 2);
 					output.traverse(1).print();
-
-//					assertEquals(0.0, output.valueAt(0, 0));
-//					assertEquals(0.0, output.valueAt(0, 1));
-//					assertEquals(0.0, output.valueAt(1, 0));
-//					assertEquals(0.0, output.valueAt(1, 1));
 				}, false, true, false);
 	}
 
 	@Test
-	public void divide12() {
-		PackedCollection<?> o = new PackedCollection<>(2).fill(1.0, 1.01);
+	public void divide10() {
 		double eps = 1e-5;
 
-		kernelTest(() -> {
-					CollectionProducer input = cp(o).reshape(-1, 1, 2);
+		recursiveDivisionTest(in -> {
+					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
 							// .divide(mean(pow(subtractMean(input), c(2.0))).add(c(eps)).sqrt())
 							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
 							.reshape(-1, 2);
 					return out.delta(input);
 				},
-				output -> {
+				(input, output) -> {
 					output = output.reshape(2, 2);
 					output.traverse(1).print();
 
-					assertEquals(0.0, output.valueAt(0, 0));
-					assertEquals(0.0, output.valueAt(0, 1));
-					assertEquals(0.0, output.valueAt(1, 0));
-					assertEquals(0.0, output.valueAt(1, 1));
-				}, false, true, false);
+					double diff = input.valueAt(0) - input.valueAt(1);
+					double denominator = Math.pow(diff * diff + 4 * eps, 1.5);
+
+					assertEquals(4 * eps / denominator, output.valueAt(0, 0));
+					assertEquals(-4 * eps / denominator, output.valueAt(0, 1));
+					assertEquals(-4 * eps / denominator, output.valueAt(1, 0));
+					assertEquals( 4 * eps / denominator, output.valueAt(1, 1));
+				});
+	}
+
+	@Test
+	public void divide11() {
+		double eps = 1e-5;
+
+		PackedCollection<?> b = new PackedCollection<>(2);
+
+		recursiveDivisionTest(in -> {
+					CollectionProducer input = c(in).reshape(-1, 1, 2);
+					CollectionProducer out = input.subtractMean()
+							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
+							.reshape(-1, 2)
+							.add(cp(b));
+					return out.delta(input);
+				},
+				(input, output) -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double diff = input.valueAt(0) - input.valueAt(1);
+					double denominator = Math.pow(diff * diff + 4 * eps, 1.5);
+
+					assertEquals(4 * eps / denominator, output.valueAt(0, 0));
+					assertEquals(-4 * eps / denominator, output.valueAt(0, 1));
+					assertEquals(-4 * eps / denominator, output.valueAt(1, 0));
+					assertEquals( 4 * eps / denominator, output.valueAt(1, 1));
+				});
 	}
 
 	@Test
