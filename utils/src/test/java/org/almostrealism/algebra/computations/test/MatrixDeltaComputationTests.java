@@ -38,10 +38,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class MatrixDeltaComputationTests implements TestFeatures {
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
 
 	@Test
 	public void matmul1() {
