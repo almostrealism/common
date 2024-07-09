@@ -20,6 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
@@ -50,6 +52,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
@@ -189,6 +192,36 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
 		return Hardware.getLocalHardware().computeContext(exec, expectations);
+	}
+
+	default <T extends OperationProfile> T profile(T profile, Runnable r) {
+		try {
+			Hardware.getLocalHardware().assignProfile(profile);
+			r.run();
+			return profile;
+		} finally {
+			Hardware.getLocalHardware().clearProfile();
+		}
+	}
+
+	default OperationProfileNode profile(String name, Supplier<Runnable> op) {
+		return profile(new OperationProfileNode(name), op);
+	}
+
+	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
+		Runnable r;
+
+		if (op instanceof OperationList && profile != null) {
+			r = ((OperationList) op).get(profile);
+		} else {
+			r = op.get();
+		}
+
+		return profile(profile, r);
+	}
+
+	default OperationProfileNode profile(String name, Runnable r) {
+		return profile(name, () -> r);
 	}
 
 	default Ops ops() { return Ops.o(); }

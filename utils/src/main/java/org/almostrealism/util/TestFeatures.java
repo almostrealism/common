@@ -20,6 +20,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -97,23 +98,41 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
-	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply, Consumer<PackedCollection<?>> validate) {
+	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
+							Consumer<PackedCollection<?>> validate) {
 		kernelTest(supply, validate, true, true, true);
 	}
 
-	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply, Consumer<PackedCollection<?>> validate,
+	default OperationProfileNode kernelTest(String name,
+											Supplier<? extends Producer<PackedCollection<?>>> supply,
+											Consumer<PackedCollection<?>> validate) {
+		return kernelTest(name, supply, validate, true, true, true);
+	}
+
+	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
+							Consumer<PackedCollection<?>> validate,
 							boolean kernel, boolean operation, boolean optimized) {
+		kernelTest(null, supply, validate, kernel, operation, optimized);
+	}
+
+	default OperationProfileNode kernelTest(String name,
+							Supplier<? extends Producer<PackedCollection<?>>> supply, Consumer<PackedCollection<?>> validate,
+							boolean kernel, boolean operation, boolean optimized) {
+		OperationProfileNode profile = name == null ? null : new OperationProfileNode(name);
+
 		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
 
 		if (kernel) {
 			System.out.println("TestFeatures: Running kernel evaluation...");
 			Producer<PackedCollection<?>> p = supply.get();
-			PackedCollection<?> output = p.get().evaluate();
-			System.out.println("TestFeatures: Output Shape = " + output.getShape() +
-					" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
-			System.out.println("TestFeatures: Validating kernel output...");
-			validate.accept(output);
-			outputRef.set(output);
+			profile(profile, () -> {
+				PackedCollection<?> output = p.get().evaluate();
+				log("Output Shape = " + output.getShape() +
+						" [" + output.getShape().getCountLong() + "x" + output.getShape().getSize() + "]");
+				log("Validating kernel output...");
+				validate.accept(output);
+				outputRef.set(output);
+			});
 		} else {
 			outputRef.set(new PackedCollection<>(shape(supply.get())));
 		}
@@ -126,7 +145,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			System.out.println("TestFeatures: Running kernel operation...");
 			OperationList op = new OperationList();
 			op.add(output.getAtomicMemLength(), supply.get(), p(output));
-			op.get().run();
+			profile(profile, op);
 			System.out.println("TestFeatures: Validating kernel output...");
 			validate.accept(output);
 		}
@@ -134,7 +153,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			HardwareOperator.verboseLog(() -> {
+			verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 
@@ -144,12 +163,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				op.add(copy(p(output), p(dest), output.getMemLength()));
 
 				ParallelProcess<?, Runnable> p = op.optimize();
-				p.get().run();
+				profile(profile, p);
 				System.out.println("TestFeatures: Validating optimized kernel output...");
 				validate.accept(output);
 				validate.accept(dest);
 			});
 		}
+
+		return profile;
 	}
 
 	default void initKernelMetrics() {
@@ -178,6 +199,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				+ (KernelSeriesCache.enableCache ? "on" : "off"));
 		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
 		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
+	}
+
+	default void verboseLog(Runnable r) {
+		if (TestSettings.verboseLogs) {
+			HardwareOperator.verboseLog(r);
+		} else {
+			r.run();
+		}
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {

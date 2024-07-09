@@ -81,15 +81,19 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
 	}
 
+	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		return !matchingInputs(this, target).contains(process);
+	}
+
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (matchingInputs(this, target).contains(process)) return process;
+		if (!permitOptimization(process)) return process;
 		return super.optimize(ctx, process);
 	}
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate(Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (matchInput(this, target) == process) return process;
+		if (!permitOptimization(process)) return process;
 		return super.isolate(process);
 	}
 

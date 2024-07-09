@@ -30,7 +30,7 @@ public class CollectionMathTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(10));
 		a.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 
@@ -45,7 +45,7 @@ public class CollectionMathTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(10)).randFill();
 		PackedCollection<?> b = new PackedCollection<>(shape(10)).randFill();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 			Assert.assertEquals(1, result.getShape().getTraversalAxis());
@@ -61,7 +61,7 @@ public class CollectionMathTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(2, 5)).randFill();
 		PackedCollection<?> b = new PackedCollection<>(shape(2)).randFill();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(cp(b)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 

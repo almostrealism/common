@@ -55,5 +55,11 @@ public class TestUtils implements TestSettings {
 		return SystemUtils.isEnabled("AR_TRAIN_TESTS").orElse(false);
 	}
 
+	public static boolean getVerboseLogs() {
+		if (Objects.equals(getTestProfile(), PIPELINE)) return false;
+
+		return !getSkipLongTests() && !getSkipKnownIssues();
+	}
+
 	public static String getTestProfile() { return SystemUtils.getProperty("AR_TEST_PROFILE", "default"); }
 }

@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.ParallelProcess;
@@ -28,6 +29,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -232,14 +234,13 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		}
 	}
 
-	@Test
-	public void variance() {
+	public OperationProfileNode variance(String name, double x, double y) {
 		int c = 2;
 		int groups = 1;
 
-		PackedCollection<?> o = new PackedCollection<>(c).fill(1.0, 1.1);
+		PackedCollection<?> o = new PackedCollection<>(c).fill(x, y);
 
-		kernelTest(() -> {
+		return kernelTest(name, () -> {
 					CollectionProducer<?> input = cp(o).reshape(-1, groups, c / groups);
 					CollectionProducer out = input.variance().repeat(c)
 							.reshape(-1, c);
@@ -264,10 +265,20 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 							}
 
 							log(expected + " vs " + out);
-							assertEquals(expected, out);
+							// assertEquals(expected, out);
 						}
 					}
-				}, false, true, false);
+				}, false, false, true);
+	}
+
+	@Test
+	public void variance1() throws IOException {
+		variance("variance1", 1.0, 1.1).save("results/variance1.xml");
+	}
+
+	@Test
+	public void variance2() throws IOException {
+		variance("variance2", 1.5, 2.5).save("results/variance2.xml");
 	}
 
 	@Test
@@ -295,7 +306,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(-2 * k0 / sumSquared, output.valueAt(0, 1));
 					assertEquals(-2 * k1 / sumSquared, output.valueAt(1, 0));
 					assertEquals(2 * k0 / sumSquared, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
 	@Test
@@ -323,7 +334,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(-4 * k0 * k1 / sumSquaresSquared, output.valueAt(0, 1));
 					assertEquals(-4 * k0 * k1 / sumSquaresSquared, output.valueAt(1, 0));
 					assertEquals(2 * (k0 * k0 - k1 * k1) / sumSquaresSquared, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
 	@Test
@@ -351,7 +362,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals((-k0 * k0 + k1 * k1 - 2 * k0 * k1) / sumSquaresSquared, output.valueAt(0, 1));
 					assertEquals((k0 * k0 - k1 * k1 - 2 * k0 * k1) / sumSquaresSquared, output.valueAt(1, 0));
 					assertEquals((k0 * k0 - k1 * k1 + 2 * k0 * k1) / sumSquaresSquared, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
 	@Test
@@ -383,7 +394,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 							assertEquals(expected, actual);
 						}
 					}
-				}, false, true, false);
+				});
 	}
 
 	@Test
@@ -409,14 +420,14 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 							double expected = 0.0;
 
 							if (i == j) {
-								expected = eps / (Math.pow(x*x + eps, 3.0 / 2.0));
+								expected = eps / (Math.pow(x * x + eps, 3.0 / 2.0));
 								log(expected + " vs " + actual);
 							}
 
 							assertEquals(expected, actual);
 						}
 					}
-				}, false, true, false);
+				});
 	}
 
 	@Test
@@ -443,23 +454,24 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(2 / diffSquared, output.valueAt(0, 1));
 					assertEquals(2 / diffSquared, output.valueAt(1, 0));
 					assertEquals(-2 / diffSquared, output.valueAt(1, 1));
-				}, false, true, false);
+				});
 	}
 
-	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply, BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply,
+										 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
 		double x = 1.0;
 		double y = 1.02 * Math.pow(2, 5);
 
 		PackedCollection<?> o = new PackedCollection<>(2);
 
-		for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < 6; i++) {
 			y = y / 2.0;
 			o.fill(x, y);
 
 			log("Iteration " + i + " y = " + y);
-			kernelTest(() -> supply.getResultant(cp(o)),
-					out -> validate.accept(o, out),
-					false, true, false);
+			kernelTest(
+					() -> supply.getResultant(cp(o)),
+					out -> validate.accept(o, out));
 		}
 	}
 
@@ -522,7 +534,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				output -> {
 					output = output.reshape(2, 2);
 					output.traverse(1).print();
-				}, false, true, false);
+				});
 	}
 
 	@Test

@@ -57,7 +57,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		PackedCollection<?> cpuOut = new PackedCollection<>(SIZE);
 		PackedCollection<?> gpuOut = new PackedCollection<>(SIZE);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			OperationList cop = new OperationList();
 			cop.setComputeRequirements(List.of(ComputeRequirement.CPU));
 			cop.add(a(p(cpuOut), pow(p(in), p(weights))));

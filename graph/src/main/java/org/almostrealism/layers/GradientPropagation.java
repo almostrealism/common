@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
+	public static boolean enableOptimizedDiagnostics = false;
 	public static boolean enableDiagnosticGrad = SystemUtils.isEnabled("AR_DIAGNOSTIC_GRADIENT").orElse(false);
 	public static boolean enableDiagnosticWeight = false;
 
@@ -99,11 +100,17 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 					.each();
 
 			if (enableDiagnosticGrad) {
+				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize));
+				Producer<PackedCollection<?>> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
+
 				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
-					Evaluable<PackedCollection<?>> grad = (Evaluable) Process.optimized(deltaOutDeltaIn).get();
+					Evaluable<PackedCollection<?>> d = delta.get();
+					Evaluable<PackedCollection<?>> grad = enableOptimizedDiagnostics ?
+							(Evaluable) Process.optimized(deltaOutDeltaIn).get() : deltaOutDeltaIn.get();
 					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 					return () -> {
+						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();
 					};

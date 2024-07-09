@@ -312,9 +312,19 @@ public final class Hardware {
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
 	public void assignProfile(OperationProfile profile) {
-		HardwareOperator.timingListener = profile.getRuntimeListener();
-		AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
-		Scope.timing = profile.getScopeListener();
+		if (profile == null) {
+			clearProfile();
+		} else {
+			HardwareOperator.timingListener = profile.getRuntimeListener();
+			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
+			Scope.timing = profile.getScopeListener();
+		}
+	}
+
+	public void clearProfile() {
+		HardwareOperator.timingListener = null;
+		AbstractComputeContext.compilationTimingListener = null;
+		Scope.timing = null;
 	}
 
 	public synchronized void addContextListener(ContextListener l) {
