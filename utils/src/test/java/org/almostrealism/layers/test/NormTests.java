@@ -341,7 +341,6 @@ public class NormTests implements LayerFeatures, TestFeatures {
 	public void normBackwardsBias(int c, int groups, boolean failFast, Supplier<PackedCollection<?>> inputSource) {
 		PackedCollection<?> lr = pack(0.01);
 		PackedCollection<?> input = inputSource.get();
-//		PackedCollection<?> gradient = new PackedCollection<>(shape(c)).fill(3.0);
 		PackedCollection<?> gradient = randomGradient(c).get();
 		PackedCollection<?> biases = new PackedCollection<>(shape(c)).fill(0.0);
 		PackedCollection<?> origBiases = new PackedCollection<>(biases);

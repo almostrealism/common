@@ -26,17 +26,18 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TraversableDeltaComputationTests implements TestFeatures {
+public class TraversableDeltaComputationTests implements GradientTestFeatures, TestFeatures {
 
 	@Test
 	public void polynomial0() {
@@ -589,6 +590,111 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 					assertEquals(-4 * eps / denominator, output.valueAt(1, 0));
 					assertEquals( 4 * eps / denominator, output.valueAt(1, 1));
 				});
+	}
+
+	@Test
+	public void divideProduct1() {
+		int c = 2;
+
+		PackedCollection<?> o = new PackedCollection<>(c).fill(() -> Math.random() / 10.0);
+		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> Math.random() / 4.0);
+		double eps = 1e-5;
+
+		kernelTest(() -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, c);
+					CollectionProducer out = input.subtractMean()
+							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
+							.reshape(-1, c);
+					out = out.delta(input);
+					return applyGradient(out, cp(g));
+				},
+				output -> {
+					output = output.reshape(c);
+					output.print();
+
+					double muG = o.doubleStream().sum() / c;
+					double varG = variance(cp(o)).evaluate().toDouble();
+					double stdG = Math.sqrt(varG + eps);
+
+					PackedCollection<?> normalized =
+							cp(o).subtract(c(muG))
+									.divide(c(stdG))
+										.evaluate();
+
+					double gradientMean = g.doubleStream().sum() / c;
+					PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+
+					double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
+					PackedCollection<?> dLdXGroup = dlDxGroup(
+							g, gradientMean, normalized, gradientByInputMean);
+
+					for (int i = 0; i < c; i++) {
+						double expected = dLdXGroup.valueAt(i) / stdG;
+						double actual = output.valueAt(i);
+						log(expected + " vs " + actual);
+
+						Assert.assertEquals(expected, actual, 1e-5);
+					}
+				});
+	}
+
+	@Test
+	public void divideProduct2() throws IOException {
+		int c = 2;
+
+		PackedCollection<?> o = new PackedCollection<>(c).fill(() -> Math.random() / 10.0);
+		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> Math.random() / 4.0);
+		PackedCollection<?> b = new PackedCollection<>(c).fill(0.0);
+		double eps = 1e-5;
+
+		kernelTest("divideProduct2", () -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, c);
+					CollectionProducer out = input.subtractMean()
+							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
+							.reshape(-1, c)
+							.add(cp(b));
+					out = out.delta(input);
+					return applyGradient(out, cp(g));
+				},
+				output -> {
+					output = output.reshape(c);
+					output.print();
+
+					double muG = o.doubleStream().sum() / c;
+					double varG = variance(cp(o)).evaluate().toDouble();
+					double stdG = Math.sqrt(varG + eps);
+
+					PackedCollection<?> normalized =
+							cp(o).subtract(c(muG))
+									.divide(c(stdG))
+									.evaluate();
+
+					double gradientMean = g.doubleStream().sum() / c;
+					PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+
+					double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
+					PackedCollection<?> dLdXGroup = dlDxGroup(
+							g, gradientMean, normalized, gradientByInputMean);
+
+					for (int i = 0; i < c; i++) {
+						double expected = dLdXGroup.valueAt(i) / stdG;
+						double actual = output.valueAt(i);
+						log(expected + " vs " + actual);
+
+						// Assert.assertEquals(expected, actual, 1e-5);
+					}
+				},
+				false, true, false).save("results/divideProduct2.xml");
+	}
+
+	private PackedCollection<?> dlDxGroup(PackedCollection<?> dLdHatXGroup,
+										  double dLdHatXGroupMean,
+										  PackedCollection<?> xHatGroup,
+										  double dLdHatXGroupXHatGroupMean) {
+		return cp(dLdHatXGroup)
+				.subtract(c(dLdHatXGroupMean))
+				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
+				.evaluate();
 	}
 
 	@Test

@@ -142,7 +142,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
 		CollectionExpression derivativeDenominator =
 				new ConstantCollectionExpression(target.getShape(),
-						new Product(List.of(denominator, denominator))); // [g(x)]^2
+//						new Product(List.of(denominator, denominator))); // [g(x)]^2
+						Product.of(denominator, denominator)); // [g(x)]^2
 		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
