@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.collect.CollectionExpressionAdapter;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mask;
 
@@ -35,7 +36,7 @@ public class SequenceFunctionEvaluator<I, O> extends MatrixFunctionEvaluator<I, 
 		// Determine if the result is independent of the row and column
 		if (valueCount >= 0) {
 			IndexSequence seq = ((SequenceMatrix) getInput()).getSequence();
-			Index index = new DefaultIndex("evalIndex", valueCount);
+			Index index = CollectionExpressionAdapter.generateTemporaryIndex(valueCount);
 			Expression<?> e = getFunction().apply((Expression) index);
 			if (e.isValue(IndexValues.of(index))) {
 				setupRowDuplicates(true);
@@ -48,7 +49,7 @@ public class SequenceFunctionEvaluator<I, O> extends MatrixFunctionEvaluator<I, 
 				resultCache = new Expression[valueCount];
 				return seq.map(i -> results.valueAt(i.intValue()));
 			} else if (e instanceof Mask && e.getChildren().get(0).isValue(IndexValues.of(index))) {
-				log("Detected mask which could have been sequenced");
+				warn("Detected mask which could have been sequenced");
 			}
 		}
 

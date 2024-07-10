@@ -19,8 +19,6 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 
-import java.util.function.Function;
-
 public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 	private IndexSequence seq;
 
@@ -94,11 +92,6 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		}
 
 		return (Expression) Constant.of(sequenceValueAt(i, j));
-	}
-
-	@Override
-	protected <O> MatrixFunctionEvaluator<T, O> createEvaluator(Function<Expression<T>, Expression<O>> function) {
-		return new SequenceFunctionEvaluator<>(this, function);
 	}
 
 	@Override

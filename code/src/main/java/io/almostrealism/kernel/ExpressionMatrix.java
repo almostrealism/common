@@ -25,6 +25,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
+	public static boolean enableMaskMatrix = true;
 	public static boolean enableUnsequencedMatrices = false;
 	public static long maxMatrixSize = (long) 10e7;
 
@@ -47,6 +48,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	public Index getRow() { return row; }
 	public Index getColumn() { return col; }
+	public Index getIndex() { return Index.child(row, col); }
 
 	public int getRowCount() { return rowCount; }
 	public int getColumnCount() { return colCount; }
@@ -56,54 +58,8 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	public abstract Expression<T> valueAt(int i, int j);
 
-	protected <O> MatrixFunctionEvaluator<T, O> createEvaluator(Function<Expression<T>, Expression<O>> function) {
-		return new MatrixFunctionEvaluator<>(this, function);
-	}
-
 	public <O> ExpressionMatrix<O> apply(Function<Expression<T>, Expression<O>> function) {
-		MatrixFunctionEvaluator<T, O> evaluator = createEvaluator(function);
-		IndexSequence resultSeq = evaluator.attemptSequence();
-
-		if (resultSeq != null) {
-			return new SequenceMatrix<>(row, col, resultSeq,
-					evaluator.getResultRowDuplicates());
-		} else if (!enableUnsequencedMatrices) {
-			return null;
-		}
-
-		log("Expanding full ExpressionMatrix (" + rowCount + "x" + colCount + ")");
-
-		Expression result[][] = new Expression[rowCount][colCount];
-
-		boolean rowDependent = false;
-		int rowDuplicates[] = new int[rowCount];
-
-		i: for (int i = 0; i < rowCount; i++) {
-			if (!rowDependent && this.rowDuplicates[i] >= 0) {
-				rowDuplicates[i] = this.rowDuplicates[i];
-				continue i;
-			} else {
-				rowDuplicates[i] = -1;
-			}
-
-			j: for (int j = 0; j < colCount; j++) {
-				result[i][j] = evaluator.valueAt(i, j);
-				if (result[i][j] == null) continue j;
-
-				if (row != null && result[i][j].containsIndex(row)) {
-					rowDependent = true;
-					result[i][j] = result[i][j].withIndex(row, i);
-				}
-
-				if (col != null && result[i][j].containsIndex(col)) {
-					result[i][j] = result[i][j].withIndex(col, j);
-				}
-
-				result[i][j] = result[i][j].getSimplified();
-			}
-		}
-
-		return new ExplicitExpressionMatrix<>(row, col, result, rowDuplicates);
+		return MatrixFunctionEvaluator.apply(this, function);
 	}
 
 	public Expression<T> allMatch() {

@@ -34,7 +34,11 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
-	protected static DefaultIndex generateTemporaryIndex() {
+	public static DefaultIndex generateTemporaryIndex() {
 		return new DefaultIndex("ci_" + idxCount++);
+	}
+
+	public static DefaultIndex generateTemporaryIndex(int limit) {
+		return new DefaultIndex("ci_" + idxCount++, limit);
 	}
 }

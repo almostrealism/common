@@ -16,12 +16,16 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.collect.CollectionExpressionAdapter;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 	private ExpressionMatrix<I> input;
@@ -76,6 +80,97 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return function.apply(input.valueAt(i, j));
 	}
 
+	public ExpressionMatrix<O> getMaskResult() {
+		if (!ExpressionMatrix.enableMaskMatrix) return null;
+
+		int valueCount = input.getValueCount();
+		Index index = valueCount > 0 ?
+				CollectionExpressionAdapter.generateTemporaryIndex(valueCount)
+				: CollectionExpressionAdapter.generateTemporaryIndex();
+		Expression<O> e = function.apply((Expression) index);
+		if (!(e instanceof Mask)) return null;
+
+		ExpressionMatrix<?> mask = apply(getInput(),
+				in -> function.apply(in).getChildren().get(0));
+		if (mask == null) return null;
+
+		Optional<Boolean> m = Optional.ofNullable(mask.allMatch())
+				.map(Expression::booleanValue)
+				.orElse(Optional.empty());
+		if (!m.orElse(true)) {
+			return new SequenceMatrix<>(input.getRow(), input.getColumn(),
+					ArrayIndexSequence.of(0, getInput().getIndex().getLimit().getAsLong()),
+					IntStream.range(0, input.getRowCount()).map(i -> i == 0 ? -1 : 0).toArray());
+		}
+
+		ExpressionMatrix<O> value = apply(getInput(),
+				in -> (Expression<O>) function.apply(in).getChildren().get(1));
+		if (value == null || m.orElse(false)) return value;
+
+		return new MaskMatrix<>(input.getRow(), input.getColumn(), mask, value);
+	}
+
+	public ExpressionMatrix<O> getResult() {
+		ExpressionMatrix<O> maskResult = getMaskResult();
+		if (maskResult != null) return maskResult;
+
+		IndexSequence resultSeq = attemptSequence();
+
+		if (resultSeq != null) {
+			return new SequenceMatrix<>(input.getRow(), input.getColumn(),
+					resultSeq, resultRowDuplicates);
+		} else if (!ExpressionMatrix.enableUnsequencedMatrices) {
+			return null;
+		}
+
+		log("Expanding full ExpressionMatrix (" + input.getRowCount() + "x" + input.getColumnCount() + ")");
+
+		Expression result[][] = new Expression[input.getRowCount()][input.getColumnCount()];
+
+		boolean rowDependent = false;
+		int rowDuplicates[] = new int[input.getRowCount()];
+
+		i: for (int i = 0; i < rowDuplicates.length; i++) {
+			if (!rowDependent && input.getRowDuplicates()[i] >= 0) {
+				rowDuplicates[i] = input.getRowDuplicates()[i];
+				continue i;
+			} else {
+				rowDuplicates[i] = -1;
+			}
+
+			j: for (int j = 0; j < input.getColumnCount(); j++) {
+				result[i][j] = valueAt(i, j);
+				if (result[i][j] == null) continue j;
+
+				if (input.getRow() != null && result[i][j].containsIndex(input.getRow())) {
+					rowDependent = true;
+					result[i][j] = result[i][j].withIndex(input.getRow(), i);
+				}
+
+				if (input.getColumn() != null && result[i][j].containsIndex(input.getColumn())) {
+					result[i][j] = result[i][j].withIndex(input.getColumn(), j);
+				}
+
+				result[i][j] = result[i][j].getSimplified();
+			}
+		}
+
+		return new ExplicitExpressionMatrix<>(input.getRow(), input.getColumn(), result, rowDuplicates);
+	}
+
 	@Override
 	public Console console() { return Scope.console; }
+
+	public static <I, O> MatrixFunctionEvaluator<I, O> create(ExpressionMatrix<I> input,
+															  Function<Expression<I>, Expression<O>> function) {
+		if (input instanceof SequenceMatrix) {
+			return new SequenceFunctionEvaluator<>((SequenceMatrix<I>) input, function);
+		} else {
+			return new MatrixFunctionEvaluator<>(input, function);
+		}
+	}
+
+	public static <I, O> ExpressionMatrix<O> apply(ExpressionMatrix<I> input, Function<Expression<I>, Expression<O>> function) {
+		return create(input, function).getResult();
+	}
 }
