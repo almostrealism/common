@@ -34,8 +34,9 @@ public class Conditional<T extends Number> extends Expression<T> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "(" + getChildren().get(0).getExpression(lang) + ") ? (" + getChildren().get(1).getExpression(lang) +
-				") : (" + getChildren().get(2).getExpression(lang) + ")";
+		return getChildren().get(0).getWrappedExpression(lang) + " ? " +
+				getChildren().get(1).getWrappedExpression(lang) +
+				" : " + getChildren().get(2).getWrappedExpression(lang);
 	}
 
 	@Override
