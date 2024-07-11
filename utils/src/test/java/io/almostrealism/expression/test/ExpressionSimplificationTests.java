@@ -18,6 +18,9 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
@@ -31,6 +34,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
 	private LanguageOperations lang = new LanguageOperationsStub();
@@ -112,7 +116,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.imod(64800L * 64800L);
 		String simple = e.getSimplified().getExpression(lang);
 		log(simple);
-		Assert.assertEquals("kernel0 % " + 64800L * 64800L, simple);
+		// Assert.assertEquals("kernel0 % " + 64800L * 64800L, simple);
+		Assert.assertEquals("(kernel0 % 64800) * 64801", simple);
 	}
 
 	@Test
@@ -138,5 +143,136 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		String simple = new DefaultKernelStructureContext(64).simplify(result).getExpression(lang);
 		System.out.println(simple);
 		Assert.assertEquals("0", simple);
+	}
+
+	@Test
+	public void modSumSeq1() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2));
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq2() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx).imod(4);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq3() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.add(idx.imod(2)).imod(4);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq5() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq6() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq7() {
+		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void modSumSeq8() {
+		// (((((ind0 * 4) + (ind0 % 4)) % 4)
+		DefaultIndex idx = new DefaultIndex("ind0", 16);
+		Expression<?> e = idx.multiply(4).add(idx.imod(4)).imod(4);
+		System.out.println(e.getExpression(lang));
+		compareSimplifiedSequence(e);
+
+		Assert.assertEquals("ind0 % 4", e.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void modSum1() {
+		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2);
+		System.out.println(e.getExpression(lang));
+
+		IndexSequence seq = e.sequence(idx, 4, 4);
+		System.out.println(Arrays.toString(seq.toArray()));
+
+		e = e.getSimplified();
+		System.out.println(e.getExpression(lang));
+
+		seq = e.sequence(idx, 4, 4);
+		System.out.println(Arrays.toString(seq.intValues().limit(4).toArray()));
+	}
+
+	@Test
+	public void equals1() {
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.imod(4).eq(idx.imod(8));
+		System.out.println(e.getExpression(lang));
+
+		Expression se = new DefaultKernelStructureContext().getSeriesProvider().getSeries(e);
+		System.out.println(se.getExpression(lang));
+		Assert.assertEquals("true", se.getExpression(lang));
+
+		e = e.getSimplified();
+		System.out.println(e.getExpression(lang));
+		Assert.assertEquals("true", e.getExpression(lang));
+	}
+
+	@Test
+	public void equals2() {
+		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2) == (((ind0 * 2) + (ind0 % 2)) % 2)
+		DefaultIndex idx = new DefaultIndex("ind0", 4);
+		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2)
+							.eq(idx.multiply(2).add(idx.imod(2)).imod(2));
+		System.out.println(e.getExpression(lang));
+
+		IndexSequence seq = e.sequence(idx, 4, 4);
+		System.out.println(Arrays.toString(seq.toArray()));
+		Assert.assertEquals("1", seq.getExpression(idx).getExpression(lang));
+
+		e = e.getSimplified(new DefaultKernelStructureContext());
+		System.out.println(e.getExpression(lang));
+
+		seq = e.sequence(idx, 4, 4);
+		System.out.println(Arrays.toString(seq.toArray()));
+		Assert.assertEquals("1", seq.getExpression(idx).getExpression(lang));
+
+		Assert.assertEquals("true", e.getExpression(lang));
+	}
+
+	protected void compareSimplifiedSequence(Expression e) {
+		compareSequences(e, e.getSimplified());
+	}
+
+	protected void compareSequences(Expression a, Expression b) {
+		System.out.println(b.getExpression(lang));
+
+		int seqA[] = a.sequence().intValues().toArray();
+
+		IndexSequence s = b.sequence();
+		int seqB[] = IntStream.range(0, seqA.length).map(i -> s.valueAt(i).intValue()).toArray();
+
+		System.out.println(Arrays.toString(seqA));
+		System.out.println(Arrays.toString(seqB));
+		Assert.assertArrayEquals(seqA, seqB);
 	}
 }

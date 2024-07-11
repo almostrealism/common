@@ -104,6 +104,10 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		if (ld.isPresent() && rd.isPresent())
 			return new BooleanConstant(compare(ld.getAsDouble(), rd.getAsDouble()));
 
+		if (isSeriesSimplificationTarget() && context.getSeriesProvider() != null) {
+			return context.getSeriesProvider().getSeries(flat);
+		}
+
 		return (Expression<Boolean>) flat;
 	}
 }

@@ -332,8 +332,7 @@ public abstract class Expression<T> implements
 			return this;
 		}
 
-		LanguageOperations lang = new LanguageOperationsStub();
-		context = context.asNoOp();
+		// context = context.asNoOp();
 
 		Expression<?> simplified = simplify(context);
 		if (simplified.isSimple()) return simplified;
@@ -468,8 +467,8 @@ public abstract class Expression<T> implements
 		return new Negation((Expression) this);
 	}
 
-	public Equals eq(double operand) { return new Equals(this, new DoubleConstant(operand)); };
-	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
+	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
+	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();

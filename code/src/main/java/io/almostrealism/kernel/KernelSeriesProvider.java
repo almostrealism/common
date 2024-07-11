@@ -47,10 +47,15 @@ public interface KernelSeriesProvider extends Destroyable {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
 		Set<Index> indices = exp.getIndices();
+		if (indices.isEmpty()) return getSeries(exp, new KernelIndex());
+
 		Optional<Index> c = indices.stream()
 				.filter(i -> i instanceof KernelIndexChild)
 				.findFirst();
-		return getSeries(exp, c.orElse(new KernelIndex()));
+		Optional<Index> k = indices.stream()
+				.filter(i -> i instanceof KernelIndex)
+				.findFirst();
+		return getSeries(exp, c.orElse(k.orElse(indices.iterator().next())));
 	}
 
 	default Expression getSeries(Expression exp, Index index) {

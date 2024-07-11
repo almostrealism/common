@@ -116,8 +116,8 @@ public interface ExpressionFeatures {
 		return new Greater(left, right, includeEqual);
 	}
 
-	default Equals equals(Expression<?> left, Expression<?> right) {
-		return new Equals(left, right);
+	default Expression equals(Expression<?> left, Expression<?> right) {
+		return Equals.of(left, right);
 	}
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {

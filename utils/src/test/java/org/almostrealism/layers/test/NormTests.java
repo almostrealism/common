@@ -317,8 +317,6 @@ public class NormTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void backwardsBiasProgressive2() {
-		if (skipKnownIssues) return;
-
 		backwardsBiasProgressive(32, 4, 3);
 	}
 
@@ -457,7 +455,7 @@ public class NormTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void backwardsTrainableLarge1() {
-		if (skipLongTests || skipKnownIssues) return;
+		if (skipLongTests) return;
 
 		int c = 120;
 		int groups = 4;
@@ -466,8 +464,6 @@ public class NormTests implements LayerFeatures, TestFeatures {
 
 	@Test
 	public void backwardsTrainableLarge2() {
-		if (skipKnownIssues) return;
-
 		int c = 96;
 		int groups = 6;
 		normBackwardsTrainable(c, groups, false);

@@ -19,14 +19,17 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Equals extends Comparison {
+	public static boolean enableIdentityDetection = true;
 
-	public Equals(Expression<?> left, Expression<?> right) {
+	protected Equals(Expression<?> left, Expression<?> right) {
 		super(left, right);
 	}
 
@@ -83,6 +86,22 @@ public class Equals extends Comparison {
 	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
-		return new Equals(children.get(0), children.get(1));
+		return Equals.of(children.get(0), children.get(1));
+	}
+
+	public static Expression of(Expression<?> left, Expression<?> right) {
+		return ExpressionCache.match(create(left, right));
+	}
+
+	protected static Expression create(Expression<?> left, Expression<?> right) {
+		if (enableIdentityDetection) {
+			if (left.longValue().isPresent() && right.longValue().isPresent()) {
+				return new BooleanConstant(left.longValue().getAsLong() == right.longValue().getAsLong());
+			} else if (Objects.equals(left, right)) {
+				return new BooleanConstant(true);
+			}
+		}
+
+		return new Equals(left, right);
 	}
 }

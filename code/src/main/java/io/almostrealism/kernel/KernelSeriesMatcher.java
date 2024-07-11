@@ -25,7 +25,15 @@ import java.util.function.Supplier;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
 
+	public static KernelSeriesProvider defaultProvider() {
+		return defaultProvider(OptionalInt.empty());
+	}
+
 	public static KernelSeriesProvider defaultProvider(int count) {
+		return defaultProvider(OptionalInt.of(count));
+	}
+
+	public static KernelSeriesProvider defaultProvider(OptionalInt count) {
 		return new KernelSeriesProvider() {
 			@Override
 			public Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes) {
@@ -34,7 +42,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 			@Override
 			public OptionalInt getMaximumLength() {
-				return OptionalInt.of(count);
+				return count;
 			}
 		};
 	}
