@@ -98,6 +98,25 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
+	default void assertSimilar(double a, double b) {
+		assertSimilar(a, b, 0.001);
+	}
+
+	default void assertSimilar(double a, double b, double r) {
+		double gap = Math.max(Math.abs(a), Math.abs(b));
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		if (gap < eps)
+			gap = eps;
+
+		double c = Math.abs(a - b);
+
+		if (c >= r * gap) {
+			double s = c / gap;
+			warn(b + " != " + a + " (" + s + " > " + r + ")");
+			throw new AssertionError();
+		}
+	}
+
 	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
 							Consumer<PackedCollection<?>> validate) {
 		kernelTest(supply, validate, true, true, true);

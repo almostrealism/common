@@ -17,11 +17,13 @@
 package org.almostrealism.util;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 
-public interface GradientTestFeatures {
+public interface GradientTestFeatures extends CodeFeatures {
 	default Producer<PackedCollection<?>> applyGradient(CollectionProducer<?> delta,
 														CollectionProducer<?> gradient) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
@@ -34,5 +36,71 @@ public interface GradientTestFeatures {
 				.sum(1)
 				.reshape(cf.shape(inSize))
 				.each();
+	}
+
+	default PackedCollection<?> normBackwards(PackedCollection<?> xGroup,
+											  PackedCollection<?> gradient,
+											  PackedCollection<?> weights,
+											  PackedCollection<?> bias) {
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		int groupSize = xGroup.getShape().getTotalSize();
+
+		double muG = xGroup.doubleStream().sum() / groupSize;
+		double varG = variance(cp(xGroup)).evaluate().toDouble();
+		double stdG = Math.sqrt(varG + eps);
+
+		PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+
+		PackedCollection<?> dLdBeta = gradient;
+		PackedCollection<?> dLdGamma = cp(gradient).multiply(cp(xHatGroup)).evaluate();
+
+		PackedCollection<?> dLdHatXGroup;
+
+		if (weights == null) {
+			dLdHatXGroup = cp(gradient).evaluate();
+		} else {
+			dLdHatXGroup = cp(gradient).multiply(cp(weights)).evaluate();
+		}
+
+		double dLdHatXGroupMean = dLdHatXGroup.doubleStream().sum() / groupSize;
+		PackedCollection<?> dLdHatXGroupXHatGroup = cp(dLdHatXGroup).multiply(cp(xHatGroup)).evaluate();
+
+		double dLdHatXGroupXHatGroupMean = dLdHatXGroupXHatGroup.doubleStream().sum() / groupSize;
+
+		PackedCollection<?> result = dlDxGroup(
+				dLdHatXGroup, dLdHatXGroupMean,
+				xHatGroup, dLdHatXGroupXHatGroupMean);
+		result = cp(result).divide(stdG).evaluate();
+		return result;
+	}
+
+	default PackedCollection<?> dlDxGroup(int c, PackedCollection<?> o, PackedCollection<?> g) {
+		double eps = 1e-5;
+		double muG = o.doubleStream().sum() / c;
+		double varG = variance(cp(o)).evaluate().toDouble();
+		double stdG = Math.sqrt(varG + eps);
+
+		PackedCollection<?> normalized =
+				cp(o).subtract(c(muG))
+						.divide(c(stdG))
+						.evaluate();
+
+		double gradientMean = g.doubleStream().sum() / c;
+		PackedCollection<?> gradientByInput = cp(g).multiply(cp(normalized)).evaluate();
+
+		double gradientByInputMean = gradientByInput.doubleStream().sum() / c;
+		return dlDxGroup(
+				g, gradientMean, normalized, gradientByInputMean);
+	}
+
+	// TODO  Make private
+	default PackedCollection<?> dlDxGroup(PackedCollection<?> dLdHatXGroup,
+										  double dLdHatXGroupMean,
+										  PackedCollection<?> xHatGroup,
+										  double dLdHatXGroupXHatGroupMean) {
+		return cp(dLdHatXGroup)
+				.subtract(c(dLdHatXGroupMean))
+				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
+				.evaluate();
 	}
 }

@@ -37,6 +37,7 @@ import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Rectify;
 import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
@@ -181,6 +182,10 @@ public interface ExpressionFeatures {
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> Rectify.of(args[0]), input);
 	}
 
 	default TraversableExpression<Boolean> equals(TraversalPolicy shape,

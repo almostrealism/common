@@ -266,7 +266,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 							}
 
 							log(expected + " vs " + out);
-							// assertEquals(expected, out);
+							assertEquals(expected, out);
 						}
 					}
 				}, false, false, true);
@@ -681,20 +681,54 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 						double actual = output.valueAt(i);
 						log(expected + " vs " + actual);
 
-						// Assert.assertEquals(expected, actual, 1e-5);
+						Assert.assertEquals(expected, actual, 1e-5);
 					}
-				},
-				false, true, false).save("results/divideProduct2.xml");
+				}).save("results/divideProduct2.xml");
 	}
 
-	private PackedCollection<?> dlDxGroup(PackedCollection<?> dLdHatXGroup,
-										  double dLdHatXGroupMean,
-										  PackedCollection<?> xHatGroup,
-										  double dLdHatXGroupXHatGroupMean) {
-		return cp(dLdHatXGroup)
-				.subtract(c(dLdHatXGroupMean))
-				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
-				.evaluate();
+	@Test
+	public void divideProduct3() throws IOException {
+		int c = 2;
+		divideProduct("divideProduct3", c, () -> new PackedCollection<>(c).fill(() -> Math.random() / 10.0));
+	}
+
+	@Test
+	public void divideProduct4() throws IOException {
+		int c = 2;
+		divideProduct("divideProduct4", c, () -> new PackedCollection<>(c).fill(1.0, 1.01));
+	}
+
+	public void divideProduct(String name, int c, Supplier<PackedCollection<?>> source) throws IOException {
+		PackedCollection<?> o = source.get();
+		PackedCollection<?> g = new PackedCollection<>(c).fill(() -> 1 + (Math.random() * 4.0));
+		PackedCollection<?> w = new PackedCollection<>(c).fill(1.0);
+		PackedCollection<?> b = new PackedCollection<>(c).fill(0.0);
+		double eps = 1e-5;
+
+		kernelTest(name, () -> {
+					CollectionProducer input = cp(o).reshape(-1, 1, c);
+					CollectionProducer out = input.subtractMean()
+							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
+							.reshape(-1, c)
+							.multiply(cp(w))
+							.add(cp(b));
+					out = out.delta(input);
+					return applyGradient(out, cp(g));
+				},
+				output -> {
+					output = output.reshape(c);
+					output.print();
+
+					PackedCollection<?> result = normBackwards(o, g, null, null);
+
+					for (int i = 0; i < c; i++) {
+						double expected = result.valueAt(i);
+						double actual = output.valueAt(i);
+						log(expected + " vs " + actual);
+
+						assertSimilar(expected, actual);
+					}
+				}, false, false, true).save("results/" + name + ".xml");
 	}
 
 	@Test

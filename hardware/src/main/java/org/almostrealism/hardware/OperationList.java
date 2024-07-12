@@ -145,7 +145,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return get(getProfile());
 	}
 
-	public Runnable get(OperationProfile profiles) {
+	public Runnable get(OperationProfile profile) {
 		if (isFunctionallyEmpty()) return () -> { };
 
 		try {

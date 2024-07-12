@@ -298,6 +298,13 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), null, requirements);
 	}
 
+	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
+		if (shape.getDimensions() != 1)
+			throw new IllegalArgumentException();
+
+		return layer("relu", shape, shape, input -> rectify(input), requirements);
+	}
+
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 1)
 			throw new IllegalArgumentException();

@@ -692,6 +692,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				a, b);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducer<T> rectify(Producer<T> a) {
+		return compute("rectify", shape -> args ->
+						rectify(shape, args[1]),
+				null, a);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
 		if (enableAxisAlignment) {
 			return compute("mod", shape -> args ->

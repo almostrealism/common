@@ -25,7 +25,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Max extends BinaryExpression<Double> {
-	public Max(Expression<Double> a, Expression<Double> b) {
+	public Max(Expression<? extends Number> a, Expression<? extends Number> b) {
 		super(Double.class, a, b);
 	}
 
@@ -66,10 +66,18 @@ public class Max extends BinaryExpression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Max((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return Max.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
 	public static Expression<Double> of(Expression<Double>... values) {
+		if (values.length == 2) {
+			if (values[0].doubleValue().orElse(-1.0) == 0.0) {
+				return Rectify.of(values[1]);
+			} else if (values[1].doubleValue().orElse(-1.0) == 0.0) {
+				return Rectify.of(values[0]);
+			}
+		}
+
 		Expression<Double> result = values[0];
 		for (int i = 1; i < values.length; i++) {
 			result = new Max(result, values[i]);
