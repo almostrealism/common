@@ -220,10 +220,10 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 
 	@Override
 	public ScopeTimingListener getScopeListener() {
-		return (root, metadata, nanos) -> {
+		return (root, metadata, stage, nanos) -> {
 			OperationProfileNode node = getProfileNode(root);
 			node.initMetric();
-			node.getMetric().addEntry(getKey().apply(metadata) + " scope", nanos);
+			node.getMetric().addEntry(getKey().apply(metadata) + " " + stage, nanos);
 		};
 	}
 

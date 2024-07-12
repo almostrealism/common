@@ -17,7 +17,6 @@
 package io.almostrealism.profile;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.Console;
@@ -88,7 +87,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public ScopeTimingListener getScopeListener() {
-		return (root, metadata, nanos) -> { };
+		return (root, metadata, stage, nanos) -> { };
 	}
 
 	public CompilationTimingListener getCompilationListener() {

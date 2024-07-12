@@ -317,6 +317,7 @@ public final class Hardware {
 		} else {
 			HardwareOperator.timingListener = profile.getRuntimeListener();
 			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
+			AcceleratedComputationOperation.timing = profile.getScopeListener();
 			Scope.timing = profile.getScopeListener();
 		}
 	}
@@ -324,6 +325,7 @@ public final class Hardware {
 	public void clearProfile() {
 		HardwareOperator.timingListener = null;
 		AbstractComputeContext.compilationTimingListener = null;
+		AcceleratedComputationOperation.timing = null;
 		Scope.timing = null;
 	}
 

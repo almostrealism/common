@@ -31,6 +31,7 @@ import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -53,7 +54,7 @@ import java.util.function.Supplier;
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
 		implements NameProvider, KernelStructureContext, Countable {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
-	public static TimingMetric compileProfile = console.timing("computationCompile");
+	public static ScopeTimingListener timing;
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
@@ -212,9 +213,21 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		long start = System.nanoTime();
 
 		// TODO  Should simplify be after converting arguments to required scopes?
-		scope = c.getScope(this).simplify(this);
-		compileProfile.addEntry(getFunctionName(), System.nanoTime() - start);
+		scope = c.getScope(this);
+		if (timing != null) {
+			timing.recordDuration(getMetadata(), scope.getMetadata(),
+					"getScope", System.nanoTime() - start);
+		}
+
+		scope = scope.simplify(this);
+
+		start = System.nanoTime();
 		scope.convertArgumentsToRequiredScopes(this);
+		if (timing != null) {
+			timing.recordDuration(getMetadata(), scope.getMetadata(),
+					"convertRequired", System.nanoTime() - start);
+		}
+
 		postCompile();
 
 		if (verboseCompile) log("Done compiling " + getFunctionName());
@@ -282,7 +295,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		KernelSeriesProvider.timingPos.clear();
 		KernelSeriesProvider.timingNeg.clear();
 		KernelTraversalProvider.timing.clear();
-		compileProfile.clear();
 	}
 
 	public static void printTimes() {
@@ -300,10 +312,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();
-		}
-
-		if (verbose || compileProfile.getTotal() > 60) {
-			compileProfile.print();
 		}
 	}
 }

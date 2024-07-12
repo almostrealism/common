@@ -31,7 +31,6 @@ import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
-import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
@@ -712,8 +711,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 			try {
 				return t.simplify(context);
 			} finally {
-				if (timing != null)
-					timing.recordDuration(metadata, getMetadata(), System.nanoTime() - start);
+				if (timing != null) {
+					timing.recordDuration(metadata, getMetadata(),
+							"simplify", System.nanoTime() - start);
+				}
 			}
 		};
 	}
