@@ -30,6 +30,15 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	@Override
+	public Number evaluate(Number... children) {
+		for (Number child : children) {
+			if (child.doubleValue() == 0) return 0;
+		}
+
+		return 1;
+	}
+
+	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		return new Conjunction(children.toArray(new Expression[0]));
 	}

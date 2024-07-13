@@ -261,7 +261,7 @@ public abstract class Expression<T> implements
 
 	@Override
 	public Number value(IndexValues indexValues) {
-		throw new UnsupportedOperationException();
+		return evaluate(getChildren().stream().map(e -> e.value(indexValues)).toArray(Number[]::new));
 	}
 
 	public IndexSequence sequence() {
@@ -415,9 +415,11 @@ public abstract class Expression<T> implements
 	public Expression subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 
 	public Expression multiply(int operand) { return operand == 1 ? this : Product.of(this, new IntegerConstant(operand)); }
+	public Expression multiply(double operand) { return operand == 1.0 ? this : Product.of(this, Constant.of(operand)); }
 	public Expression multiply(Expression<? extends Number> operand) { return Product.of(this, operand); }
 
 	public Expression divide(int operand) { return operand == 1 ? this : Quotient.of(this, new IntegerConstant(operand)); }
+	public Expression divide(double operand) { return operand == 1.0 ? this : Quotient.of(this, Constant.of(operand)); }
 	public Expression divide(Expression<?> operand) { return Quotient.of(this, operand); }
 
 	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }

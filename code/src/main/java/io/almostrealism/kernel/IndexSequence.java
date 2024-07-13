@@ -196,11 +196,12 @@ public interface IndexSequence extends Sequence<Number> {
 				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
 			}
 
-			if (distinct.length == 2 && distinct[0].intValue() == 0) {
+			if (distinct.length == 2 && distinct[0].intValue() == 0 && !fractionalValue(distinct)) {
 				int first = (int) matchingIndices(distinct[1].intValue())
 						.filter(i -> i < Integer.MAX_VALUE)
 						.findFirst().orElse(-1);
-				if (first < 0) throw new UnsupportedOperationException();
+				if (first < 0)
+					throw new UnsupportedOperationException();
 
 				int tot = doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
 
@@ -282,5 +283,14 @@ public interface IndexSequence extends Sequence<Number> {
 		} finally {
 			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
+	}
+
+	static boolean fractionalValue(Number[] distinct) {
+		for (Number n : distinct) {
+			double d = Math.abs(n.doubleValue() - n.intValue());
+			if (d > 0) return true;
+		}
+
+		return false;
 	}
 }

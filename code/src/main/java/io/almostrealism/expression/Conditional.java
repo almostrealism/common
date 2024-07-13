@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -37,6 +38,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 		return getChildren().get(0).getWrappedExpression(lang) + " ? " +
 				getChildren().get(1).getWrappedExpression(lang) +
 				" : " + getChildren().get(2).getWrappedExpression(lang);
+	}
+
+	@Override
+	public boolean isValue(IndexValues values) {
+		// TODO  This should just be the parent implementation
+		return getChildren().get(0).isValue(values) &&
+				getChildren().get(1).isValue(values) &&
+				getChildren().get(2).isValue(values);
 	}
 
 	@Override
