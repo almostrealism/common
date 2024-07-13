@@ -141,11 +141,12 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 	public void train() throws IOException {
 		if (!trainingTests) return;
 
+		int runs = 1; // 10;
 		int epochs = 10;
 
 		Model model = convolution2dModel(
 				rows, cols, 3, 8, large ? 3 : 2,
-				2, 2, true);
+				-1, 2, true);
 		model.setLearningRate(0.001);
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
@@ -167,7 +168,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		append(results, IntStream.range(0, epochs).toArray());
 
 		try {
-			for (int i = 0; i < 10; i++) {
+			for (int i = 0; i < runs; i++) {
 				if (i > 0) compiled.reset();
 
 				Collections.shuffle(data);

@@ -286,6 +286,25 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		System.out.println(new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e).getExpression(lang));
 	}
 
+	@Test
+	public void kernelConditionalSum1() {
+//		int global3_zero = ((0 == (global_id / 3)) ? 1 : 0);
+//		int global3_one = ((1 == (global_id / 3)) ? 1 : 0);
+//		int global3_two = ((2 == (global_id / 3)) ? 1 : 0);
+//		double global_nine = (((global3_zero + global3_one + global3_two) * 3.0) / 9.0);
+		Expression e = e(0).eq(kernel().divide(3)).conditional(e(1), e(0))
+				.add(e(1).eq(kernel().divide(3)).conditional(e(1), e(0)))
+				.add(e(2).eq(kernel().divide(3)).conditional(e(1), e(0)))
+				.multiply(3.0).divide(9.0);
+		System.out.println(e.getExpression(lang));
+		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+
+		e = new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e);
+
+		System.out.println(e.getExpression(lang));
+		Assert.assertEquals(String.valueOf(1.0 / 3.0), e.getSimpleExpression(lang));
+	}
+
 	protected void compareSimplifiedSequence(Expression e) {
 		compareSequences(e, e.getSimplified());
 	}

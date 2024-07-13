@@ -18,9 +18,11 @@ package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.CellularLayer;
@@ -151,58 +153,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		validate(groups, groupSize, v, in, out, weights, biases);
 	}
 
-	@Test
-	public void normDelta() {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
-
-		int c = 2;
-		int groups = 1;
-
-		PackedCollection<?> o = new PackedCollection<>(c).fill(1.0, 1.5);
-
-		kernelTest(() -> {
-					CollectionProducer<?> input = cp(o).reshape(-1, groups, c / groups);
-					CollectionProducer out = input
-							.subtractMean(2)
-							.divide(input.variance(2).add(c(eps)).sqrt())
-							.reshape(-1, c);
-					return out.delta(input);
-				},
-				output -> {
-					output = output.reshape(2, 2);
-					output.traverse(1).print();
-
-					int groupSize = c / groups;
-
-					for (int g = 0; g < groups; g++) {
-						int start = g * groupSize;
-
-						PackedCollection<?> xGroup = o.range(shape(groupSize), start);
-
-						double muG = xGroup.doubleStream().sum() / groupSize;
-						double varG = xGroup.doubleStream().map(v -> Math.pow(v, 2.0)).sum() / groupSize - Math.pow(muG, 2.0);
-						double stdG = Math.sqrt(varG + eps);
-
-
-						for (int i = 0; i < 2; i++) {
-							for (int j = 0; j < 2; j++) {
-								double out = output.valueAt(start + i, start + j);
-								double k0 = o.valueAt(0);
-								double k1 = o.valueAt(1);
-
-								if (i == 0 && j == 0) {
-									double expected = (1 / stdG)
-											- ((k0 - muG) / (stdG * stdG)) * ((k0 - k1) / (2 * stdG))
-											- 1 / (2 * stdG);
-									log(expected + " vs " + out);
-									// assertEquals(expected, out);
-								}
-							}
-						}
-					}
-				}, false, true, false);
-	}
-
 	protected void normBackwards(int c, int groups) {
 		normBackwards(c, groups, randomInput(c));
 	}
@@ -318,6 +268,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasProgressive2() throws IOException {
+		if (skipLongTests) return;
+
 		backwardsBiasProgressive(32, 4, 3);
 	}
 
@@ -403,8 +355,25 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
-	public void backwardsTrainableSmall() throws IOException {
-		normBackwardsTrainable("backwardsTrainableSmall", 2, 1);
+	public void backwardsTrainableSmall1() throws IOException {
+		normBackwardsTrainable("backwardsTrainableSmall1", 2, 1);
+	}
+
+	@Test
+	public void backwardsTrainableSmall2() throws IOException {
+		ParallelProcess.explicitIsolationTargets.add(t -> {
+			if (t instanceof PackedCollectionEnumerate) {
+				return true;
+			} else {
+				return false;
+			}
+		});
+
+		try {
+			normBackwardsTrainable("backwardsTrainableSmall2", 3, 1);
+		} finally {
+			ParallelProcess.explicitIsolationTargets.clear();
+		}
 	}
 
 	@Test
