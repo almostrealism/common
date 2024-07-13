@@ -287,11 +287,23 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelSumMod1() {
+		// (((((kernel0 % 3) * 3) + (kernel0 / 3) + ((kernel0 / 9) * 9)) / 3) % 3)
+		Expression e = kernel().imod(3).multiply(3).add(kernel().divide(3)).add(kernel().divide(9).multiply(9)).divide(3).imod(3);
+		System.out.println(e.getExpression(lang));
+		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+
+		e = new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e);
+		System.out.println(e.getExpression(lang));
+		Assert.assertEquals("kernel0 % 3", e.getSimpleExpression(lang));
+	}
+
+	@Test
 	public void kernelConditionalSum1() {
-//		int global3_zero = ((0 == (global_id / 3)) ? 1 : 0);
-//		int global3_one = ((1 == (global_id / 3)) ? 1 : 0);
-//		int global3_two = ((2 == (global_id / 3)) ? 1 : 0);
-//		double global_nine = (((global3_zero + global3_one + global3_two) * 3.0) / 9.0);
+//		int a = ((0 == (kernel0 / 3)) ? 1 : 0);
+//		int b = ((1 == (kernel0 / 3)) ? 1 : 0);
+//		int c = ((2 == (kernel0 / 3)) ? 1 : 0);
+//		double r = (((a + b + c) * 3.0) / 9.0);
 		Expression e = e(0).eq(kernel().divide(3)).conditional(e(1), e(0))
 				.add(e(1).eq(kernel().divide(3)).conditional(e(1), e(0)))
 				.add(e(2).eq(kernel().divide(3)).conditional(e(1), e(0)))
@@ -303,6 +315,24 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 
 		System.out.println(e.getExpression(lang));
 		Assert.assertEquals(String.valueOf(1.0 / 3.0), e.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void kernelConditionalSum2() {
+		// (((((((kernel0 % 3) * 3) + (kernel0 / 3) + ((kernel0 / 9) * 9)) / 3) % 3) == (kernel0 / 3)) ? 1 : 0)
+		Expression e = kernel().imod(3).multiply(3)
+				.add(kernel().divide(3))
+				.add(kernel().divide(9).multiply(9))
+				.divide(3).imod(3)
+				.eq(kernel().divide(3)).conditional(e(1), e(0));
+		System.out.println(e.getExpression(lang));
+
+		e = e.getSimplified();
+		System.out.println(e.getExpression(lang));
+		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+
+		e = e.getSimplified(new DefaultKernelStructureContext(9));
+		Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
 	}
 
 	protected void compareSimplifiedSequence(Expression e) {

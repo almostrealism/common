@@ -325,7 +325,7 @@ public abstract class Expression<T> implements
 	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
-		if (isSimple()) return this;
+		if (isSimple(context)) return this;
 
 		if (getClass() == Expression.class) {
 			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
@@ -335,13 +335,13 @@ public abstract class Expression<T> implements
 		// context = context.asNoOp();
 
 		Expression<?> simplified = simplify(context);
-		if (simplified.isSimple()) return simplified;
+		if (simplified.isSimple(context)) return simplified;
 
 		int hashCode = simplified.hashCode();
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify(context);
-			if (next.isSimple()) return next;
+			if (next.isSimple(context)) return next;
 
 			int nextExp = next.hashCode();
 
@@ -353,7 +353,9 @@ public abstract class Expression<T> implements
 			hashCode = nextExp;
 		}
 
-		simplified.isSimple = true;
+		if (context == null || context.getKernelMaximum().isEmpty())
+			simplified.isSimple = true;
+
 		return simplified;
 	}
 
@@ -519,13 +521,20 @@ public abstract class Expression<T> implements
 
 	public boolean isSimple() { return isSimple || getChildren().isEmpty(); }
 
+	public boolean isSimple(KernelStructureContext ctx) {
+		if (!isSimple()) return false;
+		if (ctx == null) return true;
+		if (seriesProvider != null && seriesProvider == ctx.getSeriesProvider()) return true;
+		return ctx.getKernelMaximum().isEmpty();
+	}
+
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
 	public Expression<T> simplify(KernelStructureContext context) {
 		KernelSeriesProvider provider = context.getSeriesProvider();
 
-		if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
+		if ((provider == null && isSimple(context)) || (provider != null && provider == seriesProvider)) {
 			return this;
 		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
 			return generate(getChildren().stream()

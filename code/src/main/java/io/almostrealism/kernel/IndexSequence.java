@@ -238,18 +238,27 @@ public interface IndexSequence extends Sequence<Number> {
 			double initial = doubleAt(0);
 			double delta = doubleAt(granularity) - doubleAt(0);
 			boolean isArithmetic = true;
-			for (int i = 2 * granularity; i < getMod(); i += granularity) {
-				if (doubleAt(i) - doubleAt(i - 1) != delta) {
+			int m = getMod();
+			int end = m;
+			i: for (int i = 2 * granularity; i < m; i += granularity) {
+				double actual = doubleAt(i);
+				double prediction = doubleAt(i - 1) + delta;
+
+				if (end == m && prediction != actual) {
+					end = i;
+				}
+
+				if (prediction % end != actual) {
 					isArithmetic = false;
-					break;
+					break i;
 				}
 			}
 
 			if (isArithmetic) {
 				Expression<?> r = index;
 
-				if (getMod() != lengthLong()) {
-					r = r.imod(getMod());
+				if (end != lengthLong()) {
+					r = r.imod(end);
 				}
 
 				if (granularity > 1) {
@@ -264,7 +273,7 @@ public interface IndexSequence extends Sequence<Number> {
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
 				}
 
-				if (getMod() != lengthLong()) {
+				if (end != lengthLong()) {
 					IndexSequence newSeq = r.sequence((Index) index, lengthLong());
 
 					if (!newSeq.congruent(this)) {
