@@ -44,6 +44,7 @@ import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -69,7 +70,10 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>>
+		implements Fragment, KernelTree<Scope<T>>,
+					OperationInfo, Nameable,
+					ConsoleFeatures {
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();
 
@@ -565,6 +569,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 						.map(ExpressionCache::getFrequentExpressions)
 						.orElse(Collections.emptyList())));
 
+		if ("f_packedCollectionEnumerate_120".equals(getName())) {
+			System.out.println("!");
+		}
+
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
@@ -597,6 +605,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return getName() == null ? 0 : getName().hashCode();
 	}
 
+	@Override
+	public Console console() { return console; }
+
 	@Deprecated
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
@@ -616,89 +627,103 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 													 Supplier<List<Expression<?>>> replacementTargets) {
 		if (!ScopeSettings.enableReplacements) return statements;
 
-		Set<Expression<?>> processed = new HashSet<>();
-		List<Statement<?>> declarations = new ArrayList<>();
-		Map<StaticReference, Expression<?>> replacements = new HashMap<>();
+		long start = System.nanoTime();
 
-		Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
+		try {
+			Set<Expression<?>> processed = new HashSet<>();
+			List<Statement<?>> declarations = new ArrayList<>();
+			Map<StaticReference, Expression<?>> replacements = new HashMap<>();
 
-		while (!targets.isEmpty()) {
-			boolean updated = false;
+			Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
 
-			// Replace all targets which are used, but not already declared
-			for (Expression<?> e : targets) {
-				boolean inUse = statements.stream()
-						.filter(ExpressionAssignment.class::isInstance)
-						.map(s -> (ExpressionAssignment) s)
-						.map(ExpressionAssignment::getExpression)
-						.anyMatch(exp -> exp.contains(e));
-				boolean alreadyDeclared = statements.stream()
-						.filter(ExpressionAssignment.class::isInstance)
-						.map(s -> (ExpressionAssignment) s)
-						.filter(ExpressionAssignment::isDeclaration)
-						.map(ExpressionAssignment::getExpression)
-						.anyMatch(exp -> exp.equals(e));
+			while (!targets.isEmpty() && replacements.size() < ScopeSettings.getMaximumReplacements()) {
+				log("Processing " + targets.size() + " replacement targets");
+				boolean updated = false;
 
-				if (inUse && !alreadyDeclared) {
-					StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
-					declarations.add(new ExpressionAssignment(true, ref, e));
-					replacements.put(ref, e);
-					updated = true;
-				}
-
-				// Record the target, as it
-				// should not be visited again
-				processed.add(e);
-			}
-
-			// If any replacements were declared, update all
-			// the statements to include them
-			if (updated) {
-				List<Statement<?>> next = new ArrayList<>();
-
-				for (Statement<?> s : statements) {
-					if (s instanceof ExpressionAssignment) {
-						ExpressionAssignment assignment = (ExpressionAssignment) s;
-
-						for (StaticReference r : replacements.keySet()) {
-							Expression<?> e = replacements.get(r);
-							if (assignment.getExpression().contains(e)) {
-								assignment = new ExpressionAssignment(
-										assignment.isDeclaration(),
-										assignment.getDestination(),
-										assignment.getExpression().replace(e, r));
-							}
-						}
-
-						next.add(assignment);
-					} else {
-						next.add(s);
+				// Replace all targets which are used, but not already declared
+				r: for (Expression<?> e : targets) {
+					if (replacements.size() >= ScopeSettings.getMaximumReplacements()) {
+						break r;
 					}
+
+					boolean inUse = statements.stream()
+							.filter(ExpressionAssignment.class::isInstance)
+							.map(s -> (ExpressionAssignment) s)
+							.map(ExpressionAssignment::getExpression)
+							.anyMatch(exp -> exp.contains(e));
+					boolean alreadyDeclared = statements.stream()
+							.filter(ExpressionAssignment.class::isInstance)
+							.map(s -> (ExpressionAssignment) s)
+							.filter(ExpressionAssignment::isDeclaration)
+							.map(ExpressionAssignment::getExpression)
+							.anyMatch(exp -> exp.equals(e));
+
+					if (inUse && !alreadyDeclared) {
+						StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
+						declarations.add(new ExpressionAssignment(true, ref, e));
+						replacements.put(ref, e);
+						updated = true;
+					}
+
+					// Record the target, as it
+					// should not be visited again
+					processed.add(e);
 				}
 
-				// The process will be repeated, but with the
-				// updated statements and any new targets that
-				// may have been identified in the process
-				statements = next;
+				// If any replacements were declared, update all
+				// the statements to include them
+				if (updated) {
+					List<Statement<?>> next = new ArrayList<>();
+
+					for (Statement<?> s : statements) {
+						if (s instanceof ExpressionAssignment) {
+							ExpressionAssignment assignment = (ExpressionAssignment) s;
+
+							for (StaticReference r : replacements.keySet()) {
+								Expression<?> e = replacements.get(r);
+								if (assignment.getExpression().contains(e)) {
+									assignment = new ExpressionAssignment(
+											assignment.isDeclaration(),
+											assignment.getDestination(),
+											assignment.getExpression().replace(e, r));
+								}
+							}
+
+							next.add(assignment);
+						} else {
+							next.add(s);
+						}
+					}
+
+					// The process will be repeated, but with the
+					// updated statements and any new targets that
+					// may have been identified in the process
+					statements = next;
+				}
+
+				// Reset the targets and prepare to review
+				// any new replacement opportunities that
+				// have not already been reviewed
+				targets.clear();
+				replacementTargets.get().stream()
+						.filter(Predicate.not(processed::contains))
+						.forEach(targets::add);
 			}
 
-			// Reset the targets and prepare to review
-			// any new replacement opportunities that
-			// have not already been reviewed
-			targets.clear();
-			replacementTargets.get().stream()
-					.filter(Predicate.not(processed::contains))
-					.forEach(targets::add);
+			// If no replacements were made, return the statements
+			if (declarations.isEmpty()) return statements;
+
+			// Otherwise, combine the declarations with the updated statements
+			List<Statement<?>> result = new ArrayList<>();
+			result.addAll(declarations);
+			result.addAll(statements);
+			return result;
+		} finally {
+			if (timing != null) {
+				timing.recordDuration(getMetadata(), getMetadata(),
+						"processReplacements", System.nanoTime() - start);
+			}
 		}
-
-		// If no replacements were made, return the statements
-		if (declarations.isEmpty()) return statements;
-
-		// Otherwise, combine the declarations with the updated statements
-		List<Statement<?>> result = new ArrayList<>();
-		result.addAll(declarations);
-		result.addAll(statements);
-		return result;
 	}
 
 	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {

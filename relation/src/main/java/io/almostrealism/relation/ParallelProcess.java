@@ -55,6 +55,15 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return process.isolate();
 	}
 
+	@Override
+	default boolean isIsolationTarget(ProcessContext context) {
+		if (!explicitIsolationTargets.isEmpty()) {
+			return explicitIsolationTargets.stream().anyMatch(p -> p.test(this));
+		}
+
+		return Process.super.isIsolationTarget(context);
+	}
+
 	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
 		return children.stream();
 	}
@@ -75,13 +84,6 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 					.anyMatch(v -> v)) {
 				System.out.println("ParallelProcess: Flagged for isolation");
 			}
-		}
-
-		if (!explicitIsolationTargets.isEmpty()) {
-			return generate((List) children.stream()
-					.map(c -> explicitIsolationTargets.stream().map(p -> p.test(c))
-							.reduce(false, (a, b) -> a | b) ? c.isolate() : c)
-					.collect(Collectors.toList()));
 		}
 
 		long counts[] = processChildren(children).mapToLong(ParallelProcess::parallelism).toArray();
@@ -114,7 +116,9 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		boolean isolate = true;
 
-		if ((p <= 1 && tot == cn) || cn >= max) {
+		if (!explicitIsolationTargets.isEmpty()) {
+			isolate = processChildren(children).anyMatch(c -> explicitIsolationTargets.stream().anyMatch(t -> t.test(c)));
+		} else if ((p <= 1 && tot == cn) || cn >= max) {
 			isolate = false;
 		} else if (enableContextualCount && max <= context.getCountLong()) {
 			isolate = false;

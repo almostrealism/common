@@ -187,7 +187,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
-			System.out.println("WARN: Attempting to compile an operation which was already compiled");
+			warn("Attempting to compile an operation which was already compiled");
 			return scope;
 		}
 

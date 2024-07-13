@@ -52,12 +52,15 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
-		if (enablePreferIsolation && getParallelism() > minCount &&
+		if (super.isIsolationTarget(context)) return true;
+
+		if (enablePreferIsolation &&
+				getParallelism() > minCount &&
 				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
 			return true;
 		}
 
-		return super.isIsolationTarget(context);
+		return false;
 	}
 
 	@Override

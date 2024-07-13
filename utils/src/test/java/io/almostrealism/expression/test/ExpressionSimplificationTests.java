@@ -29,6 +29,7 @@ import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -257,6 +258,32 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		Assert.assertEquals("1", seq.getExpression(idx).getExpression(lang));
 
 		Assert.assertEquals("true", e.getExpression(lang));
+	}
+
+	@Test
+	public void sumProductQuotient1() {
+		// (
+		// 		((v92[0] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[0] + (- ((v92[0] + v92[1]) / 2.0)))) +
+		// 		((v92[1] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[1] + (- ((v92[0] + v92[1]) / 2.0))))
+		// ) / 2.0
+		ArrayVariable v92 = new ArrayVariable(null, Double.class, "v92", e(4));
+		Expression ref0 = v92.valueAt(0);
+		Expression ref1 = v92.valueAt(1);
+		Expression e = ref0.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref0.add(ref0.add(ref1).divide(2.0).minus()))
+				.add(ref1.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref1.add(ref0.add(ref1).divide(2.0).minus())))
+				.divide(2.0);
+		System.out.println(e.getExpression(lang));
+		System.out.println(e.getSimplified().getExpression(lang));
+	}
+
+	@Test
+	public void kernelConditional1() {
+		// ((0 == (kernel0 / 3)) ? 1 : 0)
+		Expression e = e(0).eq(kernel().divide(3)).conditional(e(1), e(0));
+		System.out.println(e.getExpression(lang));
+		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+
+		System.out.println(new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e).getExpression(lang));
 	}
 
 	protected void compareSimplifiedSequence(Expression e) {

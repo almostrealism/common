@@ -75,8 +75,8 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
-		return count > isolationCountThreshold &&
-				getOutputSize() <= MemoryProvider.MAX_RESERVATION;
+		if (getOutputSize() > MemoryProvider.MAX_RESERVATION) return false;
+		return super.isIsolationTarget(context) || count > isolationCountThreshold;
 	}
 
 	@Override

@@ -31,6 +31,10 @@ public interface OperationInfo {
 
 	static <T> String name(T value) {
 		if (value instanceof OperationInfo) {
+			if (((OperationInfo) value).getMetadata() == null) {
+				return String.valueOf(value);
+			}
+
 			return ((OperationInfo) value).getMetadata().getDisplayName();
 		} else {
 			return String.valueOf(value);

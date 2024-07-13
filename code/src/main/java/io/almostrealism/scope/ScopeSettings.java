@@ -40,4 +40,8 @@ public class ScopeSettings {
 	public static boolean isExpressionCacheTarget(int depth) {
 		return depth == 7 || depth == 9 || depth == 11;
 	}
+
+	public static int getMaximumReplacements() {
+		return 6;
+	}
 }
