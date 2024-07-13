@@ -569,10 +569,6 @@ public class Scope<T> extends ArrayList<Scope<T>>
 						.map(ExpressionCache::getFrequentExpressions)
 						.orElse(Collections.emptyList())));
 
-		if ("f_packedCollectionEnumerate_120".equals(getName())) {
-			System.out.println("!");
-		}
-
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
