@@ -127,8 +127,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Mod)) return flat;
 
 		Expression input = flat.getChildren().get(0);
@@ -145,7 +145,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 				} else if (mod.intValue().getAsInt() != 0) {
 					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {
-					System.out.println("WARN: Module zero encountered while simplifying expression");
+					warn("Modulo zero encountered while simplifying expression");
 				}
 			}
 		} else if (mod.longValue().isPresent()) {

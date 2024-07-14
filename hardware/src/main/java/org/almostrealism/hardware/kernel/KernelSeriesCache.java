@@ -18,6 +18,8 @@ package org.almostrealism.hardware.kernel;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
@@ -58,6 +60,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 	}
 
+	private OperationMetadata metadata;
 	private int count;
 	private boolean fixed;
 	private MemoryDataCacheManager cacheManager;
@@ -66,11 +69,12 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	private FrequencyCache<String, Expression> expressions;
 	private Set<String> matchFailures;
 
-	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
+	public KernelSeriesCache(OperationMetadata metadata, int count, boolean fixed, MemoryDataCacheManager cacheManager) {
 		if (cacheManager != null && count != cacheManager.getEntrySize()) {
 			throw new IllegalArgumentException();
 		}
 
+		this.metadata = metadata;
 		this.count = count;
 		this.fixed = fixed;
 		this.cacheManager = cacheManager;
@@ -78,6 +82,9 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.expressions = new FrequencyCache<>(defaultMaxExpressions, 0.7);
 		this.matchFailures = new TreeSet<>();
 	}
+
+	@Override
+	public OperationMetadata getMetadata() { return metadata; }
 
 	public boolean isComputable() { return fixed && count <= ScopeSettings.maxKernelSeriesCount; }
 
@@ -182,7 +189,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	public static KernelSeriesCache create(Computation<?> c, Function<MemoryData, ArrayVariable<?>> variableFactory) {
 		int count = Countable.count(c);
 		boolean fixed = Countable.isFixedCount(c);
-		return new KernelSeriesCache(count, fixed,
+		return new KernelSeriesCache(OperationInfo.metadataForValue(c), count, fixed,
 				(enableCache && fixed && count < ScopeSettings.maxKernelSeriesCount) ?
 						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);
 	}

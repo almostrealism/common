@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,10 +27,11 @@ import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PlaneTest implements HardwareFeatures, CodeFeatures {
+public class PlaneTest implements TestFeatures {
 	protected ShadableIntersection test1() {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
@@ -41,7 +42,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	// TODO @Test
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
-		double distance = ((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue();
+		double distance = intersection.getDistance().evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
@@ -72,7 +73,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Assert.assertTrue(intersection.getDistance().get().evaluate().getValue() < 0);
 		});
 	}

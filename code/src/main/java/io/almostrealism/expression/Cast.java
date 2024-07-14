@@ -109,8 +109,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> simplify(KernelStructureContext context) {
-		Expression<T> flat = super.simplify(context);
+	public Expression<T> simplify(KernelStructureContext context, int depth) {
+		Expression<T> flat = super.simplify(context, depth);
 		if (!(flat instanceof Cast)) return flat;
 
 		OptionalDouble d = flat.getChildren().get(0).doubleValue();

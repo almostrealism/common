@@ -41,7 +41,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> ev = add(v(shape(1), 0), v(shape(1), 1)).get();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
 				ev.into(out.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
 			}
@@ -57,7 +57,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> rev = ((CollectionProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
 				rev.into(out).evaluate(a, b);
 			}

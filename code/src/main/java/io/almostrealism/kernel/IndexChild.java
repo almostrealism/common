@@ -97,7 +97,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
+	public Expression simplify(KernelStructureContext context, int depth) {
 		return this;
 	}
 

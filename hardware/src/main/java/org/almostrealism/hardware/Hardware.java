@@ -25,6 +25,7 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -317,8 +318,9 @@ public final class Hardware {
 		} else {
 			HardwareOperator.timingListener = profile.getRuntimeListener();
 			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
-			AcceleratedComputationOperation.timing = profile.getScopeListener();
-			Scope.timing = profile.getScopeListener();
+			AcceleratedComputationOperation.timing = profile.getScopeListener(true);
+			Scope.timing = profile.getScopeListener(true);
+			ScopeSettings.timing = profile.getScopeListener(false);
 		}
 	}
 
@@ -327,6 +329,7 @@ public final class Hardware {
 		AbstractComputeContext.compilationTimingListener = null;
 		AcceleratedComputationOperation.timing = null;
 		Scope.timing = null;
+		ScopeSettings.timing = null;
 	}
 
 	public synchronized void addContextListener(ContextListener l) {

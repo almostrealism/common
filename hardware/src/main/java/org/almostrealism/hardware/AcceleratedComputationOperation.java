@@ -45,7 +45,6 @@ import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.OptionalLong;
@@ -292,8 +291,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void clearTimes() {
-		KernelSeriesProvider.timingPos.clear();
-		KernelSeriesProvider.timingNeg.clear();
 		KernelTraversalProvider.timing.clear();
 	}
 
@@ -302,13 +299,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-		if (verbose || KernelSeriesProvider.timingPos.getTotal() > 90) {
-			KernelSeriesProvider.timingPos.print();
-		}
-
-		if (verbose || KernelSeriesProvider.timingNeg.getTotal() > 90) {
-			KernelSeriesProvider.timingNeg.print();
-		}
 
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();

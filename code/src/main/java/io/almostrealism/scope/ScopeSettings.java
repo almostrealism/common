@@ -16,6 +16,8 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.ParallelProcess;
 
 public class ScopeSettings {
@@ -24,13 +26,27 @@ public class ScopeSettings {
 	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
-	public static boolean isSeriesSimplificationTarget(
-			Class<?> type, int depth, int nodeCount, boolean containsLong) {
-		return
-				containsLong ||
-				type == Boolean.class ||
-				(depth > 5 && depth % 2 == 0) ||
-				nodeCount > 100;
+	public static ScopeTimingListener timing;
+
+	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
+		if (expression.getType() == Boolean.class) return true;
+
+		if (depth < 2) {
+			return true;
+		} else if (depth < 12) {
+			return expression.containsLong() || expression.countNodes() > 50 ||
+					targetByDepth(expression.treeDepth(), 2);
+		} else if (depth < 24) {
+			return expression.containsLong() || expression.countNodes() > 75 ||
+					targetByDepth(expression.treeDepth(), 3);
+		} else {
+			return expression.countNodes() > 100 ||
+					targetByDepth(expression.treeDepth(), 4);
+		}
+	}
+
+	public static boolean targetByDepth(int depth, int preference) {
+		return depth > (preference + 3) && depth % preference == 0;
 	}
 
 	public static int getExpressionCacheSize() { return 150; }

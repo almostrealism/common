@@ -25,7 +25,6 @@ import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Exponent extends Expression<Double> {
@@ -88,8 +87,8 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression<Double> simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
 
 		Expression base = flat.getChildren().get(0);

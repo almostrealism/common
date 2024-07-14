@@ -83,10 +83,10 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	@Override
-	public Scope<T> simplify(KernelStructureContext context) {
-		Repeated<T> scope = (Repeated<T>) super.simplify(context);
-		scope.setInterval(getInterval().simplify(context));
-		scope.setCondition(getCondition().simplify(context));
+	public Scope<T> simplify(KernelStructureContext context, int depth) {
+		Repeated<T> scope = (Repeated<T>) super.simplify(context, depth);
+		scope.setInterval(getInterval().simplify(context, depth + 1));
+		scope.setCondition(getCondition().simplify(context, depth + 1));
 		return scope;
 	}
 

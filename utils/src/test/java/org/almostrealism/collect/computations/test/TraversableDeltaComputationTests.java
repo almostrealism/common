@@ -179,7 +179,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		System.out.println(Arrays.toString(out.toArray(0, 4 * dim)));
 
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			// dy = f'(x)
 			//    = 2x + w
 			Evaluable<PackedCollection<?>> dy = c.delta(x).get();
@@ -822,7 +822,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		PackedCollection<?> matrix = pack(2.0, 3.0, 4.0, 5.0).reshape(dim, dim);
 		PackedCollection<?> vector = pack(4.0, -3.0).reshape(shape(dim));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> c = multiply(traverseEach(cp(matrix)), traverseEach(repeat(dim, cp(vector))));
 			PackedCollection<?> out = c.delta(cp(vector)).evaluate();
 			System.out.println(out.getShape().toStringDetail());

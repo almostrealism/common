@@ -96,7 +96,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
 		v.fill(pos -> Math.random());
 
-		MetalOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> out = c(p(v)).traverseEach().expand(d, x -> x.repeat(d)).get().evaluate();
 
 			for (int x = 0; x < w; x++) {

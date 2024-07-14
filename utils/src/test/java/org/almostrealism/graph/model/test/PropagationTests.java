@@ -69,7 +69,7 @@ public class PropagationTests implements TestFeatures {
 
 		CompiledModel runner = model.compile();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> output = runner.forward(input);
 			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 

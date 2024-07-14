@@ -30,7 +30,7 @@ import org.junit.Test;
 public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void fixedSum() {
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Producer<RGB> p1 = black();
 			Producer<RGB> p2 = white();
 			Producer<RGB> sum = add(p1, p2);
@@ -44,7 +44,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 	@Test
 	public void greaterThan() {
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
@@ -58,7 +58,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 	@Test
 	public void greaterThanKernel() {
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);

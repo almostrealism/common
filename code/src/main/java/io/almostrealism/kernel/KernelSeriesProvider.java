@@ -17,12 +17,15 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.code.CachedValue;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.Optional;
@@ -33,10 +36,7 @@ import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-public interface KernelSeriesProvider extends Destroyable {
-	TimingMetric timingPos = Scope.console.timing("kernelSeriesPos");
-	TimingMetric timingNeg = Scope.console.timing("kernelSeriesNeg");
-
+public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	LanguageOperations lang = new LanguageOperationsStub();
 
 	default long getSequenceComputationLimit() {
@@ -104,8 +104,12 @@ public interface KernelSeriesProvider extends Destroyable {
 				}
 			}
 		} finally {
-			boolean isPos = result != null;
-			(isPos ? timingPos : timingNeg).addEntry(exp.countNodes() + "-" + isPos, System.nanoTime() - start);
+			if (ScopeSettings.timing != null) {
+				boolean isPos = result != null;
+				ScopeSettings.timing.recordDuration(getMetadata(),
+						"kernelSeries " + exp.countNodes() + "-" + isPos,
+						System.nanoTime() - start);
+			}
 		}
 
 		return result == null ? exp : result;

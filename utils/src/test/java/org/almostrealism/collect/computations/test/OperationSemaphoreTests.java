@@ -63,7 +63,7 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 		long waitTime = 0;
 
-		MetalOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			r.run();
 		});
 		profiles.clear();

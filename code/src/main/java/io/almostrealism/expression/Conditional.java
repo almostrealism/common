@@ -65,8 +65,8 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Conditional)) return flat;
 
 		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);

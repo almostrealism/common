@@ -149,8 +149,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> simple = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> simple = super.simplify(context, depth);
 		if (!(simple instanceof Sum)) return simple;
 
 		List<Expression<?>> children = new ArrayList<>();

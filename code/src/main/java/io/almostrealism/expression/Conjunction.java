@@ -44,8 +44,8 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelStructureContext context) {
-		Expression<Boolean> flat = super.simplify(context);
+	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
+		Expression<Boolean> flat = super.simplify(context, depth);
 		if (!(flat instanceof Conjunction)) return flat;
 
 		List<Expression<?>> children = new ArrayList<>();

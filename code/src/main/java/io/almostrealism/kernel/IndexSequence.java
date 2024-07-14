@@ -23,6 +23,8 @@ import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.util.Sequence;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.function.DoubleUnaryOperator;
@@ -33,7 +35,7 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-public interface IndexSequence extends Sequence<Number> {
+public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	boolean enableGranularityDetection = true;
 	boolean enableModValidation = false;
 	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
@@ -193,7 +195,7 @@ public interface IndexSequence extends Sequence<Number> {
 
 			Number distinct[] = distinct();
 			if (distinct.length == 1) {
-				Scope.console.features(KernelSeriesMatcher.class).warn("Constant sequence not detected by IndexSequence");
+				warn("Constant sequence not detected by IndexSequence");
 				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
 			}
 
@@ -281,8 +283,7 @@ public interface IndexSequence extends Sequence<Number> {
 						r.sequence((Index) index, lengthLong());
 						throw new RuntimeException();
 					} else {
-						Scope.console.features(KernelSeriesMatcher.class)
-								.warn("Sequence replacement using mod is experimental");
+						warn("Sequence replacement using mod is experimental");
 					}
 				}
 
@@ -293,6 +294,11 @@ public interface IndexSequence extends Sequence<Number> {
 		} finally {
 			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
+	}
+
+	@Override
+	default Console console() {
+		return Scope.console;
 	}
 
 	static boolean fractionalValue(Number[] distinct) {

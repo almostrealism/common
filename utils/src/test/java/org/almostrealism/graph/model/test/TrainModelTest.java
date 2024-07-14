@@ -198,7 +198,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		PackedCollection<?> input = t.pack();
 
 		PackedCollection<?> in = input;
-		HardwareOperator.verboseLog(() -> model.compile().forward(in));
+		verboseLog(() -> model.compile().forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

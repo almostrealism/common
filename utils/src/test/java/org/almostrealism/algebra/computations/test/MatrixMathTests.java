@@ -136,7 +136,7 @@ public class MatrixMathTests implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		HardwareOperator.verboseLog(() -> r.run());
+		verboseLog(() -> r.run());
 
 		if (enableRepeat) {
 			profiles.clear();

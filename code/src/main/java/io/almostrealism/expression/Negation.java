@@ -47,8 +47,8 @@ public class Negation extends UnaryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelStructureContext context) {
-		Expression<Boolean> e = super.simplify(context);
+	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
+		Expression<Boolean> e = super.simplify(context, depth);
 		if (!(e instanceof Negation)) return e;
 		
 		Optional<Boolean> c = e.getChildren().get(0).booleanValue();

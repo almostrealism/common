@@ -173,7 +173,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 						.enumerate(1, 1)
 						.reshape(outputShape);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 //			PackedCollection<?> out = o.get().evaluate();
 			// TODO This should not require optimization to pass, but currently it does
 			PackedCollection<?> out = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
@@ -255,7 +255,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	public void enumerateTwiceSmall() {
 		PackedCollection<?> input = tensor(shape(4, 4)).pack();
 
-//		HardwareOperator.verboseLog(() -> {
+//		verboseLog(() -> {
 		CollectionProducer<PackedCollection<?>> convY = c(p(input))
 				.enumerate(1, 2, 2);
 		PackedCollection<?> output = convY.get().evaluate();
@@ -290,7 +290,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s);
@@ -317,7 +317,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	public void enumerateTwice() {
 		PackedCollection<?> input = tensor(shape(10, 10)).pack();
 
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> convY = c(p(input))
 					.enumerate(1, 3, 1);
 			PackedCollection<?> output = convY.get().evaluate();

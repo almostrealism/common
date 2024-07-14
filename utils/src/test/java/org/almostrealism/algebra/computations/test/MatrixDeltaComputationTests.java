@@ -363,7 +363,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		c.delta(p(w)).get().into(sparse.traverse(traversalAxis)).evaluate();
 		print(outSize, weightSize, sparse);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			c.delta(p(w))
 					.reshape(outSize, weightSize)
 					.traverse(1)
@@ -381,7 +381,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		}
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			cda.get().run();
 		});
 

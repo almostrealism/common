@@ -16,6 +16,8 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.code.OperationInfo;
+
 import java.util.OptionalLong;
 
 public class DefaultKernelStructureContext implements KernelStructureContext {
@@ -37,9 +39,12 @@ public class DefaultKernelStructureContext implements KernelStructureContext {
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
 		if (count.isPresent()) {
-			return KernelSeriesMatcher.defaultProvider(Math.toIntExact(count.getAsLong()));
+			return KernelSeriesMatcher.defaultProvider(
+					OperationInfo.metadataForValue(this),
+					Math.toIntExact(count.getAsLong()));
 		} else {
-			return KernelSeriesMatcher.defaultProvider();
+			return KernelSeriesMatcher.defaultProvider(
+					OperationInfo.metadataForValue(this));
 		}
 	}
 

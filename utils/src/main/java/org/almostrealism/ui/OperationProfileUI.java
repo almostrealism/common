@@ -43,13 +43,18 @@ public class OperationProfileUI {
 				if (node == null) return;
 
 				StringBuilder out = new StringBuilder();
+				String name = root.getMetadataDetail(node.getNode().getName());
 
 				TimingMetric metric = node.getNode().getMetric();
 				if (metric == null) metric = node.getNode().getMergedMetric();
 				if (metric != null) {
-					out.append(metric.summary(
-							root.getMetadataDetail(node.getNode().getName()),
-							root::getMetadataDetail));
+					out.append(metric.summary(name, root::getMetadataDetail));
+				}
+
+				TimingMetric details = node.getNode().getStageDetailTime();
+				if (details != null) {
+					out.append("\n---------\nStage Details:\n");
+					out.append(details.summary(name));
 				}
 
 				if (root.getOperationSources().containsKey(node.getNode().getName())) {

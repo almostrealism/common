@@ -102,6 +102,13 @@ public class Equals extends Comparison {
 			}
 		}
 
+		if (left instanceof Mask && right.doubleValue().isPresent()) {
+			OptionalDouble masked = ((Mask) left).getMaskedValue().doubleValue();
+			if (masked.isPresent() && masked.getAsDouble() == right.doubleValue().getAsDouble()) {
+				return left;
+			}
+		}
+
 		return new Equals(left, right);
 	}
 }

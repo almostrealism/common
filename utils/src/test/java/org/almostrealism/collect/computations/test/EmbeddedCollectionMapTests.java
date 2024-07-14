@@ -67,7 +67,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> filter = tensor(shape(n)).pack();
 		filter.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
 			PackedCollection<?> output = product.get().evaluate();
 			System.out.println(output.getShape());
@@ -93,7 +93,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c / w, w, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1).max();
 			System.out.println(pool.getShape());
@@ -229,7 +229,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					enumerate(shape(w, d), c(p(input)))
 							.traverse(1).reduce(slice -> max(slice));
@@ -266,7 +266,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c / w, w, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
@@ -297,7 +297,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> repeat =
 					c(p(input)).traverse(1).expand(2, v -> v.repeat(2));
 			System.out.println(repeat.getShape());
@@ -331,7 +331,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		filter.fill(pos -> Math.random());
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> repeat = c(p(input)).repeat(2).each().multiply(p(filter));
 			System.out.println(repeat.getShape());
 
@@ -360,7 +360,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		filter.fill(pos -> Math.random());
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> repeat =
 					c(p(input)).traverse(1).expand(n, v -> v.repeat(n).each().multiply(p(filter)));
 			System.out.println(repeat.getShape());
@@ -389,7 +389,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.expand(1, v ->
@@ -420,7 +420,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(n, w)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
@@ -452,7 +452,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		System.out.println(Arrays.toString(input.toArray(0, 8)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
@@ -487,7 +487,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		System.out.println(Arrays.toString(input.toArray(0, 8)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(d, 1, w, 1),
@@ -522,7 +522,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		System.out.println(Arrays.toString(input.toArray(0, 12)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(1, 2),
@@ -555,7 +555,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(n, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> en = enumerate(shape(n, w), c(p(input)));
 
 			System.out.println(en.getShape());
@@ -586,7 +586,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		a.fill(pos -> Math.random());
 		b.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product =
 					multiply(c(p(a)).traverse(1), c(p(b)).traverse(1));
 			product = enumerate(shape(n, w), product);
@@ -619,7 +619,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		System.out.println(Arrays.toString(input.toArray(0, 12)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(3, 1),
@@ -657,7 +657,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 		System.out.println(Arrays.toString(input.toArray(0, 8)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(3, 1), v ->
@@ -690,7 +690,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(n, w, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->

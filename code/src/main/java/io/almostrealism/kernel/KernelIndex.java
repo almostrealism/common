@@ -114,12 +114,12 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public Expression<Integer> simplify(KernelStructureContext context) {
+	public Expression<Integer> simplify(KernelStructureContext context, int depth) {
 		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
 			return new IntegerConstant(0);
 		}
 
-		return super.simplify(context);
+		return super.simplify(context, depth);
 	}
 
 	protected synchronized static void updateKernelSeq(long len) {

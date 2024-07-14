@@ -37,7 +37,7 @@ public class ExpressionDelegationTest implements TestFeatures {
 
 	@Test
 	public void scalarFromTemporalScalarFromScalars() {
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Scalar a = new Scalar(1.0);
 			Scalar b = new Scalar(2.0);
 			Evaluable<Scalar> ev = r((Supplier) temporal(p(a), p(b))).get();

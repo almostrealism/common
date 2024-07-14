@@ -149,8 +149,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Quotient)) return flat;
 
 		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()

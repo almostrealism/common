@@ -48,6 +48,7 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	private List<OperationProfileNode> children;
 	private Map<String, String> operationSources;
 	private TimingMetric measuredTime;
+	private TimingMetric stageDetailTime;
 
 	private Map<String, String> metadataCache;
 	private FrequencyCache<String, OperationProfileNode> nodeCache;
@@ -103,10 +104,16 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	public TimingMetric getMeasuredTime() {
 		return measuredTime;
 	}
-
 	public void setMeasuredTime(TimingMetric measuredTime) {
 		this.measuredTime = measuredTime;
 	}
+
+	protected void initStageDetailTime() {
+		if (stageDetailTime == null) stageDetailTime = new TimingMetric();
+	}
+
+	public TimingMetric getStageDetailTime() { return stageDetailTime; }
+	public void setStageDetailTime(TimingMetric stageDetailTime) { this.stageDetailTime = stageDetailTime; }
 
 	public String getMetadataDetail(String name) {
 		if (metadataCache != null && metadataCache.containsKey(name)) {
@@ -219,11 +226,17 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	}
 
 	@Override
-	public ScopeTimingListener getScopeListener() {
+	public ScopeTimingListener getScopeListener(boolean exclusive) {
 		return (root, metadata, stage, nanos) -> {
 			OperationProfileNode node = getProfileNode(root);
-			node.initMetric();
-			node.getMetric().addEntry(getKey().apply(metadata) + " " + stage, nanos);
+
+			if (exclusive) {
+				node.initMetric();
+				node.getMetric().addEntry(getKey().apply(metadata) + " " + stage, nanos);
+			} else {
+				node.initStageDetailTime();
+				node.getStageDetailTime().addEntry(stage, nanos);
+			}
 		};
 	}
 

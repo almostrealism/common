@@ -66,8 +66,8 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		return flat;
 	}
 

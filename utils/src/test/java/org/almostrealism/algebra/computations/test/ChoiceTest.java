@@ -33,7 +33,7 @@ public class ChoiceTest implements TestFeatures {
 		bank.set(0, 1.0);
 		bank.set(1, 2.0);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			ScalarChoice choice = new ScalarChoice(2, scalar(0.7), v(bank));
 			Evaluable<Scalar> ev = choice.get();
 			assertEquals(2.0, ev.evaluate());

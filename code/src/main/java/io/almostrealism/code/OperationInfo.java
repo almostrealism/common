@@ -49,6 +49,14 @@ public interface OperationInfo {
 		}
 	}
 
+	static <T> OperationMetadata metadataForValue(T value) {
+		if (value instanceof OperationInfo) {
+			return ((OperationInfo) value).getMetadata();
+		} else {
+			return null;
+		}
+	}
+
 	static <P extends Process<?, ?>, T> OperationMetadata metadataForProcess(
 						Process<P, T> process, OperationMetadata metadata) {
 		List<OperationMetadata> children = process.getChildren().stream()

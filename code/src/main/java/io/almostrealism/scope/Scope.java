@@ -281,15 +281,15 @@ public class Scope<T> extends ArrayList<Scope<T>>
 				.collect(Collectors.toList());
 	}
 
-	public Expression<Integer> declareInteger(String name, Expression<Integer> value) {
+	public Expression<Integer> declareInteger(String name, Expression<? extends Number> value) {
 		Expression<Integer> i = new StaticReference(Integer.class, name);
-		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		getStatements().add(new ExpressionAssignment<>(true, i, (Expression<Integer>) value));
 		return i;
 	}
 
-	public Expression<Double> declareDouble(String name, Expression<Double> value) {
+	public Expression<Double> declareDouble(String name, Expression<? extends Number> value) {
 		Expression<Double> i = new StaticReference(Double.class, name);
-		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		getStatements().add(new ExpressionAssignment<>(true, i, (Expression) value));
 		return i;
 	}
 
@@ -305,8 +305,8 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return v;
 	}
 
-	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<V> src) {
-		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, src);
+	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<?> src) {
+		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, (Expression) src);
 		getStatements().add(assignment);
 		return assignment;
 	}
@@ -551,11 +551,11 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	@Override
-	public Scope<T> simplify(KernelStructureContext context) {
+	public Scope<T> simplify(KernelStructureContext context, int depth) {
 		Scope<T> scope = (Scope<T>) generate(getChildren()
-				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context, depth + 1)).collect(Collectors.toList()));
 		scope.getRequiredScopes().addAll(getRequiredScopes()
-				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context, depth + 1)).collect(Collectors.toList()));
 		scope.getParameters().addAll(getParameters());
 
 		UnaryOperator simplification = simplification(context);

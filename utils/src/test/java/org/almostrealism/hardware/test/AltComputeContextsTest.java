@@ -64,7 +64,7 @@ public class AltComputeContextsTest implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		HardwareOperator.verboseLog(() -> r.run());
+		verboseLog(() -> r.run());
 
 		if (!skipLongTests) {
 			profiles.clear();

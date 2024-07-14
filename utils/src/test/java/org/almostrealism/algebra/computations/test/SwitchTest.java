@@ -48,7 +48,7 @@ public class SwitchTest implements TestFeatures {
 
 		Switch choice = choice(output, decision, new Scalar(1.0));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
 			op.run();
 		});
@@ -69,7 +69,7 @@ public class SwitchTest implements TestFeatures {
 		list.add(choice(output1, decision1, new Scalar(1.0)));
 		list.add(choice(output2, decision2, new Scalar(1.0)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
 			op.run();
 		});

@@ -412,19 +412,31 @@ public abstract class Expression<T> implements
 
 	public Expression minus() { return Minus.of(this); }
 
-	public Expression add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
-	public Expression add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
-	public Expression subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
+	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
+	public Expression<? extends Number> add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
+	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 
-	public Expression multiply(int operand) { return operand == 1 ? this : Product.of(this, new IntegerConstant(operand)); }
-	public Expression multiply(double operand) { return operand == 1.0 ? this : Product.of(this, Constant.of(operand)); }
-	public Expression multiply(Expression<? extends Number> operand) { return Product.of(this, operand); }
+	public Expression<? extends Number> multiply(int operand) {
+		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
+	}
+	public Expression<? extends Number> multiply(double operand) {
+		return operand == 1.0 ? (Expression) this : (Expression) Product.of(this, Constant.of(operand));
+	}
+	public Expression<? extends Number> multiply(Expression<? extends Number> operand) {
+		return (Expression) Product.of(this, operand);
+	}
 
-	public Expression divide(int operand) { return operand == 1 ? this : Quotient.of(this, new IntegerConstant(operand)); }
-	public Expression divide(double operand) { return operand == 1.0 ? this : Quotient.of(this, Constant.of(operand)); }
-	public Expression divide(Expression<?> operand) { return Quotient.of(this, operand); }
+	public Expression<? extends Number> divide(int operand) {
+		return operand == 1 ? (Expression) this : (Expression) Quotient.of(this, new IntegerConstant(operand));
+	}
+	public Expression<? extends Number> divide(double operand) {
+		return operand == 1.0 ? (Expression) this : (Expression) Quotient.of(this, Constant.of(operand));
+	}
+	public Expression<? extends Number> divide(Expression<?> operand) {
+		return (Expression)Quotient.of(this, operand);
+	}
 
-	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }
+	public Expression<? extends Number> reciprocal() { return (Expression) Quotient.of(new DoubleConstant(1.0), this); }
 
 	public Expression<Double> pow(Expression<Double> operand) { return Exponent.of((Expression) this, operand); }
 	public Expression<Double> exp() { return Exp.of(this); }
@@ -531,14 +543,14 @@ public abstract class Expression<T> implements
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
-	public Expression<T> simplify(KernelStructureContext context) {
+	public Expression<T> simplify(KernelStructureContext context, int depth) {
 		KernelSeriesProvider provider = context.getSeriesProvider();
 
 		if ((provider == null && isSimple(context)) || (provider != null && provider == seriesProvider)) {
 			return this;
-		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
+		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget(depth)) {
 			return generate(getChildren().stream()
-					.map((Expression<?> expression) -> expression.simplify(context))
+					.map((Expression<?> expression) -> expression.simplify(context, depth + 1))
 					.collect(Collectors.toList())).populate(this);
 		}
 
@@ -546,7 +558,7 @@ public abstract class Expression<T> implements
 
 		i: for (int i = 0; i < simplified.length; i++) {
 			simplified[i] = children.get(i);
-			simplified[i] = simplified[i].simplify(context);
+			simplified[i] = simplified[i].simplify(context, depth + 1);
 			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
 
 			Set<Index> indices = simplified[i].getIndices();
@@ -571,9 +583,8 @@ public abstract class Expression<T> implements
 		return simple;
 	}
 
-	public boolean isSeriesSimplificationTarget() {
-		return ScopeSettings.isSeriesSimplificationTarget(
-				getType(), treeDepth(), countNodes(), containsLong());
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return ScopeSettings.isSeriesSimplificationTarget(this, depth);
 	}
 
 	@Override

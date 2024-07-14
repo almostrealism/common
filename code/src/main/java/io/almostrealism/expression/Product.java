@@ -206,12 +206,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
+	public Expression simplify(KernelStructureContext context, int depth) {
 		if (getChildren().stream().anyMatch(e -> e.doubleValue().orElse(-1) == 0)) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
 		}
 
-		Expression<?> flat = super.simplify(context);
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Product)) return flat;
 
 		List<Expression<?>> children = flat.flatten().stream().collect(Collectors.toList());

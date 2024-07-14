@@ -41,7 +41,7 @@ public class StandardMathTests implements TestFeatures {
 		PackedCollection<?> x = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 		Producer<PackedCollection<?>> o = c(p(in)).traverse(1).multiply(c(p(x)));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = o.get().evaluate();
 
 			for (int n = 0; n < 12; n++) {
