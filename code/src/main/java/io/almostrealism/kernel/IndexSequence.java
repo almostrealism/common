@@ -35,6 +35,7 @@ import java.util.stream.LongStream;
 
 public interface IndexSequence extends Sequence<Number> {
 	boolean enableGranularityDetection = true;
+	boolean enableModValidation = false;
 	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
 
 	default IndexSequence map(UnaryOperator<Number> op) {
@@ -273,7 +274,7 @@ public interface IndexSequence extends Sequence<Number> {
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
 				}
 
-				if (end != lengthLong()) {
+				if (enableModValidation && end != lengthLong()) {
 					IndexSequence newSeq = r.sequence((Index) index, lengthLong());
 
 					if (!newSeq.congruent(this)) {
