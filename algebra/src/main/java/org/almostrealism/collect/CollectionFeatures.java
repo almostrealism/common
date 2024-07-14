@@ -636,7 +636,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
 		return compute("pow", shape -> (args) ->
-				CollectionExpression.create(shape, index -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index))),
+				CollectionExpression.create(shape, index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index))),
 				null, base, exp);
 	}
 

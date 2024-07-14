@@ -21,6 +21,7 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -64,7 +65,7 @@ public class Exponent extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Exponent((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return Exponent.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
 	@Override
@@ -114,6 +115,10 @@ public class Exponent extends Expression<Double> {
 	}
 
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
+		return ExpressionCache.match(Exponent.create(base, exponent));
+	}
+
+	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
 		OptionalDouble exponentValue = exponent.doubleValue();
 		if (exponentValue.isPresent()) {
 			if (exponentValue.getAsDouble() == 0.0) {

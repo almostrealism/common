@@ -174,8 +174,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Producer<Scalar> exponent) {
 		// TODO  Certainty of exponent is ignored
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> new Exponent(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				args -> new Exponent(args.get(1).getValueRelative(1), args.get(2).getValueRelative(0))),
+				args -> Exponent.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> Exponent.of(args.get(1).getValueRelative(1), args.get(2).getValueRelative(0))),
 				(Supplier) base, (Supplier) exponent)
 				.setPostprocessor(Scalar.postprocessor());
 	}

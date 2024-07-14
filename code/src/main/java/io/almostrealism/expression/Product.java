@@ -41,6 +41,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusDetection = true;
 	public static boolean enableConstantExtraction = true;
 	public static boolean enableConstantExtractionValidation = false;
+	public static boolean enableSort = true;
 
 	protected Product(List<Expression<Double>> values) {
 		this((Class<T>) type(values), (List) values);
@@ -364,6 +365,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
+		if (enableSort)
+			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
 		return fp ? new Product(Double.class, operands) : new Product(operands);
 	}
 }

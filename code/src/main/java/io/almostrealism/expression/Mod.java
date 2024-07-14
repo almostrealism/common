@@ -203,6 +203,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp || mod.longValue().isEmpty()) return new Mod(input, mod, fp);
 
 		long m = mod.longValue().getAsLong();
+		if (!fp && m == 1) return new IntegerConstant(0);
 
 		if (input instanceof Mod && !input.isFP()) {
 			Mod<Long> innerMod = (Mod) input;

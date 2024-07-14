@@ -35,13 +35,13 @@ public class ScopeSettings {
 
 	public static int getExpressionCacheSize() { return 150; }
 
-	public static int getExpressionCacheFrequencyThreshold() { return 40; }
+	public static int getExpressionCacheFrequencyThreshold() { return 10; }
 
 	public static boolean isExpressionCacheTarget(int depth) {
-		return depth == 7 || depth == 9 || depth == 11;
+		return depth == 3 || depth == 7 || depth == 9 || depth == 11;
 	}
 
 	public static int getMaximumReplacements() {
-		return 6;
+		return 12;
 	}
 }
