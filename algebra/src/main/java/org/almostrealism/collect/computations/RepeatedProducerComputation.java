@@ -143,15 +143,19 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	}
 
 	protected Expression<?> getExpression(Expression globalIndex, Expression localIndex) {
-		return getExpression(getTraversableArguments(globalIndex), localIndex);
+		return getExpression(getTraversableArguments(globalIndex), globalIndex, localIndex);
 	}
 
-	protected Expression<?> getExpression(TraversableExpression[] args, Expression localIndex) {
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		return expression.apply(args, localIndex);
 	}
 
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
-		return ((ArrayVariable) getOutputVariable()).referenceRelative(offset);
+		if (globalIndex instanceof KernelIndex) {
+			return ((ArrayVariable) getOutputVariable()).referenceRelative(offset, (KernelIndex) globalIndex);
+		} else {
+			return ((ArrayVariable) getOutputVariable()).referenceRelative(offset);
+		}
 	}
 
 	@Override

@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
+	public static boolean enableContextualKernelIndex = true;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 	private boolean replaceLoop;
@@ -135,10 +136,16 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
-	protected Expression<?> getExpression(TraversableExpression[] args, Expression localIndex) {
-		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
-									.referenceRelative(new IntegerConstant(0));
-		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
+		if (enableContextualKernelIndex && globalIndex instanceof KernelIndex) {
+			Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
+					.referenceRelative(new IntegerConstant(0), (KernelIndex) globalIndex);
+			return expression.apply(currentValue, args[1].getValueRelative(localIndex));
+		} else {
+			Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
+					.referenceRelative(new IntegerConstant(0));
+			return expression.apply(currentValue, args[1].getValueRelative(localIndex));
+		}
 	}
 
 	@Override

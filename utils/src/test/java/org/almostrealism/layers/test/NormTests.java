@@ -246,6 +246,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium1() throws IOException {
+		if (skipLongTests) return;
+
 		normBackwardsBias("backwardsBiasMedium1", 8, 4);
 	}
 
@@ -383,6 +385,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableMedium2() throws IOException {
+		if (skipLongTests) return;
+
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 

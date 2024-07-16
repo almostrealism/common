@@ -33,6 +33,7 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
+	public static boolean enableDistributiveSum = true;
 	public static boolean enableConstantReplacement = true;
 	public static boolean enableFpDivisorReplacement = true;
 
@@ -238,45 +239,89 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.size() == 1) return operands.get(0);
+		if (operands.size() > 2) return new Quotient(operands);
 
-		if (operands.size() == 2) {
-			if (operands.get(0) instanceof Product) {
-				if (operands.get(1).longValue().isPresent()) {
-					// When dividing a product that includes a constant value,
-					// by the same constant value, the result can be simplified
-					// to a product of the remaining values without the constant
-					long constant = operands.get(0).getChildren().stream()
-							.mapToLong(e -> e.longValue().orElse(1))
-							.reduce(1, (a, b) -> a * b);
+		Expression<?> numerator = operands.get(0);
+		Expression<?> denominator = operands.get(1);
 
-					if (constant == operands.get(1).longValue().getAsLong()) {
-						return Product.of(operands.get(0).getChildren().stream()
-								.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
-					}
-				} else if (enableFpDivisorReplacement && operands.get(1).doubleValue().isPresent()) {
-					// When dividing a product that includes a floating-point constant value,
-					// the result can be simplified to a product of the remaining values and
-					// the constant value divided by the divisor
-					double constant = operands.get(0).getChildren().stream()
-							.mapToDouble(e -> e.doubleValue().orElse(1))
-							.reduce(1, (a, b) -> a * b);
-					if (constant != 1.0) {
-						List<Expression> args = new ArrayList<>();
-						operands.get(0).getChildren().stream()
-								.filter(e -> e.doubleValue().isEmpty()).forEach(args::add);
-						args.add(new DoubleConstant(constant / operands.get(1).doubleValue().getAsDouble()));
-						return Product.of(args.toArray(Expression[]::new));
-					}
+		if (numerator instanceof Product) {
+			if (denominator.longValue().isPresent()) {
+				// When dividing a product that includes a constant value,
+				// by the same constant value, the result can be simplified
+				// to a product of the remaining values without the constant
+				long constant = numerator.getChildren().stream()
+						.mapToLong(e -> e.longValue().orElse(1))
+						.reduce(1, (a, b) -> a * b);
+
+				if (constant == denominator.longValue().getAsLong()) {
+					return Product.of(numerator.getChildren().stream()
+							.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
+				}
+			} else if (enableFpDivisorReplacement && denominator.doubleValue().isPresent()) {
+				// When dividing a product that includes a floating-point constant value,
+				// the result can be simplified to a product of the remaining values and
+				// the constant value divided by the divisor
+				double constant = numerator.getChildren().stream()
+						.mapToDouble(e -> e.doubleValue().orElse(1))
+						.reduce(1, (a, b) -> a * b);
+				if (constant != 1.0) {
+					List<Expression> args = new ArrayList<>();
+					numerator.getChildren().stream()
+							.filter(e -> e.doubleValue().isEmpty()).forEach(args::add);
+					args.add(new DoubleConstant(constant / denominator.doubleValue().getAsDouble()));
+					return Product.of(args.toArray(Expression[]::new));
 				}
 			}
+		} else if (numerator instanceof Sum) {
+			OptionalLong divisor = denominator.longValue();
 
-			if (enableConstantReplacement && operands.get(0).doubleValue().isPresent() && operands.get(1).doubleValue().isPresent()) {
-				double r = operands.get(0).doubleValue().getAsDouble() / operands.get(1).doubleValue().getAsDouble();
-				return fp ? new DoubleConstant(r) : ExpressionFeatures.getInstance().e((long) r);
+			if (enableDistributiveSum && !numerator.isFP() && divisor.isPresent()) {
+				List<Expression<?>> products = new ArrayList<>();
+				long total = 0;
+				boolean valid = true;
+
+				// Identify all products which include a term that is a multiple
+				// of the divisor, and all constant terms
+				c: for (Expression<?> child : numerator.getChildren()) {
+					if (child.isFP()) {
+						throw new IllegalArgumentException("Floating point term discovered in an integer sum");
+					}
+
+					if (child.longValue().isPresent()) {
+						total += child.longValue().getAsLong();
+					} else if (child instanceof Product && findDivisibleTerm(child, divisor.getAsLong()) != null) {
+						products.add(child);
+					} else {
+						valid = false;
+						break c;
+					}
+				}
+
+				// If all children are integer multiples of the divisor (or constant values)
+				// then it is safe to apply the division to each term in the sum
+				if (valid) {
+					List<Expression<?>> newChildren = new ArrayList<>();
+					newChildren.addAll(products.stream()
+							.map(e -> Quotient.of(e, Constant.of(divisor.getAsLong())))
+							.collect(Collectors.toList()));
+					newChildren.add(ExpressionFeatures.getInstance().e(total / divisor.getAsLong()));
+					return Sum.of(newChildren.toArray(new Expression[0]));
+				}
 			}
 		}
 
+		if (enableConstantReplacement && numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
+			double r = numerator.doubleValue().getAsDouble() / denominator.doubleValue().getAsDouble();
+			return fp ? new DoubleConstant(r) : ExpressionFeatures.getInstance().e((long) r);
+		}
+
 		return new Quotient(operands);
+	}
+
+	private static Expression findDivisibleTerm(Expression<?> e, long divisor) {
+		return e.getChildren().stream()
+				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0)
+				.findFirst().orElse(null);
 	}
 
 	private static Expression trySumSimplify(Sum<?> sum, long divisor) {
@@ -310,6 +355,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
 		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
 
-		return Quotient.of(arg, Constant.of(divisor / constant));
+		Expression d = ExpressionFeatures.getInstance().e(divisor / constant);
+		return Quotient.of(arg, d);
 	}
 }

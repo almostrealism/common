@@ -273,9 +273,12 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
 
 		if (constant == m) {
-			return new Mod(arg, Constant.of(m), false);
+			Expression m0 = ExpressionFeatures.getInstance().e(constant);
+			return new Mod(arg, m0, false);
 		} else if (constant * constant == m) {
-			return Product.of(Mod.of(arg, Constant.of(constant), false), Constant.of(constant + 1));
+			Expression m0 = ExpressionFeatures.getInstance().e(constant);
+			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
+			return Product.of(Mod.of(arg, m0, false), m1);
 		} else {
 			System.out.println("WARN: Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
 			return null;

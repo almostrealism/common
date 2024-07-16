@@ -38,6 +38,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+	public static boolean enableContextualKernelIndex = true;
+
 	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
@@ -80,7 +82,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
 		for (int i = 0; i < memLength; i++) {
-			Expression index = new KernelIndex();
+			Expression index = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
 			if (memLength > 1) index = index.multiply(memLength).add(i);
 
 			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));

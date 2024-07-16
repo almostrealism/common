@@ -62,6 +62,7 @@ public abstract class Expression<T> implements
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static boolean enableArithmeticSequence = true;
+	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 	public static int maxDepth = 4096;
@@ -573,6 +574,14 @@ public abstract class Expression<T> implements
 			if (target != null) v.put(target, 0);
 
 			if (simplified[i].isValue(v)) {
+				if (enableSequenceValidation && target != null && target.getLimit().isPresent()) {
+					IndexSequence orig = children.get(i).sequence();
+					IndexSequence seq = simplified[i].sequence();
+					if (!orig.congruent(seq)) {
+						throw new UnsupportedOperationException();
+					}
+				}
+
 				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}

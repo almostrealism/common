@@ -1110,21 +1110,23 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.sum(1)
 				.multiply(2);
 
-		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-		// PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-		PackedCollection<?> dout = dy.get().evaluate();
-		dout.print();
+		verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+			// PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
+			PackedCollection<?> dout = dy.get().evaluate();
+			dout.print();
 
-		dout = dout.reshape(shape(2, 4));
+			dout = dout.reshape(shape(2, 4));
 
-		assertEquals(2.0, dout.valueAt(0, 0));
-		assertEquals(2.0, dout.valueAt(0, 1));
-		assertEquals(0.0, dout.valueAt(0, 2));
-		assertEquals(0.0, dout.valueAt(0, 3));
-		assertEquals(0.0, dout.valueAt(1, 0));
-		assertEquals(0.0, dout.valueAt(1, 1));
-		assertEquals(2.0, dout.valueAt(1, 2));
-		assertEquals(2.0, dout.valueAt(1, 3));
+			assertEquals(2.0, dout.valueAt(0, 0));
+			assertEquals(2.0, dout.valueAt(0, 1));
+			assertEquals(0.0, dout.valueAt(0, 2));
+			assertEquals(0.0, dout.valueAt(0, 3));
+			assertEquals(0.0, dout.valueAt(1, 0));
+			assertEquals(0.0, dout.valueAt(1, 1));
+			assertEquals(2.0, dout.valueAt(1, 2));
+			assertEquals(2.0, dout.valueAt(1, 3));
+		});
 	}
 
 	@Test

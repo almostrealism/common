@@ -68,7 +68,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	}
 
 	@Override
-	protected Expression<?> getExpression(TraversableExpression args[], Expression localIndex) {
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0));
 		return expression.apply(args, currentValue).getValueAt(localIndex);
 	}

@@ -72,6 +72,10 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 		return indexValues.getIndex(getName());
 	}
 
+	public DefaultIndex withLimit(long limit) {
+		return new DefaultIndex(getName(), limit);
+	}
+
 	@Override
 	public ExpressionAssignment<Integer> assign(Expression exp) {
 		throw new UnsupportedOperationException();

@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -121,10 +122,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression<T> referenceRelative(Expression<?> pos) {
+		return referenceRelative(pos, new KernelIndex(null, 0));
+	}
+
+	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else {
-			return reference(getArrayPosition(this, pos, 0), false);
+			return reference(getArrayPosition(this, pos, idx), false);
 		}
 	}
 
@@ -188,12 +193,20 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return Collections.emptyList();
 	}
 
+	@Deprecated
 	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+		return getArrayPosition(v, pos, new KernelIndex(null, kernelIndex));
+	}
+
+	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
+		if (!enableContextualKernelIndex) {
+			idx = new KernelIndex(null, idx.getKernelAxis());
+		}
+
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {
-			KernelIndex idx = new KernelIndex(null, kernelIndex);
-			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, kernelIndex));
+			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, idx.getKernelAxis()));
 
 			Expression kernelOffset = idx.multiply(dim);
 			return kernelOffset.add(offset).add(pos.toInt());

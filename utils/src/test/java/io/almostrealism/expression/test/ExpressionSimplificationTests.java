@@ -121,7 +121,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
-	public void kernelSumQuotient() {
+	public void kernelQuotient1() {
+		Expression e = kernel().withLimit(10).divide(10);
+		e = e.getSimplified();
+
+		log(e.getExpression(lang));
+		Assert.assertEquals("0", e.getExpression(lang));
+	}
+
+	@Test
+	public void kernelSumQuotient1() {
 		int n = 4;
 
 		Expression<?> e =
@@ -131,6 +140,13 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		String simple = e.getSimplified().getExpression(lang);
 		log(simple);
 		Assert.assertEquals("kernel0 / " + n, simple);
+	}
+
+	@Test
+	public void kernelSumQuotient2() {
+		Expression e = kernel().divide(5).multiply(5).add(1).divide(5);
+		log(e.getExpression(lang));
+		Assert.assertEquals("kernel0 / 5", e.getExpression(lang));
 	}
 
 	@Test
@@ -332,6 +348,17 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 
 		e = e.getSimplified(new DefaultKernelStructureContext(9));
 		Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
+	}
+
+	@Test
+	public void redundantQuotientProduct1() {
+		// ((((((kernel0 % 20) / 5) * 5) + 1) / 5) * 5) % 20
+		Expression e = kernel().withLimit(400)
+						.imod(20).divide(5).multiply(5).add(1)
+						.divide(5).multiply(5)
+						.imod(20);
+		System.out.println(e.getExpression(lang));
+		Assert.assertEquals("(((kernel0 % 20) / 5) * 5) % 20", e.getExpression(lang));
 	}
 
 	protected void compareSimplifiedSequence(Expression e) {

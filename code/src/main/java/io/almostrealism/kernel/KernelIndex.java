@@ -89,6 +89,15 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
+	public KernelIndex withLimit(long limit) {
+		if (context != null) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new KernelIndex(new NoOpKernelStructureContext(limit), axis);
+	}
+
+	@Override
 	public KernelSeries kernelSeries() {
 		return KernelSeries.infinite(1);
 	}
