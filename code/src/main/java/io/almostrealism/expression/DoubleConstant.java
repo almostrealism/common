@@ -68,4 +68,9 @@ public class DoubleConstant extends Constant<Double> {
 	public Number evaluate(Number... children) {
 		return value;
 	}
+
+	@Override
+	public Expression minus() {
+		return new DoubleConstant(-value);
+	}
 }

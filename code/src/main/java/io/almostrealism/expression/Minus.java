@@ -27,8 +27,11 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.stream.IntStream;
 
 public class Minus<T extends Number> extends UnaryExpression<T> {
+	public static boolean enableDistributive = true;
+
 	protected Minus(Expression<? extends Number> value) {
 		super((Class) value.getType(), "-", value);
 	}
@@ -107,6 +110,17 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	protected static Expression<?> create(Expression<?> value) {
 		if (value instanceof Minus) {
 			return value.getChildren().get(0);
+		} else if (enableDistributive && value instanceof Product) {
+			int c = IntStream.range(0, value.getChildren().size())
+					.filter(i -> value.getChildren().get(i).doubleValue().isPresent())
+					.findFirst().orElse(-1);
+
+			if (c >= 0) {
+				return Product.of(IntStream.range(0, value.getChildren().size()).mapToObj(i -> {
+					if (i == c) return value.getChildren().get(i).minus();
+					return value.getChildren().get(i);
+				}).toArray(Expression[]::new));
+			}
 		}
 
 		return new Minus(value);

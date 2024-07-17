@@ -150,6 +150,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelSumQuotient3() {
+		// (((kernel0 + ((kernel0 / 12) * -12)) / 3) + 3) * 10
+		KernelIndex idx = kernel().withLimit(24);
+		Expression e = idx.add(idx.divide(12).multiply(-12)).divide(3);
+		e = e.getSimplified();
+		log(e.getExpression(lang));
+		Assert.assertEquals("(kernel0 + ((kernel0 / 12) * -12)) / 3", e.getExpression(lang));
+	}
+
+	@Test
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));

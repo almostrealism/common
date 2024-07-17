@@ -70,4 +70,9 @@ public class IntegerConstant extends Constant<Integer> {
 	public Number evaluate(Number... children) {
 		return value;
 	}
+
+	@Override
+	public Expression minus() {
+		return new IntegerConstant(-value);
+	}
 }

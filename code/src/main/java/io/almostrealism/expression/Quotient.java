@@ -168,7 +168,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			OptionalLong max = children.get(0).getLimit();
 
 			if (divisor.isPresent()) {
-				if (max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
+				if (!children.get(0).isPossiblyNegative() && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
 					return new IntegerConstant(0);
 				} else if (children.get(0) instanceof Sum) {
 					Expression simple = trySumSimplify((Sum) children.get(0), divisor.getAsLong());

@@ -424,8 +424,13 @@ public abstract class Expression<T> implements
 	public Expression<? extends Number> multiply(int operand) {
 		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
 	}
+	public Expression<? extends Number> multiply(long operand) {
+		return operand == 1.0 ? (Expression) this :
+				(Expression) Product.of(this, ExpressionFeatures.getInstance().e(operand));
+	}
 	public Expression<? extends Number> multiply(double operand) {
-		return operand == 1.0 ? (Expression) this : (Expression) Product.of(this, Constant.of(operand));
+		return operand == 1.0 ? (Expression) this :
+				(Expression) Product.of(this, Constant.of(operand));
 	}
 	public Expression<? extends Number> multiply(Expression<? extends Number> operand) {
 		return (Expression) Product.of(this, operand);

@@ -80,4 +80,9 @@ public class LongConstant extends Constant<Long> {
 	public Number evaluate(Number... children) {
 		return value;
 	}
+
+	@Override
+	public Expression minus() {
+		return new LongConstant(-value);
+	}
 }
