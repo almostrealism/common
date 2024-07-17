@@ -250,6 +250,10 @@ public abstract class Expression<T> implements
 		return OptionalLong.empty();
 	}
 
+	public boolean isPossiblyNegative() {
+		return doubleValue().orElse(-1.0) < 0.0;
+	}
+
 	public Number evaluate(Number... children) {
 		throw new UnsupportedOperationException();
 	}

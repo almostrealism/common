@@ -150,15 +150,23 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
-	public void kernelModProduct() {
+	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
 		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
 		Assert.assertTrue(result.isValue(new IndexValues(0)));
 
 		String simple = new DefaultKernelStructureContext(64).simplify(result).getExpression(lang);
-		System.out.println(simple);
+		log(simple);
 		Assert.assertEquals("0", simple);
+	}
+
+	@Test
+	public void kernelModProduct2() {
+		Expression e = kernel().imod(16).multiply(17).divide(16);
+		e = e.getSimplified();
+		log(e.getExpression(lang));
+		Assert.assertEquals("kernel0 % 16", e.getExpression(lang));
 	}
 
 	@Test
@@ -311,6 +319,17 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		e = new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e);
 		System.out.println(e.getExpression(lang));
 		Assert.assertEquals("kernel0 % 3", e.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void kernelSumMod2() {
+		int n = 4;
+
+		// (((kernel0 * n) + (kernel0 % n)) % n^2) / n
+		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n).divide(n);
+		Expression e1 = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n);
+		Expression e2 =  kernel().withLimit(n*n).multiply(n).add(kernel().imod(n));
+		System.out.println(e.getExpression(lang));
 	}
 
 	@Test

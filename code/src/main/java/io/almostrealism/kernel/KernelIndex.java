@@ -67,6 +67,11 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() {
+		return false;
+	}
+
+	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
 	@Override

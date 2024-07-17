@@ -44,6 +44,11 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() {
+		return true;
+	}
+
+	@Override
 	public Number value(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
 				.map(e -> e.value(indexValues))

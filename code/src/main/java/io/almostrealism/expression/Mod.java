@@ -33,6 +33,7 @@ import java.util.OptionalLong;
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
 	public static boolean enableInnerSumSimplify = true;
+	public static boolean enableDistributiveSum = false;
 
 	private boolean fp;
 
@@ -199,11 +200,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return ExpressionCache.match(create(input, mod, fp));
 	}
 
-	protected static Expression create(Expression input, Expression mod, boolean fp) {
+	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
 		if (fp || mod.longValue().isEmpty()) return new Mod(input, mod, fp);
 
 		long m = mod.longValue().getAsLong();
-		if (!fp && m == 1) return new IntegerConstant(0);
+		if (m == 1) return new IntegerConstant(0);
 
 		if (input instanceof Mod && !input.isFP()) {
 			Mod<Long> innerMod = (Mod) input;
@@ -212,7 +213,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			if (inMod.isPresent()) {
 				long n = inMod.getAsLong();
 
-				if (n == m) {
+				if (n == m || m % n == 0) {
 					return innerMod;
 				} else if (n % m == 0) {
 					return new Mod(innerMod.getChildren().get(0),
@@ -220,6 +221,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 							false);
 				}
 			}
+		} else if (enableDistributiveSum && input instanceof Sum && !input.isFP()) {
+			input = Sum.of(input.getChildren().stream().map(e -> e.imod(m)).toArray(Expression[]::new));
 		}
 
 		return new Mod(input, mod, fp);

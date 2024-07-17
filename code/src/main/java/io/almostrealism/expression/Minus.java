@@ -65,6 +65,11 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() {
+		return true;
+	}
+
+	@Override
 	public Number value(IndexValues indexValues) {
 		Number v = getChildren().get(0).value(indexValues);
 		if (v instanceof Integer) return -1 * (Integer) v;

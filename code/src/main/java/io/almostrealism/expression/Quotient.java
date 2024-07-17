@@ -36,6 +36,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableDistributiveSum = true;
 	public static boolean enableConstantReplacement = true;
 	public static boolean enableFpDivisorReplacement = true;
+	public static boolean enableProductModSimplify = true;
 
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
@@ -53,7 +54,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return numerator.scale(denominator.getAsInt());
 		}
 
-		return  KernelSeries.infinite();
+		return KernelSeries.infinite();
 	}
 
 	@Override
@@ -171,6 +172,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					return new IntegerConstant(0);
 				} else if (children.get(0) instanceof Sum) {
 					Expression simple = trySumSimplify((Sum) children.get(0), divisor.getAsLong());
+					if (simple != null) return simple;
+				} else if (children.get(0) instanceof Product) {
+					Expression simple = tryProductSimplify((Product) children.get(0), divisor.getAsLong());
 					if (simple != null) return simple;
 				}
 			}
@@ -357,5 +361,24 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		Expression d = ExpressionFeatures.getInstance().e(divisor / constant);
 		return Quotient.of(arg, d);
+	}
+
+	private static Expression tryProductSimplify(Product<?> p, long divisor) {
+		if (!enableProductModSimplify) return null;
+		if (divisor <= 1) return null;
+		if (p.isFP() || p.getChildren().size() != 2) return null;
+		if (p.getChildren().get(1).longValue().orElse(-1) != (divisor + 1)) return null;
+
+		Expression<?> mod = p.getChildren().get(0);
+		if (!(mod instanceof Mod)) return null;
+
+		if (mod.getChildren().get(1).longValue().orElse(-1) != divisor) return null;
+		if (mod.getChildren().get(0).isPossiblyNegative()) return null;
+
+		// The expression: ((x % a) * (a + 1)) / a
+		// Can be simplified to: (x % a) + (x % a) / a
+		// (And since x % a never exceeds a, this is
+		// equivalent to just x % a)
+		return mod.getChildren().get(0).imod(divisor);
 	}
 }

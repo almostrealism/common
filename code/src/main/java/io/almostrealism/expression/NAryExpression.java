@@ -39,6 +39,11 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() {
+		return getChildren().stream().anyMatch(Expression::isPossiblyNegative);
+	}
+
+	@Override
 	public boolean isValue(IndexValues values) {
 		return getChildren().stream().allMatch(expression -> expression.isValue(values));
 	}
