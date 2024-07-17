@@ -430,6 +430,10 @@ public abstract class Expression<T> implements
 	public Expression<? extends Number> divide(int operand) {
 		return operand == 1 ? (Expression) this : (Expression) Quotient.of(this, new IntegerConstant(operand));
 	}
+	public Expression<? extends Number> divide(long operand) {
+		return operand == 1 ? (Expression) this :
+				(Expression) Quotient.of(this, ExpressionFeatures.getInstance().e(operand));
+	}
 	public Expression<? extends Number> divide(double operand) {
 		return operand == 1.0 ? (Expression) this : (Expression) Quotient.of(this, Constant.of(operand));
 	}

@@ -107,7 +107,8 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 			if (ScopeSettings.timing != null) {
 				boolean isPos = result != null;
 				ScopeSettings.timing.recordDuration(getMetadata(),
-						"kernelSeries " + exp.countNodes() + "-" + isPos,
+						"kernelSeries " + exp.treeDepth() +
+								"-" + exp.countNodes() + "-" + isPos,
 						System.nanoTime() - start);
 			}
 		}

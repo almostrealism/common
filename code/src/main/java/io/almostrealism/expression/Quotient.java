@@ -302,7 +302,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				if (valid) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
-							.map(e -> Quotient.of(e, Constant.of(divisor.getAsLong())))
+							.map(e -> e.divide(divisor.getAsLong()))
 							.collect(Collectors.toList()));
 					newChildren.add(ExpressionFeatures.getInstance().e(total / divisor.getAsLong()));
 					return Sum.of(newChildren.toArray(new Expression[0]));

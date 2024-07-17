@@ -408,7 +408,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public void backwardsTrainableVeryLarge() throws IOException {
 		if (skipLongTests) return;
 
-		int c = 400;
+		int c = 1600;
 		int groups = 4;
 		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
 	}
