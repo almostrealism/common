@@ -416,21 +416,15 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		if (skipLongTests || testDepth < 3) return;
 
 		try {
-			Quotient.enableExpandedDistributiveSum = false;
-			Quotient.enableProductModSimplify = false;
 			Quotient.enableDenominatorCollapse = false;
-			Quotient.enableRequireNonNegative = false;
-			Sum.enableCoefficientExtraction = false;
+			Quotient.enableExpandedDistributiveSum = false;
 
 			int c = 1600;
 			int groups = 4;
 			normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
 		} finally {
-			Quotient.enableExpandedDistributiveSum = true;
-			Quotient.enableProductModSimplify = true;
 			Quotient.enableDenominatorCollapse = true;
-			Quotient.enableRequireNonNegative = true;
-			Sum.enableCoefficientExtraction = true;
+			Quotient.enableExpandedDistributiveSum = true;
 		}
 
 //		while (c < 20000) {
