@@ -36,10 +36,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableDistributiveSum = true;
 	public static boolean enableConstantReplacement = true;
 	public static boolean enableFpDivisorReplacement = true;
-	public static boolean enableExpandedDistributiveSum = false;
-	public static boolean enableProductModSimplify = false;
-	public static boolean enableDenominatorCollapse = false;
-	public static boolean enableRequireNonNegative = false;
+	public static boolean enableExpandedDistributiveSum = true;
+	public static boolean enableProductModSimplify = true;
+	public static boolean enableDenominatorCollapse = true;
+	public static boolean enableRequireNonNegative = true;
 
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);

@@ -17,6 +17,8 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -218,6 +220,11 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
+	public void backwardsMedium() {
+		normBackwards(120, 4);
+	}
+
+	@Test
 	public void backwardsProgressive() {
 		if (skipLongTests) return;
 
@@ -408,9 +415,23 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	public void backwardsTrainableVeryLarge() throws IOException {
 		if (skipLongTests) return;
 
-		int c = 1600;
-		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
+		try {
+			Quotient.enableExpandedDistributiveSum = false;
+			Quotient.enableProductModSimplify = false;
+			Quotient.enableDenominatorCollapse = false;
+			Quotient.enableRequireNonNegative = false;
+			Sum.enableCoefficientExtraction = false;
+
+			int c = 1600;
+			int groups = 4;
+			normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
+		} finally {
+			Quotient.enableExpandedDistributiveSum = true;
+			Quotient.enableProductModSimplify = true;
+			Quotient.enableDenominatorCollapse = true;
+			Quotient.enableRequireNonNegative = true;
+			Sum.enableCoefficientExtraction = true;
+		}
 
 //		while (c < 20000) {
 //			c = c + 400;
