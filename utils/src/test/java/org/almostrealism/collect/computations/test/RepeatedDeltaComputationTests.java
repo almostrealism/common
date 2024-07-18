@@ -319,7 +319,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convSmall() {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		int dim = 16;
 		int size = 3;

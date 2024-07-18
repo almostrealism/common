@@ -226,7 +226,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsProgressive() {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 
 		int c = 120;
 
@@ -253,7 +253,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium1() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		normBackwardsBias("backwardsBiasMedium1", 8, 4);
 	}
@@ -270,14 +270,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasProgressive1() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		backwardsBiasProgressive(2, 1, 5);
 	}
 
 	@Test
 	public void backwardsBiasProgressive2() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 1) return;
 
 		backwardsBiasProgressive(32, 4, 3);
 	}
@@ -392,14 +392,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableMedium2() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 1) return;
 
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
 	@Test
 	public void backwardsTrainableProgressive() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		int c = 32;
 		int groups = 4;
@@ -413,7 +413,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableVeryLarge() throws IOException {
-		if (skipLongTests) return;
+		if (skipLongTests || testDepth < 3) return;
 
 		try {
 			Quotient.enableExpandedDistributiveSum = false;
@@ -442,7 +442,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableLarge1() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		int c = 120;
 		int groups = 4;
@@ -451,7 +451,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableLarge2() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 1) return;
 
 		int c = 96;
 		int groups = 6;

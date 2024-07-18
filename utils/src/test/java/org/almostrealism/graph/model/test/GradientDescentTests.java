@@ -73,6 +73,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear2() throws FileNotFoundException {
+		if (testDepth < 1) return;
+
 		CellularLayer dense = dense(2, 1);
 
 		SequentialBlock block = new SequentialBlock(shape(2));
@@ -117,6 +119,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear4() throws FileNotFoundException {
+		if (testDepth < 2) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3));
 		block.add(dense(3, 1));
 		block.add(dense(1, 1));
@@ -138,6 +142,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear5() throws FileNotFoundException {
+		if (testDepth < 2) return;
+
 		try {
 			initKernelMetrics();
 

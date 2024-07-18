@@ -163,7 +163,7 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void sumPowers() {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 
 		for (int i = 1; i < 7; i++) {
 			sum(600, 1 << i);

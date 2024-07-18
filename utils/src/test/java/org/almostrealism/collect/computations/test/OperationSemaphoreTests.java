@@ -30,13 +30,13 @@ import java.util.List;
 public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sum() {
-		if (skipLongTests) return;
-
 		sum(16, 2048, 1024, false);
 	}
 
 	@Test
 	public void sumPowers() {
+		if (testDepth < 1) return;
+
 		for (int i = 1; i < 9; i++) {
 			sum(12, 80, 1 << i, false);
 		}

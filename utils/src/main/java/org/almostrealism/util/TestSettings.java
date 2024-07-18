@@ -26,6 +26,8 @@ public interface TestSettings {
 	boolean trainingTests = TestUtils.getTrainTests();
 	boolean verboseLogs = TestUtils.getVerboseLogs();
 
+	int testDepth = TestUtils.getTestDepth();
+
 	default boolean testProfileIs(String profile) {
 		return (Objects.equals(TestUtils.getTestProfile(), profile));
 	}

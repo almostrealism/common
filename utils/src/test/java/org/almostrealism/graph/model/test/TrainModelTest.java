@@ -260,7 +260,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmallest() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 1) return;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -270,7 +270,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainVerySmall() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		try {
 			int dim = 8;
@@ -285,7 +285,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmall() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 		if (!trainingTests &&
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;

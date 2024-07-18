@@ -24,7 +24,7 @@ import org.junit.Test;
 public class MemoryAllocationTest implements TestFeatures {
 	@Test
 	public void allocateAndDestroy() throws InterruptedException {
-		if (skipLongTests) return;
+		if (skipLongTests || testDepth < 3) return;
 
 		long gb = 1024L * 1024L * 1024L;
 		long limit = 256L * gb;

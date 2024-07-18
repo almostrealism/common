@@ -566,6 +566,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divide11() {
+		if (testDepth < 1) return;
+
 		double eps = 1e-5;
 
 		PackedCollection<?> b = new PackedCollection<>(2);
@@ -594,6 +596,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divideProduct1() {
+		if (testDepth < 1) return;
+
 		int c = 2;
 
 		PackedCollection<?> o = new PackedCollection<>(c).fill(() -> Math.random() / 10.0);

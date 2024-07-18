@@ -315,6 +315,8 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void variance1() {
+		if (testDepth < 2) return;
+
 		variance(1);
 	}
 

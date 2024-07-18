@@ -61,5 +61,13 @@ public class TestUtils implements TestSettings {
 		return !getSkipLongTests() && !getSkipKnownIssues();
 	}
 
+	public static int getTestDepth() {
+		if (Objects.equals(getTestProfile(), PIPELINE)) return Integer.MAX_VALUE;
+
+		String depth = SystemUtils.getProperty("AR_TEST_DEPTH");
+		if (depth == null) return Integer.MAX_VALUE;
+		return Integer.parseInt(depth);
+	}
+
 	public static String getTestProfile() { return SystemUtils.getProperty("AR_TEST_PROFILE", "default"); }
 }
