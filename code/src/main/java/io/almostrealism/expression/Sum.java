@@ -44,7 +44,7 @@ import java.util.stream.Stream;
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
 	public static boolean enableConstantExtraction = true;
-	public static boolean enableCoefficientExtraction = true;
+	public static boolean enableCoefficientExtraction = false;
 	public static int maxOppositeDetectionDepth = 10;
 	public static int maxDistinctDetectionWidth = 8;
 

@@ -411,6 +411,12 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		int c = 1600;
 		int groups = 4;
 		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
+
+//		while (c < 20000) {
+//			c = c + 400;
+//			log("START c = " + c);
+//			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
+//		}
 	}
 
 	@Test

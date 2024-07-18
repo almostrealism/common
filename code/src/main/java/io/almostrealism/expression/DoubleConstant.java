@@ -71,6 +71,10 @@ public class DoubleConstant extends Constant<Double> {
 
 	@Override
 	public Expression minus() {
-		return new DoubleConstant(-value);
+		if (enableNegationOptimization) {
+			return new DoubleConstant(-value);
+		}
+
+		return super.minus();
 	}
 }

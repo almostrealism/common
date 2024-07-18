@@ -33,6 +33,7 @@ import java.util.OptionalLong;
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
 	public static boolean enableInnerSumSimplify = true;
+	public static boolean enableRedundantModReplacement = true;
 	public static boolean enableDistributiveSum = false;
 
 	private boolean fp;
@@ -204,7 +205,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp || mod.longValue().isEmpty()) return new Mod(input, mod, fp);
 
 		long m = mod.longValue().getAsLong();
-		if (m == 1) return new IntegerConstant(0);
+		if (!fp && m == 1) return new IntegerConstant(0);
 
 		if (input instanceof Mod && !input.isFP()) {
 			Mod<Long> innerMod = (Mod) input;
@@ -213,7 +214,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			if (inMod.isPresent()) {
 				long n = inMod.getAsLong();
 
-				if (n == m || m % n == 0) {
+				if (n == m || (enableRedundantModReplacement && m % n == 0)) {
 					return innerMod;
 				} else if (n % m == 0) {
 					return new Mod(innerMod.getChildren().get(0),

@@ -28,6 +28,8 @@ import java.util.Objects;
 import java.util.Set;
 
 public abstract class Constant<T> extends Expression<T> {
+	public static boolean enableNegationOptimization = true;
+
 	public Constant(Class<T> type) {
 		super(type);
 	}

@@ -83,6 +83,10 @@ public class LongConstant extends Constant<Long> {
 
 	@Override
 	public Expression minus() {
-		return new LongConstant(-value);
+		if (enableNegationOptimization) {
+			return new LongConstant(-value);
+		}
+
+		return super.minus();
 	}
 }

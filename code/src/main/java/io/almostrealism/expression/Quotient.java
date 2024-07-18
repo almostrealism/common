@@ -36,7 +36,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableDistributiveSum = true;
 	public static boolean enableConstantReplacement = true;
 	public static boolean enableFpDivisorReplacement = true;
-	public static boolean enableProductModSimplify = true;
+	public static boolean enableExpandedDistributiveSum = false;
+	public static boolean enableProductModSimplify = false;
+	public static boolean enableDenominatorCollapse = false;
+	public static boolean enableRequireNonNegative = false;
 
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
@@ -168,7 +171,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			OptionalLong max = children.get(0).getLimit();
 
 			if (divisor.isPresent()) {
-				if (!children.get(0).isPossiblyNegative() && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
+				boolean pos = !enableRequireNonNegative || !children.get(0).isPossiblyNegative();
+
+				if (pos && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
 					return new IntegerConstant(0);
 				} else if (children.get(0) instanceof Sum) {
 					Expression simple = trySumSimplify((Sum) children.get(0), divisor.getAsLong());
@@ -248,7 +253,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
-		if (numerator instanceof Product) {
+		if (enableDenominatorCollapse && numerator instanceof Quotient) {
+			if (denominator.longValue().isPresent() && numerator.getChildren().size() == 2) {
+				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
+				if (altDenominator.isPresent()) {
+					return numerator.getChildren().get(0).divide(
+							altDenominator.getAsLong() * denominator.longValue().getAsLong());
+				}
+			}
+		} else if (numerator instanceof Product) {
 			if (denominator.longValue().isPresent()) {
 				// When dividing a product that includes a constant value,
 				// by the same constant value, the result can be simplified
@@ -282,7 +295,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			if (enableDistributiveSum && !numerator.isFP() && divisor.isPresent()) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
-				boolean valid = true;
+				int unknown = 0;
 
 				// Identify all products which include a term that is a multiple
 				// of the divisor, and all constant terms
@@ -296,20 +309,29 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					} else if (child instanceof Product && findDivisibleTerm(child, divisor.getAsLong()) != null) {
 						products.add(child);
 					} else {
-						valid = false;
-						break c;
+						unknown++;
 					}
 				}
 
 				// If all children are integer multiples of the divisor (or constant values)
 				// then it is safe to apply the division to each term in the sum
-				if (valid) {
+				if (unknown == 0) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
 							.map(e -> e.divide(divisor.getAsLong()))
 							.collect(Collectors.toList()));
 					newChildren.add(ExpressionFeatures.getInstance().e(total / divisor.getAsLong()));
 					return Sum.of(newChildren.toArray(new Expression[0]));
+				}
+
+				// If there is only one term that may not be an integer multiple of the divisor,
+				// then it is also safe to apply division to each term in the sum (that term
+				// is the only possible source of a remainder, which will be discarded without
+				// the chance to combine with other values to exceed the divisor)
+				if (enableExpandedDistributiveSum && unknown == 1 && total == 0.0) {
+					return Sum.of(numerator.getChildren().stream()
+							.map(e -> e.divide(divisor.getAsLong()))
+							.toArray(Expression[]::new));
 				}
 			}
 		}
@@ -324,7 +346,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	private static Expression findDivisibleTerm(Expression<?> e, long divisor) {
 		return e.getChildren().stream()
-				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0)
+				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0 && c.longValue().getAsLong() > 0)
 				.findFirst().orElse(null);
 	}
 

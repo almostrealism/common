@@ -73,6 +73,10 @@ public class IntegerConstant extends Constant<Integer> {
 
 	@Override
 	public Expression minus() {
-		return new IntegerConstant(-value);
+		if (enableNegationOptimization) {
+			return new IntegerConstant(-value);
+		}
+
+		return super.minus();
 	}
 }
