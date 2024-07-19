@@ -17,6 +17,7 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.profile.OperationProfileNode;
@@ -265,6 +266,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium3() throws IOException {
+		if (testDepth < 1) return;
+
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
 
@@ -370,6 +373,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableSmall2() throws IOException {
+		if (testDepth < 1) return;
+
 		ParallelProcess.explicitIsolationTargets.add(t -> {
 			if (t instanceof PackedCollectionEnumerate) {
 				return true;

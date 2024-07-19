@@ -35,6 +35,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.OptionalLong;
 import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
@@ -305,6 +306,63 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void sequenceMax1() {
+		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
+		IndexSequence seq = e.sequence();
+		System.out.println(Arrays.toString(seq.toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+	}
+
+	@Test
+	public void sequenceMax2() {
+		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
+		IndexSequence seq = e.sequence();
+		System.out.println(Arrays.toString(seq.toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+	}
+
+	@Test
+	public void sequenceMax3() {
+		int n = 1600;
+
+
+		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n));
+		long o = e.value(new IndexValues().put(kernel(), 1342178)).longValue();
+		System.out.println(o);
+		Assert.assertTrue(o > 0);
+
+		IndexSequence seq = e.sequence();
+
+		OptionalLong negative = e.sequence().longStream().filter(l -> l < 0).findAny();
+		if (negative.isPresent()) {
+			warn("unexpected value -> " + negative.getAsLong());
+			Number v[] = seq.toArray();
+			int index = IntStream.range(0, v.length).filter(i -> v[i].longValue() < 0).findFirst().orElse(-1);
+			Assert.fail("negative value at index " + index);
+		}
+	}
+
+	@Test
+	public void sequenceMax4() {
+		int n = 1400;
+
+		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n*n);
+		long o = e.value(new IndexValues().put(kernel(), 1342178)).longValue();
+		System.out.println(o);
+		Assert.assertTrue(o > 0);
+
+		IndexSequence seq = e.sequence();
+
+		OptionalLong negative = seq.longStream().filter(l -> l < 0).findAny();
+		if (negative.isPresent()) {
+			warn("unexpected value -> " + negative.getAsLong());
+			Number v[] = seq.toArray();
+			int index = IntStream.range(0, v.length).filter(i -> v[i].longValue() < 0).findFirst().orElse(-1);
+			Assert.fail("negative value at index " + index);
+		}
+	}
+
+	@Test
 	public void sumProductQuotient1() {
 		// (
 		// 		((v92[0] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[0] + (- ((v92[0] + v92[1]) / 2.0)))) +
@@ -344,13 +402,43 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 
 	@Test
 	public void kernelSumMod2() {
-		int n = 4;
+		if (testDepth < 1) return;
+
+//		int n = 4;
+		int n = 1400;
 
 		// (((kernel0 * n) + (kernel0 % n)) % n^2) / n
 		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n).divide(n);
-		Expression e1 = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n);
-		Expression e2 =  kernel().withLimit(n*n).multiply(n).add(kernel().imod(n));
+		compareSimplifiedSequence(e);
+
 		System.out.println(e.getExpression(lang));
+	}
+
+	@Test
+	public void kernelSumMod3() {
+		int n = 1300;
+
+		// ((kernel0 * 1300) + (kernel0 % 1300)) % 1300
+		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().withLimit(n*n).imod(n)).imod(n);
+		log(e.getExpression(lang));
+
+		Assert.assertTrue(e.value(new IndexValues().put(kernel(), 1651910)).doubleValue() > 0);
+		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void kernelSumMod4() {
+		if (testDepth < 1) return;
+
+		int n = 1300;
+
+		Expression idx = kernel().withLimit(n*n);
+
+		// (((((kernel0 * n) + (kernel0 % n)) / n^2) * n) + (((kernel0 * n) + (kernel0 % n)) % n)) % n^2
+		Expression e = idx.multiply(n).add(idx.imod(n)).divide(n * n).multiply(n)
+				.add(idx.multiply(n).add(idx.imod(n)).imod(n)).imod(n * n);
+		log(e.getExpression(lang));
+		compareSimplifiedSequence(e);
 	}
 
 	@Test
@@ -408,13 +496,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	protected void compareSequences(Expression a, Expression b) {
 		System.out.println(b.getExpression(lang));
 
-		int seqA[] = a.sequence().intValues().toArray();
+		long seqA[] = a.sequence().longValues().toArray();
 
 		IndexSequence s = b.sequence();
-		int seqB[] = IntStream.range(0, seqA.length).map(i -> s.valueAt(i).intValue()).toArray();
+		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
-		System.out.println(Arrays.toString(seqA));
-		System.out.println(Arrays.toString(seqB));
+		if (seqA.length < 1000) {
+			System.out.println(Arrays.toString(seqA));
+			System.out.println(Arrays.toString(seqB));
+		}
+
 		Assert.assertArrayEquals(seqA, seqB);
 	}
 }

@@ -101,10 +101,14 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
-		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
-			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(1.0, (a, b) -> a * b);
+		if (isFP()) {
+			return values.stream().mapToDouble(Number::doubleValue).reduce(1.0, (a, b) -> a * b);
 		} else {
-			return values.stream().mapToInt(v -> v.intValue()).reduce(1, (a, b) -> a * b);
+			long l = values.stream().mapToLong(Number::longValue).reduce(1, (a, b) -> a * b);
+			if (getType() == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE)
+				return (int) l;
+
+			return l;
 		}
 	}
 
@@ -115,7 +119,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			value = value * children[i].doubleValue();
 		}
 
-		return value;
+		return isFP() ? value : (long) value;
 	}
 
 	@Override

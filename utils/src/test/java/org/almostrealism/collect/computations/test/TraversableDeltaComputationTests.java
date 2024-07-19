@@ -498,6 +498,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divide8() {
+		if (testDepth < 1) return;
+
 		PackedCollection<?> b = new PackedCollection<>(2);
 
 		recursiveDivisionTest(in -> {
@@ -540,6 +542,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divide10() {
+		if (testDepth < 1) return;
+
 		double eps = 1e-5;
 
 		recursiveDivisionTest(in -> {

@@ -51,6 +51,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear1() throws FileNotFoundException {
+		if (testDepth < 1) return;
+
 		CellularLayer dense = dense(1, 1);
 
 		SequentialBlock block = new SequentialBlock(shape(1));

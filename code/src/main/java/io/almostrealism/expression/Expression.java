@@ -587,7 +587,8 @@ public abstract class Expression<T> implements
 			if (target != null) v.put(target, 0);
 
 			if (simplified[i].isValue(v)) {
-				if (enableSequenceValidation && target != null && target.getLimit().isPresent()) {
+				if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
+						target.getLimit().orElse(0) < Integer.MAX_VALUE) {
 					IndexSequence orig = children.get(i).sequence();
 					IndexSequence seq = simplified[i].sequence();
 					if (!orig.congruent(seq)) {
@@ -643,6 +644,22 @@ public abstract class Expression<T> implements
 			if (aDepth == bDepth) return 0;
 			return aDepth < bDepth ? 1 : -1;
 		};
+	}
+
+	public static Number adjustType(Class<? extends Number> type, Number value) {
+		boolean fp = type == Double.class;
+
+		if (fp) {
+			return value.doubleValue();
+		} else {
+			long l = value.longValue();
+
+			if (type == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
+				return (int) l;
+			} else {
+				return l;
+			}
+		}
 	}
 
 	public static Expression[] sort(Expression... expressions) {

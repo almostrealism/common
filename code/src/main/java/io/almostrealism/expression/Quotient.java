@@ -101,10 +101,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Number numerator = getChildren().get(0).value(indexValues);
 		Number denominator = getChildren().get(1).value(indexValues);
 
-		if (numerator instanceof Integer && denominator instanceof Integer) {
-			return ((Integer) numerator) / ((Integer) denominator);
-		} else {
+		if (isFP()) {
 			return numerator.doubleValue() / denominator.doubleValue();
+		} else {
+			return adjustType(getType(), numerator.longValue() / denominator.longValue());
 		}
 	}
 

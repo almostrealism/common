@@ -56,6 +56,8 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void conjunctions() {
+		if (testDepth < 1) return;
+
 		IntStream.range(0, 10).mapToObj(i ->
 			conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
 				.forEach(Runnable::run);

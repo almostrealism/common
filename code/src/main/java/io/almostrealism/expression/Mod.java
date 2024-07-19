@@ -78,7 +78,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
+			return adjustType(getType(),
+					getChildren().get(0).value(indexValues).longValue()
+							% getChildren().get(1).value(indexValues).longValue());
 		}
 	}
 

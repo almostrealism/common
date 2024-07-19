@@ -69,12 +69,17 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 		return map(n -> -n.doubleValue());
 	}
 
-	default IndexSequence mod(int m) {
+	default IndexSequence mod(long m) {
 		if (m < 0)
 			throw new IllegalArgumentException();
 		if (m > max() && m > Math.abs(min())) return this;
 
-		return mapInt(i -> i % m);
+		if (m <= Integer.MAX_VALUE && m >= Integer.MIN_VALUE &&
+				max() <= Integer.MAX_VALUE && min() >= Integer.MIN_VALUE) {
+			return mapInt(i -> i % (int) m);
+		} else {
+			return mapLong(i -> i % m);
+		}
 	}
 
 	default IndexSequence eq(IndexSequence other) {
@@ -162,12 +167,10 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	default long max() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Integer) {
-			return intValues().max().orElseThrow();
-		} else if (valueAt(0) instanceof Long) {
-			return longValues().max().orElseThrow();
-		} else {
+		if (valueAt(0) instanceof Double) {
 			return (long) Math.ceil(doubleValues().max().orElseThrow());
+		} else {
+			return longValues().max().orElseThrow();
 		}
 	}
 

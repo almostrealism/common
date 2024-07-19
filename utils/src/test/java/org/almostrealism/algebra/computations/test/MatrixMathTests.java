@@ -30,7 +30,8 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmul() {
-//		matmul(128, 64, true);
+		if (testDepth < 1) return;
+
 		matmul(2048, 1024, true);
 	}
 
