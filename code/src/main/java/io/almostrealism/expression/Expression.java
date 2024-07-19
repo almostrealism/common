@@ -562,10 +562,6 @@ public abstract class Expression<T> implements
 
 		if ((provider == null && isSimple(context)) || (provider != null && provider == seriesProvider)) {
 			return this;
-		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget(depth)) {
-			return generate(getChildren().stream()
-					.map((Expression<?> expression) -> expression.simplify(context, depth + 1))
-					.collect(Collectors.toList())).populate(this);
 		}
 
 		Expression<?> simplified[] = new Expression[getChildren().size()];
@@ -573,6 +569,11 @@ public abstract class Expression<T> implements
 		i: for (int i = 0; i < simplified.length; i++) {
 			simplified[i] = children.get(i);
 			simplified[i] = simplified[i].simplify(context, depth + 1);
+
+			if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
+				continue i;
+			}
+
 			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
 
 			Set<Index> indices = simplified[i].getIndices();

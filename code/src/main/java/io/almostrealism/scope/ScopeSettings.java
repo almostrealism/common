@@ -28,7 +28,7 @@ public class ScopeSettings {
 
 	public static ScopeTimingListener timing;
 
-	public static boolean strict = false;
+	public static boolean strict = true;
 
 	private static int tier0 = 2;
 	private static int tier1 = strict ? 8 : 12;
@@ -36,21 +36,21 @@ public class ScopeSettings {
 
 	private static int pref0 = 1;
 	private static int pref1 = 2;
-//	private static int pref2 = 3;
-//	private static int pref3 = 4;
-	private static int pref2 = 4;
-	private static int pref3 = 7;
+	private static int pref2 = 5;
+	private static int pref3 = 8;
 
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
-		if (expression.getType() == Boolean.class) return true;
+		// if (expression.getType() == Boolean.class) return true;
 
 		if (depth < tier0) {
 			return true;
 		} else if (depth < tier1) {
-			return expression.containsLong() || expression.countNodes() > 50 ||
+			return expression.getType() == Boolean.class || expression.containsLong() ||
+					expression.countNodes() > 50 ||
 					targetByDepth(expression.treeDepth(), pref1);
 		} else if (depth < tier2) {
-			return expression.containsLong() || expression.countNodes() > 75 ||
+			return expression.containsLong() ||
+					expression.countNodes() > 75 ||
 					targetByDepth(expression.treeDepth(), pref2);
 		} else {
 			return expression.countNodes() > 100 ||
