@@ -292,7 +292,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		} else if (numerator instanceof Sum) {
 			OptionalLong divisor = denominator.longValue();
 
-			if (enableDistributiveSum && !numerator.isFP() && divisor.isPresent()) {
+			if (enableDistributiveSum && !(numerator instanceof Index) &&
+					!numerator.isFP() && divisor.isPresent()) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
 				int unknown = 0;

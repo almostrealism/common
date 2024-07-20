@@ -28,16 +28,15 @@ public class ScopeSettings {
 
 	public static ScopeTimingListener timing;
 
-	public static boolean strict = true;
-
 	private static int tier0 = 2;
-	private static int tier1 = strict ? 8 : 12;
-	private static int tier2 = strict ? 16 : 24;
+	private static int tier1 = 8;
+	private static int tier2 = 16;
+	private static int tier3 = 20;
 
-	private static int pref0 = 1;
 	private static int pref1 = 2;
-	private static int pref2 = 5;
-	private static int pref3 = 8;
+	private static int pref2 = 3;
+	private static int pref3 = 4;
+	private static int pref4 = 7;
 
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		// if (expression.getType() == Boolean.class) return true;
@@ -52,9 +51,13 @@ public class ScopeSettings {
 			return expression.containsLong() ||
 					expression.countNodes() > 75 ||
 					targetByDepth(expression.treeDepth(), pref2);
+		} else if (depth < tier3) {
+			return expression.containsLong() ||
+					expression.countNodes() > 85 ||
+					targetByDepth(expression.treeDepth(), pref3);
 		} else {
 			return expression.countNodes() > 100 ||
-					targetByDepth(expression.treeDepth(), pref3);
+					targetByDepth(expression.treeDepth(), pref4);
 		}
 	}
 
@@ -67,7 +70,8 @@ public class ScopeSettings {
 	public static int getExpressionCacheFrequencyThreshold() { return 10; }
 
 	public static boolean isExpressionCacheTarget(int depth) {
-		return depth == 3 || depth == 7 || depth == 9 || depth == 11;
+//		return depth == 7 || depth == 11;
+		return depth == 7;
 	}
 
 	public static int getMaximumReplacements() {

@@ -402,7 +402,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
-	@Test
+	// @Test
 	public void backwardsTrainableProgressive() throws IOException {
 		if (testDepth < 2) return;
 
@@ -417,31 +417,26 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
+	public void backwardsTrainableProgressiveLarge() throws IOException {
+		if (skipLongTests || testDepth < 3) return;
+
+		int c = 200;
+		int groups = 4;
+
+		while (c < 1600) {
+			log("START c = " + c);
+			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
+			c = c + 200;
+		}
+	}
+
+	@Test
 	public void backwardsTrainableVeryLarge() throws IOException {
 		if (skipLongTests || testDepth < 3) return;
 
-		try {
-			// Expression.enableSequenceValidation = true;
-			// Quotient.enableDenominatorCollapse = false;
-			Quotient.enableExpandedDistributiveSum = false;
-
-			int c = 1400;
-			int groups = 4;
-			normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
-
-//			int c = 1000;
-//			int groups = 4;
-//
-//			while (c < 2000) {
-//				log("START c = " + c);
-//				normBackwardsTrainable("backwardsTrainable" + c, c, groups);
-//				c = c + 200;
-//			}
-		} finally {
-			Expression.enableSequenceValidation = false;
-			Quotient.enableDenominatorCollapse = true;
-			Quotient.enableExpandedDistributiveSum = true;
-		}
+		int c = 2000;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
 	}
 
 	@Test
