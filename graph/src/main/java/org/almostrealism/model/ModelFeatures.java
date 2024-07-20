@@ -37,7 +37,8 @@ public interface ModelFeatures extends CodeFeatures {
 
 		for (int i = 0; i < convLayers; i++) {
 			model.addLayer(convolution2d(convSize, convFilters));
-			if (groups > 0) model.addLayer(norm(groups));
+			if (groups > 0 && i > 0)
+				model.addLayer(norm(groups));
 			model.addLayer(pool2d(2));
 		}
 

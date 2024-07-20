@@ -145,8 +145,8 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		int epochs = 10;
 
 		Model model = convolution2dModel(
-				rows, cols, 3, 8, large ? 3 : 2,
-				-1, 2, true);
+				rows, cols, 3, 6, large ? 3 : 2,
+				4, 4, true);
 		model.setLearningRate(0.001);
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 

@@ -175,7 +175,6 @@ public abstract class Expression<T> implements
 		return generate(getChildren().stream()
 				.map(e -> e.replace(target, replacement))
 				.collect(Collectors.toList()));
-
 	}
 
 	public Expression<T> withIndex(Index index, Expression<?> e) {
