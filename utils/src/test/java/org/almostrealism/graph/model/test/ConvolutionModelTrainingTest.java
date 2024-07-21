@@ -18,6 +18,7 @@ package org.almostrealism.graph.model.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.hardware.HardwareOperator;
@@ -183,6 +184,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 			}
 		} finally {
 			logKernelMetrics(profile);
+			ScopeSettings.printStats();
 			profile.save("results/logs/cnn_" + cols + "x" + rows + ".xml");
 		}
 

@@ -34,7 +34,7 @@ public class ExpressionCache {
 	}
 
 	public <T> Expression<T> get(Expression<T> expression) {
-		if (!ScopeSettings.isExpressionCacheTarget(expression.treeDepth()))
+		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
 
 //		String s = expression.signature();
