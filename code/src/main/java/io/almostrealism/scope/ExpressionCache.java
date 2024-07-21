@@ -19,30 +19,28 @@ package io.almostrealism.scope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.util.FrequencyCache;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class ExpressionCache {
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 
-	private FrequencyCache<Expression<?>, Expression<?>> cache;
+	private Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
 
 	public ExpressionCache() {
-		cache = new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7);
+		caches = new HashMap<>();
 	}
 
 	public <T> Expression<T> get(Expression<T> expression) {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
 
-//		String s = expression.signature();
-//		Expression e = cache.get(s);
-//		if (e == null) {
-//			cache.put(s, expression);
-//			e = expression;
-//		}
+		FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
 
 		Expression e = cache.get(expression);
 		if (e == null) {
@@ -53,15 +51,29 @@ public class ExpressionCache {
 		return e;
 	}
 
+	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
+		return caches.computeIfAbsent(depth,
+				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
+	}
+
 	public List<Expression<?>> getFrequentExpressions() {
-		List<Expression<?>> expressions = cache
-				.valuesByFrequency(f -> f > ScopeSettings.getExpressionCacheFrequencyThreshold())
-				.collect(Collectors.toList());
+		List<Integer> depths = caches.keySet().stream().sorted().collect(Collectors.toList());
+		List<Expression<?>> expressions = new ArrayList<>();
+
+		for (Integer d : depths) {
+			getCache(d)
+					.valuesByFrequency(f -> f > ScopeSettings.getExpressionCacheFrequencyThreshold())
+					.forEach(expressions::add);
+		}
+
 		Collections.reverse(expressions);
 		return expressions;
 	}
 
-	public boolean isEmpty() { return cache.isEmpty(); }
+	public boolean isEmpty() {
+		if (caches.isEmpty()) return true;
+		return caches.values().stream().allMatch(FrequencyCache::isEmpty);
+	}
 
 	public ExpressionCache use(Runnable r) {
 		ExpressionCache old = current.get();

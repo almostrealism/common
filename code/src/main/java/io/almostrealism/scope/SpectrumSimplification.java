@@ -17,21 +17,36 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-public class SpectrumSimplification implements SimplificationSettings {
+import java.util.Arrays;
+
+public class SpectrumSimplification implements SimplificationSettings, ConsoleFeatures {
 	private final double scale;
+	private final int s;
+	private final int j;
+	private final int k;
+	private final int m;
 
 	public SpectrumSimplification(double scale) {
 		this.scale = scale;
+		this.s = 40;
+		this.j = 13;
+		this.k = 41;
+		this.m = (int) (scale * (k - 1));
+		log("d = " + (scale * s) + " | m = " + m + "/" + k);
 	}
 
 	@Override
 	public boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
-		depth = Math.min(100, depth);
-		double d = depth / 100.0;
+		depth = Math.min(s, depth);
+		double d = depth / (double) s;
 		if (d > scale) return false;
 
-		int m = 11 - (int) (scale * 10);
-		return expression.countNodes() % m == 0;
+		return (j * expression.countNodes()) % k <= m;
 	}
+
+	@Override
+	public Console console() { return Scope.console; }
 }

@@ -51,7 +51,8 @@ public class ScopeSettings {
 			caching = new ExplicitDepthCaching();
 		} else {
 			System.out.println("SpectrumCaching[" + cache + "]");
-			caching = new SpectrumCaching(Double.parseDouble(cache));
+			String c[] = cache.split(":");
+			caching = new SpectrumCaching(Double.parseDouble(c[0]), Double.parseDouble(c[1]));
 		}
 	}
 
@@ -64,7 +65,7 @@ public class ScopeSettings {
 		return s;
 	}
 
-	public static int getExpressionCacheSize() { return 150; }
+	public static int getExpressionCacheSize() { return 300; }
 
 	public static int getExpressionCacheFrequencyThreshold() { return 10; }
 
