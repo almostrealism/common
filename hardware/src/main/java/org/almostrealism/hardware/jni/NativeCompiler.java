@@ -19,6 +19,7 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -163,6 +164,7 @@ public class NativeCompiler implements ConsoleFeatures {
 				throw new RuntimeException(ex);
 			}
 
+			ScopeSettings.printStats();
 			log("Wrote " + name);
 		}
 

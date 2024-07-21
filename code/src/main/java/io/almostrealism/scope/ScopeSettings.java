@@ -57,7 +57,10 @@ public class ScopeSettings {
 
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
 		boolean s = simplification.isSeriesSimplificationTarget(expression, depth);
-		if (s) simplificationCount++;
+		if (s) {
+			simplificationCount++;
+		}
+
 		return s;
 	}
 
@@ -67,7 +70,9 @@ public class ScopeSettings {
 
 	public static boolean isExpressionCacheTarget(Expression<?> expression) {
 		boolean c = caching.isExpressionCacheTarget(expression);
-		if (c) cacheCount++;
+		if (c) {
+			cacheCount++;
+		}
 		return c;
 	}
 
@@ -76,7 +81,8 @@ public class ScopeSettings {
 	}
 
 	public static void printStats() {
-		System.out.println("Simplification Count: " + simplificationCount);
-		System.out.println("Cache Count: " + cacheCount);
+		Scope.console.features(ScopeSettings.class)
+				.log("Simplification Count = " + simplificationCount +
+						" | Cache Count = " + cacheCount);
 	}
 }

@@ -19,10 +19,10 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
@@ -68,6 +68,7 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 				throw new RuntimeException(ex);
 			}
 
+			ScopeSettings.printStats();
 			log("Wrote " + name);
 		}
 

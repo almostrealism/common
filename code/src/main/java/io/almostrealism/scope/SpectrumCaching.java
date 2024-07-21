@@ -17,20 +17,29 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-public class SpectrumCaching implements CachingSettings {
-	private final double scale;
+public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
+	private final int s;
+	private final int d;
+	private final int m;
 
 	public SpectrumCaching(double scale) {
-		this.scale = scale;
+		this.s = 4;
+		this.d = (int) (scale * 41) + s;
+		this.m = (int) (scale * 23);
+		log("d = " + d + ", m = " + m);
 	}
 
 	@Override
 	public boolean isExpressionCacheTarget(Expression<?> expression) {
-		int depth = expression.treeDepth() - 3;
-		if (depth < 0 || depth > scale * 100) return false;
+		int depth = expression.treeDepth();
+		if (depth < s || depth > d) return false;
 
-		int m = 11 - (int) (scale * 10);
-		return expression.countNodes() % m == 0;
+		return (2 * expression.countNodes()) % 41 < m;
 	}
+
+	@Override
+	public Console console() { return Scope.console; }
 }
