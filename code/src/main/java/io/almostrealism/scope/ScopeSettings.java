@@ -36,7 +36,7 @@ public class ScopeSettings {
 	private static CachingSettings caching;
 
 	static {
-		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "tiered");
+		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "1.0");
 
 		if (simplify.equalsIgnoreCase("tiered")) {
 			simplification = new TieredSimplificationSettings();
@@ -45,7 +45,7 @@ public class ScopeSettings {
 			simplification = new SpectrumSimplification(Double.parseDouble(simplify));
 		}
 
-		String cache = SystemUtils.getProperty("AR_SCOPE_CACHING", "explicit");
+		String cache = SystemUtils.getProperty("AR_SCOPE_CACHING", "0.2:0.2");
 
 		if (cache.equalsIgnoreCase("explicit")) {
 			caching = new ExplicitDepthCaching();

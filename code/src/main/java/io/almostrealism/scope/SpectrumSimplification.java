@@ -20,9 +20,9 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.Arrays;
-
 public class SpectrumSimplification implements SimplificationSettings, ConsoleFeatures {
+	public static int depthLimit = 24;
+
 	private final double scale;
 	private final int s;
 	private final int j;
@@ -35,14 +35,12 @@ public class SpectrumSimplification implements SimplificationSettings, ConsoleFe
 		this.j = 13;
 		this.k = 41;
 		this.m = (int) (scale * (k - 1));
-		log("d = " + (scale * s) + " | m = " + m + "/" + k);
+		log("d = " + depthLimit + " | m = " + m + "/" + k);
 	}
 
 	@Override
 	public boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
-		depth = Math.min(s, depth);
-		double d = depth / (double) s;
-		if (d > scale) return false;
+		if (depth > depthLimit) return false;
 
 		return (j * expression.countNodes()) % k <= m;
 	}
