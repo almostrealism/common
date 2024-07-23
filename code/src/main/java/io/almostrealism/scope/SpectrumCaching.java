@@ -29,11 +29,14 @@ import java.util.Set;
 public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 	private final List<Integer> depths;
 
+	private final double fScale;
+
 	private final int j;
 	private final int k;
 	private final int m[];
 
 	public SpectrumCaching(double dScale, double fScale) {
+		this.fScale = fScale;
 		this.depths = new ArrayList<>();
 
 		int n = (int) (dScale * 10); int d = 4;
@@ -60,6 +63,12 @@ public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 		if (d < 0) return false;
 
 		return (j * expression.countNodes()) % k <= m[d];
+	}
+
+	@Override
+	public String shortDesc() {
+		return String.join("_",
+				depths.stream().map(String::valueOf).toArray(String[]::new)) + "_" + fScale;
 	}
 
 	@Override

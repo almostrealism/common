@@ -24,4 +24,9 @@ public class ExplicitDepthCaching implements CachingSettings {
 //		return depth == 7 || depth == 11;
 		return depth == 7;
 	}
+
+	@Override
+	public String shortDesc() {
+		return "explicit";
+	}
 }

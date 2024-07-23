@@ -86,4 +86,8 @@ public class ScopeSettings {
 				.log("Simplification Count = " + simplificationCount +
 						" | Cache Count = " + cacheCount);
 	}
+
+	public static String shortDesc() {
+		return caching.shortDesc() + "_" + simplification.shortDesc();
+	}
 }

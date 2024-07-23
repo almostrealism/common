@@ -20,4 +20,6 @@ import io.almostrealism.expression.Expression;
 
 public interface CachingSettings {
 	boolean isExpressionCacheTarget(Expression<?> e);
+
+	String shortDesc();
 }

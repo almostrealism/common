@@ -48,5 +48,10 @@ public class SpectrumSimplification implements SimplificationSettings, ConsoleFe
 	}
 
 	@Override
+	public String shortDesc() {
+		return String.valueOf(scale);
+	}
+
+	@Override
 	public Console console() { return Scope.console; }
 }

@@ -37,6 +37,10 @@ public class TieredSimplificationSettings implements SimplificationSettings {
 		}
 	}
 
+	public String shortDesc() {
+		return "Tiered";
+	}
+
 	public static boolean targetByDepth(int depth, int preference) {
 		return depth > (preference + 3) && depth % preference == 0;
 	}

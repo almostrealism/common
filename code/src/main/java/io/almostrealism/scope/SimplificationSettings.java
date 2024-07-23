@@ -21,4 +21,6 @@ import io.almostrealism.expression.Expression;
 public interface SimplificationSettings {
 
 	boolean isSeriesSimplificationTarget(Expression<?> expression, int depth);
+
+	String shortDesc();
 }
