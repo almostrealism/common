@@ -596,7 +596,9 @@ public abstract class Expression<T> implements
 					}
 				}
 
-				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
+				simplified[i] = provider.getSeries(simplified[i]);
+				if (ScopeSettings.isDeepSimplification())
+					simplified[i] = simplified[i].getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}
 		}
