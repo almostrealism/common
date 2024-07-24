@@ -113,10 +113,20 @@ public interface LayerFeatures extends MatrixFeatures {
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, ComputeRequirement... requirements) {
+		if (inputChannels != 1) {
+			throw new IllegalArgumentException("Only 1 channel currently supported");
+		}
+
+		return shape -> convolution2d(shape, size, filterCount, requirements);
+	}
+
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int size, int filterCount, ComputeRequirement... requirements) {
 		return shape -> convolution2d(shape, size, filterCount, requirements);
 	}
 
+	// TODO  filterCount should come before size, as all the parameters related to the
+	// TODO  input/output shapes should come first
 	default CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
 		int pad = size - 1;
 		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);

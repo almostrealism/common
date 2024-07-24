@@ -33,6 +33,7 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.texture.GraphicsConverter;
+import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
@@ -47,7 +48,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures {
+public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFeatures {
 	static boolean large = true;
 	static int rows, cols;
 
@@ -208,19 +209,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, TestFeatures
 		}
 
 		return accuracy;
-	}
-
-	public void train(String name, ModelOptimizer optimizer,
-						 int epochs, int steps, double lossTarget) throws FileNotFoundException {
-		try (CSVReceptor<Double> receptor =
-					 new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
-			optimizer.setReceptor(receptor);
-			optimizer.setLogFrequency(25);
-
-			optimizer.setLossTarget(lossTarget);
-			optimizer.optimize(epochs);
-			log("Completed " + optimizer.getTotalIterations() + " epochs");
-		}
 	}
 
 	public double validate(CompiledModel model, Supplier<Dataset<?>> data) {
