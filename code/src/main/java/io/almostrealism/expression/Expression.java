@@ -329,6 +329,10 @@ public abstract class Expression<T> implements
 	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
+		return getSimplified(context, 0);
+	}
+
+	public Expression<?> getSimplified(KernelStructureContext context, int depth) {
 		if (isSimple(context)) return this;
 
 		if (getClass() == Expression.class) {
@@ -338,7 +342,7 @@ public abstract class Expression<T> implements
 
 		// context = context.asNoOp();
 
-		Expression<?> simplified = simplify(context);
+		Expression<?> simplified = simplify(context, depth);
 		if (simplified.isSimple(context)) return simplified;
 
 		int hashCode = simplified.hashCode();
