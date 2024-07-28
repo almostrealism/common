@@ -53,8 +53,8 @@ public class SpectrumCaching implements CachingSettings, ConsoleFeatures {
 			m[i] = k - 1 - (int) (p * i * k);
 		}
 
-		log("d = " + Arrays.toString(depths.toArray()) +
-				" | m = " + Arrays.toString(m) + " (" + fScale + ")");
+//		log("d = " + Arrays.toString(depths.toArray()) +
+//				" | m = " + Arrays.toString(m) + " (" + fScale + ")");
 	}
 
 	@Override

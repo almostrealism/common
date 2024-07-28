@@ -35,7 +35,7 @@ public class SpectrumSimplification implements SimplificationSettings, ConsoleFe
 		this.j = 13;
 		this.k = 41;
 		this.m = (int) (scale * (k - 1));
-		log("d = " + depthLimit + " | m = " + m + "/" + k);
+//		log("d = " + depthLimit + " | m = " + m + "/" + k);
 	}
 
 	@Override

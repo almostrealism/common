@@ -354,6 +354,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public String toStringDetail() {
+		if (getSizeLong() == 0) {
+			return this + "[axis=" + getTraversalAxis() + "]";
+		}
+
 		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSize() + "]";
 	}
 

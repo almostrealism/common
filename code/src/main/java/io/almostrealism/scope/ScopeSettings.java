@@ -21,6 +21,8 @@ import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.Objects;
+
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
@@ -36,21 +38,27 @@ public class ScopeSettings {
 	private static CachingSettings caching;
 
 	static {
-		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "1.0");
+		String sd = "1.0";
+		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", sd);
 
 		if (simplify.equalsIgnoreCase("tiered")) {
 			simplification = new TieredSimplificationSettings();
 		} else {
-			System.out.println("SpectrumSimplification[" + simplify + "]");
+			if (!Objects.equals(sd, simplify))
+				System.out.println("SpectrumSimplification[" + simplify + "]");
+
 			simplification = new SpectrumSimplification(Double.parseDouble(simplify));
 		}
 
-		String cache = SystemUtils.getProperty("AR_SCOPE_CACHING", "0.2:0.2");
+		String cd = "0.2:0.2";
+		String cache = SystemUtils.getProperty("AR_SCOPE_CACHING", cd);
 
 		if (cache.equalsIgnoreCase("explicit")) {
 			caching = new ExplicitDepthCaching();
 		} else {
-			System.out.println("SpectrumCaching[" + cache + "]");
+			if (!Objects.equals(cd, cache))
+				System.out.println("SpectrumCaching[" + cache + "]");
+
 			String c[] = cache.split(":");
 			caching = new SpectrumCaching(Double.parseDouble(c[0]), Double.parseDouble(c[1]));
 		}
