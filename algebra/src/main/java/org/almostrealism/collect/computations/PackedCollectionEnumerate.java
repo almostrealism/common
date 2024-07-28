@@ -33,16 +33,24 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	public static boolean enablePreferIsolation = true;
 
 	private TraversalPolicy inputShape;
-	private TraversalPolicy strideShape;
+	private int traversalDepth;
+
 	private TraversalPolicy subsetShape;
+	private TraversalPolicy strideShape;
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, Producer<?> collection) {
 		this(shape, computeStride(shape, collection), collection);
 	}
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		super(computeShape(shape, stride, collection), null, collection);
+		this(shape, stride, collection, 0);
+	}
+
+	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride,
+									 Producer<?> collection, int traversalDepth) {
+		super(computeShape(shape, stride, collection, traversalDepth), null, collection);
 		this.inputShape = shape(collection);
+		this.traversalDepth = traversalDepth;
 		this.subsetShape = shape;
 		this.strideShape = stride;
 	}
@@ -67,18 +75,10 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	protected Expression<?> projectIndex(Expression<?> index) {
 		TraversalPolicy blockShape = getShape();
 
-		Expression block;
-
 		// Determine the current block
-		if (blockShape.getTotalSizeLong() == 1) {
-			block = index;
-		} else if (!index.isFP()) {
-			block = index.divide(e(blockShape.getTotalSizeLong()));
-		} else {
-			block = index.divide(e((double) blockShape.getTotalSizeLong())).floor();
-		}
-
-		index = index.toInt().imod(blockShape.getTotalSizeLong());
+		long blockSize = blockShape.sizeLong(traversalDepth);
+		Expression block = index.divide(blockSize);
+		index = index.imod(blockSize);
 
 		// Determine which slice to extract
 		// Starting over from the beginning for each new block
@@ -89,7 +89,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		} else if (!index.isFP()) {
 			slice = index.divide(e(subsetShape.getTotalSizeLong()));
 		} else {
-			slice = index.divide(e((double) subsetShape.getTotalSizeLong())).floor();
+			throw new IllegalArgumentException();
 		}
 
 		// Find the index in that slice
@@ -114,7 +114,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	@Override
 	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
-				new PackedCollectionEnumerate<>(subsetShape, strideShape, (Producer) children.get(1))
+				new PackedCollectionEnumerate<>(subsetShape, strideShape,
+								(Producer) children.get(1), traversalDepth)
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
@@ -125,7 +126,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
+	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
+												Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 
 		int count = IntStream.range(0, shape.getDimensions()).map(dim -> {
@@ -135,7 +137,20 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 					.filter(i -> i > 0).min()
 					.orElseThrow(() -> new IllegalArgumentException("Invalid stride"));
 
-		return shape.prependDimension(count).traverseEach();
+		int dims[] = new int[shape.getDimensions() + 1];
+
+		for (int i = 0; i < dims.length; i++) {
+			if (i < traversalDepth) {
+				dims[i] = superShape.length(i);
+			} else if (i == traversalDepth) {
+				dims[i] = count;
+			} else {
+				dims[i] = shape.length(i - 1);
+			}
+		}
+
+		// return shape.prependDimension(count).traverseEach();
+		return new TraversalPolicy(dims).traverseEach();
 	}
 
 	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection) {

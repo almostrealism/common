@@ -290,27 +290,62 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 
-		verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
-					.enumerate(1, w, s)
-					.enumerate(1, w, s);
-			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+		CollectionProducer<PackedCollection<?>> conv = c(p(input))
+				.enumerate(1, w, s)
+				.enumerate(1, w, s);
+		PackedCollection<?> output = conv.get().evaluate();
+		System.out.println(output.getShape());
 
-			for (int i = 0; i < r; i += s) {
-				for (int j = 0; j < c; j += s) {
-					System.out.println("i: " + i + " j: " + j);
-					for (int k = 0; k < w; k++) {
-						for (int l = 0; l < w; l++) {
-							double expected = input.toDouble(input.getShape().index(i + k, j + l));
-							double actual = output.toDouble(output.getShape().index(i / s, j / s, k, l));
-							System.out.println("PackedCollectionSubsetTests: " + expected + " vs " + actual);
-							Assert.assertEquals(expected, actual, 0.0001);
+		for (int i = 0; i < r; i += s) {
+			for (int j = 0; j < c; j += s) {
+				System.out.println("i: " + i + " j: " + j);
+				for (int k = 0; k < w; k++) {
+					for (int l = 0; l < w; l++) {
+						double expected = input.toDouble(input.getShape().index(i + k, j + l));
+						double actual = output.toDouble(output.getShape().index(i / s, j / s, k, l));
+						System.out.println("PackedCollectionSubsetTests: " + expected + " vs " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void doubleEnumerate4d() {
+		int n = 1; int c = 4;
+		int w = 6; int h = 6;
+		int x = 3; int s = 1;
+
+		PackedCollection<?> input =
+				new PackedCollection<>(shape(n, c, h, w))
+					.fill(Math::random);
+
+		CollectionProducer<PackedCollection<?>> conv =
+				c(p(input))
+					.enumerate(3, x, s)
+					.enumerate(3, x, s);
+		PackedCollection<?> output = conv.get().evaluate();
+		System.out.println(output.getShape());
+
+		for (int np = 0; np < n; np++) {
+			for (int cp = 0; cp < c; cp++) {
+				for (int i = 0; i < w; i += s) {
+					for (int j = 0; j < h; j += s) {
+						log("i: " + i + " j: " + j);
+
+						for (int k = 0; k < x; k++) {
+							for (int l = 0; l < x; l++) {
+								double expected = input.valueAt(np, cp, i + k, j + l);
+								double actual = output.valueAt(np, cp, i / s, j / s, k, l);
+								log(expected + " vs " + actual);
+								assertEquals(expected, actual);
+							}
 						}
 					}
 				}
 			}
-		});
+		}
 	}
 
 	@Test

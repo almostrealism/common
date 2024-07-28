@@ -117,6 +117,8 @@ public class Model implements Setup, CodeFeatures {
 
 	public TraversalPolicy getShape() { return shape; }
 
+	public TraversalPolicy getInputShape() { return firstBlock().getInputShape(); }
+
 	public TraversalPolicy getOutputShape() { return lastBlock().getOutputShape(); }
 
 	@Override

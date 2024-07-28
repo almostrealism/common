@@ -65,6 +65,10 @@ public class ScopeSettings {
 		return s;
 	}
 
+	public static boolean isDeepSimplification() {
+		return false;
+	}
+
 	public static int getExpressionCacheSize() { return 300; }
 
 	public static int getExpressionCacheFrequencyThreshold() { return 10; }
