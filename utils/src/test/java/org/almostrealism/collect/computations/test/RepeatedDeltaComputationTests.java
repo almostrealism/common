@@ -270,11 +270,13 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> in = new PackedCollection<>(r * c).fill(pos -> (double) pos[0])
 									.reshape(r, c, 1).traverse(1);
 		PackedCollection<?> out = Process.optimized(cp(in)
-				.enumerate(2, 1)
-				.enumerate(2, s)
-				.enumerate(2, s)
-				.traverse(3)
-				.max().delta(cp(in))).get().evaluate();
+						.traverse(0)
+						.enumerate(2, 1)
+						.enumerate(2, s)
+						.enumerate(2, s)
+						.traverse(3)
+						.max().delta(cp(in)))
+				.get().evaluate();
 		out = out.reshape(ro, co, r, c);
 		out.traverse(3).print();
 

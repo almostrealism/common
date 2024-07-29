@@ -437,12 +437,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		CollectionProducerComputation<T> result = null;
 
 		TraversalPolicy inputShape = shape(collection);
+		int traversalDepth = PackedCollectionEnumerate.enableDetectTraversalDepth ? inputShape.getTraversalAxis() : 0;
+
+		inputShape = inputShape.traverse(traversalDepth).item();
+		axis = axis - traversalDepth;
 
 		for (int i = 0; i < repeat; i++) {
 			TraversalPolicy shp = inputShape.traverse(axis).replaceDimension(len);
 			TraversalPolicy st = inputShape.traverse(axis).stride(stride);
 			result = enumerate(shp, st, result == null ? collection : result);
-			inputShape = shape(result);
+			inputShape = shape(result).traverse(traversalDepth).item();
 		}
 
 		return result;

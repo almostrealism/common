@@ -66,6 +66,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
 			return (CollectionProducer) product
 					.reshape(p, n, m).sum(2)
+					.traverse(0)
 					.enumerate(1, 1)
 					.reshape(n, p);
 		} else {

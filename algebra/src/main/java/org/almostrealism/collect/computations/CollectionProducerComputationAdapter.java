@@ -42,6 +42,10 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		super(name, outputShape, arguments);
 	}
 
+	protected boolean isOutputRelative() {
+		return true;
+	}
+
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
 		Scope<O> scope = super.getScope(context);
@@ -52,7 +56,11 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 			Expression index = kernelIndex;
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			scope.getStatements().add(output.referenceRelative(e(i), kernelIndex).assign(getValueAt(index)));
+			if (isOutputRelative()) {
+				scope.getStatements().add(output.referenceRelative(e(i), kernelIndex).assign(getValueAt(index)));
+			} else {
+				scope.getStatements().add(output.referenceAbsolute(kernelIndex).assign(getValueAt(index)));
+			}
 		}
 
 		return scope;

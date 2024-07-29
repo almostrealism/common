@@ -32,6 +32,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 		return delta.reshape(outSize, inSize)
 				.traverse(1)
 				.multiply(gradient.reshape(outSize).traverse(1).repeat(inSize))
+				.traverse(0)
 				.enumerate(1, 1)
 				.sum(1)
 				.reshape(cf.shape(inSize))

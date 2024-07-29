@@ -84,7 +84,8 @@ public class MatrixMathTests implements TestFeatures {
 				.reshape(p, n, m)
 				.traverse(1)
 				.multiply(cp(a).repeat(p))
-				.reshape(p, n, m).sum(2)
+				.reshape(p, n, m)
+				.sum(2).traverse(0)
 				.enumerate(1, 1)
 				.reshape(n, p);
 

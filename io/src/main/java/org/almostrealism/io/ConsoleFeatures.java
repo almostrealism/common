@@ -27,6 +27,10 @@ public interface ConsoleFeatures {
 		return getLogClass().getSimpleName() + ": " + msg;
 	}
 
+	default <T> void log(T value) {
+		log(String.valueOf(value));
+	}
+
 	default void log(String message) {
 		console().println(formatMessage(message));
 	}

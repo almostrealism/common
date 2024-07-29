@@ -270,7 +270,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
-									enumerate(shape(1, w, 1), v)
+									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
@@ -393,7 +393,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.expand(1, v ->
-									enumerate(shape(1, 2), v));
+									enumerate(shape(2), v));
 			System.out.println(pool.getShape());
 
 			PackedCollection<?> output = pool.get().evaluate();
@@ -424,7 +424,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
-									enumerate(shape(1, w), v)
+									enumerate(shape(w), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
@@ -456,7 +456,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
-									enumerate(shape(1, w, 1), v)
+									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> first(slice)));
 			System.out.println(pool.getShape());
 
@@ -491,7 +491,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(d, 1, w, 1),
-									v -> enumerate(shape(1, w, 1), v));
+									v -> enumerate(shape(w, 1), v));
 			System.out.println(pool.getShape());
 
 			PackedCollection<?> output = pool.get().evaluate();
@@ -589,20 +589,20 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product =
 					multiply(c(p(a)).traverse(1), c(p(b)).traverse(1));
-			product = enumerate(shape(n, w), product);
+			product = enumerate(shape(n, w), product.traverse(0));
 
-			System.out.println(product.getShape());
+			log(product.getShape());
 
 			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < n; i++) {
 				for (int j = 0; j < d; j++) {
 					double expected = a.valueAt(i, j) * b.valueAt(i, j);
 					double actual = output.valueAt(j / w, i, j % w);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+					log("[" + i + "]: Expected " + expected + " vs actual " + actual);
+					assertEquals(expected, actual);
 				}
 			}
 		});
@@ -624,7 +624,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					c(p(input)).traverse(1)
 							.map(shape(3, 1),
 									p ->
-											enumerate(shape(1, w), p).traverse(1)
+											enumerate(shape(1, w), p.traverse(0)).traverse(1)
 													.map(shape(1), q -> first(q)));
 			System.out.println(pool.getShape());
 
@@ -661,7 +661,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.map(shape(3, 1), v ->
-									enumerate(shape(1, w, 1), v)
+									enumerate(shape(1, w, 1), v.traverse(0))
 											.traverse(1).reduce(slice -> first(slice)));
 			System.out.println(pool.getShape());
 
@@ -694,7 +694,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.reduce(v ->
-									enumerate(shape(1, w, 1), v)
+									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
 
@@ -706,8 +706,8 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = Math.max(input.valueAt(i, 0, j), input.valueAt(i, 1, j));
 					double actual = output.valueAt(i, j);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+					log("[" + i + "]: Expected " + expected + " vs actual " + actual);
+					assertEquals(expected, actual);
 				}
 			}
 		});
