@@ -16,10 +16,21 @@
 
 package io.almostrealism.collect;
 
+import java.util.stream.IntStream;
+
 public interface Shape<T> extends Traversable<T> {
 	TraversalPolicy getShape();
 
 	default T reshape(int... dims) {
+		int inf[] = IntStream.range(0, dims.length).filter(i -> dims[i] < 0).toArray();
+		if (inf.length > 1) throw new IllegalArgumentException("Only one dimension can be inferred");
+		if (inf.length == 1) {
+			TraversalPolicy shape = getShape();
+			int tot = shape.getTotalSize();
+			int known = IntStream.of(dims).filter(i -> i >= 0).reduce(1, (a, b) -> a * b);
+			return reshape(IntStream.range(0, dims.length).map(i -> i == inf[0] ? tot / known : dims[i]).toArray());
+		}
+
 		return reshape(new TraversalPolicy(dims));
 	}
 

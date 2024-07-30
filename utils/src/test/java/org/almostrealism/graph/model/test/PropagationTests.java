@@ -20,9 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.PropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -174,7 +172,7 @@ public class PropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 
 		model.addLayer(conv);
 

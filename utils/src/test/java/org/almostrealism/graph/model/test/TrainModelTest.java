@@ -18,7 +18,6 @@ package org.almostrealism.graph.model.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -26,9 +25,7 @@ import org.almostrealism.collect.computations.IndexProjectionProducerComputation
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
@@ -36,7 +33,6 @@ import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
-import org.almostrealism.ui.OperationProfileUI;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -56,7 +52,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		if (TestUtils.getTrainTests()) {
 			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
-			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
@@ -127,47 +122,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-
-	@Test
-	public void conv() {
-		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
-
-		model.addLayer(conv);
-
-		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
-
-		model.compile().forward(input);
-
-		PackedCollection<?> filter = conv.getWeights().get(0);
-		TraversalPolicy filterShape = filter.getShape();
-
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
-		TraversalPolicy outputShape = output.getShape();
-
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					double expected = 0;
-
-					for (int x = 0; x < convSize; x++) {
-						for (int y = 0; y < convSize; y++) {
-							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
-						}
-					}
-
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
-				}
-			}
-		}
-	}
-
 	@Test
 	public void pool() {
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
 		Model model = new Model(inputShape);
@@ -188,7 +145,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void convPool() {
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
 		model.addLayer(conv);

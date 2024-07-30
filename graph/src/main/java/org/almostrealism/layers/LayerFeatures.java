@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
+	boolean enableMultiChannelConv = true;
 
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -115,19 +116,28 @@ public interface LayerFeatures extends MatrixFeatures {
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
-			throw new IllegalArgumentException("Only 1 channel currently supported");
+			return shape -> {
+				int c = shape.getDimensions() > 2 ? shape.length(shape.getDimensions() - 2) : 1;
+				if (c != inputChannels) {
+					throw new IllegalArgumentException();
+				}
+
+				return convolution2dMultiChannel(shape, filterCount, size, requirements);
+			};
 		}
 
-		return shape -> convolution2d(shape, size, filterCount, requirements);
+		return shape -> convolution2d(shape, filterCount, size, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int size, int filterCount, ComputeRequirement... requirements) {
-		return shape -> convolution2d(shape, size, filterCount, requirements);
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
+		return shape -> convolution2d(shape, filterCount, size, requirements);
 	}
 
-	// TODO  filterCount should come before size, as all the parameters related to the
-	// TODO  input/output shapes should come first
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
+	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount, int size, ComputeRequirement... requirements) {
+		if (enableMultiChannelConv) {
+			return convolution2dMultiChannel(inputShape, filterCount, size, requirements);
+		}
+
 		int pad = size - 1;
 		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
 		TraversalPolicy filterShape = shape(filterCount, size, size);
@@ -144,6 +154,68 @@ public interface LayerFeatures extends MatrixFeatures {
 								.repeat(outputShape.length(0)).traverse(2))
 						.traverse()
 						.sum();
+
+		OperationList setup = new OperationList();
+		Random randn = randn(filterShape);
+		setup.add(() -> randn::refresh);
+		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+
+		return layer("convolution2d", inputShape, outputShape,
+				operator, List.of(filters),
+				setup,
+				requirements);
+	}
+
+	default CellularLayer convolution2dMultiChannel(TraversalPolicy inputShape, int filterCount, int size, ComputeRequirement... requirements) {
+		if (inputShape.getDimensions() == 2) {
+			inputShape = inputShape.prependDimension(1);
+		}
+
+		if (inputShape.getDimensions() == 3) {
+			inputShape = inputShape.prependDimension(1);
+		}
+
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException();
+		}
+
+		int batch = inputShape.length(0);
+		int channels = inputShape.length(1);
+		int height = inputShape.length(2);
+		int width = inputShape.length(3);
+
+		int pad = size - 1;
+		TraversalPolicy outputShape = shape(batch, filterCount, height - pad, width - pad);
+		TraversalPolicy filterShape = shape(filterCount, channels, size, size);
+		PackedCollection<?> filters = new PackedCollection<>(filterShape);
+
+		Factor<PackedCollection<?>> operator = input -> {
+			CollectionProducer<PackedCollection<?>> conv =
+					c(input).reshape(-1, channels, height * width)
+							.traverse(1).enumerate(2, 1)
+							.reshape(-1, height, width, channels);
+			conv = conv.traverse(1)
+					.enumerate(2, size, 1)
+					.enumerate(2, size, 1)
+					.traverse(1)
+					.repeat(filterCount)
+					.each();
+
+			int bs = conv.getShape().length(0);
+
+			CollectionProducer<PackedCollection<?>> filter =
+					cp(filters.reshape(-1, channels, size * size))
+							.traverse(1).enumerate(2, 1)
+							.reshape(-1, size, size, channels);
+			filter = filter.traverse(1)
+							.repeat(height - pad)
+							.repeat(width - pad)
+							.traverse(0)
+							.repeat(bs)
+							.each();
+			return conv.multiply(filter).sum(4)
+					.reshape(-1, filterCount, height - pad, width - pad);
+		};
 
 		OperationList setup = new OperationList();
 		Random randn = randn(filterShape);
