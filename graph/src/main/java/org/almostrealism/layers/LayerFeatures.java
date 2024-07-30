@@ -233,16 +233,32 @@ public interface LayerFeatures extends MatrixFeatures {
 	}
 
 	default CellularLayer pool2d(TraversalPolicy inputShape, int size, ComputeRequirement... requirements) {
-		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
-		int d = outputShape.length(2);
+		if (inputShape.getDimensions() == 2) {
+			inputShape = inputShape.prependDimension(1);
+		}
+
+		if (inputShape.getDimensions() == 3) {
+			inputShape = inputShape.prependDimension(1);
+		}
+
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException();
+		}
+
+		int n = inputShape.length(0);
+		int c = inputShape.length(1);
+		int h = inputShape.length(2);
+		int w = inputShape.length(3);
+
+		TraversalPolicy outputShape = shape(n, c, h / size, w / size);
 
 		Factor<PackedCollection<?>> operator = input ->
 				c(input)
-						.enumerate(2, 1)
-						.enumerate(2, size)
-						.enumerate(2, size)
-						.traverse(3)
-						.max();
+						.reshape(-1, c, h, w)
+						.traverse(2)
+						.enumerate(3, size)
+						.enumerate(3, size)
+						.max(4);
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 

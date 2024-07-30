@@ -186,6 +186,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return magnitude((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(int axis) {
+		return max(traverse(axis, (Producer) this));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
 		return max((Producer) this);
 	}
