@@ -453,6 +453,10 @@ public interface LayerFeatures extends MatrixFeatures {
 							   ComputeRequirement... requirements) {
 		int size = shape.getTotalSize();
 
+		if (shape.traverse(1).item().getTotalSizeLong() % groups != 0) {
+			throw new IllegalArgumentException();
+		}
+
 		if ((weights != null && shape(weights).getTotalSize() != size) ||
 				(biases != null && shape(biases).getTotalSize() != size)) {
 			throw new IllegalArgumentException();

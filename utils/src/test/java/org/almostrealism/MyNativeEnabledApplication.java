@@ -333,7 +333,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(convolution2d(convFilters, convSize));
 		model.addLayer(pool2d(2));
 		model.addBlock(flattened());
 		model.addLayer(dense(denseSize));

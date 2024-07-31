@@ -158,25 +158,26 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		verboseLog(() -> model.compile().forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
-		TraversalPolicy filterShape = filter.getShape();
 
 		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					double expected = 0;
+		for (int n = 0; n < outputShape.length(0); n++) {
+			for (int p = 0; p < outputShape.length(1); p++) {
+				for (int q = 0; q < outputShape.length(2); q++) {
+					for (int r = 0; r < outputShape.length(3); r++) {
+						double expected = 0;
 
-					for (int x = 0; x < convSize; x++) {
-						for (int y = 0; y < convSize; y++) {
-							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						for (int x = 0; x < convSize; x++) {
+							for (int y = 0; y < convSize; y++) {
+								expected += filter.valueAt(p, 0, x, y) * input.valueAt(q + x, r + y);
+							}
 						}
-					}
 
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+						double actual = output.valueAt(n, p, q, r);
+						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
 				}
 			}
 		}
@@ -187,23 +188,25 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		output = ((DefaultCellularLayer) pool).getOutput();
 		outputShape = output.getShape();
 
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					int x0 = p * poolSize;
-					int y0 = q * poolSize;
+		for (int n = 0; n < outputShape.length(0); n++) {
+			for (int p = 0; p < outputShape.length(1); p++) {
+				for (int q = 0; q < outputShape.length(2); q++) {
+					for (int r = 0; r < outputShape.length(3); r++) {
+						int x0 = q * poolSize;
+						int y0 = r * poolSize;
 
-					double expected = input.toDouble(inputShape.index(x0, y0, r));
+						double expected = input.valueAt(n, p, x0, y0);
 
-					for (int x = 0; x < poolSize; x++) {
-						for (int y = 0; y < poolSize; y++) {
-							expected = Math.max(expected, input.toDouble(inputShape.index(x0 + x, y0 + y, r)));
+						for (int x = 0; x < poolSize; x++) {
+							for (int y = 0; y < poolSize; y++) {
+								expected = Math.max(expected, input.valueAt(n, p, x0 + x, y0 + y));
+							}
 						}
-					}
 
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+						double actual = output.valueAt(n, p, q, r);
+						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
 				}
 			}
 		}

@@ -12,7 +12,7 @@ fun main() {
 class ModelDemo : CodeFeatures {
     fun model(inputShape: TraversalPolicy?): Model {
         val model = Model(inputShape)
-        model.addLayer(convolution2d(3, 8))
+        model.addLayer(convolution2d(8, 3))
         model.addLayer(pool2d(2))
         model.addBlock(flattened())
         model.addLayer(dense(10))
