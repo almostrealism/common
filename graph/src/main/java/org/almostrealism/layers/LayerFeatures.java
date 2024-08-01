@@ -20,6 +20,7 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -29,6 +30,8 @@ import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
@@ -39,7 +42,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface LayerFeatures extends MatrixFeatures {
+public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 	boolean enableMultiChannelConv = true;
 
@@ -214,7 +217,8 @@ public interface LayerFeatures extends MatrixFeatures {
 							.repeat(bs)
 							.each();
 			return conv.multiply(filter).sum(4)
-					.reshape(-1, filterCount, height - pad, width - pad);
+					.reshape(-1, filterCount, height - pad, width - pad)
+					.traverseEach();
 		};
 
 		OperationList setup = new OperationList();
@@ -454,7 +458,11 @@ public interface LayerFeatures extends MatrixFeatures {
 		int size = shape.getTotalSize();
 
 		if (shape.traverse(1).item().getTotalSizeLong() % groups != 0) {
-			throw new IllegalArgumentException();
+			if (shape.getTotalSizeLong() % groups == 0) {
+				warn("Group normalization may span across batches");
+			} else {
+				throw new IllegalArgumentException();
+			}
 		}
 
 		if ((weights != null && shape(weights).getTotalSize() != size) ||
