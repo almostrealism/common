@@ -45,6 +45,7 @@ import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -77,6 +78,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();
 
+	public static boolean verbose = SystemUtils.isEnabled("AR_SCOPE_VERBOSE").orElse(false);
 	public static ScopeTimingListener timing;
 
 	private String name;
@@ -633,7 +635,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
 
 			while (!targets.isEmpty() && replacements.size() < ScopeSettings.getMaximumReplacements()) {
-				log("Processing " + targets.size() + " replacement targets");
+				if (verbose) log("Processing " + targets.size() + " replacement targets");
 				boolean updated = false;
 
 				// Replace all targets which are used, but not already declared

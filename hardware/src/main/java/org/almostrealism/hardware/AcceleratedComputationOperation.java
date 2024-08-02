@@ -211,14 +211,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		long start = System.nanoTime();
 
-		// TODO  Should simplify be after converting arguments to required scopes?
 		scope = c.getScope(this);
 		if (timing != null) {
 			timing.recordDuration(getMetadata(), scope.getMetadata(),
 					"getScope", System.nanoTime() - start);
 		}
-
-		scope = scope.simplify(this);
 
 		start = System.nanoTime();
 		scope.convertArgumentsToRequiredScopes(this);
@@ -226,6 +223,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			timing.recordDuration(getMetadata(), scope.getMetadata(),
 					"convertRequired", System.nanoTime() - start);
 		}
+
+		scope = scope.simplify(this);
 
 		postCompile();
 

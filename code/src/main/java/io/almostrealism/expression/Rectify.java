@@ -18,7 +18,7 @@ package io.almostrealism.expression;
 
 public class Rectify extends Max {
 	protected Rectify(Expression<? extends Number> input) {
-		super(input, Constant.of(0));
+		super(input, input.isFP() ? Constant.of(0.0) : Constant.of(0));
 	}
 
 	public static Expression of(Expression input) {
