@@ -81,7 +81,7 @@ public class OperationOptimizationTests implements TestFeatures {
 
 	@Test
 	public void matmulLoopComparison() {
-		if (skipLongTests || testDepth < 3) return;
+		if (testDepth < 3) return;
 
 		int itr = 2000000;
 		int dim = 64;

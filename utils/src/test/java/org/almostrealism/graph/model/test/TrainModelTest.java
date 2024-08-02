@@ -60,7 +60,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (skipLongTests) return;
 		if (skipKnownIssues) return;
 
 		int size = 30;

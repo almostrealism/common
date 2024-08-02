@@ -36,7 +36,6 @@ public class PropagationTests implements TestFeatures {
 	@Test
 	public void denseBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (skipLongTests) return;
 		if (skipKnownIssues) return;
 
 		int size = 12;

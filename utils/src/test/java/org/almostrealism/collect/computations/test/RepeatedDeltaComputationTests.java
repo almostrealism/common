@@ -332,7 +332,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convLarge() {
-		if (skipLongTests || skipKnownIssues) return;
+		if (skipKnownIssues) return;
 
 		int dim = 64;
 		int size = 3;
