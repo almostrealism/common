@@ -681,7 +681,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(null, shape,
-				(args, index) -> new Min(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Min.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
 

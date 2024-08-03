@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,13 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.CLException;
 
 import java.util.stream.Stream;
 
-public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> {
+public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>, ConsoleFeatures {
 	private Evaluable<T> operation;
 	private MemoryBank destination;
 
@@ -43,7 +45,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 			((AcceleratedOperation) operation).kernelOperate(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
-			if (KernelizedOperation.enableKernelLog) System.out.println("DestinationEvaluable: Evaluating " + name + " kernel...");
+			if (KernelizedOperation.enableKernelLog) log("Evaluating " + name + " kernel...");
 
 			boolean enableLog = false;
 
@@ -65,7 +67,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 					throw new HardwareException("i = " + i + " of " + destination.getCountLong() + ", r = " + r, e);
 				}
 
-				if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " kernel results collected");
+				if (enableLog && (i + 1) % 100 == 0) log((i + 1) + " kernel results collected");
 			}
 		}
 
@@ -79,4 +81,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 			throw new NullPointerException();
 		}
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }
