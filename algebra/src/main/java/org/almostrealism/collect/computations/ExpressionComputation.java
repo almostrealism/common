@@ -110,6 +110,12 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
+	public static CollectionProducer<PackedCollection<?>> fixed(double... values) {
+		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
+		c.setMem(0, values);
+		return fixed(c);
+	}
+
 	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value) {
 		return fixed(value, null);
 	}

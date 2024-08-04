@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.Scope;
 
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +29,7 @@ import java.util.OptionalLong;
 
 public class Conditional<T extends Number> extends Expression<T> {
 	public static boolean enableSimplification = false;
+	public static boolean enableInputBranchWarning = false;
 
 	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -140,12 +142,21 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	public static Expression of(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
+
+		if (enableInputBranchWarning && condition instanceof Equals && ld.isPresent()) {
+			OptionalDouble value = ((Equals) condition).getRight().doubleValue();
+			if (value.isPresent() && value.getAsDouble() == ld.getAsDouble()) {
+				Scope.console.features(Conditional.class)
+						.warn("Conditional output is equivalent to a branch of the condition");
+			}
+		}
+
 		if (rd.isPresent() && rd.getAsDouble() == 0.0) {
 			return Mask.of(condition, positive);
 		}
 
-		OptionalDouble ld = positive.doubleValue();
 		if (ld.isPresent() && ld.getAsDouble() == 0.0) {
 			return Mask.of(condition.not(), negative);
 		}
