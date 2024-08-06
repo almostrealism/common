@@ -21,8 +21,10 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.stream.Stream;
 
 public class Max extends BinaryExpression<Double> {
 	public Max(Expression<? extends Number> a, Expression<? extends Number> b) {
@@ -70,6 +72,10 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	public static Expression<Double> of(Expression<Double>... values) {
+		if (values.length == 0) {
+			throw new IllegalArgumentException();
+		}
+
 		if (values.length == 2) {
 			if (values[0].doubleValue().orElse(-1.0) == 0.0) {
 				return Rectify.of(values[1]);
@@ -78,11 +84,22 @@ public class Max extends BinaryExpression<Double> {
 			}
 		}
 
-		Expression<Double> result = values[0];
-		for (int i = 1; i < values.length; i++) {
-			result = new Max(result, values[i]);
-		}
+		OptionalDouble v[] = Stream.of(values)
+				.map(Expression::doubleValue)
+				.toArray(OptionalDouble[]::new);
 
-		return result;
+		if (Stream.of(v).anyMatch(OptionalDouble::isEmpty)) {
+			Expression<Double> result = values[0];
+			for (int i = 1; i < values.length; i++) {
+				result = new Max(result, values[i]);
+			}
+
+			return result;
+		} else {
+			double max = Stream.of(v)
+					.mapToDouble(OptionalDouble::getAsDouble)
+					.max().getAsDouble();
+			return Constant.of(max);
+		}
 	}
 }

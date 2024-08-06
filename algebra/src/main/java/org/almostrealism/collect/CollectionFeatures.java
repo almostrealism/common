@@ -692,7 +692,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(null, shape,
-				(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Max.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
 
@@ -754,7 +754,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		AggregatedProducerComputation c = new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> minValue(),
-				(out, arg) -> new Max(out, arg),
+				(out, arg) -> Max.of(out, arg),
 				(Supplier) input);
 		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;

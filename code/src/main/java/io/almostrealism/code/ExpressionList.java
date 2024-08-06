@@ -61,7 +61,7 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> {
 
 		Expression max = get(0);
 		for (int i = 1; i < size(); i++) {
-			max = new Max(max, (Expression) get(i));
+			max = Max.of(max, (Expression) get(i));
 		}
 
 		return max;

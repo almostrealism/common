@@ -53,6 +53,7 @@ import java.util.function.Supplier;
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
 		implements NameProvider, KernelStructureContext, Countable {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
+	public static boolean enablePostConversionSimplify = false;
 	public static ScopeTimingListener timing;
 
 	private Computation<T> computation;
@@ -217,6 +218,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 					"getScope", System.nanoTime() - start);
 		}
 
+		if (!enablePostConversionSimplify)
+			scope = scope.simplify(this);
+
 		start = System.nanoTime();
 		scope.convertArgumentsToRequiredScopes(this);
 		if (timing != null) {
@@ -224,7 +228,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 					"convertRequired", System.nanoTime() - start);
 		}
 
-		scope = scope.simplify(this);
+		if (enablePostConversionSimplify)
+			scope = scope.simplify(this);
 
 		postCompile();
 
