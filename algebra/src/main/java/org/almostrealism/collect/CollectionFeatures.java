@@ -595,7 +595,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		return compute("multiply", shape -> args->
+		return compute("multiply", shape -> args ->
 					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				shortCircuit, a, b);
 	}
