@@ -53,7 +53,7 @@ import java.util.function.Supplier;
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
 		implements NameProvider, KernelStructureContext, Countable {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
-	public static boolean enablePostConversionSimplify = false;
+	public static boolean enablePostConversionSimplify = true;
 	public static ScopeTimingListener timing;
 
 	private Computation<T> computation;
