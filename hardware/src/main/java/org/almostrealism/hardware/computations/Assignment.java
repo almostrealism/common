@@ -35,10 +35,11 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
-	public static boolean enableContextualKernelIndex = true;
+	public static boolean enableAdaptiveMemLength = true;
 
 	private final int memLength;
 
@@ -79,11 +80,22 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Scope<Void> scope = super.getScope(context);
 
-		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
+		int len = memLength;
+		OptionalLong contextCount = context.getKernelMaximum();
 
-		for (int i = 0; i < memLength; i++) {
-			Expression index = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
-			if (memLength > 1) index = index.multiply(memLength).add(i);
+		if (contextCount.isPresent() && contextCount.getAsLong() != getCountLong()) {
+			if (enableAdaptiveMemLength && getCountLong() % contextCount.getAsLong() == 0) {
+				len = Math.toIntExact(getCountLong() / contextCount.getAsLong());
+			} else {
+				throw new UnsupportedOperationException();
+			}
+		}
+
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, len);
+
+		for (int i = 0; i < len; i++) {
+			Expression index = new KernelIndex(context);
+			if (len > 1) index = index.multiply(len).add(i);
 
 			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
 			Expression<Double> value = exp == null ? null : exp.getValueAt(index);

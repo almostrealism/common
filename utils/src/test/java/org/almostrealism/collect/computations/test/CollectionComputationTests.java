@@ -163,6 +163,15 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integersIndexAssignmentOperation() {
+		integersIndexAssignmentOperation(false);
+	}
+
+	@Test
+	public void integersIndexAssignmentOperationIsolated() {
+		integersIndexAssignmentOperation(true);
+	}
+
+	public void integersIndexAssignmentOperation(boolean isolate) {
 		int count = 3;
 		int size = 10;
 
@@ -180,9 +189,16 @@ public class CollectionComputationTests implements TestFeatures {
 		op.add(a(
 				p(out),
 				matmul(p(feedback), p(in)).add(c(p(input), 0).mul(p(gain)).repeat(count))));
-		op.add(a(
-				traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
-				p(out)).isolate());
+
+		Assignment<PackedCollection<?>> populate =
+				a(traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
+				p(out));
+
+		if (isolate) {
+			op.add(populate.isolate());
+		} else {
+			op.add(populate);
+		}
 
 		verboseLog(() -> {
 			op.get().run();

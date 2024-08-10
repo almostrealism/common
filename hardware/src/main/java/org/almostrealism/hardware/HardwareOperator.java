@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
@@ -35,6 +36,7 @@ import java.util.stream.IntStream;
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
+	public static boolean enableKernelLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
 	public static boolean enableInstructionSetMonitoring = false;
 	public static boolean enableLargeInstructionSetMonitoring = false;
 

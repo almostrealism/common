@@ -45,7 +45,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 			((AcceleratedOperation) operation).kernelOperate(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
-			if (KernelizedOperation.enableKernelLog) log("Evaluating " + name + " kernel...");
+			if (HardwareOperator.enableKernelLog) log("Evaluating " + name + " kernel...");
 
 			boolean enableLog = false;
 

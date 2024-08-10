@@ -19,7 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.relation.Countable;
 
 public interface KernelizedOperation extends Countable {
-	boolean enableKernelLog = false;
 
 	// TODO  It makes no sense for operation inputs to be divided
 	// TODO  into an "output" and the remaining arguments
