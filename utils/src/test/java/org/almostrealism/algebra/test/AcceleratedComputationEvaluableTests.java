@@ -4,6 +4,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
@@ -31,7 +32,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 	@Test
 	public void scalarProduct() {
-		ExpressionComputation<Scalar> x = scalar(3.0);
+		CollectionProducer<Scalar> x = scalar(3.0);
 		Evaluable<Scalar> res = scalarsMultiply(x, scalar(0.5)).get();
 
 		Scalar s = res.evaluate();

@@ -63,8 +63,8 @@ public interface PairBankFeatures extends ScalarFeatures {
 				ev.into(out.range(shape(tot - 2, 2), 2).traverse(1)).evaluate(
 						data.range(shape(tot - 2, 2), 2).traverse(1),
 						data.range(shape(tot - 2, 2), 3).traverse(1));
-				out.set(0, data.get(0).r() * data.get(0).r(), 1.0);
-				out.set(tot - 1, data.get(0).i() * data.get(0).i(), 1.0);
+				out.set(0, data.valueAt(0, 0) *  data.valueAt(0, 0), 1.0);
+				out.set(tot - 1, data.valueAt(0, 1) * data.valueAt(0, 1), 1.0);
 				return out;
 			};
 		};

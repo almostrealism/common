@@ -34,6 +34,7 @@ import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
@@ -45,6 +46,7 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -62,11 +64,11 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> v(Scalar value) { return value(value); }
+	default CollectionProducer<Scalar> v(Scalar value) { return value(value); }
 
-	default ExpressionComputation<Scalar> scalar(double value) { return value(new Scalar(value)); }
+	default CollectionProducer<Scalar> scalar(double value) { return value(new Scalar(value)); }
 
-	default ExpressionComputation<Scalar> scalar(Producer<?> value) {
+	default CollectionProducer<Scalar> scalar(Producer<?> value) {
 		if (value instanceof ExpressionComputation) {
 			ExpressionComputation<?> c = (ExpressionComputation) value;
 			int size = ((ExpressionComputation) value).expression().size();
@@ -115,10 +117,14 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> value(Scalar value) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-		IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp)).setPostprocessor(Scalar.postprocessor());
+	default CollectionProducer<Scalar> value(Scalar value) {
+		if (ExpressionComputation.enableTraversableFixed) {
+			return (CollectionProducer) TraversableExpressionComputation.fixed(value, Scalar.postprocessor());
+		} else {
+			Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
+			IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
+			return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp)).setPostprocessor(Scalar.postprocessor());
+		}
 	}
 
 	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {

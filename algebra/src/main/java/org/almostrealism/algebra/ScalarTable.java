@@ -48,10 +48,10 @@ public class ScalarTable extends PackedCollection<PackedCollection<Scalar>> {
 		return get(0).getCount();
 	}
 
-	public ScalarTable copy(int w, int h) {
-		ScalarTable out = new ScalarTable(w, h);
-		for (int i = 0; i < h; i++) {
-			for (int j = 0; j < w; j++) {
+	public ScalarTable copy(int rows, int cols) {
+		ScalarTable out = new ScalarTable(cols, rows);
+		for (int i = 0; i < rows; i++) {
+			for (int j = 0; j < cols; j++) {
 				out.set(i, j, get(i, j));
 			}
 		}

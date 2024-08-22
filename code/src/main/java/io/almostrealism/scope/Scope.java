@@ -521,9 +521,15 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		if (!s.isInlineable()) return false;
 		if (!s.getChildren().isEmpty()) return false;
 		if (!s.getMethods().isEmpty()) return false;
-		if (s.getVariables().stream().anyMatch(v -> v.isDeclaration())) return false;
+		if (s.getVariables().stream().anyMatch(ExpressionAssignment::isDeclaration)) return false;
+		if (s.getStatements().stream()
+				.map(v -> v instanceof ExpressionAssignment ? (ExpressionAssignment) v : null)
+				.filter(Objects::nonNull).anyMatch(ExpressionAssignment::isDeclaration)) {
+			return false;
+		}
 
 		IntStream.range(0, s.getVariables().size()).forEach(i -> variables.add(i, s.getVariables().get(i)));
+		IntStream.range(0, s.getStatements().size()).forEach(i -> statements.add(i, s.getStatements().get(i)));
 		return true;
 	}
 

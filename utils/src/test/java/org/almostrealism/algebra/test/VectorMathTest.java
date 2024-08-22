@@ -19,12 +19,12 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.Random;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -40,7 +40,7 @@ public class VectorMathTest implements TestFeatures {
 	@Test
 	public void scalarPowDynamic() {
 		Producer<Scalar> d = new DynamicCollectionProducer<>(shape(2), args -> new Scalar(3));
-		ExpressionComputation<Scalar> s = scalar(3);
+		CollectionProducer<Scalar> s = scalar(3);
 		Producer<Scalar> p = s.pow(d);
 		Evaluable<Scalar> ev = p.get();
 		PackedCollection<?> out = ev.evaluate();
