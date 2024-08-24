@@ -94,6 +94,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public TraversalPolicy getShape() {
 		if (shape == null) {
+			if (!(producer instanceof Shape)) {
+				throw new UnsupportedOperationException();
+			}
+
 			TraversalPolicy inputShape = ((Shape) producer).getShape();
 			return inputShape.traverse(traversalAxis);
 		} else {
