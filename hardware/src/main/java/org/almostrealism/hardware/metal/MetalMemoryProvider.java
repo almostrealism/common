@@ -159,7 +159,8 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 
 	@Override
 	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
-		if (!(ram instanceof MetalMemory)) throw new IllegalArgumentException();
+		if (!(ram instanceof MetalMemory) || length < 0)
+			throw new IllegalArgumentException();
 		if (!(srcRam instanceof MetalMemory)) {
 			// TODO  Native code can be used here, for some types of srcRam
 			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);

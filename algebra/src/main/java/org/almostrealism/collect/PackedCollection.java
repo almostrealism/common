@@ -303,7 +303,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
-	public PackedCollection reshape(TraversalPolicy shape) {
+	public PackedCollection<T> reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
 					") does not match collection size (" + getMemLength() + ")");
