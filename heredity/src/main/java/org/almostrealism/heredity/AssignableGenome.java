@@ -99,6 +99,12 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 	}
 
 	@Override
+	public int getTotalSize() {
+		if (delegate != null) return delegate.getTotalSize();
+		return super.getTotalSize();
+	}
+
+	@Override
 	public Chromosome<PackedCollection<?>> valueAt(int pos) {
 		return new AssignableChromosome(pos);
 	}

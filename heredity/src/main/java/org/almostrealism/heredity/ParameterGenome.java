@@ -68,6 +68,8 @@ public class ParameterGenome implements Genome<PackedCollection<?>>, ScalarFeatu
 		return genome.count();
 	}
 
+	public int getTotalSize() { return genome.getTotalSize(); }
+
 	@Override
 	public Chromosome<PackedCollection<?>> valueAt(int pos) {
 		return genome.valueAt(pos);
