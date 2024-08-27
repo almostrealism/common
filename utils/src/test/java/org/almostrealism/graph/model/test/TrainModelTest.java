@@ -360,7 +360,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			}
 		} finally {
 			logKernelMetrics(profile);
-			profile.save("results/logs/train.xml");
+			profile.save("results/train.xml");
 		}
 	}
 }

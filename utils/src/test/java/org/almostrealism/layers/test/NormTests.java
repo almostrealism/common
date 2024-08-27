@@ -589,7 +589,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			PackedCollection<?> out = compiled.forward(in);
 			validate(groups, c / groups, v, in, out, weights, biases);
 		} finally {
-			profile.save("results/logs/normModel.xml");
+			profile.save("results/normModel.xml");
 		}
 	}
 }
