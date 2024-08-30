@@ -423,6 +423,7 @@ public abstract class Expression<T> implements
 	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
 	public Expression<? extends Number> add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
 	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
+	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }
 
 	public Expression<? extends Number> multiply(int operand) {
 		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
@@ -507,10 +508,14 @@ public abstract class Expression<T> implements
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
 		return Conditional.of((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
 	}
-	public Greater greaterThan(Expression<?> operand) { return new Greater(this, operand); };
-	public Greater greaterThanOrEqual(Expression<?> operand) { return new Greater(this, operand, true); };
-	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
-	public Less lessThanOrEqual(Expression<?> operand) { return new Less(this, operand, true); };
+
+	public Expression<Boolean> greaterThan(Expression<?> operand) { return Greater.of(this, operand); };
+	public Expression<Boolean> greaterThanOrEqual(Expression<?> operand) { return Greater.of(this, operand, true); };
+	public Expression<Boolean> greaterThanOrEqual(int operand) { return Greater.of(this, new IntegerConstant(operand), true); };
+
+	public Expression<Boolean> lessThan(Expression<?> operand) { return Less.of(this, operand); };
+	public Expression<Boolean> lessThan(int operand) { return Less.of(this, new IntegerConstant(operand)); };
+	public Expression<Boolean> lessThanOrEqual(Expression<?> operand) { return Less.of(this, operand, true); };
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;

@@ -67,6 +67,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
+		return pad(this, depths);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(this, mapper);
 	}

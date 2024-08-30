@@ -407,8 +407,16 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> silu(ComputeRequirement... requirements) {
+		return shape -> silu(shape, requirements);
+	}
+
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		if (shape.getDimensions() != 1)
+		if (shape.getDimensions() == 1) {
+			shape = shape.prependDimension(1);
+		}
+
+		if (shape.getDimensions() != 2)
 			throw new IllegalArgumentException();
 
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);

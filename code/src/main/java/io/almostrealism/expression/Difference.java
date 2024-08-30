@@ -16,10 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -77,7 +79,7 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
-		return new Difference(children.toArray(new Expression[0]));
+		return Difference.of(children.toArray(new Expression[0]));
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
@@ -85,7 +87,10 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 		if (!enableFactorySimplification) return new Difference(values);
 
 		Expression first = values[0];
-		if (first.doubleValue().orElse(-1.0) == 0.0) {
+		OptionalDouble fd = first.doubleValue();
+		OptionalLong fl = first.longValue();
+
+		if (fd.orElse(-1.0) == 0.0) {
 			return Sum.of(values).minus();
 		}
 
@@ -93,7 +98,22 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 				.filter(e -> e.doubleValue().orElse(-1) != 0.0)
 				.toArray(Expression[]::new);
 		if (values.length == 0) return first;
-		if (values.length == 1) return new Difference(first, values[0]);
+
+		if (values.length == 1) {
+			OptionalLong vl = values[0].longValue();
+			OptionalDouble vd = values[0].doubleValue();
+
+			if (fl.isPresent() && vl.isPresent()) {
+				return (Expression) ExpressionFeatures.getInstance()
+						.e(fl.getAsLong() - vl.getAsLong());
+			} else if (fd.isPresent() && vd.isPresent()) {
+				return (Expression) ExpressionFeatures.getInstance()
+						.e(fd.getAsDouble() - vd.getAsDouble());
+			}
+
+			return new Difference(first, values[0]);
+		}
+
 		return new Difference(Stream.concat(Stream.of(first), Stream.of(values))
 				.toArray(Expression[]::new));
 	}

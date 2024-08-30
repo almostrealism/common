@@ -56,6 +56,7 @@ import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComp
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
+import org.almostrealism.collect.computations.PackedCollectionPad;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
@@ -458,6 +459,38 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		return new PackedCollectionEnumerate<>(shape, stride, collection);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {
+		TraversalPolicy shape = shape(collection);
+		if (shape.getOrder() != null) {
+			throw new UnsupportedOperationException();
+		}
+
+		int depths[] = new int[shape.getDimensions()];
+		for (int i = 0; i < axes.length; i++) {
+			depths[axes[i]] = depth;
+		}
+
+		return pad(collection, depths);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(Producer<?> collection, int... depths) {
+		TraversalPolicy shape = shape(collection);
+		
+		int dims[] = new int[shape.getDimensions()];
+		for (int i = 0; i < dims.length; i++) {
+			dims[i] = shape.length(i) + 2 * depths[i];
+		}
+
+		shape = new TraversalPolicy(dims).traverse(shape.getTraversalAxis());
+		return pad(shape, new TraversalPolicy(true, depths), collection);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
+																				 TraversalPolicy position,
+																				 Producer<?> collection) {
+		return new PackedCollectionPad<>(shape, position, collection);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {

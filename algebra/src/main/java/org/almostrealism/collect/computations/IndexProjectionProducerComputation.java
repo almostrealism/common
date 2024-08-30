@@ -79,12 +79,12 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		if (relative) {
-			TraversableExpression var = getTraversableArguments(index)[1];
+			TraversableExpression<Double> var = getTraversableArguments(index)[1];
 			if (var == null) return null;
 
 			return var.getValueRelative(projectIndex(var, index));
 		} else {
-			TraversableExpression var = getCollectionArgumentVariable(1);
+			TraversableExpression<Double> var = getCollectionArgumentVariable(1);
 			if (var == null) return null;
 
 			return var.getValueAt(projectIndex(var, index));

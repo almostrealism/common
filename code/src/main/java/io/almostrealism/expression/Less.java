@@ -56,4 +56,12 @@ public class Less extends Comparison {
 		if (children.size() != 2) throw new UnsupportedOperationException();
 		return new Less(children.get(0), children.get(1), orEqual);
 	}
+
+	public static Expression<Boolean> of(Expression<?> left, Expression<?> right) {
+		return new Less(left, right);
+	}
+
+	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
+		return new Less(left, right, orEqual);
+	}
 }
