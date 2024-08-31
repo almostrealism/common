@@ -33,13 +33,17 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -52,10 +56,13 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class Expression<T> implements KernelTree<Expression<?>>, SequenceGenerator, ExpressionFeatures, ConsoleFeatures {
+public abstract class Expression<T> implements
+		KernelTree<Expression<?>>, SequenceGenerator, Signature,
+		ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static boolean enableArithmeticSequence = true;
+	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 	public static int maxDepth = 4096;
@@ -64,7 +71,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
-	private static LanguageOperations lang;
+	protected static LanguageOperations lang;
 	private static FrequencyCache<String, IndexSequence> kernelSeqCache;
 
 	static {
@@ -77,32 +84,61 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	private Class<T> type;
 	private List<Expression<?>> children;
+	private int depth, nodeCount;
+	private short hash;
 
-	private int depth;
+	private Set<Index> indices;
+
+	private boolean containsLong;
 	private boolean isSimple;
 	private boolean isSeriesSimplificationChild;
 	private KernelSeriesProvider seriesProvider;
 
 	public Expression(Class<T> type) {
-		setType(type);
+		this.type = type;
 	}
 
 	public Expression(Class<T> type, Expression<?>... children) {
+		this(type, true, children);
+	}
+
+	protected Expression(Class<T> type, boolean init, Expression<?>... children) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
 		}
 
-		setType(type);
+		this.type = type;
 		this.children = List.of(children);
-		this.depth = this.children.stream().mapToInt(e -> e.depth).max().orElse(0) + 1;
+		if (init) init();
+	}
+
+	protected void init() {
+		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
+		this.nodeCount = getChildren().stream().mapToInt(e -> e.nodeCount).sum() + 1;
+		this.containsLong = (getType() == Long.class ||
+				getChildren().stream().anyMatch(e -> e.containsLong))
+				&& intValue().isEmpty();
+
+		if (getChildren().isEmpty()) {
+			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
+		} else {
+			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
+		}
 
 		if (depth > maxDepth) {
 			throw new UnsupportedOperationException();
 		}
 	}
 
+	@Deprecated
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
+
+	@Override
+	public int treeDepth() { return depth; }
+
+	@Override
+	public int countNodes() { return nodeCount; }
 
 	public boolean isInt() { return getType() == Integer.class; }
 	public boolean isFP() { return getType() == Double.class; }
@@ -133,8 +169,16 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 				.collect(Collectors.toList()));
 	}
 
+	public Expression<T> replace(Expression target, Expression replacement) {
+		if (this.equals(target)) return replacement;
+
+		return generate(getChildren().stream()
+				.map(e -> e.replace(target, replacement))
+				.collect(Collectors.toList()));
+	}
+
 	public Expression<T> withIndex(Index index, Expression<?> e) {
-		if (!contains(index)) return this;
+		if (!containsIndex(index)) return this;
 
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), index.getName())) {
 			return (Expression) e;
@@ -151,20 +195,39 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public Set<Index> getIndices() {
 		if (this instanceof Index) return Set.of((Index) this);
+		if (indices != null) return indices;
+		if (getChildren().isEmpty()) return Collections.emptySet();
 
-		return getChildren().stream()
-				.flatMap(e -> e.getIndices().stream())
-				.collect(Collectors.toSet());
+		for (Expression<?> e : getChildren()) {
+			Set<Index> indices = e.getIndices();
+
+			if (this.indices == null || this.indices.isEmpty()) {
+				this.indices = indices;
+			} else if (!indices.isEmpty() && !Objects.equals(this.indices, indices)) {
+				this.indices = new HashSet<>(this.indices);
+				this.indices.addAll(indices);
+			}
+		}
+
+		return indices;
 	}
 
-	public boolean contains(Index idx) {
+	public boolean containsLong() { return containsLong; }
+
+	public boolean contains(Expression e) {
+		if (this.equals(e)) return true;
+		if (getChildren().isEmpty()) return false;
+		return getChildren().stream().anyMatch(c -> c.contains(e));
+	}
+
+	public boolean containsIndex(Index idx) {
 		if (this instanceof Index && Objects.equals(((Index) this).getName(), idx.getName())) {
 			return true;
 		} else if (getChildren().isEmpty()) {
 			return false;
 		}
 
-		return getChildren().stream().anyMatch(e -> e.contains(idx));
+		return getChildren().stream().anyMatch(e -> e.containsIndex(idx));
 	}
 
 	public boolean containsReference(Variable var) {
@@ -186,6 +249,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return OptionalLong.empty();
 	}
 
+	public boolean isPossiblyNegative() {
+		return doubleValue().orElse(-1.0) < 0.0;
+	}
+
 	public Number evaluate(Number... children) {
 		throw new UnsupportedOperationException();
 	}
@@ -198,7 +265,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	@Override
 	public Number value(IndexValues indexValues) {
-		throw new UnsupportedOperationException();
+		return evaluate(getChildren().stream().map(e -> e.value(indexValues)).toArray(Number[]::new));
 	}
 
 	public IndexSequence sequence() {
@@ -262,36 +329,41 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
-		if (isSimple()) return this;
+		return getSimplified(context, 0);
+	}
+
+	public Expression<?> getSimplified(KernelStructureContext context, int depth) {
+		if (isSimple(context)) return this;
 
 		if (getClass() == Expression.class) {
 			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
 			return this;
 		}
 
-		LanguageOperations lang = new LanguageOperationsStub();
-		context = context.asNoOp();
+		// context = context.asNoOp();
 
-		Expression<?> simplified = simplify(context);
-		if (simplified.isSimple()) return simplified;
+		Expression<?> simplified = simplify(context, depth);
+		if (simplified.isSimple(context)) return simplified;
 
-		String exp = simplified.getExpression(lang);
+		int hashCode = simplified.hashCode();
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify(context);
-			if (next.isSimple()) return next;
+			if (next.isSimple(context)) return next;
 
-			String nextExp = next.getExpression(lang);
+			int nextExp = next.hashCode();
 
-			if (nextExp.equals(exp)) {
+			if (nextExp == hashCode) {
 				break w;
 			}
 
 			simplified = next;
-			exp = nextExp;
+			hashCode = nextExp;
 		}
 
-		simplified.isSimple = true;
+		if (context == null || context.getKernelMaximum().isEmpty())
+			simplified.isSimple = true;
+
 		return simplified;
 	}
 
@@ -346,22 +418,46 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		throw new UnsupportedOperationException();
 	}
 
-	public Expression minus() { return new Minus(this); }
+	public Expression minus() { return Minus.of(this); }
 
-	public Expression add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
-	public Expression add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
-	public Expression subtract(Expression<? extends Number> operand) { return new Difference(this, operand); }
+	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
+	public Expression<? extends Number> add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
+	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 
-	public Expression multiply(int operand) { return operand == 1 ? this : Product.of(this, new IntegerConstant(operand)); }
-	public Expression multiply(Expression<? extends Number> operand) { return Product.of(this, operand); }
+	public Expression<? extends Number> multiply(int operand) {
+		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
+	}
+	public Expression<? extends Number> multiply(long operand) {
+		return operand == 1.0 ? (Expression) this :
+				(Expression) Product.of(this, ExpressionFeatures.getInstance().e(operand));
+	}
+	public Expression<? extends Number> multiply(double operand) {
+		return operand == 1.0 ? (Expression) this :
+				(Expression) Product.of(this, Constant.of(operand));
+	}
+	public Expression<? extends Number> multiply(Expression<? extends Number> operand) {
+		return (Expression) Product.of(this, operand);
+	}
 
-	public Expression divide(int operand) { return operand == 1 ? this : Quotient.of(this, new IntegerConstant(operand)); }
-	public Expression divide(Expression<?> operand) { return Quotient.of(this, operand); }
+	public Expression<? extends Number> divide(int operand) {
+		return operand == 1 ? (Expression) this : (Expression) Quotient.of(this, new IntegerConstant(operand));
+	}
+	public Expression<? extends Number> divide(long operand) {
+		return operand == 1 ? (Expression) this :
+				(Expression) Quotient.of(this, ExpressionFeatures.getInstance().e(operand));
+	}
+	public Expression<? extends Number> divide(double operand) {
+		return operand == 1.0 ? (Expression) this : (Expression) Quotient.of(this, Constant.of(operand));
+	}
+	public Expression<? extends Number> divide(Expression<?> operand) {
+		return (Expression)Quotient.of(this, operand);
+	}
 
-	public Expression reciprocal() { return Quotient.of(new DoubleConstant(1.0), this); }
+	public Expression<? extends Number> reciprocal() { return (Expression) Quotient.of(new DoubleConstant(1.0), this); }
 
-	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
-	public Exp exp() { return new Exp((Expression) this); }
+	public Expression<Double> pow(Expression<Double> operand) { return Exponent.of((Expression) this, operand); }
+	public Expression<Double> exp() { return Exp.of(this); }
+	public Expression<Double> log() { return Logarithm.of(this); }
 
 	public Expression floor() {
 		if (getType() == Integer.class) return this;
@@ -404,8 +500,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return new Negation((Expression) this);
 	}
 
-	public Equals eq(double operand) { return new Equals(this, new DoubleConstant(operand)); };
-	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
+	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
+	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
@@ -454,25 +550,33 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 
 	public boolean isSimple() { return isSimple || getChildren().isEmpty(); }
 
+	public boolean isSimple(KernelStructureContext ctx) {
+		if (!isSimple()) return false;
+		if (ctx == null) return true;
+		if (seriesProvider != null && seriesProvider == ctx.getSeriesProvider()) return true;
+		return ctx.getKernelMaximum().isEmpty();
+	}
+
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
-	public Expression<T> simplify(KernelStructureContext context) {
+	public Expression<T> simplify(KernelStructureContext context, int depth) {
 		KernelSeriesProvider provider = context.getSeriesProvider();
 
-		if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
+		if ((provider == null && isSimple(context)) || (provider != null && provider == seriesProvider)) {
 			return this;
-		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
-			return generate(getChildren().stream()
-					.map((Expression<?> expression) -> expression.simplify(context))
-					.collect(Collectors.toList())).populate(this);
 		}
 
 		Expression<?> simplified[] = new Expression[getChildren().size()];
 
 		i: for (int i = 0; i < simplified.length; i++) {
 			simplified[i] = children.get(i);
-			simplified[i] = simplified[i].simplify(context);
+			simplified[i] = simplified[i].simplify(context, depth + 1);
+
+			if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
+				continue i;
+			}
+
 			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
 
 			Set<Index> indices = simplified[i].getIndices();
@@ -483,8 +587,22 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 						.orElse(indices.stream().findFirst().orElse(null));
 			}
 
-			if (target == null || simplified[i].isValue(new IndexValues().put(target, 0))) {
-				simplified[i] = provider.getSeries(simplified[i]).getSimplified(context);
+			IndexValues v = new IndexValues();
+			if (target != null) v.put(target, 0);
+
+			if (simplified[i].isValue(v)) {
+				if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
+						target.getLimit().orElse(0) < Integer.MAX_VALUE) {
+					IndexSequence orig = children.get(i).sequence();
+					IndexSequence seq = simplified[i].sequence();
+					if (!orig.congruent(seq)) {
+						throw new UnsupportedOperationException();
+					}
+				}
+
+				simplified[i] = provider.getSeries(simplified[i]);
+				if (ScopeSettings.isDeepSimplification())
+					simplified[i] = simplified[i].getSimplified(context);
 				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 			}
 		}
@@ -494,24 +612,73 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Sequen
 		return simple;
 	}
 
-	public boolean isSeriesSimplificationTarget() { return true; }
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return ScopeSettings.isSeriesSimplificationTarget(this, depth);
+	}
 
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Expression)) return false;
+		if (this == obj) return true;
 
 		Expression v = (Expression) obj;
 		if (type != v.getType()) return false;
-
-		LanguageOperationsStub lang = new LanguageOperationsStub();
+		if (!Objects.equals(getClass(), v.getClass())) return false;
+		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
+		if (!Objects.equals(countNodes(), v.countNodes())) return false;
+		if (!Objects.equals(hash, v.hash)) return false;
 		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
 		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
-
 		return true;
 	}
 
 	@Override
-	public int hashCode() { return isNull() ? 0 : getExpression(new LanguageOperationsStub()).hashCode(); }
+	public String signature() { return getExpression(lang); }
+
+	@Override
+	public int hashCode() {
+		return Bits.put(0, 16, hash) +
+				Bits.put(16, 10, nodeCount) +
+				Bits.put(26, 4, depth) +
+				Bits.put(30, 2, getChildren().size());
+	}
+
+	public static Comparator<? super Expression> depthOrder() {
+		return (a, b) -> {
+			int aDepth = a.treeDepth();
+			int bDepth = b.treeDepth();
+			if (aDepth == bDepth) return 0;
+			return aDepth < bDepth ? 1 : -1;
+		};
+	}
+
+	public static Number adjustType(Class<? extends Number> type, Number value) {
+		boolean fp = type == Double.class;
+
+		if (fp) {
+			return value.doubleValue();
+		} else {
+			long l = value.longValue();
+
+			if (type == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
+				return (int) l;
+			} else {
+				return l;
+			}
+		}
+	}
+
+	public static Expression[] sort(Expression... expressions) {
+		Expression result[] = IntStream.range(0, expressions.length)
+				.mapToObj(i -> expressions[i])
+				.sorted(depthOrder()).toArray(Expression[]::new);
+
+		if (result.length != expressions.length) {
+			throw new UnsupportedOperationException();
+		}
+
+		return result;
+	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {
 		if (kernelSeqCache != null && exp != null) {

@@ -242,7 +242,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			compile();
 		}
 
-		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
+		if (HardwareOperator.enableKernelLog) log("Preparing " + getName() + " kernel");
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
@@ -260,7 +260,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
 		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
-		if (enableKernelLog) log("Evaluating " + getName() + " kernel...");
+		if (HardwareOperator.enableKernelLog)
+			log("Evaluating " + getName() + " kernel (size = " + process.getKernelSize() + ")");
 
 		boolean processing = !process.isEmpty();
 		if (preOp != null && !preOp.isEmpty()) processing = true;

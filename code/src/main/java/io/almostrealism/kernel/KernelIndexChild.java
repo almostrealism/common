@@ -31,6 +31,7 @@ public class KernelIndexChild extends IndexChild {
 		return "k" + getChildIndex().getName();
 	}
 
+	@Deprecated
 	public KernelIndexChild renderAlias() {
 		setRenderAlias(true);
 		return new KernelIndexChild(context, getChildIndex());

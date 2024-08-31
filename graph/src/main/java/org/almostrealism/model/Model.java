@@ -16,7 +16,7 @@
 
 package org.almostrealism.model;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -116,6 +116,8 @@ public class Model implements Setup, CodeFeatures {
 	public Block lastBlock() { return blocks.get(blocks.size() - 1); }
 
 	public TraversalPolicy getShape() { return shape; }
+
+	public TraversalPolicy getInputShape() { return firstBlock().getInputShape(); }
 
 	public TraversalPolicy getOutputShape() { return lastBlock().getOutputShape(); }
 

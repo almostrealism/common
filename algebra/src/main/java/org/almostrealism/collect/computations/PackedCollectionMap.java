@@ -143,7 +143,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		}
 
 		if (mapped instanceof PackedCollectionMap) {
-			System.out.println("WARN: Embedded PackedCollectionMap");
+			warn("Embedded PackedCollectionMap");
 			((PackedCollectionMap<?>) mapped).setIgnoreTraversalAxis(true);
 		}
 

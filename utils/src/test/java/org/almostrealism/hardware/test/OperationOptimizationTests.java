@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -82,7 +81,7 @@ public class OperationOptimizationTests implements TestFeatures {
 
 	@Test
 	public void matmulLoopComparison() {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 
 		int itr = 2000000;
 		int dim = 64;

@@ -16,7 +16,6 @@
 
 package io.almostrealism.kernel;
 
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class NoOpKernelStructureContext implements KernelStructureContext {

@@ -43,6 +43,11 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	public Runnable get() { return new RunnableWithInfo(getMetadata(), operation.get()); }
 
 	@Override
+	public long getOutputSize() {
+		return operation.getOutputSize();
+	}
+
+	@Override
 	public Process<Process<?, ?>, Runnable> isolate() {
 		return this;
 	}

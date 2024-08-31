@@ -39,6 +39,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::abs;\n" +
 									"using metal::pow;\n" +
 									"using metal::exp;\n" +
+									"using metal::log;\n" +
 									"using metal::sin;\n" +
 									"using metal::cos;\n" +
 									"using metal::tan;\n";
@@ -53,7 +54,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
-		this.instructionSets = new FrequencyCache<>(100, 0.4);
+		this.instructionSets = new FrequencyCache<>(500, 0.4);
 		this.instructionSets.setEvictionListener((name, inst) -> inst.destroy());
 	}
 

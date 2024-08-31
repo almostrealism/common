@@ -21,11 +21,13 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.stream.Stream;
 
 public class Max extends BinaryExpression<Double> {
-	public Max(Expression<Double> a, Expression<Double> b) {
+	public Max(Expression<? extends Number> a, Expression<? extends Number> b) {
 		super(Double.class, a, b);
 	}
 
@@ -66,15 +68,38 @@ public class Max extends BinaryExpression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Max((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return Max.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
 	public static Expression<Double> of(Expression<Double>... values) {
-		Expression<Double> result = values[0];
-		for (int i = 1; i < values.length; i++) {
-			result = new Max(result, values[i]);
+		if (values.length == 0) {
+			throw new IllegalArgumentException();
 		}
 
-		return result;
+		if (values.length == 2) {
+			if (values[0].doubleValue().orElse(-1.0) == 0.0) {
+				return Rectify.of(values[1]);
+			} else if (values[1].doubleValue().orElse(-1.0) == 0.0) {
+				return Rectify.of(values[0]);
+			}
+		}
+
+		OptionalDouble v[] = Stream.of(values)
+				.map(Expression::doubleValue)
+				.toArray(OptionalDouble[]::new);
+
+		if (Stream.of(v).anyMatch(OptionalDouble::isEmpty)) {
+			Expression<Double> result = values[0];
+			for (int i = 1; i < values.length; i++) {
+				result = new Max(result, values[i]);
+			}
+
+			return result;
+		} else {
+			double max = Stream.of(v)
+					.mapToDouble(OptionalDouble::getAsDouble)
+					.max().getAsDouble();
+			return Constant.of(max);
+		}
 	}
 }

@@ -57,7 +57,7 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	}
 
 	@Override
-	public ArrayDeclaration<T> simplify(KernelStructureContext context) {
-		return new ArrayDeclaration<>(type, name, size.simplify(context));
+	public ArrayDeclaration<T> simplify(KernelStructureContext context, int depth) {
+		return new ArrayDeclaration<>(type, name, size.simplify(context, depth + 1));
 	}
 }

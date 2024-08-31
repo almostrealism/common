@@ -67,6 +67,11 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() {
+		return false;
+	}
+
+	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
 	@Override
@@ -86,6 +91,15 @@ public class KernelIndex extends DefaultIndex {
 		if (!(index instanceof KernelIndex)) return this;
 		if (((KernelIndex) index).getKernelAxis() != getKernelAxis()) return this;
 		return new IntegerConstant(value);
+	}
+
+	@Override
+	public KernelIndex withLimit(long limit) {
+		if (context != null) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new KernelIndex(new NoOpKernelStructureContext(limit), axis);
 	}
 
 	@Override
@@ -114,12 +128,12 @@ public class KernelIndex extends DefaultIndex {
 	}
 
 	@Override
-	public Expression<Integer> simplify(KernelStructureContext context) {
+	public Expression<Integer> simplify(KernelStructureContext context, int depth) {
 		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
 			return new IntegerConstant(0);
 		}
 
-		return super.simplify(context);
+		return super.simplify(context, depth);
 	}
 
 	protected synchronized static void updateKernelSeq(long len) {

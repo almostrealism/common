@@ -22,9 +22,10 @@ import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -144,12 +145,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return get(getProfile());
 	}
 
-	public Runnable get(OperationProfile profiles) {
+	public Runnable get(OperationProfile profile) {
 		if (isFunctionallyEmpty()) return () -> { };
 
 		try {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			if (profile instanceof OperationProfileNode) {
+				((OperationProfileNode) profile).addChild(getMetadata());
 			}
 
 			if (enableAutomaticOptimization && !isUniform()) {
@@ -166,7 +171,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						.filter(Objects::nonNull)
 						.filter(Predicate.not(OperationAdapter::isCompiled))
 						.forEach(OperationAdapter::compile);
-				return new Runner(getMetadata(), run, getComputeRequirements(), profiles);
+				return new Runner(getMetadata(), run, getComputeRequirements(),
+						profile == null ? null : profile.getTimingListener());
 			}
 		} finally {
 			if (getComputeRequirements() != null) {
@@ -422,14 +428,15 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
-		private OperationProfile profiles;
+		private OperationTimingListener timingListener;
 
 		public Runner(OperationMetadata metadata, List<Runnable> run,
-					  List<ComputeRequirement> requirements, OperationProfile profiles) {
+					  List<ComputeRequirement> requirements,
+					  OperationTimingListener timingListener) {
 			this.metadata = metadata;
 			this.run = run;
 			this.requirements = requirements;
-			this.profiles = profiles;
+			this.timingListener = timingListener;
 		}
 
 		@Override
@@ -444,17 +451,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 				}
 
-				if (profiles == null) {
+				if (timingListener == null) {
 					for (int i = 0; i < run.size(); i++) {
 						run.get(i).run();
 					}
 				} else {
-					if (profiles instanceof OperationProfileNode) {
-						((OperationProfileNode) profiles).addChildren(getMetadata());
-					}
-
 					for (int i = 0; i < run.size(); i++) {
-						profiles.recordDuration(run.get(i));
+						timingListener.recordDuration(run.get(i));
 					}
 				}
 			} finally {

@@ -73,6 +73,9 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	}
 
 	@Override
+	public long getOutputSize() { return length; }
+
+	@Override
 	public Process<Process<?, Runnable>, Runnable> isolate() { return this; }
 
 	@Override

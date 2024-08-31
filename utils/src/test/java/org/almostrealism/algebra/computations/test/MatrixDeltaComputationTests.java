@@ -38,10 +38,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class MatrixDeltaComputationTests implements TestFeatures {
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
 
 	@Test
 	public void matmul1() {
@@ -353,6 +349,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				.reshape(outSize, weightSize)
 				.traverse(1)
 				.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
+				.traverse(0)
 				.enumerate(1, 1)
 				.sum(1)
 				.reshape(shape(weightSize))
@@ -367,7 +364,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		c.delta(p(w)).get().into(sparse.traverse(traversalAxis)).evaluate();
 		print(outSize, weightSize, sparse);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			c.delta(p(w))
 					.reshape(outSize, weightSize)
 					.traverse(1)
@@ -385,7 +382,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		}
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			cda.get().run();
 		});
 
@@ -441,6 +438,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				.reshape(nodes, weightSize)
 				.traverse(1)
 				.multiply(c(g).reshape(nodes).traverse(1).repeat(weightSize))
+				.traverse(0)
 				.enumerate(1, 1)
 				.sum(1)
 				.reshape(shape(weightSize))

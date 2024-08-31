@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
@@ -67,14 +68,15 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	}
 
 	@Override
-	protected Expression<?> getExpression(TraversableExpression args[], Expression localIndex) {
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0));
 		return expression.apply(args, currentValue).getValueAt(localIndex);
 	}
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
-		return count > isolationCountThreshold;
+		if (getOutputSize() > MemoryProvider.MAX_RESERVATION) return false;
+		return super.isIsolationTarget(context) || count > isolationCountThreshold;
 	}
 
 	@Override

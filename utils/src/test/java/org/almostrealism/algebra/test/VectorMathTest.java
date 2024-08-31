@@ -19,13 +19,13 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -40,7 +40,7 @@ public class VectorMathTest implements TestFeatures {
 	@Test
 	public void scalarPowDynamic() {
 		Producer<Scalar> d = new DynamicCollectionProducer<>(shape(2), args -> new Scalar(3));
-		ExpressionComputation<Scalar> s = scalar(3);
+		CollectionProducer<Scalar> s = scalar(3);
 		Producer<Scalar> p = s.pow(d);
 		Evaluable<Scalar> ev = p.get();
 		PackedCollection<?> out = ev.evaluate();
@@ -86,7 +86,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void productDifference() {
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
 			Producer<Scalar> s = scalar(y(a).multiply(z(b))
@@ -103,19 +103,6 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void crossProduct() {
-		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -100.0, 0.0)
-						.subtract(vector(0.0, 100.0, 0.0)));
-
-		Vector v = cp.get().evaluate();
-		System.out.println(v);
-
-		Assert.assertEquals(-200, v.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-100, v.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, v.getZ(), Math.pow(10, -10));
-	}
-
-	@Test
-	public void crossProductCompact() {
 		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		KernelizedEvaluable<Vector> cpo = (KernelizedEvaluable<Vector>) cp.get();

@@ -46,7 +46,7 @@ public class CollectionOrderingTests implements TestFeatures {
 		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
 				root, 0, new RepeatTraversalOrdering(3));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> product = c(2).multiply(cp(repeated)).evaluate();
 			product.print();
 

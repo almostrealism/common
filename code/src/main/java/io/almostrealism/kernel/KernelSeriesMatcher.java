@@ -17,6 +17,7 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
@@ -25,8 +26,29 @@ import java.util.function.Supplier;
 
 public class KernelSeriesMatcher implements ExpressionFeatures {
 
+	public static KernelSeriesProvider defaultProvider() {
+		return defaultProvider(null);
+	}
+
+	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata) {
+		return defaultProvider(metadata, OptionalInt.empty());
+	}
+
 	public static KernelSeriesProvider defaultProvider(int count) {
+		return defaultProvider(null, count);
+	}
+
+	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata, int count) {
+		return defaultProvider(metadata, OptionalInt.of(count));
+	}
+
+	public static KernelSeriesProvider defaultProvider(OperationMetadata metadata, OptionalInt count) {
 		return new KernelSeriesProvider() {
+			@Override
+			public OperationMetadata getMetadata() {
+				return metadata;
+			}
+
 			@Override
 			public Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes) {
 				return seq.get().getExpression(index, isInt);
@@ -34,7 +56,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 			@Override
 			public OptionalInt getMaximumLength() {
-				return OptionalInt.of(count);
+				return count;
 			}
 		};
 	}

@@ -16,9 +16,7 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.kernel.KernelPreferences;
-import org.almostrealism.collect.CollectionFeatures;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
@@ -32,7 +30,8 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmul() {
-//		matmul(128, 64, true);
+		if (testDepth < 1) return;
+
 		matmul(2048, 1024, true);
 	}
 
@@ -85,7 +84,8 @@ public class MatrixMathTests implements TestFeatures {
 				.reshape(p, n, m)
 				.traverse(1)
 				.multiply(cp(a).repeat(p))
-				.reshape(p, n, m).sum(2)
+				.reshape(p, n, m)
+				.sum(2).traverse(0)
 				.enumerate(1, 1)
 				.reshape(n, p);
 
@@ -138,7 +138,7 @@ public class MatrixMathTests implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		HardwareOperator.verboseLog(() -> r.run());
+		verboseLog(() -> r.run());
 
 		if (enableRepeat) {
 			profiles.clear();
@@ -165,7 +165,7 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void sumPowers() {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 
 		for (int i = 1; i < 7; i++) {
 			sum(600, 1 << i);

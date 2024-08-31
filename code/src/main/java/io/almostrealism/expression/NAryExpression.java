@@ -24,30 +24,23 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
-	public static boolean enableSimplification = true;
 	public static boolean removeIdentities = true;
+	public static boolean enableSort = false;
 
 	private String operator;
-
-	public NAryExpression(String operator, Stream<Expression<?>> values) {
-		this(operator, values.toArray(Expression[]::new));
-	}
-
-	public NAryExpression(String operator, List<Expression<?>> values) {
-		this((Class) type(values), operator, values.toArray(new Expression[0]));
-	}
 
 	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
 		this(type, operator, values.toArray(new Expression[0]));
 	}
 
-	public NAryExpression(String operator, Expression<?>... values) {
-		this((Class) type(values), operator, validateExpressions(values));
-	}
-
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
 		super(type, validateExpressions(values));
 		this.operator = operator;
+	}
+
+	@Override
+	public boolean isPossiblyNegative() {
+		return getChildren().stream().anyMatch(Expression::isPossiblyNegative);
 	}
 
 	@Override
@@ -80,7 +73,7 @@ public class NAryExpression<T> extends Expression<T> {
 			Objects.requireNonNull(values[i]);
 		}
 
-		return values;
+		return enableSort ? sort(values) : values;
 	}
 
 	protected static Class<? extends Number> type(Object... values) {

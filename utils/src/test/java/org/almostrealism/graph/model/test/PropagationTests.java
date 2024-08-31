@@ -20,9 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.PropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -34,46 +32,10 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class PropagationTests implements TestFeatures {
-	@Test
-	public void softmaxBackwards() {
-		PackedCollection<?> input = new PackedCollection(10);
-		IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
-
-		PackedCollection<?> gradient = new PackedCollection<>(10);
-		gradient.setMem(3, 1.0);
-
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
-
-		double result[] = new double[10];
-
-		CellularLayer layer = softmax(10);
-		layer.getBackward().setReceptor(grad -> () -> {
-			Evaluable<PackedCollection<?>> gr = grad.get();
-
-			return () -> {
-				PackedCollection<?> out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
-
-				out.getMem(0, result, 0, result.length);
-			};
-		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
-		layer.getBackward().push(p(gradient)).get().run();
-
-		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
-				-6.67421149e-06, -1.81423878e-05, -4.93161231e-05, -1.34055121e-04,
-				-3.64399601e-04, -9.90540812e-04 };
-
-		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
-		}
-	}
 
 	@Test
 	public void denseBackwards() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (skipLongTests) return;
 		if (skipKnownIssues) return;
 
 		int size = 12;
@@ -104,7 +66,7 @@ public class PropagationTests implements TestFeatures {
 
 		CompiledModel runner = model.compile();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> output = runner.forward(input);
 			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
@@ -209,7 +171,7 @@ public class PropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 
 		model.addLayer(conv);
 

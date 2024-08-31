@@ -34,8 +34,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.LongConstant;
+import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Rectify;
 import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
@@ -71,8 +73,8 @@ public interface ExpressionFeatures {
 		return expressionForDouble(value);
 	}
 
-	default Exp exp(Expression expression) {
-		return new Exp(expression);
+	default Expression<Double> exp(Expression expression) {
+		return Exp.of(expression);
 	}
 
 	default Epsilon epsilon() { return new Epsilon(); }
@@ -115,8 +117,8 @@ public interface ExpressionFeatures {
 		return new Greater(left, right, includeEqual);
 	}
 
-	default Equals equals(Expression<?> left, Expression<?> right) {
-		return new Equals(left, right);
+	default Expression equals(Expression<?> left, Expression<?> right) {
+		return Equals.of(left, right);
 	}
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
@@ -162,6 +164,14 @@ public interface ExpressionFeatures {
 		return quotient;
 	}
 
+	default CollectionExpression reciprocal(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> args[0].reciprocal(), input);
+	}
+
+	default CollectionExpression minus(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> Minus.of(args[0]), input);
+	}
+
 	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
 		return new UniformCollectionExpression(shape, Mod::of, in, mod);
 	}
@@ -172,6 +182,10 @@ public interface ExpressionFeatures {
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape, args -> Rectify.of(args[0]), input);
 	}
 
 	default TraversableExpression<Boolean> equals(TraversalPolicy shape,

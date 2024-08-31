@@ -152,6 +152,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void data2() {
+		if (testDepth < 1) return;
+
 		Producer<Vector> abc = abc(data2);
 		Producer<Vector> def = def(data2);
 		Producer<Vector> jkl = jkl(data2);

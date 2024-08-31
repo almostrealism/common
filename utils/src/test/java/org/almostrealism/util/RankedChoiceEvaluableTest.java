@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements TestFeatures {
-	private double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon();
+	private double gap = 10 * Hardware.getLocalHardware().getPrecision().epsilon(true);
 
 	@Test
 	public void highestRank() {

@@ -23,6 +23,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Cast<T> extends UnaryExpression<T> {
 	private String typeName;
@@ -30,6 +31,10 @@ public class Cast<T> extends UnaryExpression<T> {
 	public Cast(Class<T> type, String typeName, Expression<?> operand) {
 		super(type, "(" + typeName + ")", operand);
 		this.typeName = typeName;
+
+		if (typeName == null) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	public String getTypeName() {
@@ -40,7 +45,7 @@ public class Cast<T> extends UnaryExpression<T> {
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
 		if (i.isPresent()) return i;
-		if (typeName.equals("int")) {
+		if (getType() == Integer.class) {
 			OptionalDouble d = getChildren().get(0).doubleValue();
 			if (d.isPresent()) return OptionalInt.of((int) d.getAsDouble());
 		}
@@ -48,9 +53,28 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
+	public OptionalLong longValue() {
+		OptionalLong l = super.longValue();
+		if (l.isPresent()) return l;
+
+		if (getType() == Long.class) {
+			OptionalDouble d = getChildren().get(0).doubleValue();
+			if (d.isPresent()) return OptionalLong.of((long) d.getAsDouble());
+		}
+
+		return l;
+	}
+
+	@Override
 	public OptionalDouble doubleValue() {
-		OptionalDouble d = getChildren().get(0).doubleValue();
-		if (d.isPresent()) return d;
+		OptionalLong l = longValue();
+		if (l.isPresent()) return OptionalDouble.of(l.getAsLong());
+
+		if (getType() == Double.class) {
+			OptionalDouble d = getChildren().get(0).doubleValue();
+			if (d.isPresent()) return d;
+		}
+
 		return super.doubleValue();
 	}
 
@@ -85,8 +109,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> simplify(KernelStructureContext context) {
-		Expression<T> flat = super.simplify(context);
+	public Expression<T> simplify(KernelStructureContext context, int depth) {
+		Expression<T> flat = super.simplify(context, depth);
 		if (!(flat instanceof Cast)) return flat;
 
 		OptionalDouble d = flat.getChildren().get(0).doubleValue();

@@ -31,7 +31,7 @@ public class MinMaxTests implements TestFeatures {
 		Producer<PackedCollection<?>> in = value(timeline.getShape(), 0);
 		Producer<PackedCollection<?>> speedUpDuration = value(shape(1, 1).traverse(1), 1);
 
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Evaluable<PackedCollection<?>> ev = divide(in, speedUpDuration).get();
 			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));
@@ -39,7 +39,7 @@ public class MinMaxTests implements TestFeatures {
 			assertEquals(timeline.toDouble(10 * 4410) / speedUp.toDouble(0), out.toDouble(10 * 4410));
 		});
 
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Evaluable<PackedCollection<?>> ev = floor(divide(in, speedUpDuration)).get();
 			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));

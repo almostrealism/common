@@ -29,13 +29,16 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
 
-	public static boolean enableDiagnosticGrad = false;
+	public static boolean verbose = false;
+	public static boolean enableOptimizedDiagnostics = false;
+	public static boolean enableDiagnosticGrad = SystemUtils.isEnabled("AR_DIAGNOSTIC_GRADIENT").orElse(false);
 	public static boolean enableDiagnosticWeight = false;
 
 	private final Factor<PackedCollection<?>> operator;
@@ -66,38 +69,56 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
+		if (weights.length > 0 && learningRate == null) {
+			throw new IllegalArgumentException("Learning rate is required");
+		}
+
+		if (next == null && verbose) {
+			log("Gradient will not be computed for " + getName() +
+					" because there is no provided Receptor");
+		}
+
 		TraversalPolicy shape = shape(input);
 
 		Supplier<CollectionProducer<PackedCollection<?>>> function = () -> (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
 		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
-		PackedCollection<?> gradOut = new PackedCollection<>(shape);
+		PackedCollection<?> gradOut = next == null ? null : new PackedCollection<>(shape);
 
 		int inSize = shape.getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
 
 		OperationList op = new OperationList("Gradient Propagation");
 
-		Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
-				.reshape(outSize, inSize)
-				.traverse(1)
-				.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
-				.enumerate(1, 1)
-				.sum(1)
-				.reshape(shape(inSize))
-				.each();
+		if (next != null) {
+			Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
+					.reshape(outSize, inSize)
+					.traverse(1)
+					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
+					.traverse(0)
+					.enumerate(1, 1)
+					.sum(1)
+					.reshape(shape(inSize))
+					.each();
 
-		if (enableDiagnosticGrad) {
-			op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
-				Evaluable<PackedCollection<?>> grad = (Evaluable) Process.optimized(deltaOutDeltaIn).get();
-				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+			if (enableDiagnosticGrad) {
+				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize));
+				Producer<PackedCollection<?>> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
 
-				return () -> {
-					inputGrad.into(gradIn).evaluate();
-					grad.into(gradOut).evaluate();
-				};
-			}));
-		} else {
-			op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
+				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
+					Evaluable<PackedCollection<?>> d = delta.get();
+					Evaluable<PackedCollection<?>> grad = enableOptimizedDiagnostics ?
+							(Evaluable) Process.optimized(deltaOutDeltaIn).get() : deltaOutDeltaIn.get();
+					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+
+					return () -> {
+						d.into(deltaOut).evaluate();
+						inputGrad.into(gradIn).evaluate();
+						grad.into(gradOut).evaluate();
+					};
+				}));
+			} else {
+				op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
+			}
 		}
 
 		for (int i = 0; i < weights.length; i++) {
@@ -108,6 +129,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 					.reshape(outSize, weightSize)
 					.traverse(1)
 					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(weightSize))
+					.traverse(0)
 					.enumerate(1, 1)
 					.sum(1)
 					.reshape(shape(weightSize))

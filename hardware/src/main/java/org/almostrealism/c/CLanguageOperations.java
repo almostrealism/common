@@ -61,7 +61,23 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 
 	@Override
 	public String nameForType(Class<?> type) {
-		return typeString(type);
+		if (type == null) return "";
+
+		if (type == Double.class) {
+			return getPrecision().typeName();
+		} else if (type == Integer.class || type == int[].class) {
+			return "int";
+		} else if (type == Long.class || type == long[].class) {
+			return "long";
+		} else if (type == Boolean.class) {
+			return isNumericBoolean() ? "int" : "bool";
+		} else {
+			throw new IllegalArgumentException("Unable to encode " + type);
+		}
+	}
+
+	public boolean isNumericBoolean() {
+		return true;
 	}
 
 	@Override
@@ -92,20 +108,6 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 		}
 
 		super.renderArguments(arguments, out, access);
-	}
-
-	private String typeString(Class type) {
-		if (type == null) return "";
-
-		if (type == Double.class) {
-			return getPrecision().typeName();
-		} else if (type == Integer.class || type == int[].class) {
-			return "int";
-		} else if (type == Long.class || type == long[].class) {
-			return "long";
-		} else {
-			throw new IllegalArgumentException("Unable to encode " + type);
-		}
 	}
 
 	@Override

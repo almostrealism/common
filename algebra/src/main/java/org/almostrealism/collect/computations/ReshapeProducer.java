@@ -48,7 +48,8 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					OperationInfo, ScopeLifecycle {
-	public static boolean enableDelegateIsolation = true;
+	public static boolean enableTraversalDelegateIsolation = true;
+	public static boolean enableShapeDelegateIsolation = false;
 
 	private TraversalPolicy shape;
 	private int traversalAxis;
@@ -93,6 +94,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public TraversalPolicy getShape() {
 		if (shape == null) {
+			if (!(producer instanceof Shape)) {
+				throw new UnsupportedOperationException();
+			}
+
 			TraversalPolicy inputShape = ((Shape) producer).getShape();
 			return inputShape.traverse(traversalAxis);
 		} else {
@@ -116,6 +121,15 @@ public class ReshapeProducer<T extends Shape<T>>
 		}
 
 		return 1;
+	}
+
+	@Override
+	public long getOutputSize() {
+		if (producer instanceof Process) {
+			return ((Process) producer).getOutputSize();
+		}
+
+		return 0;
 	}
 
 	@Override
@@ -160,7 +174,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		if (shape == null) {
-			if (enableDelegateIsolation && producer instanceof Process) {
+			if (enableTraversalDelegateIsolation && producer instanceof Process) {
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
 
 				if (isolated != producer) {
@@ -170,6 +184,14 @@ public class ReshapeProducer<T extends Shape<T>>
 
 			return new CollectionProducerComputation.IsolatedProcess(this);
 		} else {
+			if (enableShapeDelegateIsolation && producer instanceof Process) {
+				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
+
+				if (isolated != producer) {
+					return generate(List.of(isolated));
+				}
+			}
+
 			return this;
 		}
 	}

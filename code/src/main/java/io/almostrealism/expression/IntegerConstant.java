@@ -34,6 +34,7 @@ public class IntegerConstant extends Constant<Integer> {
 	public IntegerConstant(Integer value) {
 		super(Integer.class);
 		this.value = value;
+		init();
 	}
 
 	@Override
@@ -68,5 +69,14 @@ public class IntegerConstant extends Constant<Integer> {
 	@Override
 	public Number evaluate(Number... children) {
 		return value;
+	}
+
+	@Override
+	public Expression minus() {
+		if (enableNegationOptimization) {
+			return new IntegerConstant(-value);
+		}
+
+		return super.minus();
 	}
 }

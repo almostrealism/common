@@ -42,7 +42,7 @@ public class ScalarBankDotProductTest implements TestFeatures {
 		Scalar given = new Scalar(IntStream.range(0, SIZE)
 				.mapToDouble(i -> window.get(i).getValue() * window.get(i).getValue()).sum());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			Producer<PackedCollection<?>> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);
 			Producer<PackedCollection<?>> b = subset(shape(SIZE, 1), v(shape(SIZE, 2), 1), 0);
 			Evaluable<? extends Scalar> ev = scalar(multiply(a, b).sum()).get();

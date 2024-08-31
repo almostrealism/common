@@ -38,7 +38,7 @@ public class ComplexMathTests implements TestFeatures {
 		PackedCollection<?> imag = new PackedCollection<>(1024).fill(Math::random);
 		PackedCollection<?> out = new PackedCollection<>(1024, 1);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			m.into(out.traverseEach()).evaluate(real.traverseEach(), imag.traverseEach());
 
 			for (int i = 0; i < 1024; i++) {
@@ -54,7 +54,7 @@ public class ComplexMathTests implements TestFeatures {
 		PackedCollection<Pair<?>> a = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 		PackedCollection<Pair<?>> b = new PackedCollection<Pair<?>>(shape(32, 2)).randFill();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<Pair<?>> result = multiplyComplex(traverse(1, p(a)), traverse(1, p(b))).get().evaluate();
 
 			for (int i = 0; i < 32; i++) {
@@ -84,7 +84,7 @@ public class ComplexMathTests implements TestFeatures {
 		PackedCollection<Pair<?>> x = new PackedCollection<Pair<?>>(shape(h, 2)).randFill();
 		Producer<PackedCollection<Pair<?>>> o = multiplyComplex(traverse(1, p(in)), p(x));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<Pair<?>> result = o.get().evaluate();
 
 			for (int n = 0; n < w; n++) {

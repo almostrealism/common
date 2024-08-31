@@ -50,7 +50,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void evaluateIntegers() {
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
 		});
@@ -71,7 +71,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> y = pack(0, 1, 2, 0, 1, 2);
 		PackedCollection<?> result = new PackedCollection<>(shape(6));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> value = index(shape(3, 5), p(x), p(y));
 			value.into(result).evaluate();
 		});
@@ -91,7 +91,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> in = tensor(shape(len, 1)).pack();
 		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
@@ -106,7 +106,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> in = tensor(shape(2, len, 1)).pack();
 		PackedCollection<?> result = new PackedCollection<>(shape(2));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> value = c(p(in),
 																shape(2, len, 1),
 																c(0, 1),
@@ -142,7 +142,7 @@ public class CollectionComputationTests implements TestFeatures {
 					traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
 					p(value));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			if (optimize) {
 				Operation.optimized(c).get().run();
 			} else {
@@ -163,6 +163,15 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integersIndexAssignmentOperation() {
+		integersIndexAssignmentOperation(false);
+	}
+
+	@Test
+	public void integersIndexAssignmentOperationIsolated() {
+		integersIndexAssignmentOperation(true);
+	}
+
+	public void integersIndexAssignmentOperation(boolean isolate) {
 		int count = 3;
 		int size = 10;
 
@@ -180,11 +189,18 @@ public class CollectionComputationTests implements TestFeatures {
 		op.add(a(
 				p(out),
 				matmul(p(feedback), p(in)).add(c(p(input), 0).mul(p(gain)).repeat(count))));
-		op.add(a(
-				traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
-				p(out)).isolate());
 
-		HardwareOperator.verboseLog(() -> {
+		Assignment<PackedCollection<?>> populate =
+				a(traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
+				p(out));
+
+		if (isolate) {
+			op.add(populate.isolate());
+		} else {
+			op.add(populate);
+		}
+
+		verboseLog(() -> {
 			op.get().run();
 		});
 
@@ -219,7 +235,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void multiply() {
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
 			testInput.setMem(0, 9.0);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
@@ -231,7 +247,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void sum() {
 		PackedCollection<?> input = tensor(shape(3, 5)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> output = c(p(input)).sum().get().evaluate();
 
 			double expected = 0;
@@ -298,7 +314,7 @@ public class CollectionComputationTests implements TestFeatures {
 		a.setMem(3.0);
 		b.setMem(5.0);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			ExpressionComputation<PackedCollection<?>> computation =
 					new ExpressionComputation<>(List.of(expression),
 							() -> new Provider<>(a),
@@ -478,7 +494,7 @@ public class CollectionComputationTests implements TestFeatures {
 		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(shape(10), 0));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
-		HardwareOperator.verboseLog(() ->
+		verboseLog(() ->
 			max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -496,7 +512,7 @@ public class CollectionComputationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();
 		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
 			op.add(a(1, p(dest), auto));
 			op.get().run();

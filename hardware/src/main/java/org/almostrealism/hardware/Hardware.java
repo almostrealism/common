@@ -21,14 +21,11 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.Precision;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.KernelPreferences;
-import io.almostrealism.profile.CompilationProfile;
-import org.almostrealism.hardware.cl.CLMemoryProvider;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -43,7 +40,6 @@ import org.almostrealism.nio.NativeBufferMemoryProvider;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -279,7 +275,9 @@ public final class Hardware {
 		if (provider != null) {
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof NativeDataContext) {
-					System.out.println("Hardware[" + c.getName() + "]: Enabling shared memory via " + provider);
+					System.out.println("Hardware[" + c.getName() +
+							"]: Enabling shared memory via " +
+							provider.getClass().getSimpleName());
 					((NativeDataContext) c).setDelegate(sharedMemoryCtx);
 					((NativeDataContext) c).setMemoryProvider(provider);
 				}
@@ -300,7 +298,7 @@ public final class Hardware {
 		Precision precision = Precision.FP64;
 
 		for (DataContext c : contexts) {
-			if (c.getPrecision().epsilon() > precision.epsilon()) {
+			if (c.getPrecision().epsilon(true) > precision.epsilon(true)) {
 				precision = c.getPrecision();
 			}
 		}
@@ -315,14 +313,23 @@ public final class Hardware {
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
 	public void assignProfile(OperationProfile profile) {
-		if (profile instanceof OperationProfileNode) {
-			AbstractComputeContext.compilationProfile = ((OperationProfileNode) profile).getCompilationProfile();
+		if (profile == null) {
+			clearProfile();
 		} else {
-			AbstractComputeContext.compilationProfile = new CompilationProfile("default",
-					OperationProfile.appendContext(OperationMetadata::getDisplayName));
+			HardwareOperator.timingListener = profile.getRuntimeListener();
+			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
+			AcceleratedComputationOperation.timing = profile.getScopeListener(true);
+			Scope.timing = profile.getScopeListener(true);
+			ScopeSettings.timing = profile.getScopeListener(false);
 		}
+	}
 
-		HardwareOperator.profile = profile;
+	public void clearProfile() {
+		HardwareOperator.timingListener = null;
+		AbstractComputeContext.compilationTimingListener = null;
+		AcceleratedComputationOperation.timing = null;
+		Scope.timing = null;
+		ScopeSettings.timing = null;
 	}
 
 	public synchronized void addContextListener(ContextListener l) {
@@ -407,7 +414,7 @@ public final class Hardware {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 0;
+			return 1024;
 		}
 	}
 

@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
@@ -25,26 +26,34 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
-	protected Product(Stream<Expression<? extends Number>> values) {
-		super("*", (Stream) values);
-	}
+	public static boolean enableMinusDetection = true;
+	public static boolean enableConstantExtraction = true;
+	public static boolean enableConstantExtractionValidation = false;
+	public static boolean enableSort = true;
 
 	protected Product(List<Expression<Double>> values) {
-		super((Class<T>) type(values), "*", (List) values);
+		this((Class<T>) type(values), (List) values);
 	}
 
-	protected Product(Expression<Double>... values) {
-		super((Class<T>) type(List.of(values)), "*", values);
+	private Product(Class<T> type, List<Expression<T>> values) {
+		super(type, "*", (List) values);
+
+		if (enableConstantExtractionValidation &&
+				values.stream().filter(v -> !v.doubleValue().isPresent()).count() == 0) {
+			throw new IllegalArgumentException("Attempting to create a Product with all constant values");
+		}
 	}
 
 	@Override
@@ -92,10 +101,14 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
-		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
-			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(1.0, (a, b) -> a * b);
+		if (isFP()) {
+			return values.stream().mapToDouble(Number::doubleValue).reduce(1.0, (a, b) -> a * b);
 		} else {
-			return values.stream().mapToInt(v -> v.intValue()).reduce(1, (a, b) -> a * b);
+			long l = values.stream().mapToLong(Number::longValue).reduce(1, (a, b) -> a * b);
+			if (getType() == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE)
+				return (int) l;
+
+			return l;
 		}
 	}
 
@@ -106,7 +119,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			value = value * children[i].doubleValue();
 		}
 
-		return value;
+		return isFP() ? value : (long) value;
 	}
 
 	@Override
@@ -197,12 +210,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
+	public Expression simplify(KernelStructureContext context, int depth) {
 		if (getChildren().stream().anyMatch(e -> e.doubleValue().orElse(-1) == 0)) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
 		}
 
-		Expression<?> flat = super.simplify(context);
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Product)) return flat;
 
 		List<Expression<?>> children = flat.flatten().stream().collect(Collectors.toList());
@@ -220,9 +233,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			children.add(mask.getMaskedValue());
 		}
 
-		children = children.stream()
-				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
-				.collect(Collectors.toList());
+		if (children.size() > 1) {
+			children = children.stream()
+					.filter(e -> e.doubleValue().orElse(-1) != 1.0)
+					.collect(Collectors.toList());
+		}
 
 
 		Expression simple = null;
@@ -233,64 +248,19 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			simple = getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
 		}
 
-		List<Double> values = null;
-
-		if (simple == null) {
-			values = children.stream()
-					.map(Expression::doubleValue)
-					.filter(d -> d.isPresent())
-					.map(d -> d.getAsDouble())
-					.collect(Collectors.toList());
-
-			if (values.size() <= 0) {
-				simple = generate(children).populate(this);
-			} else if (values.size() == 1) {
-				if (values.get(0).doubleValue() == 0.0) {
-					return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-				} else {
-					simple = generate(children).populate(this);
-				}
-			}
-		}
-
-		if (simple == null) {
-			children = children.stream()
-					.filter(e -> !e.doubleValue().isPresent())
-					.collect(Collectors.toList());
-
-			double product = values.stream().reduce(1.0, (a, b) -> a * b);
-
-			if (product == 0.0) {
-				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-			} else if (product == 1.0) {
-				if (children.isEmpty()) {
-					simple = getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
-				} else if (children.size() == 1) {
-					simple = children.get(0);
-				} else {
-					simple = generate(children).populate(this);
-				}
-			} else {
-				List<Expression<?>> newChildren = new ArrayList<>();
-				newChildren.addAll(children);
-				newChildren.add(getType() == Integer.class ? new IntegerConstant((int) product) : new DoubleConstant(product));
-
-				if (newChildren.size() == 1) {
-					simple = newChildren.get(0);
-				} else {
-					simple = generate(newChildren).populate(this);
-				}
-			}
-		}
-
 		if (mask == null) {
-			return simple;
+			return simple == null ? flat : simple;
 		} else {
-			return Mask.of(mask.getMask(), simple);
+			return Mask.of(mask.getMask(),
+					simple == null ? generate(children) : simple);
 		}
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
+		return ExpressionCache.match(create(values));
+	}
+
+	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];
 
@@ -310,12 +280,50 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			return Mask.of(mask.get().getMask(), Product.of(operands.toArray(new Expression[0])));
 		}
 
-		List<Expression> operands = Stream.of(values)
-				.filter(e -> e.intValue().orElse(-1) != 1)
-				.collect(Collectors.toList());
+		double constant = 1.0;
+		List<Expression> operands;
+
+		boolean fp = false;
+
+		if (enableConstantExtraction) {
+			operands = new ArrayList<>();
+
+			e: for (Expression e : values) {
+				if (e.isFP()) fp = true;
+				if (e.longValue().orElse(-1) == 1) continue e;
+
+				OptionalDouble d = e.doubleValue();
+
+				if (d.isPresent()) {
+					constant *= d.getAsDouble();
+				} else {
+					operands.add(e);
+				}
+			}
+
+			if (constant != 1.0) {
+				Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
+				operands.add(c);
+			}
+		} else {
+			operands = Stream.of(values)
+					.filter(e -> e.intValue().orElse(-1) != 1)
+					.sorted(depthOrder())
+					.collect(Collectors.toList());
+		}
 
 		if (operands.isEmpty()) return new IntegerConstant(1);
 		if (operands.size() == 1) return operands.get(0);
-		return new Product(operands);
+		if (enableMinusDetection && operands.size() == 2) {
+			if (operands.get(0).doubleValue().orElse(0.0) == -1.0) {
+				return Minus.of(operands.get(1));
+			} else if (operands.get(1).doubleValue().orElse(0.0) == -1.0) {
+				return Minus.of(operands.get(0));
+			}
+		}
+
+		if (enableSort)
+			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
+		return fp ? new Product(Double.class, operands) : new Product(operands);
 	}
 }

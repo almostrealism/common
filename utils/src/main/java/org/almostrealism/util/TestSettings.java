@@ -24,6 +24,9 @@ public interface TestSettings {
 	boolean skipLongTests = TestUtils.getSkipLongTests();
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
 	boolean trainingTests = TestUtils.getTrainTests();
+	boolean verboseLogs = TestUtils.getVerboseLogs();
+
+	int testDepth = TestUtils.getTestDepth();
 
 	default boolean testProfileIs(String profile) {
 		return (Objects.equals(TestUtils.getTestProfile(), profile));

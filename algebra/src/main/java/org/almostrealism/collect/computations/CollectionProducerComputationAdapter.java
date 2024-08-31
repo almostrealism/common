@@ -35,8 +35,15 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public static boolean enableContextualKernelIndex = true;
+
+	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
+												Supplier<Evaluable<? extends I>>... arguments) {
 		super(name, outputShape, arguments);
+	}
+
+	protected boolean isOutputRelative() {
+		return true;
 	}
 
 	@Override
@@ -45,10 +52,15 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = new KernelIndex();
+			KernelIndex kernelIndex = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
+			Expression index = kernelIndex;
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			scope.getVariables().add(output.ref(i).assign(getValueAt(index)));
+			if (isOutputRelative()) {
+				scope.getStatements().add(output.referenceRelative(e(i), kernelIndex).assign(getValueAt(index)));
+			} else {
+				scope.getStatements().add(output.referenceAbsolute(kernelIndex).assign(getValueAt(index)));
+			}
 		}
 
 		return scope;

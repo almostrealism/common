@@ -72,6 +72,10 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate) {
+		return scalarBank(count, delegate, 0);
+	}
+
 	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate, int delegateOffset) {
 		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),

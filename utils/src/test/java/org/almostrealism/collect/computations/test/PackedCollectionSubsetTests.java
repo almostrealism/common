@@ -60,7 +60,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -100,7 +100,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> pc = new PackedCollection<>(1).traverseEach();
 		pc.set(0, (double) x0);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w), p(input), p(pc));
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -137,7 +137,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		pc.set(0, (double) x0);
 		pc.set(1, (double) y0);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h), p(input), p(pc));
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -180,7 +180,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		pc.set(1, (double) y0);
 		pc.set(2, (double) z0);
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), p(pc));
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -226,7 +226,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 //			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach(subset)).reshape(filterShape);
 			Producer<PackedCollection<?>> product = relativeMultiply(p(filter), subset, null);
@@ -261,7 +261,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> in = c(p(input));
 		CollectionProducer<PackedCollection<?>> subset = subset(shape(1, 20), in, 4, 0).traverseEach();
 
-		CLOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			a(subset, subset.add(c(p(filter))).traverseEach()).get().run();
 		});
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,8 @@ package org.almostrealism.color;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.KernelizedOperation;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
@@ -49,7 +48,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 	@Override
 	public Evaluable<RGB[][]> get() {
 		return args -> {
-			if (KernelizedOperation.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
+			if (HardwareOperator.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
 
 			if (args == null || args.length <= 0) {
 				args = new Object[]{new Pair(0, 0)};

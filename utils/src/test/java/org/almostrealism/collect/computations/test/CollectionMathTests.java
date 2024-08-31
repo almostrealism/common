@@ -16,28 +16,21 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
-
 	@Test
 	public void broadcastProduct() {
 		PackedCollection<?> a = new PackedCollection<>(shape(10));
 		a.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 
@@ -52,7 +45,7 @@ public class CollectionMathTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(10)).randFill();
 		PackedCollection<?> b = new PackedCollection<>(shape(10)).randFill();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 			Assert.assertEquals(1, result.getShape().getTraversalAxis());
@@ -68,7 +61,7 @@ public class CollectionMathTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(2, 5)).randFill();
 		PackedCollection<?> b = new PackedCollection<>(shape(2)).randFill();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(cp(b)).get().evaluate();
 			System.out.println(result.getShape().toStringDetail());
 
@@ -188,13 +181,13 @@ public class CollectionMathTests implements TestFeatures {
 					return ss;
 				},
 				output -> {
-					double ss = 0.0f;
+					double ss = 0.0;
 					for (int j = 0; j < size; j++) {
 						ss += x.valueAt(j) * x.valueAt(j);
 					}
 					ss /= size;
-					ss += 1e-5f;
-					ss = 1.0f / (float) Math.sqrt(ss);
+					ss += 1e-5;
+					ss = 1.0f / Math.sqrt(ss);
 
 					Assert.assertEquals(ss, output.valueAt(0), 1e-5);
 				}, false, false, true);
@@ -221,18 +214,196 @@ public class CollectionMathTests implements TestFeatures {
 					return multiply(traverseEach(p(weight)), traverseEach(p(x))).multiply(ss);
 				},
 				output -> {
-					double ss = 0.0f;
+					double ss = 0.0;
 					for (int j = 0; j < size; j++) {
 						ss += x.valueAt(j) * x.valueAt(j);
 					}
 					ss /= size;
-					ss += 1e-5f;
-					ss = 1.0f / (float) Math.sqrt(ss);
+					ss += 1e-5;
+					ss = 1.0f / Math.sqrt(ss);
 					// normalize and scale
 					for (int j = 0; j < size; j++) {
 						Assert.assertEquals(weight.valueAt(j) * (ss * x.valueAt(j)), output.valueAt(j), 1e-5);
 					}
 				}, false, false, true);
+	}
+
+	@Test
+	public void mean() {
+		int c = 5;
+		int g = 4;
+		int v = 10;
+
+		TraversalPolicy shape = shape(c, g, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape);
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> cp(o).mean(2),
+				output -> {
+					for (int i = 0; i < c; i++) {
+						for (int j = 0; j < g; j++) {
+							double sum = 0;
+							for (int k = 0; k < v; k++) {
+								sum += o.valueAt(i, j, k);
+							}
+							assertEquals(sum / v, output.valueAt(i, j));
+						}
+					}
+				});
+	}
+
+	@Test
+	public void subtractMean() {
+		int c = 5;
+		int g = 4;
+		int v = 10;
+
+		TraversalPolicy shape = shape(c, g, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape);
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> cp(o).subtractMean(2),
+				output -> {
+					for (int i = 0; i < c; i++) {
+						for (int j = 0; j < g; j++) {
+							double sum = 0;
+							for (int k = 0; k < v; k++) {
+								sum += o.valueAt(i, j, k);
+							}
+
+							double mean = sum / v;
+
+							for (int k = 0; k < v; k++) {
+								assertEquals(o.valueAt(i, j, k) - mean, output.valueAt(i, j, k));
+							}
+						}
+					}
+				});
+	}
+
+	@Test
+	public void subtractMeanSq() {
+		int c = 5;
+		int g = 4;
+		int v = 10;
+
+		TraversalPolicy shape = shape(c, g, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape);
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> sq(cp(o).subtractMean(2)),
+				output -> {
+					for (int i = 0; i < c; i++) {
+						for (int j = 0; j < g; j++) {
+							double sum = 0;
+							for (int k = 0; k < v; k++) {
+								sum += o.valueAt(i, j, k);
+							}
+
+							double mean = sum / v;
+
+							for (int k = 0; k < v; k++) {
+								assertEquals(Math.pow(o.valueAt(i, j, k) - mean, 2), output.valueAt(i, j, k));
+							}
+						}
+					}
+				});
+	}
+
+	@Test
+	public void variance1() {
+		if (testDepth < 2) return;
+
+		variance(1);
+	}
+
+	@Test
+	public void variance2() {
+		variance(5);
+	}
+
+	public void variance(int c) {
+		int g = 4;
+		int v = 10;
+
+		TraversalPolicy shape = shape(c, g, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape);
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> cp(o).variance(2),
+				output -> {
+					for (int i = 0; i < c; i++) {
+						for (int j = 0; j < g; j++) {
+							double sum = 0;
+							for (int k = 0; k < v; k++) {
+								sum += o.valueAt(i, j, k);
+							}
+
+							double mean = sum / v;
+
+							double variance = 0;
+							for (int k = 0; k < v; k++) {
+								double d = o.valueAt(i, j, k) - mean;
+								variance += d * d;
+							}
+
+							variance /= v;
+
+							assertEquals(variance, output.valueAt(i, j));
+						}
+					}
+				});
+	}
+
+	@Test
+	public void meanVarianceQuotient() {
+		int n = 1;
+		int g = 4;
+		int v = 4;
+
+		TraversalPolicy shape = shape(n, g, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape.getTotalSize());
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, g, v);
+					return input
+							.subtractMean(2)
+							.divide(input.variance(2))
+							.reshape(-1, shape.getTotalSize());
+				},
+				output -> {
+					output = output.reshape(n, g, v);
+					PackedCollection<?> in = o.reshape(n, g, v);
+
+					for (int i = 0; i < n; i++) {
+						for (int j = 0; j < g; j++) {
+							double sum = 0;
+							for (int k = 0; k < v; k++) {
+								sum += in.valueAt(i, j, k);
+							}
+
+							double mean = sum / v;
+
+							double variance = 0;
+							for (int k = 0; k < v; k++) {
+								double d = in.valueAt(i, j, k) - mean;
+								variance += d * d;
+							}
+
+							variance /= v;
+
+							for (int k = 0; k < v; k++) {
+								assertEquals((in.valueAt(i, j, k) - mean) / variance, output.valueAt(i, j, k));
+							}
+						}
+					}
+				});
 	}
 
 	@Test

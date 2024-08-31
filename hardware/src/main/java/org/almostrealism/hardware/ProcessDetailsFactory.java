@@ -102,7 +102,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			} else if (!enableArgumentKernelSize && isFixedCount()) {
 				kernelSize = getCount();
 			} else if (output != null) {
-				kernelSize = output.getCountLong();
+				kernelSize = Math.max(output.getCountLong(), getCountLong());
 			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
 				kernelSize = ((MemoryBank) args[0]).getCountLong();
 			} else if (isFixedCount()) {

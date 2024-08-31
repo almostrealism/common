@@ -44,5 +44,10 @@ public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends 
 		public Evaluable<T> get() {
 			return op.get();
 		}
+
+		@Override
+		public long getOutputSize() {
+			return op.getOutputSize();
+		}
 	}
 }

@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
@@ -30,13 +30,13 @@ import java.util.List;
 public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sum() {
-		if (skipLongTests) return;
-
 		sum(16, 2048, 1024, false);
 	}
 
 	@Test
 	public void sumPowers() {
+		if (testDepth < 1) return;
+
 		for (int i = 1; i < 9; i++) {
 			sum(12, 80, 1 << i, false);
 		}
@@ -63,7 +63,7 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 		long waitTime = 0;
 
-		MetalOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			r.run();
 		});
 		profiles.clear();

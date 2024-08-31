@@ -16,8 +16,12 @@
 
 package io.almostrealism.code;
 
+import org.almostrealism.io.SystemUtils;
+
 public enum Precision {
 	FP16, FP32, FP64;
+
+	boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
 
 	public int bytes() {
 		switch (this) {
@@ -46,13 +50,17 @@ public enum Precision {
 	}
 
 	public double epsilon() {
+		return epsilon(false);
+	}
+
+	public double epsilon(boolean strict) {
 		switch (this) {
 			case FP16:
-				return 0.0009765625;
+				return strict ? 0.0009765625 : 1e-4;
 			case FP32:
-				return 1.1920928955078125e-7;
+				return strict ? 1.1920928955078125e-7 : 1e-5;
 			case FP64:
-				return 2.220446049250313e-16;
+				return strict ? 2.220446049250313e-16 : (epsilon64 ? 1e-7 : 1e-5);
 			default:
 				throw new RuntimeException("Unknown precision");
 		}

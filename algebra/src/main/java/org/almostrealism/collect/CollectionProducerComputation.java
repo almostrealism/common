@@ -40,7 +40,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
@@ -52,9 +52,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	boolean enableShapeTrim = false;
 
 	@Override
-	default long[] computeParallelism(Collection<? extends Process> children) {
-		return ParallelProcess.super.computeParallelism(children.stream()
-				.filter(f -> !(f instanceof MemoryDataDestinationProducer)).collect(Collectors.toList()));
+	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
+		return children.stream()
+				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
 	}
 
 	default T createDestination(int len) {
@@ -161,6 +161,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		@Override
 		public Producer<T> reshape(TraversalPolicy shape) {
 			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public long getOutputSize() {
+			return op.getShape().getTotalSize();
 		}
 
 		@Override

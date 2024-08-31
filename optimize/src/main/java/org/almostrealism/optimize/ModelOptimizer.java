@@ -16,7 +16,7 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -25,16 +25,18 @@ import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 public class ModelOptimizer implements CodeFeatures {
 	private CompiledModel model;
 	private Supplier<Dataset<?>> dataset;
-	private Receptor<PackedCollection<?>> receptor;
+	private Receptor<Double> receptor;
 	private int logFrequency;
 
 	private Evaluable<PackedCollection<?>> dloss;
-	private Evaluable<PackedCollection<?>> loss;
+	private BiFunction<PackedCollection<?>, PackedCollection<?>, Double> loss;
 	private double averageLoss;
 	private double lossTarget;
 	private int totalIterations;
@@ -57,18 +59,24 @@ public class ModelOptimizer implements CodeFeatures {
 
 	public ModelOptimizer(CompiledModel model, Supplier<Dataset<?>> dataset) {
 		this.model = model;
-		this.dloss = c(2).multiply(cv(model.getOutputShape(), 0).subtract(cv(model.getOutputShape(), 1))).get();
-		this.loss = cv(model.getOutputShape(), 0).subtract(cv(model.getOutputShape(), 1)).pow(2.0).get();
 		this.averageLoss = -1;
 
 		setDataset(dataset);
+		setLossFunction(new MeanSquaredError(model.getOutputShape()));
+	}
+
+	public void setLossFunction(LossProvider lossFunction) {
+		this.loss = (out, valid) -> lossFunction.loss(out, valid);
+		this.dloss = lossFunction.gradient(
+								cv(model.getOutputShape(), 0),
+								cv(model.getOutputShape(), 1)).get();
 	}
 
 	public void setDataset(Supplier<Dataset<?>> dataset) {
 		this.dataset = dataset;
 	}
 
-	public void setReceptor(Receptor<PackedCollection<?>> receptor) {
+	public void setReceptor(Receptor<Double> receptor) {
 		this.receptor = receptor;
 	}
 
@@ -108,21 +116,19 @@ public class ModelOptimizer implements CodeFeatures {
 				PackedCollection<?> valid = target.getExpectedOutput();
 				PackedCollection<?> out = model.forward(input);
 				PackedCollection<?> grad = dloss.evaluate(out, valid);
-				PackedCollection<?> l = loss.evaluate(out, valid);
 
-				double ls = l.doubleStream().sum();
+				double ls = loss.apply(out, valid);
 				totalLoss += ls;
 				count++;
 
 				if (receptor != null)
-					receptor.push(p(l)).get().run();
+					receptor.push(() -> args -> ls).get().run();
 
 				model.backward(grad);
 
 				if (first) {
 					out = model.forward(input);
-					l = loss.evaluate(out, valid);
-					updatedLoss = l.doubleStream().sum();
+					updatedLoss = loss.apply(out, valid);
 
 					if ((ls - updatedLoss) < 0.0) {
 						throw new RuntimeException("Loss increased");
@@ -144,6 +150,32 @@ public class ModelOptimizer implements CodeFeatures {
 				return;
 			}
 		}
+	}
+
+	public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator) {
+		Dataset<?> data = dataset.get();
+
+		double totalLoss = 0.0;
+		int success = 0;
+		int count = 0;
+
+		for (ValueTarget<?> target : data) {
+			PackedCollection<?> input = target.getInput();
+
+			PackedCollection<?> valid = target.getExpectedOutput();
+			PackedCollection<?> out = model.forward(input);
+			double ls = loss.apply(out, valid);
+			totalLoss += ls;
+			count++;
+
+			if (validator.test(target.getExpectedOutput(), out))
+				success++;
+
+			if (receptor != null)
+				receptor.push(() -> args -> ls).get().run();
+		}
+
+		return success / (double) count;
 	}
 
 	@Override

@@ -49,6 +49,11 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public boolean isNumericBoolean() {
+		return false;
+	}
+
+	@Override
 	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
 		super.renderParameters(methodName, parameters, out);
 		out.accept(", global_id, global_count");

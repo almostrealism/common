@@ -175,7 +175,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 				return encoder.encodeToString(byteBuffer.array());
 			}
 		} finally {
-			KernelSeriesProvider.timingPos.addEntry("signature", System.nanoTime() - start);
+			timing.addEntry("signature", System.nanoTime() - start);
 		}
 	}
 

@@ -204,9 +204,9 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 						.reshape(2, 4);
 		PackedCollection<?> r = c(a).enumerate(1, 2, 2).evaluate();
 		System.out.println(r.getShape().toStringDetail());
-		// Shape = (2, 2, 2)[axis=3|8x1]
+		// Shape = (2, 2, 2)[axis=0|1x8]
 
-		r.consolidate().print();
+		r.traverse(2).print();
 		// [2.0, 3.0]
 		// [6.0, 7.0]
 		// [4.0, 5.0]
@@ -333,9 +333,9 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
-		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(convolution2d(convFilters, convSize));
 		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
+		model.addBlock(flattened());
 		model.addLayer(dense(denseSize));
 		model.addLayer(softmax());
 		log("Created model (" + model.getBlocks().size() + " blocks)");

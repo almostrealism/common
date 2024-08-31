@@ -42,10 +42,14 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 
 	@Override
 	public void setMem(Memory mem, int offset, Memory source, int srcOffset, int length) {
-		JVMMemory src = (JVMMemory) source;
-		JVMMemory dest = (JVMMemory) mem;
-		for (int i = 0; i < length; i++) {
-			dest.data[offset + i] = src.data[srcOffset + i];
+		if (source instanceof JVMMemory) {
+			JVMMemory src = (JVMMemory) source;
+			JVMMemory dest = (JVMMemory) mem;
+			for (int i = 0; i < length; i++) {
+				dest.data[offset + i] = src.data[srcOffset + i];
+			}
+		} else {
+			setMem(mem, offset, source.toArray(srcOffset, length), 0, length);
 		}
 	}
 

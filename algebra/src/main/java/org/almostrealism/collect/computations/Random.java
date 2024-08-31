@@ -62,6 +62,8 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 		}
 	}
 
+	public void refresh() { values = null; }
+
 	@Override
 	public KernelizedEvaluable<PackedCollection<?>> get() {
 		return new KernelizedEvaluable<>() {

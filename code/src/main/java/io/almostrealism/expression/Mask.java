@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +43,17 @@ public class Mask<T extends Number> extends Conditional<T> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return getMaskedValue().delta(target);
+	}
+
+	@Override
+	public Expression simplify(KernelStructureContext context, int depth) {
+		if (getMaskedValue().doubleValue().orElse(0.0) == 1.0) {
+			// Attempting normal simplification here causes infinite regress,
+			// as this Expression is functionally equivalent to its first argument
+			return Mask.of(getMask().simplify(context, depth + 1), getMaskedValue());
+		}
+
+		return super.simplify(context, depth);
 	}
 
 	@Override

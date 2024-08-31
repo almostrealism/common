@@ -21,7 +21,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.Function;
 
@@ -43,6 +42,9 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	public TraversalPolicy getShape() {
 		return shape;
 	}
+
+	@Override
+	public long getOutputSize() { return getShape().getTotalSize(); }
 
 	@Override
 	public CollectionProducer<T> traverse(int axis) {

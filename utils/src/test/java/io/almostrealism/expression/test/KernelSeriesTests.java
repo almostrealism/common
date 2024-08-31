@@ -106,7 +106,7 @@ public class KernelSeriesTests implements ExpressionFeatures {
 		a.kernelSeries();
 
 		Expression b = kernel().multiply(8).divide(144).multiply(144);
-		Expression c = a.add(b);
+		Expression<?> c = a.add(b);
 		Expression e = c.divide(18).multiply(9).imod(9).simplify(new DefaultKernelStructureContext(18));
 		Assert.assertTrue(e instanceof IntegerConstant);
 		Assert.assertEquals(0, e.intValue().getAsInt());

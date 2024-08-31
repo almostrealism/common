@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.OptionalLong;
 
 public class Exp extends Expression<Double> {
-	public Exp(Expression<Double> input) {
+	protected Exp(Expression<Double> input) {
 		super(Double.class, input);
 	}
 
@@ -57,7 +57,7 @@ public class Exp extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Exp((Expression<Double>) children.get(0));
+		return Exp.of(children.get(0));
 	}
 
 	@Override
@@ -65,5 +65,9 @@ public class Exp extends Expression<Double> {
 		CollectionExpression delta = getChildren().get(0).delta(target);
 		CollectionExpression exp = new ConstantCollectionExpression(target.getShape(), this);
 		return product(target.getShape(), List.of(delta, exp));
+	}
+
+	public static <T> Expression<T> of(Expression input) {
+		return (Expression<T>) new Exp(input);
 	}
 }

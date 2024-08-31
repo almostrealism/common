@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Min extends BinaryExpression<Double> {
-	public Min(Expression<Double> a, Expression<Double> b) {
+	protected Min(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, a, b);
 	}
 
@@ -52,11 +53,28 @@ public class Min extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Min((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return Min.of(children.get(0), children.get(1));
+	}
+
+	public static Expression<Double> of(Expression<?> a, Expression<?> b) {
+		// TODO
+//		return ExpressionCache.match(create(a, b));
+		return create(a, b);
+	}
+
+	public static Expression create(Expression<?> a, Expression<?> b) {
+		OptionalDouble aVal = a.doubleValue();
+		OptionalDouble bVal = b.doubleValue();
+
+		if (aVal.isPresent() && bVal.isPresent()) {
+			return Constant.of(Math.min(aVal.getAsDouble(), bVal.getAsDouble()));
+		}
+
+		return new Min((Expression<Double>) a, (Expression<Double>) b);
 	}
 }

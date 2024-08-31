@@ -30,6 +30,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.Logarithm;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
@@ -436,12 +437,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		CollectionProducerComputation<T> result = null;
 
 		TraversalPolicy inputShape = shape(collection);
+		int traversalDepth = PackedCollectionEnumerate.enableDetectTraversalDepth ? inputShape.getTraversalAxis() : 0;
+
+		inputShape = inputShape.traverse(traversalDepth).item();
+		axis = axis - traversalDepth;
 
 		for (int i = 0; i < repeat; i++) {
 			TraversalPolicy shp = inputShape.traverse(axis).replaceDimension(len);
 			TraversalPolicy st = inputShape.traverse(axis).stride(stride);
 			result = enumerate(shp, st, result == null ? collection : result);
-			inputShape = shape(result);
+			inputShape = shape(result).traverse(traversalDepth).item();
 		}
 
 		return result;
@@ -571,7 +576,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				args -> CollectionExpression.create(shape, index -> {
 					Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
 							epsilon(),
-							new Difference(args[1].getValueAt(index), args[2].getValueAt(index)));
+							Difference.of(args[1].getValueAt(index), args[2].getValueAt(index)));
 					return conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), difference);
 				}),
 				(Supplier) a, (Supplier) b);
@@ -590,7 +595,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		return compute("multiply", shape -> args->
+		return compute("multiply", shape -> args ->
 					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				shortCircuit, a, b);
 	}
@@ -625,7 +630,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
 		return new TraversableExpressionComputation<>(null, shape(a),
-				args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
+				args -> CollectionExpression.create(shape(a), index -> Minus.of(args[1].getValueAt(index))),
 				(Supplier) a);
 	}
 
@@ -635,22 +640,28 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
 		return compute("pow", shape -> (args) ->
-				CollectionExpression.create(shape, index -> new Exponent(args[1].getValueAt(index), args[2].getValueAt(index))),
+				CollectionExpression.create(shape, index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index))),
 				null, base, exp);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				null, shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
+				"exp", shape(value), (args, index) -> Exp.of(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
-				null, shape(value), (args, index) ->
-					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), new Exp(args[1].getValueAt(index))),
+				"expIgnoreZero", shape(value), (args, index) ->
+					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), Exp.of(args[1].getValueAt(index))),
 				(Supplier) value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(
+			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		return new TraversableExpressionComputation<>(
+				"log", shape(value), (args, index) -> Logarithm.of(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sq(Producer<T> value) {
@@ -670,7 +681,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(null, shape,
-				(args, index) -> new Min(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Min.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
 	}
 
@@ -681,8 +692,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		return new TraversableExpressionComputation<>(null, shape,
-				(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
+				(args, index) -> Max.of(args[1].getValueAt(index), args[2].getValueAt(index)),
 				a, b);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> rectify(Producer<T> a) {
+		return compute("rectify", shape -> args ->
+						rectify(shape, args[1]),
+				null, a);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> a, Producer<T> b) {
@@ -737,7 +754,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		AggregatedProducerComputation c = new AggregatedProducerComputation<>(shape.replace(shape(1)), size,
 				(args, index) -> minValue(),
-				(out, arg) -> new Max(out, arg),
+				(out, arg) -> Max.of(out, arg),
 				(Supplier) input);
 		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;
@@ -778,6 +795,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(Supplier) input);
 		sum.setReplaceLoop(true);
 		return sum;
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean(Producer<T> input) {
+		return sum(input).divide(c(shape(input).getSize()));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(Producer<T> input) {
+		Producer<T> mean = mean(input);
+		return subtract(input, mean);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance(Producer<T> input) {
+		return mean(sq(subtractMean(input)));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid(Producer<T> input) {

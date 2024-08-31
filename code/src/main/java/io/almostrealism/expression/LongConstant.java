@@ -38,6 +38,7 @@ public class LongConstant extends Constant<Long> {
 	public LongConstant(Long value) {
 		super(Long.class);
 		this.value = value;
+		init();
 	}
 
 	@Override
@@ -78,5 +79,14 @@ public class LongConstant extends Constant<Long> {
 	@Override
 	public Number evaluate(Number... children) {
 		return value;
+	}
+
+	@Override
+	public Expression minus() {
+		if (enableNegationOptimization) {
+			return new LongConstant(-value);
+		}
+
+		return super.minus();
 	}
 }

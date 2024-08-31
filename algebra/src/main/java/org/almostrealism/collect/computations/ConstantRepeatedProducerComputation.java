@@ -62,7 +62,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
-				count, this::getExpression, target,
+				count, (args, localIndex) -> getExpression(args, null, localIndex), target,
 				getInputs().stream().skip(1).toArray(Supplier[]::new));
 	}
 

@@ -31,8 +31,8 @@ import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -44,34 +44,45 @@ import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.TimingMetric;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
+ * A {@link Scope} is the container for {@link Statement}s,
+ * {@link Method}s, and other {@link Scope}s.
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>>
+		implements Fragment, KernelTree<Scope<T>>,
+					OperationInfo, Nameable,
+					ConsoleFeatures {
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();
 
-	public static TimingMetric timing = console.timing("scope");
+	public static boolean verbose = SystemUtils.isEnabled("AR_SCOPE_VERBOSE").orElse(false);
+	public static ScopeTimingListener timing;
 
 	private String name;
+	private int refIdx;
 	private OperationMetadata metadata;
 	private List<ComputeRequirement> requirements;
 
@@ -200,7 +211,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
+	@Deprecated
 	public Set<KernelIndexChild> getKernelChildren() { return kernelChildren; }
+
+	@Deprecated
 	public void setKernelChildren(Set<KernelIndexChild> kernelChildren) { this.kernelChildren = kernelChildren; }
 
 	public List<Metric> getMetrics() { return metrics; }
@@ -269,15 +283,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 				.collect(Collectors.toList());
 	}
 
-	public Expression<Integer> declareInteger(String name, Expression<Integer> value) {
+	public Expression<Integer> declareInteger(String name, Expression<? extends Number> value) {
 		Expression<Integer> i = new StaticReference(Integer.class, name);
-		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		getStatements().add(new ExpressionAssignment<>(true, i, (Expression<Integer>) value));
 		return i;
 	}
 
-	public Expression<Double> declareDouble(String name, Expression<Double> value) {
+	public Expression<Double> declareDouble(String name, Expression<? extends Number> value) {
 		Expression<Double> i = new StaticReference(Double.class, name);
-		getStatements().add(new ExpressionAssignment<>(true, i, value));
+		getStatements().add(new ExpressionAssignment<>(true, i, (Expression) value));
 		return i;
 	}
 
@@ -293,8 +307,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return v;
 	}
 
-	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<V> src) {
-		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, src);
+	public <V> ExpressionAssignment<V> assign(Expression<V> dest, Expression<?> src) {
+		ExpressionAssignment<V> assignment = new ExpressionAssignment<>(dest, (Expression) src);
 		getStatements().add(assignment);
 		return assignment;
 	}
@@ -507,9 +521,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		if (!s.isInlineable()) return false;
 		if (!s.getChildren().isEmpty()) return false;
 		if (!s.getMethods().isEmpty()) return false;
-		if (s.getVariables().stream().anyMatch(v -> v.isDeclaration())) return false;
+		if (s.getVariables().stream().anyMatch(ExpressionAssignment::isDeclaration)) return false;
+		if (s.getStatements().stream()
+				.map(v -> v instanceof ExpressionAssignment ? (ExpressionAssignment) v : null)
+				.filter(Objects::nonNull).anyMatch(ExpressionAssignment::isDeclaration)) {
+			return false;
+		}
 
 		IntStream.range(0, s.getVariables().size()).forEach(i -> variables.add(i, s.getVariables().get(i)));
+		IntStream.range(0, s.getStatements().size()).forEach(i -> statements.add(i, s.getStatements().get(i)));
 		return true;
 	}
 
@@ -539,22 +559,27 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	@Override
-	public Scope<T> simplify(KernelStructureContext context) {
+	public Scope<T> simplify(KernelStructureContext context, int depth) {
 		Scope<T> scope = (Scope<T>) generate(getChildren()
-				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context, depth + 1)).collect(Collectors.toList()));
 		scope.getRequiredScopes().addAll(getRequiredScopes()
-				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context, depth + 1)).collect(Collectors.toList()));
 		scope.getParameters().addAll(getParameters());
 
 		UnaryOperator simplification = simplification(context);
 		scope.getMethods().addAll((List) getMethods()
 				.stream().map(simplification).collect(Collectors.toList()));
-		scope.getStatements().addAll((List) getStatements()
-				.stream().map(simplification).collect(Collectors.toList()));
+
+		scope.getStatements().addAll(processReplacements((List) getStatements()
+						.stream().map(simplification).collect(Collectors.toList()),
+				() -> Optional.ofNullable(ExpressionCache.getCurrent())
+						.filter(Predicate.not(ExpressionCache::isEmpty))
+						.map(ExpressionCache::getFrequentExpressions)
+						.orElse(Collections.emptyList())));
+
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
-
 
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
@@ -567,6 +592,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.refIdx = refIdx;
+
 		scope.setComputeRequirements(getComputeRequirements());
 		scope.getChildren().addAll(children);
 		return scope;
@@ -582,6 +609,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return getName() == null ? 0 : getName().hashCode();
 	}
 
+	@Override
+	public Console console() { return console; }
+
+	@Deprecated
 	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
 		List<KernelIndexChild> kernelChildren = new ArrayList<>();
 
@@ -596,21 +627,123 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		return kernelChildren;
 	}
 
-	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {
-		return t -> {
-			String key = null;
-			if (t instanceof Tree) {
-				key = String.valueOf(((Tree) t).countNodes());
-			} else if (t instanceof ExpressionAssignment) {
-				key = String.valueOf(((ExpressionAssignment) t).getExpression().countNodes());
+	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
+													 Supplier<List<Expression<?>>> replacementTargets) {
+		if (!ScopeSettings.enableReplacements) return statements;
+
+		long start = System.nanoTime();
+
+		try {
+			Set<Expression<?>> processed = new HashSet<>();
+			List<Statement<?>> declarations = new ArrayList<>();
+			Map<StaticReference, Expression<?>> replacements = new HashMap<>();
+
+			Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
+
+			while (!targets.isEmpty() && replacements.size() < ScopeSettings.getMaximumReplacements()) {
+				if (verbose) log("Processing " + targets.size() + " replacement targets");
+				boolean updated = false;
+
+				// Replace all targets which are used, but not already declared
+				r: for (Expression<?> e : targets) {
+					if (replacements.size() >= ScopeSettings.getMaximumReplacements()) {
+						break r;
+					}
+
+					boolean inUse = statements.stream()
+							.filter(ExpressionAssignment.class::isInstance)
+							.map(s -> (ExpressionAssignment) s)
+							.map(ExpressionAssignment::getExpression)
+							.anyMatch(exp -> exp.contains(e));
+					boolean alreadyDeclared = statements.stream()
+							.filter(ExpressionAssignment.class::isInstance)
+							.map(s -> (ExpressionAssignment) s)
+							.filter(ExpressionAssignment::isDeclaration)
+							.map(ExpressionAssignment::getExpression)
+							.anyMatch(exp -> exp.equals(e));
+
+					if (inUse && !alreadyDeclared) {
+						StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
+						declarations.add(new ExpressionAssignment(true, ref, e));
+						replacements.put(ref, e);
+						updated = true;
+					}
+
+					// Record the target, as it
+					// should not be visited again
+					processed.add(e);
+				}
+
+				// If any replacements were declared, update all
+				// the statements to include them
+				if (updated) {
+					List<Statement<?>> next = new ArrayList<>();
+
+					for (Statement<?> s : statements) {
+						if (s instanceof ExpressionAssignment) {
+							ExpressionAssignment assignment = (ExpressionAssignment) s;
+
+							for (StaticReference r : replacements.keySet()) {
+								Expression<?> e = replacements.get(r);
+								if (assignment.getExpression().contains(e)) {
+									assignment = new ExpressionAssignment(
+											assignment.isDeclaration(),
+											assignment.getDestination(),
+											assignment.getExpression().replace(e, r));
+								}
+							}
+
+							next.add(assignment);
+						} else {
+							next.add(s);
+						}
+					}
+
+					// The process will be repeated, but with the
+					// updated statements and any new targets that
+					// may have been identified in the process
+					statements = next;
+				}
+
+				// Reset the targets and prepare to review
+				// any new replacement opportunities that
+				// have not already been reviewed
+				targets.clear();
+				replacementTargets.get().stream()
+						.filter(Predicate.not(processed::contains))
+						.forEach(targets::add);
 			}
 
+			// If no replacements were made, return the statements
+			if (declarations.isEmpty()) return statements;
+
+			// Otherwise, combine the declarations with the updated statements
+			List<Statement<?>> result = new ArrayList<>();
+			result.addAll(declarations);
+			result.addAll(statements);
+			return result;
+		} finally {
+			if (timing != null) {
+				timing.recordDuration(getMetadata(), getMetadata(),
+						"processReplacements", System.nanoTime() - start);
+			}
+		}
+	}
+
+	private <S extends Statement<S>> UnaryOperator<S> simplification(KernelStructureContext context) {
+		return t -> {
 			long start = System.nanoTime();
+
+			OperationMetadata metadata = context instanceof OperationInfo ?
+					((OperationInfo) context).getMetadata() : getMetadata();
 
 			try {
 				return t.simplify(context);
 			} finally {
-				timing.addEntry(key, System.nanoTime() - start);
+				if (timing != null) {
+					timing.recordDuration(metadata, getMetadata(),
+							"simplify", System.nanoTime() - start);
+				}
 			}
 		};
 	}

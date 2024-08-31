@@ -17,5 +17,9 @@
 package io.almostrealism.kernel;
 
 public interface KernelStructure<T extends KernelStructure> {
-	T simplify(KernelStructureContext context);
+	default T simplify(KernelStructureContext context) {
+		return simplify(context, 0);
+	}
+
+	T simplify(KernelStructureContext context, int depth);
 }

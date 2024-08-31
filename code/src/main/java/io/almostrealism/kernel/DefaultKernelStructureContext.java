@@ -16,24 +16,36 @@
 
 package io.almostrealism.kernel;
 
-import java.util.OptionalInt;
+import io.almostrealism.code.OperationInfo;
+
 import java.util.OptionalLong;
 
 public class DefaultKernelStructureContext implements KernelStructureContext {
-	private long count;
+	private OptionalLong count;
+
+	public DefaultKernelStructureContext() {
+		this.count = OptionalLong.empty();
+	}
 
 	public DefaultKernelStructureContext(long count) {
-		this.count = count;
+		this.count = OptionalLong.of(count);
 	}
 
 	@Override
 	public OptionalLong getKernelMaximum() {
-		return OptionalLong.of(count);
+		return count;
 	}
 
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
-		return KernelSeriesMatcher.defaultProvider(Math.toIntExact(count));
+		if (count.isPresent()) {
+			return KernelSeriesMatcher.defaultProvider(
+					OperationInfo.metadataForValue(this),
+					Math.toIntExact(count.getAsLong()));
+		} else {
+			return KernelSeriesMatcher.defaultProvider(
+					OperationInfo.metadataForValue(this));
+		}
 	}
 
 	@Override

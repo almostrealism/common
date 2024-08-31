@@ -85,4 +85,9 @@ public class LanguageOperationsStub implements LanguageOperations {
 	public String renderMethod(Method<?> method) {
 		return method.getSimpleExpression(this);
 	}
+
+	@Override
+	public boolean isVariableOffsetSupported() {
+		return false;
+	}
 }

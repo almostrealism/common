@@ -16,8 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.Scope;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +29,7 @@ import java.util.OptionalLong;
 
 public class Conditional<T extends Number> extends Expression<T> {
 	public static boolean enableSimplification = false;
+	public static boolean enableInputBranchWarning = false;
 
 	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -34,8 +37,17 @@ public class Conditional<T extends Number> extends Expression<T> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "(" + getChildren().get(0).getExpression(lang) + ") ? (" + getChildren().get(1).getExpression(lang) +
-				") : (" + getChildren().get(2).getExpression(lang) + ")";
+		return getChildren().get(0).getWrappedExpression(lang) + " ? " +
+				getChildren().get(1).getWrappedExpression(lang) +
+				" : " + getChildren().get(2).getWrappedExpression(lang);
+	}
+
+	@Override
+	public boolean isValue(IndexValues values) {
+		// TODO  This should just be the parent implementation
+		return getChildren().get(0).isValue(values) &&
+				getChildren().get(1).isValue(values) &&
+				getChildren().get(2).isValue(values);
 	}
 
 	@Override
@@ -55,8 +67,8 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Conditional)) return flat;
 
 		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);
@@ -130,12 +142,21 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	public static Expression of(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
+
+		if (enableInputBranchWarning && condition instanceof Equals && ld.isPresent()) {
+			OptionalDouble value = ((Equals) condition).getRight().doubleValue();
+			if (value.isPresent() && value.getAsDouble() == ld.getAsDouble()) {
+				Scope.console.features(Conditional.class)
+						.warn("Conditional output is equivalent to a branch of the condition");
+			}
+		}
+
 		if (rd.isPresent() && rd.getAsDouble() == 0.0) {
 			return Mask.of(condition, positive);
 		}
 
-		OptionalDouble ld = positive.doubleValue();
 		if (ld.isPresent() && ld.getAsDouble() == 0.0) {
 			return Mask.of(condition.not(), negative);
 		}

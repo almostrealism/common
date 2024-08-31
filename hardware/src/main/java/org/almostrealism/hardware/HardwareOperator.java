@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,11 +21,13 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
@@ -34,13 +36,17 @@ import java.util.stream.IntStream;
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
+	public static boolean enableKernelLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
+	public static boolean enableInstructionSetMonitoring = false;
+	public static boolean enableLargeInstructionSetMonitoring = false;
+
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 
-	public static OperationProfile profile;
+	public static OperationTimingListener timingListener;
 	public static long cpuCompileCount, gpuCompileCount;
 	public static long cpuOpCount, gpuOpCount;
 	public static long cpuOpTime, gpuOpTime;
@@ -175,12 +181,12 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	protected void recordDuration(Runnable r, boolean countOp) {
 		long duration = -1;
 
-		if (profile == null) {
+		if (timingListener == null) {
 			r.run();
 		} else if (r instanceof OperationInfo) {
-			duration = profile.recordDuration(r);
+			duration = timingListener.recordDuration(r);
 		} else {
-			duration = profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
+			duration = timingListener.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
 		}
 
 		if (countOp && duration > 0) {

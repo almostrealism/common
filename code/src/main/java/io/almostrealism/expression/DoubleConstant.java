@@ -33,6 +33,7 @@ public class DoubleConstant extends Constant<Double> {
 	public DoubleConstant(Double value) {
 		super(Double.class);
 		this.value = value;
+		init();
 	}
 
 	@Override
@@ -66,5 +67,14 @@ public class DoubleConstant extends Constant<Double> {
 	@Override
 	public Number evaluate(Number... children) {
 		return value;
+	}
+
+	@Override
+	public Expression minus() {
+		if (enableNegationOptimization) {
+			return new DoubleConstant(-value);
+		}
+
+		return super.minus();
 	}
 }

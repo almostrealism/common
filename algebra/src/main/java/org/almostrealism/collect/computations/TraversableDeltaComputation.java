@@ -44,6 +44,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	public static boolean enableOptimization = true;
+	public static boolean enableAtomicScope = false;
+	public static boolean enableIsolate = false;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 	private Producer<?> target;
@@ -58,6 +60,14 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		this.expression = expression;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
+	}
+
+	@Override
+	public int getMemLength() { return enableAtomicScope ? 1 : super.getMemLength(); }
+
+	@Override
+	public long getCountLong() {
+		return enableAtomicScope ? getShape().traverseEach().getCountLong() : super.getCountLong();
 	}
 
 	@Override
@@ -81,16 +91,25 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
 	}
 
+	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
+		return !matchingInputs(this, target).contains(process);
+	}
+
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (matchInput(this, target) == process) return process;
+		if (!permitOptimization(process)) return process;
 		return super.optimize(ctx, process);
 	}
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate(Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (matchInput(this, target) == process) return process;
+		if (!permitOptimization(process)) return process;
 		return super.isolate(process);
+	}
+
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		return enableIsolate || super.isIsolationTarget(context);
 	}
 
 	@Override

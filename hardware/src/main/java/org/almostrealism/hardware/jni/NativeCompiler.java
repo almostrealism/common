@@ -19,9 +19,11 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -41,8 +43,6 @@ import java.util.function.Consumer;
 
 public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
-	public static boolean enableInstructionSetMonitoring = false;
-	public static boolean enableLargeInstructionSetMonitoring = false;
 
 	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
 
@@ -155,7 +155,7 @@ public class NativeCompiler implements ConsoleFeatures {
 	}
 
 	public void compileAndLoad(Class target, String code) {
-		if (enableInstructionSetMonitoring || (enableLargeInstructionSetMonitoring && code.length() > 50000)) {
+		if (HardwareOperator.enableInstructionSetMonitoring || (HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
 			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
@@ -164,6 +164,7 @@ public class NativeCompiler implements ConsoleFeatures {
 				throw new RuntimeException(ex);
 			}
 
+			ScopeSettings.printStats();
 			log("Wrote " + name);
 		}
 

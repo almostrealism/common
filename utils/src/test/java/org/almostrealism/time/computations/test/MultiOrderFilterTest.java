@@ -22,10 +22,6 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class MultiOrderFilterTest implements TestFeatures {
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
 
 	@Test
 	public void compile() {

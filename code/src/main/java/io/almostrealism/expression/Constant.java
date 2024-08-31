@@ -22,10 +22,14 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
-public class Constant<T> extends Expression<T> {
+public abstract class Constant<T> extends Expression<T> {
+	public static boolean enableNegationOptimization = true;
+
 	public Constant(Class<T> type) {
 		super(type);
 	}
@@ -34,7 +38,12 @@ public class Constant<T> extends Expression<T> {
 	public boolean isValue(IndexValues values) { return true; }
 
 	@Override
-	public boolean contains(Index idx) { return false; }
+	public Set<Index> getIndices() {
+		return Collections.emptySet();
+	}
+
+	@Override
+	public boolean containsIndex(Index idx) { return false; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return null; }
@@ -81,5 +90,9 @@ public class Constant<T> extends Expression<T> {
 		} else {
 			return new ConstantValue(value.getClass(), value);
 		}
+	}
+
+	public static <T> Constant<T> forType(Class<T> type) {
+		return new ConstantValue<>(type, null);
 	}
 }

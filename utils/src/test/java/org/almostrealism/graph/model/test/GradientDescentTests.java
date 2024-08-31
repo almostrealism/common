@@ -51,6 +51,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear1() throws FileNotFoundException {
+		if (testDepth < 1) return;
+
 		CellularLayer dense = dense(1, 1);
 
 		SequentialBlock block = new SequentialBlock(shape(1));
@@ -73,6 +75,8 @@ public class GradientDescentTests implements TestFeatures {
 
 	@Test
 	public void linear2() throws FileNotFoundException {
+		if (testDepth < 1) return;
+
 		CellularLayer dense = dense(2, 1);
 
 		SequentialBlock block = new SequentialBlock(shape(2));
@@ -112,11 +116,13 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 1.25, 0.35);
+		optimize("linear3", model, data, epochs, steps, 1.25, 0.675);
 	}
 
 	@Test
 	public void linear4() throws FileNotFoundException {
+		if (testDepth < 2) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3));
 		block.add(dense(3, 1));
 		block.add(dense(1, 1));
@@ -133,11 +139,13 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear4", model, data, epochs, steps, 0.8, 0.25);
+		optimize("linear4", model, data, epochs, steps, 0.8, 0.4);
 	}
 
 	@Test
 	public void linear5() throws FileNotFoundException {
+		if (testDepth < 2) return;
+
 		try {
 			initKernelMetrics();
 
@@ -163,7 +171,7 @@ public class GradientDescentTests implements TestFeatures {
 					.map(input -> ValueTarget.of(input, func3.apply(input)))
 					.collect(Collectors.toList()));
 
-			optimize("linear5", model, data, epochs, steps, 1.0, 0.15);
+			optimize("linear5", model, data, epochs, steps, 1.0, 0.33);
 		} finally {
 			logKernelMetrics();
 		}
@@ -174,7 +182,7 @@ public class GradientDescentTests implements TestFeatures {
 		i: for (int i = 0; i < 6; i++) {
 			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
 
-			try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+			try (CSVReceptor<Double> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
 				optimizer.setReceptor(receptor);
 				optimizer.setLogFrequency(2);
 

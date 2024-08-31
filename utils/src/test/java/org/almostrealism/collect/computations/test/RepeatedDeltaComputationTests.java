@@ -34,10 +34,6 @@ import org.almostrealism.util.TestSettings;
 import org.junit.Test;
 
 public class RepeatedDeltaComputationTests implements TestFeatures {
-//	static {
-//		NativeCompiler.enableInstructionSetMonitoring = !TestSettings.skipLongTests;
-//		MetalProgram.enableProgramMonitoring = !TestSettings.skipLongTests;
-//	}
 
 	@Test
 	public void repeatProduct() {
@@ -118,7 +114,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
 				.reshape(2, 4);
-		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), shape(0, 1).traverse(), c) {
+		c = new PackedCollectionEnumerate<>(shape(2, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), c) {
 			@Override
 			public Expression getValueAt(Expression index) {
 				return getTraversableArguments(index)[1].getValueAt(index.imod(2).multiply(4).add(index.divide(2)));
@@ -186,7 +182,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> in = new PackedCollection<>(10);
 
 		CollectionProducer<PackedCollection<?>> id = cp(new PackedCollection<>(10, 10));
-		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), shape(0, 1).traverse(), id) {
+		id = new PackedCollectionEnumerate<>(shape(10, 1).traverse(), new TraversalPolicy(true, 0, 1).traverse(), id) {
 			@Override
 			public Expression getValueAt(Expression index) {
 				// return super.getValueAt(index);
@@ -274,11 +270,13 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> in = new PackedCollection<>(r * c).fill(pos -> (double) pos[0])
 									.reshape(r, c, 1).traverse(1);
 		PackedCollection<?> out = Process.optimized(cp(in)
-				.enumerate(2, 1)
-				.enumerate(2, s)
-				.enumerate(2, s)
-				.traverse(3)
-				.max().delta(cp(in))).get().evaluate();
+						.traverse(0)
+						.enumerate(2, 1)
+						.enumerate(2, s)
+						.enumerate(2, s)
+						.traverse(3)
+						.max().delta(cp(in)))
+				.get().evaluate();
 		out = out.reshape(ro, co, r, c);
 		out.traverse(3).print();
 
@@ -323,7 +321,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convSmall() {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		int dim = 16;
 		int size = 3;
@@ -334,7 +332,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void convLarge() {
-		if (skipLongTests || skipKnownIssues) return;
+		if (skipKnownIssues) return;
 
 		int dim = 64;
 		int size = 3;

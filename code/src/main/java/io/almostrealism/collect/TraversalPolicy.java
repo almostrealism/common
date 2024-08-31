@@ -51,7 +51,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		this(null, dims);
 	}
 
+	public TraversalPolicy(boolean tolerateZero, int... dims) {
+		this(null, tolerateZero, dims);
+	}
+
 	public TraversalPolicy(TraversalOrdering order, int... dims) {
+		this(order, false, dims);
+	}
+
+	public TraversalPolicy(TraversalOrdering order, boolean tolerateZero, int... dims) {
 		this.order = order;
 		this.dims = dims;
 
@@ -61,7 +69,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 			for (int i = 1; i < dims.length; i++) {
 				total *= dims[i];
 
-				if (total > MAX_SIZE || total < 0) {
+				if (total > MAX_SIZE || total < 0 || (!tolerateZero && total == 0)) {
 					throw new IllegalArgumentException();
 				}
 			}
@@ -124,7 +132,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		for (int i = 0; i < pos.length; i++) {
 			Expression s = new IntegerConstant(size(i + 1));
 			pos[i] = Quotient.of(remaining, s);
-			remaining = Sum.of(remaining, new Minus(Product.of(pos[i], s)));
+			remaining = Sum.of(remaining, Minus.of(Product.of(pos[i], s)));
 		}
 
 		return pos;
@@ -166,7 +174,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 	@Override
 	public TraversalPolicy traverse(int axis) {
-		TraversalPolicy p = new TraversalPolicy(order, dims);
+		TraversalPolicy p = new TraversalPolicy(order, true, dims);
 		p.traversalAxis = axis;
 		return p;
 	}
@@ -233,7 +241,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		int newDims[] = new int[getDimensions()];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == traversalAxis ? stride : 0;
 
-		TraversalPolicy p = new TraversalPolicy(order, newDims);
+		TraversalPolicy p = new TraversalPolicy(order, true, newDims);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -346,6 +354,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public String toStringDetail() {
+		if (getSizeLong() == 0) {
+			return this + "[axis=" + getTraversalAxis() + "]";
+		}
+
 		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSize() + "]";
 	}
 

@@ -73,7 +73,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	}
 
 	@Override
-	public IndexSequence mod(int m) {
+	public IndexSequence mod(long m) {
 		if (offset != 0 || scale != 1 || mod % m != 0) {
 			return IndexSequence.super.mod(m);
 		}

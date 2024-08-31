@@ -29,6 +29,7 @@ public class BooleanConstant extends Constant<Boolean> {
 	public BooleanConstant(Boolean value) {
 		super(Boolean.class);
 		this.value = value;
+		init();
 	}
 
 	@Override

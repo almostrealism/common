@@ -12,3 +12,4 @@
 **/*.hprof
 /utils/data/**
 /utils/results/**
+/utils/generated_images/**

@@ -40,7 +40,7 @@ public class TimeCellTest implements TestFeatures {
 
 		Runnable r = new Assignment<>(2, () -> new Provider<>(time), pair(left, right)).get();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			for (int i = 0; i < 5; i++) {
 				r.run();
 			}

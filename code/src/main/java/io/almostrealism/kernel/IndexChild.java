@@ -53,10 +53,12 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return childIndex;
 	}
 
+	@Deprecated
 	public void setRenderAlias(boolean renderAlias) {
 		this.renderAlias = renderAlias;
 	}
 
+	@Deprecated
 	public IndexChild renderAlias() {
 		setRenderAlias(true);
 		return new IndexChild(parent, childIndex);
@@ -95,7 +97,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
+	public Expression simplify(KernelStructureContext context, int depth) {
 		return this;
 	}
 

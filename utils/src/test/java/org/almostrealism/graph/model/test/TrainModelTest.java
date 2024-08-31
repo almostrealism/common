@@ -16,9 +16,8 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.code.OperationProfileNode;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -26,9 +25,7 @@ import org.almostrealism.collect.computations.IndexProjectionProducerComputation
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
@@ -36,7 +33,6 @@ import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
-import org.almostrealism.ui.OperationProfileUI;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -54,10 +50,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	static {
 		if (TestUtils.getTrainTests()) {
-			NativeCompiler.enableLargeInstructionSetMonitoring = true;
-			MetalProgram.enableLargeProgramMonitoring = true;
+			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
-			MetalMemoryProvider.largeAllocationSize = 4 * 1024 * 1024;
 
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
@@ -66,7 +60,6 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void dense() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
-		if (skipLongTests) return;
 		if (skipKnownIssues) return;
 
 		int size = 30;
@@ -128,47 +121,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		}
 	}
 
-
-	@Test
-	public void conv() {
-		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
-
-		model.addLayer(conv);
-
-		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
-
-		model.compile().forward(input);
-
-		PackedCollection<?> filter = conv.getWeights().get(0);
-		TraversalPolicy filterShape = filter.getShape();
-
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
-		TraversalPolicy outputShape = output.getShape();
-
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					double expected = 0;
-
-					for (int x = 0; x < convSize; x++) {
-						for (int y = 0; y < convSize; y++) {
-							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
-						}
-					}
-
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
-				}
-			}
-		}
-	}
-
 	@Test
 	public void pool() {
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
 		Model model = new Model(inputShape);
@@ -189,7 +144,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void convPool() {
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
 		model.addLayer(conv);
@@ -199,28 +154,29 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		PackedCollection<?> input = t.pack();
 
 		PackedCollection<?> in = input;
-		HardwareOperator.verboseLog(() -> model.compile().forward(in));
+		verboseLog(() -> model.compile().forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
-		TraversalPolicy filterShape = filter.getShape();
 
 		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					double expected = 0;
+		for (int n = 0; n < outputShape.length(0); n++) {
+			for (int p = 0; p < outputShape.length(1); p++) {
+				for (int q = 0; q < outputShape.length(2); q++) {
+					for (int r = 0; r < outputShape.length(3); r++) {
+						double expected = 0;
 
-					for (int x = 0; x < convSize; x++) {
-						for (int y = 0; y < convSize; y++) {
-							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						for (int x = 0; x < convSize; x++) {
+							for (int y = 0; y < convSize; y++) {
+								expected += filter.valueAt(p, 0, x, y) * input.valueAt(q + x, r + y);
+							}
 						}
-					}
 
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+						double actual = output.valueAt(n, p, q, r);
+						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
 				}
 			}
 		}
@@ -231,41 +187,29 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		output = ((DefaultCellularLayer) pool).getOutput();
 		outputShape = output.getShape();
 
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					int x0 = p * poolSize;
-					int y0 = q * poolSize;
+		for (int n = 0; n < outputShape.length(0); n++) {
+			for (int p = 0; p < outputShape.length(1); p++) {
+				for (int q = 0; q < outputShape.length(2); q++) {
+					for (int r = 0; r < outputShape.length(3); r++) {
+						int x0 = q * poolSize;
+						int y0 = r * poolSize;
 
-					double expected = input.toDouble(inputShape.index(x0, y0, r));
+						double expected = input.valueAt(n, p, x0, y0);
 
-					for (int x = 0; x < poolSize; x++) {
-						for (int y = 0; y < poolSize; y++) {
-							expected = Math.max(expected, input.toDouble(inputShape.index(x0 + x, y0 + y, r)));
+						for (int x = 0; x < poolSize; x++) {
+							for (int y = 0; y < poolSize; y++) {
+								expected = Math.max(expected, input.valueAt(n, p, x0 + x, y0 + y));
+							}
 						}
-					}
 
-					double actual = output.toDouble(outputShape.index(p, q, r));
-					log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+						double actual = output.valueAt(n, p, q, r);
+						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
 				}
 			}
 		}
 	}
-
-	@Test
-	public void displayProfile() throws IOException {
-		if (!trainingTests) return;
-
-		OperationProfileUI.display(OperationProfileNode.load("results/logs/train.xml"));
-
-		try {
-			Thread.sleep(24 * 60 * 60 * 1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-	}
-
 
 	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
 		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
@@ -275,7 +219,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmallest() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 1) return;
 
 		int dim = 3;
 		Tensor<Double> t = tensor(shape(dim, dim));
@@ -285,7 +229,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainVerySmall() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 2) return;
 
 		try {
 			int dim = 8;
@@ -300,7 +244,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void trainSmall() throws IOException {
-		if (skipLongTests) return;
+		if (testDepth < 3) return;
 		if (!trainingTests &&
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
@@ -407,7 +351,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 					log("\t\tbackprop\t\t\t" +
 							" | epoch = " + i / epochSize + "\t|\t" + remainingText);
 
-					if (first && Scope.timing.getTotal() > 180) {
+					if (first) {
 						AcceleratedComputationOperation.printTimes();
 					} else if (remaining > 900) {
 						return;
@@ -416,7 +360,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			}
 		} finally {
 			logKernelMetrics(profile);
-			profile.save("results/logs/train.xml");
+			profile.save("results/train.xml");
 		}
 	}
 }

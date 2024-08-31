@@ -34,7 +34,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new TraversableExpressionComputation<>(null, shape.traverseEach(),
+		return new TraversableExpressionComputation<>("identity", shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
 
@@ -66,6 +66,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
 			return (CollectionProducer) product
 					.reshape(p, n, m).sum(2)
+					.traverse(0)
 					.enumerate(1, 1)
 					.reshape(n, p);
 		} else {

@@ -23,6 +23,8 @@ import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.util.Sequence;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.function.DoubleUnaryOperator;
@@ -33,8 +35,9 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-public interface IndexSequence extends Sequence<Number> {
+public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	boolean enableGranularityDetection = true;
+	boolean enableModValidation = false;
 	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
 
 	default IndexSequence map(UnaryOperator<Number> op) {
@@ -66,12 +69,17 @@ public interface IndexSequence extends Sequence<Number> {
 		return map(n -> -n.doubleValue());
 	}
 
-	default IndexSequence mod(int m) {
+	default IndexSequence mod(long m) {
 		if (m < 0)
 			throw new IllegalArgumentException();
 		if (m > max() && m > Math.abs(min())) return this;
 
-		return mapInt(i -> i % m);
+		if (m <= Integer.MAX_VALUE && m >= Integer.MIN_VALUE &&
+				max() <= Integer.MAX_VALUE && min() >= Integer.MIN_VALUE) {
+			return mapInt(i -> i % (int) m);
+		} else {
+			return mapLong(i -> i % m);
+		}
 	}
 
 	default IndexSequence eq(IndexSequence other) {
@@ -159,12 +167,10 @@ public interface IndexSequence extends Sequence<Number> {
 	default long max() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Integer) {
-			return intValues().max().orElseThrow();
-		} else if (valueAt(0) instanceof Long) {
-			return longValues().max().orElseThrow();
-		} else {
+		if (valueAt(0) instanceof Double) {
 			return (long) Math.ceil(doubleValues().max().orElseThrow());
+		} else {
+			return longValues().max().orElseThrow();
 		}
 	}
 
@@ -192,15 +198,16 @@ public interface IndexSequence extends Sequence<Number> {
 
 			Number distinct[] = distinct();
 			if (distinct.length == 1) {
-				Scope.console.features(KernelSeriesMatcher.class).warn("Constant sequence not detected by IndexSequence");
+				warn("Constant sequence not detected by IndexSequence");
 				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
 			}
 
-			if (distinct.length == 2 && distinct[0].intValue() == 0) {
+			if (distinct.length == 2 && distinct[0].intValue() == 0 && !fractionalValue(distinct)) {
 				int first = (int) matchingIndices(distinct[1].intValue())
 						.filter(i -> i < Integer.MAX_VALUE)
 						.findFirst().orElse(-1);
-				if (first < 0) throw new UnsupportedOperationException();
+				if (first < 0)
+					throw new UnsupportedOperationException();
 
 				int tot = doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
 
@@ -237,18 +244,27 @@ public interface IndexSequence extends Sequence<Number> {
 			double initial = doubleAt(0);
 			double delta = doubleAt(granularity) - doubleAt(0);
 			boolean isArithmetic = true;
-			for (int i = 2 * granularity; i < getMod(); i += granularity) {
-				if (doubleAt(i) - doubleAt(i - 1) != delta) {
+			int m = getMod();
+			int end = m;
+			i: for (int i = 2 * granularity; i < m; i += granularity) {
+				double actual = doubleAt(i);
+				double prediction = doubleAt(i - 1) + delta;
+
+				if (end == m && prediction != actual) {
+					end = i;
+				}
+
+				if (prediction % end != actual) {
 					isArithmetic = false;
-					break;
+					break i;
 				}
 			}
 
 			if (isArithmetic) {
 				Expression<?> r = index;
 
-				if (getMod() != lengthLong()) {
-					r = r.imod(getMod());
+				if (end != lengthLong()) {
+					r = r.imod(end);
 				}
 
 				if (granularity > 1) {
@@ -263,15 +279,14 @@ public interface IndexSequence extends Sequence<Number> {
 					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
 				}
 
-				if (getMod() != lengthLong()) {
+				if (enableModValidation && end != lengthLong()) {
 					IndexSequence newSeq = r.sequence((Index) index, lengthLong());
 
 					if (!newSeq.congruent(this)) {
 						r.sequence((Index) index, lengthLong());
 						throw new RuntimeException();
 					} else {
-						Scope.console.features(KernelSeriesMatcher.class)
-								.warn("Sequence replacement using mod is experimental");
+						warn("Sequence replacement using mod is experimental");
 					}
 				}
 
@@ -282,5 +297,19 @@ public interface IndexSequence extends Sequence<Number> {
 		} finally {
 			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
+	}
+
+	@Override
+	default Console console() {
+		return Scope.console;
+	}
+
+	static boolean fractionalValue(Number[] distinct) {
+		for (Number n : distinct) {
+			double d = Math.abs(n.doubleValue() - n.intValue());
+			if (d > 0) return true;
+		}
+
+		return false;
 	}
 }

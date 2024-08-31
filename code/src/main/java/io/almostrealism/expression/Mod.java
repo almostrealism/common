@@ -16,12 +16,14 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -30,6 +32,9 @@ import java.util.OptionalLong;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
+	public static boolean enableInnerSumSimplify = true;
+	public static boolean enableRedundantModReplacement = true;
+	public static boolean enableDistributiveSum = false;
 
 	private boolean fp;
 
@@ -73,7 +78,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return getChildren().get(0).value(indexValues).intValue() % getChildren().get(1).value(indexValues).intValue();
+			return adjustType(getType(),
+					getChildren().get(0).value(indexValues).longValue()
+							% getChildren().get(1).value(indexValues).longValue());
 		}
 	}
 
@@ -124,8 +131,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Mod)) return flat;
 
 		Expression input = flat.getChildren().get(0);
@@ -142,7 +149,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 				} else if (mod.intValue().getAsInt() != 0) {
 					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {
-					System.out.println("WARN: Module zero encountered while simplifying expression");
+					warn("Modulo zero encountered while simplifying expression");
 				}
 			}
 		} else if (mod.longValue().isPresent()) {
@@ -193,23 +200,32 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	public static Expression of(Expression input, Expression mod, boolean fp) {
-		if (fp || mod.intValue().isEmpty()) return new Mod(input, mod, fp);
+		return ExpressionCache.match(create(input, mod, fp));
+	}
 
-		int m = mod.intValue().getAsInt();
+	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
+		if (fp || mod.longValue().isEmpty()) return new Mod(input, mod, fp);
 
-		if (input instanceof Mod && input.isInt()) {
-			Mod<Integer> innerMod = (Mod) input;
-			OptionalInt inMod = innerMod.getChildren().get(1).intValue();
+		long m = mod.longValue().getAsLong();
+		if (!fp && m == 1) return new IntegerConstant(0);
+
+		if (input instanceof Mod && !input.isFP()) {
+			Mod<Long> innerMod = (Mod) input;
+			OptionalLong inMod = innerMod.getChildren().get(1).longValue();
 
 			if (inMod.isPresent()) {
-				int n = inMod.getAsInt();
+				long n = inMod.getAsLong();
 
-				if (n == m) {
+				if (n == m || (enableRedundantModReplacement && m % n == 0)) {
 					return innerMod;
 				} else if (n % m == 0) {
-					return new Mod(innerMod.getChildren().get(0), new IntegerConstant(m), false);
+					return new Mod(innerMod.getChildren().get(0),
+							ExpressionFeatures.getInstance().e(m),
+							false);
 				}
 			}
+		} else if (enableDistributiveSum && input instanceof Sum && !input.isFP()) {
+			input = Sum.of(input.getChildren().stream().map(e -> e.imod(m)).toArray(Expression[]::new));
 		}
 
 		return new Mod(input, mod, fp);
@@ -232,7 +248,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
-		if (innerSum.getChildren().size() != 2) return null;
+		if (!enableInnerSumSimplify || innerSum.getChildren().size() != 2) return null;
 
 		Product<?> product = (Product) innerSum.getChildren().stream()
 				.filter(e -> e instanceof Product)
@@ -262,7 +278,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
 		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
 
-		return new Mod(arg, Constant.of(m), false);
+		if (constant == m) {
+			Expression m0 = ExpressionFeatures.getInstance().e(constant);
+			return new Mod(arg, m0, false);
+		} else if (constant * constant == m) {
+			Expression m0 = ExpressionFeatures.getInstance().e(constant);
+			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
+			return Product.of(Mod.of(arg, m0, false), m1);
+		} else {
+			System.out.println("WARN: Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
+			return null;
+		}
 	}
 
 	private static boolean isPowerOf2(long number) {

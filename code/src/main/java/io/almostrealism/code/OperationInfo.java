@@ -31,6 +31,10 @@ public interface OperationInfo {
 
 	static <T> String name(T value) {
 		if (value instanceof OperationInfo) {
+			if (((OperationInfo) value).getMetadata() == null) {
+				return String.valueOf(value);
+			}
+
 			return ((OperationInfo) value).getMetadata().getDisplayName();
 		} else {
 			return String.valueOf(value);
@@ -42,6 +46,14 @@ public interface OperationInfo {
 			return ((OperationInfo) value).getMetadata().getShortDescription();
 		} else {
 			return String.valueOf(value);
+		}
+	}
+
+	static <T> OperationMetadata metadataForValue(T value) {
+		if (value instanceof OperationInfo) {
+			return ((OperationInfo) value).getMetadata();
+		} else {
+			return null;
 		}
 	}
 

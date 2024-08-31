@@ -28,10 +28,16 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducerBase<T, CollectionProducer<T>>,
-		Shape<CollectionProducer<T>>, DeltaFeatures {
+		DeltaFeatures {
+
+	@Override
+	default CollectionProducer<T> reshape(int... dims) {
+		return CollectionProducerBase.super.reshape(dims);
+	}
 
 	@Override
 	CollectionProducer<T> traverse(int axis);
@@ -168,12 +174,20 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return expIgnoreZero((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log() {
+		return log((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
 		return sq((Producer) this);
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
 		return magnitude((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(int axis) {
+		return max(traverse(axis, (Producer) this));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
@@ -199,6 +213,30 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean(int axis) {
+		return mean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean() {
+		return mean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(int axis) {
+		return subtractMean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean() {
+		return subtractMean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance(int axis) {
+		return variance(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance() {
+		return variance((Producer) this);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid() {

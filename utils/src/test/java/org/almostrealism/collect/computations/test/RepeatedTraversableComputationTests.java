@@ -16,15 +16,11 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.OperationProfile;
-import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -33,7 +29,8 @@ import java.util.stream.IntStream;
 public class RepeatedTraversableComputationTests implements TestFeatures {
 	@Test
 	public void add() {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator");
+		OperationProfile profile = new OperationProfile("HardwareOperator");
+		HardwareOperator.timingListener = profile.getTimingListener();
 
 		int len = 60000;
 
@@ -44,7 +41,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> ev = add(v(shape(1), 0), v(shape(1), 1)).get();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
 				ev.into(out.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
 			}
@@ -60,7 +57,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		Evaluable<PackedCollection<?>> rev = ((CollectionProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
 
-		HardwareOperator.verboseLog(() -> {
+		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
 				rev.into(out).evaluate(a, b);
 			}
@@ -72,6 +69,6 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 			assertEquals(expected, actual);
 		});
 
-		HardwareOperator.profile.print();
+		profile.print();
 	}
 }

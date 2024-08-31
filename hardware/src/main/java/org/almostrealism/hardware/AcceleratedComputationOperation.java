@@ -31,9 +31,11 @@ import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
@@ -42,14 +44,17 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
-import org.almostrealism.io.TimingMetric;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
-	public static TimingMetric compileProfile = console.timing("computationCompile");
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
+		implements NameProvider, KernelStructureContext, Countable {
+	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
+	public static boolean enablePostConversionSimplify = true;
+	public static ScopeTimingListener timing;
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
@@ -182,31 +187,53 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
-			System.out.println("WARN: Attempting to compile an operation which was already compiled");
+			warn("Attempting to compile an operation which was already compiled");
 			return scope;
 		}
 
-		prepareScope();
+		if (verboseCompile) log("Compiling " + getFunctionName());
 
-		if (getComputation() instanceof OperationAdapter
-				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
-			return compile(c.getArgumentForInput(c.getInputs().get(0)));
-		} else {
-			return compile(null);
-		}
+		return new ExpressionCache().use(() -> {
+			prepareScope();
+
+			if (getComputation() instanceof OperationAdapter
+					&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
+				OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+				return compile(c.getArgumentForInput(c.getInputs().get(0)));
+			} else {
+				return compile(null);
+			}
+		});
 	}
 
-	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
+	protected synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 
 		long start = System.nanoTime();
-		// TODO  Should simplify be after converting arguments to required scopes?
-		scope = c.getScope(this).simplify(this);
-		compileProfile.addEntry(getFunctionName(), System.nanoTime() - start);
+
+		scope = c.getScope(this);
+		if (timing != null) {
+			timing.recordDuration(getMetadata(), scope.getMetadata(),
+					"getScope", System.nanoTime() - start);
+		}
+
+		if (!enablePostConversionSimplify)
+			scope = scope.simplify(this);
+
+		start = System.nanoTime();
 		scope.convertArgumentsToRequiredScopes(this);
+		if (timing != null) {
+			timing.recordDuration(getMetadata(), scope.getMetadata(),
+					"convertRequired", System.nanoTime() - start);
+		}
+
+		if (enablePostConversionSimplify)
+			scope = scope.simplify(this);
+
 		postCompile();
+
+		if (verboseCompile) log("Done compiling " + getFunctionName());
 		return scope;
 	}
 
@@ -268,11 +295,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void clearTimes() {
-		KernelSeriesProvider.timingPos.clear();
-		KernelSeriesProvider.timingNeg.clear();
 		KernelTraversalProvider.timing.clear();
-		Scope.timing.clear();
-		compileProfile.clear();
 	}
 
 	public static void printTimes() {
@@ -280,24 +303,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-		if (verbose || KernelSeriesProvider.timingPos.getTotal() > 90) {
-			KernelSeriesProvider.timingPos.print();
-		}
-
-		if (verbose || KernelSeriesProvider.timingNeg.getTotal() > 90) {
-			KernelSeriesProvider.timingNeg.print();
-		}
 
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();
-		}
-
-		if (verbose || Scope.timing.getTotal() > 60) {
-			Scope.timing.print();
-		}
-
-		if (verbose || compileProfile.getTotal() > 60) {
-			compileProfile.print();
 		}
 	}
 }

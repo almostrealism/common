@@ -22,7 +22,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.IntPredicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class FrequencyCache<K, V> {
 	protected class CacheEntry {
@@ -80,6 +82,8 @@ public class FrequencyCache<K, V> {
 		return cache.containsKey(key);
 	}
 
+	public boolean isEmpty() { return cache.isEmpty(); }
+
 	public void put(K key, V value) {
 		clock++;
 
@@ -104,6 +108,13 @@ public class FrequencyCache<K, V> {
 		if (evictionListener != null) {
 			evictionListener.accept(key, e.value);
 		}
+	}
+
+	public Stream<V> valuesByFrequency(IntPredicate frequencyFilter) {
+		return cache.values().stream()
+				.filter(e -> frequencyFilter.test(e.frequency))
+				.sorted(Comparator.comparing(v -> v.frequency))
+				.map(e -> e.value);
 	}
 
 	public void forEach(BiConsumer<K, V> consumer) {

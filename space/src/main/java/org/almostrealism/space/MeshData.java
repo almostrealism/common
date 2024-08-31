@@ -22,7 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.KernelizedOperation;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
@@ -68,7 +68,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);
 
-		if (KernelizedOperation.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
+		if (HardwareOperator.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 
 		PackedCollection<Pair<?>> dim = Pair.bank(1);
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
@@ -88,7 +88,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 				destination.set(i, out.get(0));
 			}
 
-			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCountLong() + " intersection kernels evaluated");
+			if (HardwareOperator.enableKernelLog) System.out.println(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
 			PackedCollection<Scalar> distances = Scalar.scalarBank(this.getCount() * rays.getCount());
 

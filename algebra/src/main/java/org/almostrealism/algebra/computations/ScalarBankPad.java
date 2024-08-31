@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	private final int total;
 
 	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
-		super(null, new TraversalPolicy(count, 2), adjustInput(input));
+		super("scalarBankPad", new TraversalPolicy(count, 2), adjustInput(input));
 		this.count = count;
 		this.total = total;
 	}

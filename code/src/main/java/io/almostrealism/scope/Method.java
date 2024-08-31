@@ -16,7 +16,6 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
@@ -109,8 +108,8 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	public List<Expression<?>> getArguments() { return arguments; }
 
 	@Override
-	public Method<T> simplify(KernelStructureContext context) {
-		return (Method<T>) super.simplify(context);
+	public Method<T> simplify(KernelStructureContext context, int depth) {
+		return (Method<T>) super.simplify(context, depth);
 	}
 
 	@Override

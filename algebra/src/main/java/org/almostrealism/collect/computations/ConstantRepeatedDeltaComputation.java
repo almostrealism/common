@@ -87,7 +87,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	}
 
 	@Override
-	protected Expression<?> getExpression(TraversableExpression args[], Expression localIndex) {
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		return expression.apply(args, row.add(localIndex))
 				.delta(targetVariable)
 				.getValueRelative(row.add(localIndex));

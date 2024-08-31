@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
 	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
@@ -54,8 +55,17 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return process.isolate();
 	}
 
-	default long[] computeParallelism(Collection<? extends Process> children) {
-		return children.stream().mapToLong(ParallelProcess::parallelism).toArray();
+	@Override
+	default boolean isIsolationTarget(ProcessContext context) {
+		if (!explicitIsolationTargets.isEmpty()) {
+			return explicitIsolationTargets.stream().anyMatch(p -> p.test(this));
+		}
+
+		return Process.super.isIsolationTarget(context);
+	}
+
+	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
+		return children.stream();
 	}
 
 	@Override
@@ -76,23 +86,42 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 			}
 		}
 
-		if (!explicitIsolationTargets.isEmpty()) {
-			return generate((List) children.stream()
-					.map(c -> explicitIsolationTargets.stream().map(p -> p.test(c))
-							.reduce(false, (a, b) -> a | b) ? c.isolate() : c)
-					.collect(Collectors.toList()));
-		}
-
-		long counts[] = computeParallelism(children);
+		long counts[] = processChildren(children).mapToLong(ParallelProcess::parallelism).toArray();
 		long cn = getCountLong();
 		long p = counts.length;
 		long tot = LongStream.of(counts).sum();
 		long max = LongStream.of(counts).max().orElse(0);
 
-		if ((p <= 1 && tot == cn) || cn >= max) {
-			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		long memory[] = processChildren(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
+		long mem = getOutputSize();
+		long maxMem = LongStream.of(memory).max().orElse(0);
+
+		double currentScore = ParallelismSettings.score(cn, mem);
+		double altScore = ParallelismSettings
+				.scores(processChildren(children))
+				.max().orElse(Integer.MIN_VALUE);
+
+		double min = Math.min(currentScore, altScore);
+		if (min < 0) {
+			min = Math.abs(min);
+			currentScore += min;
+			altScore += min;
+			currentScore++;
+			altScore++;
+		}
+
+//		System.out.println("Current score: " + currentScore +
+//				", alt score: " + altScore +
+//				" ratio = " + (currentScore / altScore));
+
+		boolean isolate = true;
+
+		if (!explicitIsolationTargets.isEmpty()) {
+			isolate = processChildren(children).anyMatch(c -> explicitIsolationTargets.stream().anyMatch(t -> t.test(c)));
+		} else if ((p <= 1 && tot == cn) || cn >= max) {
+			isolate = false;
 		} else if (enableContextualCount && max <= context.getCountLong()) {
-			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+			isolate = false;
 		} else if (max > maxCount) {
 			if (cn < minCount && context.getCountLong() < minCount) {
 				System.out.println("WARN: Count " + max + " is too high to isolate, " +
@@ -100,12 +129,25 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 						" (ctx " + context.getCountLong() + ")");
 			}
 
-			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+			isolate = false;
 		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
-			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+			isolate = false;
+		} else if (altScore < currentScore) {
+			System.out.println("Skipping isolation to avoid score " +
+					altScore + " (" + currentScore + " current)");
+			isolate = false;
 		}
 
-		return generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
+		if (isolate && currentScore / altScore > 4) {
+			System.out.println("Isolation is " + (currentScore / altScore) + " times worse - skipping");
+			isolate = false;
+		}
+
+		if (isolate) {
+			return generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
+		} else {
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		}
 	}
 
 	default long getParallelism() {

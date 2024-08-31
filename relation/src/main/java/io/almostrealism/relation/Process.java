@@ -36,6 +36,18 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 		return false;
 	}
 
+	default long getOutputSize() {
+		return 0;
+	}
+
+	static <T> long outputSize(T c) {
+		if (c instanceof Process) {
+			return ((Process<?, T>) c).getOutputSize();
+		}
+
+		return 0;
+	}
+
 	static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
 		return new Process<>() {
 			@Override
@@ -47,6 +59,13 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 			@Override
 			public T get() {
 				return supplier.get();
+			}
+
+			@Override
+			public long getOutputSize() {
+				return supplier instanceof Process ?
+						((Process<P, T>) supplier).getOutputSize() :
+						Process.super.getOutputSize();
 			}
 		};
 	}

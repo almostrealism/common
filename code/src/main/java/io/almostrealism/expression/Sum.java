@@ -16,22 +16,24 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -41,10 +43,10 @@ import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableMinusSimplification = true;
-
-	protected Sum(Stream<Expression<? extends Number>> values) {
-		super("+", (Stream) values);
-	}
+	public static boolean enableConstantExtraction = true;
+	public static boolean enableCoefficientExtraction = true;
+	public static int maxOppositeDetectionDepth = 10;
+	public static int maxDistinctDetectionWidth = 8;
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
@@ -149,8 +151,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context) {
-		Expression<?> simple = super.simplify(context);
+	public Expression simplify(KernelStructureContext context, int depth) {
+		Expression<?> simple = super.simplify(context, depth);
 		if (!(simple instanceof Sum)) return simple;
 
 		List<Expression<?>> children = new ArrayList<>();
@@ -231,17 +233,63 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());
 
-		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
-			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(0.0, (a, b) -> a + b);
+		if (isFP()) {
+			return values.stream().mapToDouble(Number::doubleValue).reduce(0.0, Double::sum);
 		} else {
-			return values.stream().mapToInt(v -> v.intValue()).reduce(0, (a, b) -> a + b);
+			long l = values.stream().mapToLong(Number::longValue).reduce(0, Long::sum);
+			if (getType() == Integer.class && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE)
+				return (int) l;
+
+			return l;
 		}
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
-		List<Expression> operands =
-				Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+		return ExpressionCache.match(create(values));
+	}
+
+	protected static <T> Expression<T> create(Expression<?>... values) {
+		double constant = 0.0;
+		List<Expression<?>> operands;
+
+		boolean fp = false;
+
+		if (enableConstantExtraction) {
+			operands = new ArrayList<>();
+
+			e: for (Expression e : values) {
+				if (e.isFP()) fp = true;
+				if (e.longValue().orElse(-1) == 0) continue e;
+
+				OptionalDouble d = e.doubleValue();
+
+				if (d.isPresent()) {
+					constant += d.getAsDouble();
+				} else {
+					operands.add(e);
+				}
+			}
+
+			if (constant != 0.0) {
+				Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
+				operands.add(c);
+			}
+		} else {
+			operands = Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
+			fp = operands.stream().anyMatch(Expression::isFP);
+		}
+
+		if (operands.size() > 1 && operands.size() < maxDistinctDetectionWidth && operands.stream().distinct().count() == 1) {
+			return (Expression) Product.of(operands.get(0), new IntegerConstant(operands.size()));
+		}
+
 		i: if (operands.size() == 2) {
+			// A sum which contains a value and its opposite can be replaced with zero
+			if (checkOpposite(operands.get(0), operands.get(1))) {
+				return (Expression) new IntegerConstant(0);
+			}
+
+			// Detect the presence of an index child
 			int index[] = IntStream.range(0, 2).filter(i -> operands.get(i) instanceof DefaultIndex &&
 					!(operands.get(i) instanceof KernelIndex)).toArray();
 			if (index.length != 1) break i;
@@ -268,7 +316,57 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
+		if (enableCoefficientExtraction && operands.size() > 1) {
+			Expression<?> t = operands.get(0).getChildren().isEmpty() ?
+					operands.get(0) : operands.get(0).getChildren().get(0);
+			OptionalDouble d = extractCoefficients(t, operands);
+
+			if (d.isPresent()) {
+				if (fp) {
+					return (Expression) t.multiply(d.getAsDouble());
+				} else {
+					return  (Expression) t.multiply((long) d.getAsDouble());
+				}
+			}
+		}
+
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
-		return operands.size() == 1 ? operands.get(0) : (Expression) new Sum(operands);
+		return operands.size() == 1 ? (Expression) operands.get(0) : (Expression) new Sum(operands);
+	}
+
+	private static OptionalDouble extractCoefficients(Expression target, List<Expression<?>> children) {
+		double constant = 0.0;
+
+		for (Expression<?> e : children) {
+			if (Objects.equals(target, e)) {
+				constant += 1.0;
+			} else if (e instanceof Product && e.getChildren().size() == 2 && e.getChildren().contains(target)) {
+				if (Objects.equals(target, e.getChildren().get(0)) && e.getChildren().get(1).doubleValue().isPresent()) {
+					constant += e.getChildren().get(1).doubleValue().getAsDouble();
+				} else if (Objects.equals(target, e.getChildren().get(1)) && e.getChildren().get(0).doubleValue().isPresent()) {
+					constant += e.getChildren().get(0).doubleValue().getAsDouble();
+				} else {
+					return OptionalDouble.empty();
+				}
+			} else {
+				return OptionalDouble.empty();
+			}
+		}
+
+		return OptionalDouble.of(constant);
+	}
+
+	private static boolean checkOpposite(Expression a, Expression b) {
+		if (a.treeDepth() > maxOppositeDetectionDepth || b.treeDepth() > maxOppositeDetectionDepth) {
+			return false;
+		}
+
+		if (a instanceof Minus) {
+			if (a.getChildren().get(0).equals(b)) return true;
+		} else if (b instanceof Minus) {
+			if (b.getChildren().get(0).equals(a)) return true;
+		}
+
+		return false;
 	}
 }

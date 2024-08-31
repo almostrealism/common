@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -64,7 +64,7 @@ public class AltComputeContextsTest implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		HardwareOperator.verboseLog(() -> r.run());
+		verboseLog(() -> r.run());
 
 		if (!skipLongTests) {
 			profiles.clear();

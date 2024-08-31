@@ -30,13 +30,22 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	@Override
+	public Number evaluate(Number... children) {
+		for (Number child : children) {
+			if (child.doubleValue() == 0) return 0;
+		}
+
+		return 1;
+	}
+
+	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		return new Conjunction(children.toArray(new Expression[0]));
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelStructureContext context) {
-		Expression<Boolean> flat = super.simplify(context);
+	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
+		Expression<Boolean> flat = super.simplify(context, depth);
 		if (!(flat instanceof Conjunction)) return flat;
 
 		List<Expression<?>> children = new ArrayList<>();

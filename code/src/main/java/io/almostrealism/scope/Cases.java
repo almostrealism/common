@@ -95,9 +95,9 @@ public class Cases<T> extends Scope<T> {
 	}
 
 	@Override
-	public Scope<T> simplify(KernelStructureContext context) {
-		Cases<T> scope = (Cases<T>) super.simplify(context);
-		scope.getConditions().addAll(getConditions().stream().map(c -> c.simplify(context)).collect(Collectors.toList()));
+	public Scope<T> simplify(KernelStructureContext context, int depth) {
+		Cases<T> scope = (Cases<T>) super.simplify(context, depth);
+		scope.getConditions().addAll(getConditions().stream().map(c -> c.simplify(context, depth + 1)).collect(Collectors.toList()));
 		return scope;
 	}
 

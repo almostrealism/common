@@ -1,6 +1,22 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.model;
 
-import io.almostrealism.code.OperationProfile;
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -14,8 +30,12 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class CompiledModel implements CodeFeatures {
+	public static boolean enableCaptureGradientOutput = false;
+
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
+
+	private Runnable setup;
 
 	private Consumer<PackedCollection<?>> updateInput;
 	private Supplier<PackedCollection<?>> retrieveOutput;
@@ -26,7 +46,7 @@ public class CompiledModel implements CodeFeatures {
 	private Runnable backward;
 
 	protected CompiledModel(TraversalPolicy inputShape, TraversalPolicy outputShape,
-							Consumer<PackedCollection<?>> updateInput,
+							Runnable setup, Consumer<PackedCollection<?>> updateInput,
 							Supplier<PackedCollection<?>> retrieveOutput,
 							Runnable forward,
 							Consumer<PackedCollection<?>> updateGradient,
@@ -34,6 +54,7 @@ public class CompiledModel implements CodeFeatures {
 							Runnable backward) {
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
+		this.setup = setup;
 		this.updateInput = updateInput;
 		this.retrieveOutput = retrieveOutput;
 		this.forward = forward;
@@ -55,7 +76,11 @@ public class CompiledModel implements CodeFeatures {
 	public PackedCollection<?> backward(PackedCollection<?> gradient) {
 		updateGradient.accept(gradient);
 		backward.run();
-		return retrieveGradient.get();
+		return retrieveGradient == null ? null : retrieveGradient.get();
+	}
+
+	public void reset() {
+		setup.run();
 	}
 
 	public static CompiledModel compile(Model model) {
@@ -67,7 +92,7 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model, boolean backprop, OperationProfile profile) {
-		Process.optimized(model.setup()).get().run();
+		Runnable setup = Process.optimized(model.setup()).get();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
@@ -76,9 +101,15 @@ public class CompiledModel implements CodeFeatures {
 		model.lastBlock().getForward().setReceptor(out ->
 				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength()));
 
-		PackedCollection<?> gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
-		model.firstBlock().getBackward().setReceptor(out ->
-				Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+		PackedCollection<?> gradOut;
+
+		if (enableCaptureGradientOutput) {
+			gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
+			model.firstBlock().getBackward().setReceptor(out ->
+					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+		} else {
+			gradOut = null;
+		}
 
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) model.forward().push(in.get());
 		if (p instanceof OperationList) p = ((OperationList) p).flatten();
@@ -97,8 +128,13 @@ public class CompiledModel implements CodeFeatures {
 		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
 		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
-		return new CompiledModel(in.getShape(), grad.getShape(), in, () -> output,
-									p.get(), grad, () -> gradOut, q == null ? null : q.get());
+		CompiledModel compiled = new CompiledModel(in.getShape(), grad.getShape(),
+				setup, in,
+				() -> output, p.get(), grad,
+				gradOut == null ? null : () -> gradOut,
+				q == null ? null : q.get());
+		compiled.reset();
+		return compiled;
 	}
 
 	protected static class InputManager implements Consumer<PackedCollection<?>>,

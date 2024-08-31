@@ -65,6 +65,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		init();
 	}
 
+	@Override
 	public int getMemLength() { return 1; }
 
 	@Override

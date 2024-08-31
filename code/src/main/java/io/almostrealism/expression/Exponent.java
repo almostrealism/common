@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,15 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Exponent extends Expression<Double> {
@@ -60,12 +64,31 @@ public class Exponent extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Exponent((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return Exponent.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
 	@Override
-	public Expression<Double> simplify(KernelStructureContext context) {
-		Expression<?> flat = super.simplify(context);
+	public CollectionExpression delta(CollectionExpression target) {
+		Expression base = getChildren().get(0);
+		Expression exp = getChildren().get(1);
+
+		TraversalPolicy ts = target.getShape();
+
+		CollectionExpression baseDelta = base.delta(target);
+		CollectionExpression expDelta = exp.delta(target);
+
+		CollectionExpression self = new ConstantCollectionExpression(target.getShape(), this);
+		CollectionExpression logBase = new ConstantCollectionExpression(target.getShape(), base.log());
+		CollectionExpression ratio = new ConstantCollectionExpression(target.getShape(), exp.divide(base));
+
+		CollectionExpression term1 = product(ts, baseDelta, ratio);
+		CollectionExpression term2 = product(ts, expDelta, logBase);
+		return product(ts, self, sum(ts, term1, term2));
+	}
+
+	@Override
+	public Expression<Double> simplify(KernelStructureContext context, int depth) {
+		Expression<?> flat = super.simplify(context, depth);
 		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
 
 		Expression base = flat.getChildren().get(0);
@@ -88,5 +111,22 @@ public class Exponent extends Expression<Double> {
 		}
 
 		return (Expression<Double>) flat;
+	}
+
+	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
+		return ExpressionCache.match(Exponent.create(base, exponent));
+	}
+
+	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
+		OptionalDouble exponentValue = exponent.doubleValue();
+		if (exponentValue.isPresent()) {
+			if (exponentValue.getAsDouble() == 0.0) {
+				return new DoubleConstant(1.0);
+			} else if (exponentValue.getAsDouble() == 1.0) {
+				return base;
+			}
+		}
+
+		return new Exponent(base, exponent);
 	}
 }

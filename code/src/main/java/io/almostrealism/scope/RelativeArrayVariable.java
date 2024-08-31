@@ -28,6 +28,10 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 		super(null, null, null, (Expression<Integer>) null);
 		this.ref = ref;
 		this.offset = offset;
+
+		if (offset.isFP()) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
