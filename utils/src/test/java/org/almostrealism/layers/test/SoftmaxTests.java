@@ -274,7 +274,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				Assert.assertEquals(expected[i], result[i], 1e-5);
 			}
 		} finally {
-			profile.save("results/logs/logSoftmaxModel.xml");
+			profile.save("results/logSoftmaxModel.xml");
 		}
 	}
 

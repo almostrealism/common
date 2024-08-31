@@ -26,6 +26,9 @@ import java.util.Objects;
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
+	public static boolean enableExpressionWarnings =
+			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
+
 	public static long simplificationCount = 0;
 	public static long cacheCount = 0;
 
