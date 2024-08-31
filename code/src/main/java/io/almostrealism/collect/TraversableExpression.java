@@ -26,6 +26,7 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
 
 public interface TraversableExpression<T> extends Computable, ExpressionFeatures, ConsoleFeatures {
@@ -46,7 +47,8 @@ public interface TraversableExpression<T> extends Computable, ExpressionFeatures
 
 		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
 		if (indices == null) {
-			warn("Unable to create ExpressionMatrix for " + targetIndex.getExpressionSummary());
+			if (ScopeSettings.enableExpressionWarnings)
+				warn("Unable to create ExpressionMatrix for " + targetIndex.getExpressionSummary());
 			return null;
 		}
 
@@ -67,7 +69,8 @@ public interface TraversableExpression<T> extends Computable, ExpressionFeatures
 
 		ExpressionMatrix<T> values = indices.apply(this::getValueAt);
 		if (values == null) {
-			warn("Unable to create ExpressionMatrix for " + this);
+			if (ScopeSettings.enableExpressionWarnings)
+				warn("Unable to create ExpressionMatrix for " + getClass().getSimpleName());
 			return null;
 		}
 
