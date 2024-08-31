@@ -80,7 +80,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);
 
-		CellularLayer conv = convolution2dMultiChannel(inputShape, filterCount, convSize);
+		CellularLayer conv = convolution2d(inputShape, filterCount, convSize);
 		model.addLayer(conv);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape).randFill();

@@ -97,6 +97,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return branch;
 	}
 
+	public <T extends Block> T branch(Function<TraversalPolicy, T> factory) {
+		return branch(factory.apply(getOutputShape()));
+	}
+
 	public <T extends Block> T branch(T branch) {
 		if (branch.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();

@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -80,5 +81,10 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			Expression<?> out = args[1].getValueAt(inputShape.index(innerPos));
 			return conditional(new Conjunction(conditions), out, e(0.0));
 		});
+	}
+
+	@Override
+	public PackedCollectionPad<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionPad<>(getShape(), position, (Producer<?>) children.get(1));
 	}
 }

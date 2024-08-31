@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,15 +22,14 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 
 import java.util.List;
 
 public interface RotationFeatures extends PairFeatures, LayerFeatures {
-	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights, Producer<PackedCollection<?>> position, ComputeRequirement... requirements) {
+	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights,
+									   Producer<PackedCollection<?>> position, ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 3 || shape.length(2) != 2)
 			throw new IllegalArgumentException();
 

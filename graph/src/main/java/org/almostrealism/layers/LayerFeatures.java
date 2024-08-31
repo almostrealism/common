@@ -20,7 +20,6 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -30,7 +29,6 @@ import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
@@ -44,7 +42,6 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
-	boolean enableMultiChannelConv = true;
 
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -117,7 +114,7 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, ComputeRequirement... requirements) {
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
 				int c = shape.getDimensions() > 2 ? shape.length(shape.getDimensions() - 2) : 1;
@@ -125,51 +122,29 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 					throw new IllegalArgumentException();
 				}
 
-				return convolution2dMultiChannel(shape, filterCount, size, requirements);
+				return convolution2d(shape, filterCount, size, padding, requirements);
 			};
 		}
 
-		return shape -> convolution2d(shape, filterCount, size, requirements);
+		return shape -> convolution2d(shape, filterCount, size, padding, requirements);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
-		return shape -> convolution2d(shape, filterCount, size, requirements);
+		return convolution2d(filterCount, size, 0, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount, int size, ComputeRequirement... requirements) {
-		if (enableMultiChannelConv) {
-			return convolution2dMultiChannel(inputShape, filterCount, size, requirements);
-		}
-
-		int pad = size - 1;
-		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
-		TraversalPolicy filterShape = shape(filterCount, size, size);
-		PackedCollection<?> filters = new PackedCollection<>(filterShape);
-
-		Factor<PackedCollection<?>> operator = input ->
-				c(input).enumerate(1, size, 1)
-						.enumerate(1, size, 1)
-						.traverse(2)
-						.repeat(filterCount)
-						.traverse(2)
-						.multiply(cp(filters)
-								.repeat(outputShape.length(1)).traverse(0)
-								.repeat(outputShape.length(0)).traverse(2))
-						.traverse()
-						.sum();
-
-		OperationList setup = new OperationList();
-		Random randn = randn(filterShape);
-		setup.add(() -> randn::refresh);
-		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
-
-		return layer("convolution2d", inputShape, outputShape,
-				operator, List.of(filters),
-				setup,
-				requirements);
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
+		return shape -> convolution2d(shape, filterCount, size, padding, requirements);
 	}
 
-	default CellularLayer convolution2dMultiChannel(TraversalPolicy inputShape, int filterCount, int size, ComputeRequirement... requirements) {
+	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+										int size, ComputeRequirement... requirements) {
+		return convolution2d(inputShape, filterCount, size, 0, requirements);
+	}
+
+	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+										int size, int padding,
+										ComputeRequirement... requirements) {
 		if (inputShape.getDimensions() == 2) {
 			inputShape = inputShape.prependDimension(1);
 		}
@@ -182,19 +157,32 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 			throw new IllegalArgumentException();
 		}
 
+		int h = inputShape.length(2);
+		int w = inputShape.length(3);
+
 		int batch = inputShape.length(0);
 		int channels = inputShape.length(1);
-		int height = inputShape.length(2);
-		int width = inputShape.length(3);
+		int height = h + 2 * padding;
+		int width = w + 2 * padding;
 
-		int pad = size - 1;
-		TraversalPolicy outputShape = shape(batch, filterCount, height - pad, width - pad);
+		int diff = size - 1;
+		TraversalPolicy outputShape = shape(batch, filterCount, height - diff, width - diff);
 		TraversalPolicy filterShape = shape(filterCount, channels, size, size);
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
 
 		Factor<PackedCollection<?>> operator = input -> {
+			CollectionProducer<PackedCollection<?>> in;
+
+			if (padding > 0) {
+				in = c(input)
+						.reshape(-1, channels, h, w)
+						.pad(0, 0, padding, padding);
+			} else {
+				in = c(input);
+			}
+
 			CollectionProducer<PackedCollection<?>> conv =
-					c(input).reshape(-1, channels, height * width)
+					in.reshape(-1, channels, height * width)
 							.traverse(1).enumerate(2, 1)
 							.reshape(-1, height, width, channels);
 			conv = conv.traverse(1)
@@ -211,13 +199,13 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 							.traverse(1).enumerate(2, 1)
 							.reshape(-1, size, size, channels);
 			filter = filter.traverse(1)
-							.repeat(height - pad)
-							.repeat(width - pad)
+							.repeat(height - diff)
+							.repeat(width - diff)
 							.traverse(0)
 							.repeat(bs)
 							.each();
 			return conv.multiply(filter).sum(4)
-					.reshape(-1, filterCount, height - pad, width - pad)
+					.reshape(-1, filterCount, height - diff, width - diff)
 					.traverseEach();
 		};
 
@@ -412,13 +400,6 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	}
 
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		if (shape.getDimensions() == 1) {
-			shape = shape.prependDimension(1);
-		}
-
-		if (shape.getDimensions() != 2)
-			throw new IllegalArgumentException();
-
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
 
