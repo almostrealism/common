@@ -6,7 +6,7 @@
 
 	<groupId>org.almostrealism</groupId>
 	<artifactId>ar-ml-script</artifactId>
-	<version>0.64</version>
+	<version>0.65</version>
 
 	<dependencies>
 		<dependency>
