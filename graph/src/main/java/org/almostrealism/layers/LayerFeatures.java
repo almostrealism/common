@@ -114,7 +114,14 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding, ComputeRequirement... requirements) {
+
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+																   ComputeRequirement... requirements) {
+		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+																   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
 				int c = shape.getDimensions() > 2 ? shape.length(shape.getDimensions() - 2) : 1;
@@ -122,11 +129,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 					throw new IllegalArgumentException();
 				}
 
-				return convolution2d(shape, filterCount, size, padding, requirements);
+				return convolution2d(shape, filterCount, size, padding, bias, requirements);
 			};
 		}
 
-		return shape -> convolution2d(shape, filterCount, size, padding, requirements);
+		return shape -> convolution2d(shape, filterCount, size, padding, bias, requirements);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
@@ -134,17 +141,17 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
-		return shape -> convolution2d(shape, filterCount, size, padding, requirements);
+		return shape -> convolution2d(shape, filterCount, size, padding, true, requirements);
 	}
 
 	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, ComputeRequirement... requirements) {
-		return convolution2d(inputShape, filterCount, size, 0, requirements);
+		return convolution2d(inputShape, filterCount, size, 0, true, requirements);
 	}
 
 	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, int padding,
-										ComputeRequirement... requirements) {
+										boolean bias, ComputeRequirement... requirements) {
 		if (inputShape.getDimensions() == 2) {
 			inputShape = inputShape.prependDimension(1);
 		}
@@ -167,8 +174,12 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 
 		int diff = size - 1;
 		TraversalPolicy outputShape = shape(batch, filterCount, height - diff, width - diff);
+
 		TraversalPolicy filterShape = shape(filterCount, channels, size, size);
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
+
+		TraversalPolicy biasShape = shape(filterCount);
+		PackedCollection<?> biases = bias ? new PackedCollection<>(biasShape) : null;
 
 		Factor<PackedCollection<?>> operator = input -> {
 			CollectionProducer<PackedCollection<?>> in;
@@ -204,7 +215,17 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 							.traverse(0)
 							.repeat(bs)
 							.each();
-			return conv.multiply(filter).sum(4)
+
+			CollectionProducer<PackedCollection<?>> result =
+					conv.multiply(filter).sum(4);
+
+			if (biases != null) {
+				int t = (height - diff) * (width - diff);
+				result = result.reshape(bs, filterCount, t)
+						.add(cp(biases).repeat(bs).traverse(2).repeat(t));
+			}
+
+			return result
 					.reshape(-1, filterCount, height - diff, width - diff)
 					.traverseEach();
 		};
@@ -213,11 +234,13 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		Random randn = randn(filterShape);
 		setup.add(() -> randn::refresh);
 		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+		if (biases != null) {
+			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+		}
 
-		return layer("convolution2d", inputShape, outputShape,
-				operator, List.of(filters),
-				setup,
-				requirements);
+		return layer("convolution2d", inputShape, outputShape, operator,
+				biases == null ? List.of(filters) : List.of(filters, biases),
+				setup, requirements);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {

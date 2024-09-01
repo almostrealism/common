@@ -16,6 +16,7 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
@@ -25,10 +26,11 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.Component;
+import org.almostrealism.layers.LayerFeatures;
 
 import java.util.function.Supplier;
 
-public interface Block extends Component, Setup {
+public interface Block extends Component, Setup, LayerFeatures {
 	TraversalPolicy getInputShape();
 
 	Cell<PackedCollection<?>> getForward();
@@ -41,6 +43,26 @@ public interface Block extends Component, Setup {
 
 	default Supplier<Runnable> forward(Producer<PackedCollection<?>> input) {
 		return getForward().push(input);
+	}
+
+	default Block reshape(int... dims) {
+		return reshape(new TraversalPolicy(dims));
+	}
+
+	default Block reshape(TraversalPolicy shape) {
+		return append(reshape(getOutputShape(), shape));
+	}
+
+	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
+		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy resultShape = shape
+				.prependDimension(getOutputShape().getTotalSize() / shape.getTotalSize());
+		return append(layer("enumerate", getOutputShape(), resultShape,
+				in -> CollectionFeatures.getInstance().enumerate(shape, in),
+				requirements));
 	}
 
 	default <T extends Block> T append(T l) {

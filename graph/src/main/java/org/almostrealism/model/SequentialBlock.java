@@ -1,6 +1,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Named;
 import org.almostrealism.collect.PackedCollection;
@@ -63,6 +64,17 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public <T extends Block> T add(Function<TraversalPolicy, T> factory) {
 		return add(factory.apply(getOutputShape()));
+	}
+
+	public CellularLayer add(String name, Factor<PackedCollection<?>> operator,
+							 ComputeRequirement... requirements) {
+		return add(name, getOutputShape(), operator, requirements);
+	}
+
+	public CellularLayer add(String name, TraversalPolicy outputShape,
+							 Factor<PackedCollection<?>> operator,
+							 ComputeRequirement... requirements) {
+		return add(layer(name, getOutputShape(), outputShape, operator, requirements));
 	}
 
 	public <T extends Block> T add(T block) {
