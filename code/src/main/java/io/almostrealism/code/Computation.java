@@ -24,6 +24,14 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+/**
+ * A {@link Computation} is a {@link Computable} that describes a computational
+ * process specifically via a {@link Scope}.
+ *
+ * @param <T>  The type of the ultimate result of computation.
+ *
+ * @author  Michael Murray
+ */
 public interface Computation<T> extends
 		Computable, ScopeLifecycle, OutputSupport, ConsoleFeatures {
 	Console console = Scope.console.child();

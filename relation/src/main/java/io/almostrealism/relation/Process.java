@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,19 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Supplier;
 
+/**
+ * A {@link Process} supplies some other value which is instrumentally useful in
+ * completing a task, independent of whether the task requires computation to be
+ * useful. A {@link Process} implementation may have dependent {@link Process}es,
+ * forming a {@link Tree} which can be orchestrated to accomplish work of any kind.
+ *
+ * @param <P>  The type of the members of the {@link Process} tree.
+ * @param <T>  The type of the result of the {@link Process}, which may either be
+ *             some kind of directly useful value or instead, a mechanism for
+ *             producing the ultimate result of the work.
+ *
+ * @author  Michael Murray
+ */
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
 
 	default Process<P, T> optimize() { return optimize(null); }

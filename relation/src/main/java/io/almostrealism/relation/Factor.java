@@ -18,6 +18,12 @@ package io.almostrealism.relation;
 
 import io.almostrealism.uml.Signature;
 
+/**
+ * A {@link Factor} transforms a computational system represented by one {@link Producer},
+ * into another, while preserving the type of the ultimate result.
+ *
+ * @param <T>  The type of the ultimate result of computation.
+ */
 @FunctionalInterface
 public interface Factor<T> extends Function<T, T>, Signature {
 	Producer<T> getResultant(Producer<T> value);
