@@ -34,7 +34,7 @@ import org.almostrealism.io.SystemUtils;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
+public class DefaultGradientPropagation implements BackPropagation, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
 	public static boolean enableOptimizedDiagnostics = false;
@@ -46,14 +46,14 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 
 	private String name;
 
-	public GradientPropagation(Factor<PackedCollection<?>> operator,
-							   Stream<Producer<PackedCollection<?>>> weights) {
+	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
+									  Stream<Producer<PackedCollection<?>>> weights) {
 		this.operator = operator;
 		this.weights = weights.toArray(Producer[]::new);
 	}
 
-	public GradientPropagation(Factor<PackedCollection<?>> operator,
-							   Producer<PackedCollection<?>>... weights) {
+	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
+									  Producer<PackedCollection<?>>... weights) {
 		this.operator = operator;
 		this.weights = weights;
 	}

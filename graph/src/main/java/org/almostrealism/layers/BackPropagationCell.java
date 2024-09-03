@@ -26,16 +26,16 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class PropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
+public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
 	private String name;
 
-	private final Propagation propagation;
+	private final BackPropagation propagation;
 	private PackedCollection<?> input;
 
 	private Producer<PackedCollection<?>> learningRate;
 	private Receptor<PackedCollection<?>> next;
 
-	public PropagationCell(String name, Propagation propagation) {
+	public BackPropagationCell(String name, BackPropagation propagation) {
 		setName(name);
 		this.propagation = propagation;
 

@@ -65,7 +65,7 @@ public class Model implements Setup, CodeFeatures {
 		return Collections.unmodifiableList(blocks);
 	}
 
-	public void addBlock(Block b) {
+	public Model addBlock(Block b) {
 		if (shape == null) {
 			if (b.getInputShape() == null) {
 				throw new IllegalArgumentException("Cannot infer input shape");
@@ -89,6 +89,7 @@ public class Model implements Setup, CodeFeatures {
 
 		blocks.add(b);
 		shape = b.getOutputShape();
+		return this;
 	}
 
 	public Block addBlock(Function<TraversalPolicy, Block> block) {

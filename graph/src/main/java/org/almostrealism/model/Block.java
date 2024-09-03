@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.Component;
@@ -30,12 +31,8 @@ import org.almostrealism.layers.LayerFeatures;
 
 import java.util.function.Supplier;
 
-public interface Block extends Component, Setup, LayerFeatures {
+public interface Block extends Component, CellularPropagation<PackedCollection<?>>, Setup, LayerFeatures {
 	TraversalPolicy getInputShape();
-
-	Cell<PackedCollection<?>> getForward();
-
-	Cell<PackedCollection<?>> getBackward();
 
 	default Runnable forward(PackedCollection<?> input) {
 		return getForward().push(CollectionFeatures.getInstance().cp(input)).get();

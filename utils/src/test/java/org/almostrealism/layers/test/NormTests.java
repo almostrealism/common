@@ -17,9 +17,6 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Quotient;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -30,7 +27,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.PropagationCell;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.GradientTestFeatures;
@@ -168,8 +165,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(shape(c), groups, false);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 
 		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
@@ -315,8 +312,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, null, biases);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
 
@@ -482,8 +479,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, weights, biases);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
 

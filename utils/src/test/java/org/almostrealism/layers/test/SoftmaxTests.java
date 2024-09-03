@@ -23,12 +23,11 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.PropagationCell;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
@@ -142,7 +141,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
@@ -181,7 +180,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
@@ -220,7 +219,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = IntStream.range(0, size).mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot).toArray();

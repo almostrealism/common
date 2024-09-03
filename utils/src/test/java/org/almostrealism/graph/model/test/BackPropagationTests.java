@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -31,7 +32,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class PropagationTests implements TestFeatures {
+public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void denseBackwards() {

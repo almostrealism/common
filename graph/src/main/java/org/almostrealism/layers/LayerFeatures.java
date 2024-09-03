@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -25,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
@@ -45,10 +47,22 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
-								Cell<PackedCollection<?>> forward, Propagation backward,
+								Cell<PackedCollection<?>> forward, BackPropagation backward,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, forward, backward,
 				Collections.emptyList(), new OperationList(), requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> layer(String name,
+														   Factor<PackedCollection<?>> operator,
+														   ComputeRequirement... requirements) {
+		return shape -> layer(name, shape, operator, requirements);
+	}
+
+	default CellularLayer layer(String name, TraversalPolicy shape,
+								Factor<PackedCollection<?>> operator,
+								ComputeRequirement... requirements) {
+		return layer(name, shape, shape, operator, requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -70,15 +84,15 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 								Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, Cell.of(operator),
-				new GradientPropagation(operator, weights.stream().map(this::cp)),
+				new DefaultGradientPropagation(operator, weights.stream().map(this::cp)),
 				weights, setup, requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
-								Cell<PackedCollection<?>> forward, Propagation backward,
+								Cell<PackedCollection<?>> forward, BackPropagation backward,
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
-		PropagationCell backwardCell = new PropagationCell(name, backward);
+		BackPropagationCell backwardCell = new BackPropagationCell(name, backward);
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape, forward, backwardCell, weights, setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
