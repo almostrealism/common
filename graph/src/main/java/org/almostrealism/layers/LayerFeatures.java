@@ -20,6 +20,7 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -30,6 +31,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -99,6 +101,104 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		layer.init(inputShape, ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
+	}
+
+	default CellularLayer compose(String name,
+								  TraversalPolicy shape,
+								  CellularPropagation<PackedCollection<?>> aux,
+								  Composition<PackedCollection<?>> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, shape, shape, shape, aux, operator, requirements);
+	}
+
+	default CellularLayer compose(String name,
+								  TraversalPolicy inputShape,
+								  TraversalPolicy auxShape,
+								  TraversalPolicy outputShape,
+								  CellularPropagation<PackedCollection<?>> aux,
+								  Composition<PackedCollection<?>> operator,
+								  ComputeRequirement... requirements) {
+		PackedCollection<?> auxInput = ioTracking ? new PackedCollection<>(auxShape) : null;
+
+		// Capture the input coming in via aux, storing
+		// the actual value (if it is necessary)
+		Cell<PackedCollection<?>> auxExit = Cell.of((in, next) -> {
+			if (auxInput == null) {
+				return next.push(in);
+			} else {
+				OperationList op = new OperationList(name + " composed layer (Entry)");
+				op.add(into(name + " composed layer (Input Record)", in,
+						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
+				op.add(next.push(p(auxInput)));
+				return op;
+			}
+		});
+		aux.getForward().setReceptor(auxExit);
+
+		// Capture the result intended as input for the composition
+		CaptureReceptor auxReceptor = new CaptureReceptor();
+		auxExit.setReceptor(auxReceptor);
+
+		// Create a layer that composes its input with whatever was received for aux
+		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
+				Cell.of((input, next) -> next == null ? new OperationList() :
+						next.push(operator.compose(input, auxReceptor.getReceipt()))),
+				null);
+		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
+
+		layer.init(inputShape, ioTracking, true);
+
+		// Create gradient propagation for the main input
+		BackPropagationCell mainBackward = new BackPropagationCell(name,
+				new DefaultGradientPropagation(in -> operator.compose(in, p(auxInput))));
+		mainBackward.setForwardInput(layer.getInput());
+
+		// Create gradient propagation for the aux input
+		// and direct its output to the aux backward Cell
+		BackPropagationCell auxBackward = new BackPropagationCell(name,
+				new DefaultGradientPropagation(in -> operator.compose(p(layer.getInput()), in)));
+		auxBackward.setForwardInput(auxInput);
+		auxBackward.setReceptor(aux.getBackward());
+
+		// Combine both backpropagation steps and attach the result to the layer
+		layer.setBackward(Cell.of((input, next) -> {
+			OperationList op = new OperationList(name + " Composed Backward");
+			op.add(mainBackward.push(input));
+			op.add(auxBackward.push(input));
+			return op;
+		}));
+		return layer;
+	}
+
+	default <T extends MemoryData> Supplier<Runnable> into(String name,
+														   Producer<T> in, Producer<T> out,
+														   boolean copy,
+														   ComputeRequirement... requirements) {
+		return into(name, in, out, copy, requirements.length > 0 ? List.of(requirements) : null);
+	}
+
+	default <T extends MemoryData> Supplier<Runnable> into(String name,
+														   Producer<T> in, Producer<T> out,
+														   boolean copy,
+														   List<ComputeRequirement> requirements) {
+		TraversalPolicy shape = shape(in);
+
+		OperationList op = new OperationList(name);
+		op.setComputeRequirements(requirements);
+
+		if (!copy || shape.getCountLong() > 1) {
+			if (shape.equalsIgnoreAxis(shape(out))) {
+				op.add(a(name, traverse(shape.getTraversalAxis(), (Producer) out), in));
+			} else {
+				op.add(a(name, reshape(shape, out), in));
+			}
+		} else {
+			if (!DefaultCellularLayer.enableMemoryDataCopy)
+				warn("Using MemoryDataCopy instead of Assignment for " + name);
+			op.add(Ops.o().copy(name, in, out, shape.getTotalSize()));
+		}
+
+		return op;
 	}
 
 	default CollectionReceptor into(PackedCollection<?> dest) {

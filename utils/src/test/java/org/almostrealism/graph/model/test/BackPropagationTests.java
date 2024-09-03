@@ -215,4 +215,24 @@ public class BackPropagationTests implements TestFeatures {
 			}
 		}
 	}
+
+	@Test
+	public void compositionBackwards() {
+		SequentialBlock block = new SequentialBlock(shape(3));
+
+		SequentialBlock alt = block.branch();
+		alt.add(layer("scale x2", in -> multiply(in, c(2))));
+
+		block.add(layer("scale x3", in -> multiply(in, c(3))));
+		block.add(compose("multiply", shape(3), alt, this::multiply));
+
+		PackedCollection<?> input = pack(2, 3, 4);
+		PackedCollection<?> gradient = pack(5, 4, 3);
+
+		CompiledModel model = new Model(shape(3), 1e-1)
+								.addBlock(block)
+								.compile();
+		model.forward(input);
+		model.backward(gradient);
+	}
 }

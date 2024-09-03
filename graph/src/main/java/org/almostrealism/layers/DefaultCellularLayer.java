@@ -124,7 +124,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 				return next.push(in);
 			} else {
 				OperationList op = new OperationList(getName() + " layer (Entry)");
-				op.add(into(getName() + " layer (Input Record)", in, p(input), enableMemoryDataCopy));
+				op.add(into(getName() + " layer (Input Record)", in, p(input),
+						enableMemoryDataCopy, getComputeRequirements()));
 				op.add(next.push(p(input)));
 				return op;
 			}
@@ -139,7 +140,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	private Supplier<Runnable> output(Producer<PackedCollection<?>> in, Producer<PackedCollection<?>> out) {
 		Supplier<Runnable> o = into(getName() + " layer " +
-				getInputShape() + "->" + getOutputShape(), in, out, false);
+				getInputShape() + "->" + getOutputShape(), in, out, false,
+				getComputeRequirements());
 		if (getMonitor() == null) {
 			return o;
 		}
@@ -147,29 +149,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		OperationList op = new OperationList(getName() + " layer (Output and Monitor)");
 		op.add(o);
 		op.add(getMonitor().push(out));
-		return op;
-	}
-
-	private <T extends MemoryData> Supplier<Runnable> into(String name,
-														   Producer<T> in, Producer<T> out,
-														   boolean copy) {
-		TraversalPolicy shape = shape(in);
-
-		OperationList op = new OperationList(name);
-		op.setComputeRequirements(getComputeRequirements());
-
-		if (!copy || shape.getCountLong() > 1) {
-			if (shape.equalsIgnoreAxis(shape(out))) {
-				op.add(a(name, traverse(shape.getTraversalAxis(), (Producer) out), in));
-			} else {
-				op.add(a(name, reshape(shape, out), in));
-			}
-		} else {
-			if (!enableMemoryDataCopy)
-				warn("Using MemoryDataCopy instead of Assignment for " + name);
-			op.add(copy(name, in, out, shape.getTotalSize()));
-		}
-
 		return op;
 	}
 
@@ -202,6 +181,10 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		}
 
 		return fw;
+	}
+
+	public void setBackward(Cell<PackedCollection<?>> backward) {
+		this.backward = backward;
 	}
 
 	@Override
