@@ -111,6 +111,7 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 					return () -> {
+						String name = getName();
 						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();

@@ -98,17 +98,12 @@ public class Model implements Setup, CodeFeatures {
 		return b;
 	}
 
-	public CellularBlock addLayer(CellularLayer layer) {
+	public Model addLayer(CellularLayer layer) {
 		if (layer instanceof Learning) ((Learning) layer).setLearningRate(p(learningRate));
-
-		CellularBlock b = new CellularBlock(shape,
-									layer.getOutputShape(), layer.getForward(),
-									layer.getBackward(), layer.setup());
-		addBlock(b);
-		return b;
+		return addBlock(layer);
 	}
 
-	public CellularBlock addLayer(Function<TraversalPolicy, CellularLayer> layer) {
+	public Model addLayer(Function<TraversalPolicy, CellularLayer> layer) {
 		return addLayer(layer.apply(shape));
 	}
 
@@ -140,10 +135,14 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public CompiledModel compile(boolean backprop) {
-		return CompiledModel.compile(this, backprop, null);
+		return CompiledModel.compile(this, backprop, false, null);
+	}
+
+	public CompiledModel compile(boolean backprop, boolean returnGradient) {
+		return CompiledModel.compile(this, backprop, returnGradient, null);
 	}
 
 	public CompiledModel compile(boolean backprop, OperationProfile profile) {
-		return CompiledModel.compile(this, backprop, profile);
+		return CompiledModel.compile(this, backprop, false, profile);
 	}
 }

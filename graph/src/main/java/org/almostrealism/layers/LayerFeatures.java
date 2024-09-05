@@ -161,12 +161,20 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		auxBackward.setReceptor(aux.getBackward());
 
 		// Combine both backpropagation steps and attach the result to the layer
-		layer.setBackward(Cell.of((input, next) -> {
-			OperationList op = new OperationList(name + " Composed Backward");
-			op.add(mainBackward.push(input));
-			op.add(auxBackward.push(input));
-			return op;
-		}));
+		layer.setBackward(new Cell<>() {
+			@Override
+			public Supplier<Runnable> push(Producer<PackedCollection<?>> input) {
+				OperationList op = new OperationList(name + " Composed Backward");
+				op.add(auxBackward.push(input));
+				op.add(mainBackward.push(input));
+				return op;
+			}
+
+			@Override
+			public void setReceptor(Receptor<PackedCollection<?>> r) {
+				mainBackward.setReceptor(r);
+			}
+		});
 		return layer;
 	}
 

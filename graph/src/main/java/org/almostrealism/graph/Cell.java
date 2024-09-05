@@ -33,6 +33,30 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 		return new OperationList();
 	}
 
+	default Cell<T> andThen(Cell<T> next) {
+		setReceptor(next);
+
+		return new Cell<>() {
+			@Override
+			public Supplier<Runnable> setup() {
+				OperationList setup = new OperationList("Cell Setup");
+				setup.add(Cell.this.setup());
+				setup.add(next.setup());
+				return setup;
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return Cell.this.push(protein);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				next.setReceptor(r);
+			}
+		};
+	}
+
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
 		return toFactor(this, value, assignment);
 	}

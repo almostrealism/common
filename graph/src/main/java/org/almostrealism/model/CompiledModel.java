@@ -30,8 +30,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class CompiledModel implements CodeFeatures {
-	public static boolean enableCaptureGradientOutput = false;
-
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
 
@@ -84,14 +82,16 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model) {
-		return compile(model, true, null);
+		return compile(model, true, false, null);
 	}
 
 	public static CompiledModel compile(Model model, OperationProfile profile) {
-		return compile(model, true, profile);
+		return compile(model, true, false, profile);
 	}
 
-	public static CompiledModel compile(Model model, boolean backprop, OperationProfile profile) {
+	public static CompiledModel compile(Model model,
+										boolean backprop, boolean returnGradient,
+										OperationProfile profile) {
 		Runnable setup = Process.optimized(model.setup()).get();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
@@ -103,7 +103,7 @@ public class CompiledModel implements CodeFeatures {
 
 		PackedCollection<?> gradOut;
 
-		if (enableCaptureGradientOutput) {
+		if (returnGradient) {
 			gradOut = new PackedCollection<>(model.firstBlock().getInputShape());
 			model.firstBlock().getBackward().setReceptor(out ->
 					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));

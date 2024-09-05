@@ -47,7 +47,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default Block reshape(TraversalPolicy shape) {
-		return append(reshape(getOutputShape(), shape));
+		return andThen(reshape(getOutputShape(), shape));
 	}
 
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
@@ -57,29 +57,30 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 
 		TraversalPolicy resultShape = shape
 				.prependDimension(getOutputShape().getTotalSize() / shape.getTotalSize());
-		return append(layer("enumerate", getOutputShape(), resultShape,
+		return andThen(layer("enumerate", getOutputShape(), resultShape,
 				in -> CollectionFeatures.getInstance().enumerate(shape, in),
 				requirements));
 	}
 
 	default <T extends Block> T append(T l) {
-		append(l.getForward());
-		return l;
+		throw new UnsupportedOperationException();
 	}
 
-	<T extends Receptor<PackedCollection<?>>> T append(T r);
-
-	default <T extends Block> T andThen(T next) {
-		getForward().setReceptor(next.getForward());
-		return next;
+	default <T extends Block> Block andThen(T next) {
+		SequentialBlock block = new SequentialBlock(getInputShape());
+		block.add(this);
+		block.add(next);
+		return block;
 	}
 
 	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {
+		warn("andThen(" + next + ") may not support backpropagation");
 		getForward().setReceptor(next);
 		return next;
 	}
 
 	default CollectionReceptor andThen(PackedCollection<?> destination) {
+		warn("andThen(" + destination + ") may not support backpropagation");
 		CollectionReceptor r = new CollectionReceptor(destination);
 		getForward().setReceptor(r);
 		return r;

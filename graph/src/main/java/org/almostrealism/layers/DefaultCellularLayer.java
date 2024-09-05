@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,8 +50,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private String name;
 	private List<ComputeRequirement> requirements;
 
-	private List<Receptor<PackedCollection<?>>> receptors;
-
 	private PackedCollection<?> input;
 	private PackedCollection<?> output;
 
@@ -95,7 +93,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.forward = forward;
 		this.backward = backward;
 		this.weights = weights;
-		this.receptors = new ArrayList<>();
 	}
 
 	@Override
@@ -132,8 +129,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		});
 		this.entry.setReceptor(forward);
 
-//		this.exit = Cell.of((in, next) -> into(getName() + " layer " +
-//				getInputShape() + "->" + getOutputShape(), in, p(output)));
 		this.exit = Cell.of((in, next) -> output(in, p(output)));
 		this.forward.setReceptor(exit);
 	}
@@ -174,7 +169,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			fw = Cell.of((in, next) -> {
 				OperationList op = new OperationList(getName() + " Layer (Forward)");
 				op.add(entry.push(in));
-				receptors.forEach(r -> op.add(r.push(p(output))));
 				if (next != null) op.add(next.push(p(output)));
 				return op;
 			});
@@ -190,34 +184,6 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
 		return backward;
-
-//		Cell<PackedCollection<?>> copyOutput = Cell.of((in, next) ->
-//				new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength())
-//		);
-//
-//		backward.setReceptor(copyOutput);
-//
-//		return new Cell<>() {
-//			private Receptor<PackedCollection<?>> r;
-//
-//			@Override
-//			public Supplier<Runnable> setup() {
-//				return backward.setup();
-//			}
-//
-//			@Override
-//			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
-//				OperationList op = new OperationList();
-//				op.add(backward.push(protein));
-//				if (r != null) op.add(r.push(p(output)));
-//				return op;
-//			}
-//
-//			@Override
-//			public void setReceptor(Receptor<PackedCollection<?>> r) {
-//				this.r = r;
-//			}
-//		};
 	}
 
 	@Override
@@ -233,14 +199,5 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
 		if (forward instanceof Learning) ((Learning) forward).setLearningRate(learningRate);
 		if (backward instanceof Learning) ((Learning) backward).setLearningRate(learningRate);
-	}
-
-	@Override
-	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
-		if (this.output == null)
-			throw new UnsupportedOperationException();
-
-		receptors.add(r);
-		return r;
 	}
 }

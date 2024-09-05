@@ -103,7 +103,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	public SequentialBlock branch() {
-		Block split = new DefaultBlock(getOutputShape(), getOutputShape());
+		Block split = new BranchBlock(getOutputShape());
 		SequentialBlock branch = split.append(new SequentialBlock(getOutputShape()));
 		add(split);
 		return branch;
@@ -117,7 +117,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		if (branch.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 
-		Block split = new DefaultBlock(getOutputShape(), getOutputShape());
+		Block split = new BranchBlock(getOutputShape());
 		split.append(branch);
 		add(split);
 		return branch;
@@ -135,6 +135,11 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward(), requirements));
+	}
+
+	@Override
+	public <T extends Block> Block andThen(T next) {
+		return add(next);
 	}
 
 	@Override
@@ -196,11 +201,5 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 
 		return propagate;
-	}
-
-	@Override
-	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
-		receptors.add(r);
-		return r;
 	}
 }

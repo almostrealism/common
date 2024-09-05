@@ -227,12 +227,16 @@ public class BackPropagationTests implements TestFeatures {
 		block.add(compose("multiply", shape(3), alt, this::multiply));
 
 		PackedCollection<?> input = pack(2, 3, 4);
-		PackedCollection<?> gradient = pack(5, 4, 3);
+		PackedCollection<?> gradient = pack(5, 4, 1);
 
 		CompiledModel model = new Model(shape(3), 1e-1)
 								.addBlock(block)
-								.compile();
+								.compile(true, true);
 		model.forward(input);
-		model.backward(gradient);
+		gradient = model.backward(gradient);
+		gradient.print();
+		assertEquals(120.0, gradient.toDouble(0));
+		assertEquals(144.0, gradient.toDouble(1));
+		assertEquals(48.0, gradient.toDouble(2));
 	}
 }
