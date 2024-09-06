@@ -245,7 +245,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		double result[] = new double[size];
 
 		Model model = new Model(shape(size));
-		model.addLayer(new DefaultCellularLayer("blank", shape(2),
+		model.add(new DefaultCellularLayer("blank", shape(2),
 				Cell.of((in, next) -> next.push(in)),
 				Cell.of((grad, next) -> () -> {
 					Evaluable<PackedCollection<?>> gr = grad.get();
@@ -257,7 +257,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 						out.getMem(0, result, 0, result.length);
 					};
 				})));
-		model.addLayer(logSoftmax(size));
+		model.add(logSoftmax(size));
 
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("logSoftmaxModel"));
 		try {

@@ -129,6 +129,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return s.getShape().getSize();
 	}
 
+
+	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target) {
+		if (shape.getDimensions() < min) {
+			return shape;
+		}
+
+		while (shape.getDimensions() < target) {
+			shape = shape.prependDimension(1);
+		}
+
+		return shape;
+	}
+
 	default PackedCollection<?> pack(double... values) {
 		return PackedCollection.of(values);
 	}

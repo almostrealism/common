@@ -577,7 +577,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> in = new PackedCollection<>(shape(c, v)).randnFill();
 
 		Model model = new Model(shape(c, v));
-		model.addLayer(norm(groups, weights, biases));
+		model.add(norm(groups, weights, biases));
 
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode());
 

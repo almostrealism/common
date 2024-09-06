@@ -20,7 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.Model;
@@ -38,7 +37,6 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 	@Test
 	public void convSingleChannelMedium() {
-		HardwareOperator.enableLargeInstructionSetMonitoring = true;
 //		convSingleChannel(54, 54, 3, 6);
 		convSingleChannel(52, 52, 3, 6);
 	}
@@ -46,9 +44,9 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	public void convSingleChannel(int h, int w, int convSize, int filterCount) {
 		TraversalPolicy inputShape = shape(h, w);
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, filterCount, convSize);
+		CellularLayer conv = convolution2d(inputShape, filterCount, convSize, false);
 
-		model.addLayer(conv);
+		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -80,8 +78,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);
 
-		CellularLayer conv = convolution2d(inputShape, filterCount, convSize);
-		model.addLayer(conv);
+		CellularLayer conv = convolution2d(inputShape, filterCount, convSize, false);
+		model.add(conv);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape).randFill();
 

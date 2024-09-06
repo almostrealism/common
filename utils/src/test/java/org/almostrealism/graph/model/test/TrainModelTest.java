@@ -68,8 +68,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		Model model = new Model(shape(size));
 		CellularLayer dense = dense(size, nodes);
 		CellularLayer softmax = softmax(nodes);
-		model.addLayer(dense);
-		model.addLayer(softmax);
+		model.add(dense);
+		model.add(softmax);
 
 		Tensor<Double> t = tensor(shape(size));
 		PackedCollection<?> input = t.pack();
@@ -123,13 +123,13 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void pool() {
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
 		Model model = new Model(inputShape);
 		CellularLayer pool = pool2d(inputShape, poolSize);
 
-		model.addLayer(pool);
+		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -144,11 +144,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void convPool() {
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
-		model.addLayer(conv);
-		model.addLayer(pool);
+		model.add(conv);
+		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();

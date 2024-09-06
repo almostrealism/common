@@ -67,6 +67,10 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 						sourcePosition + ") to " + target + " (" + targetPosition + ") [" + length + "]");
 			}
 
+			if (source == null) {
+				throw new UnsupportedOperationException(name);
+			}
+
 			// TODO  This can be done faster if the source and target are on the same MemoryProvider
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
 		});

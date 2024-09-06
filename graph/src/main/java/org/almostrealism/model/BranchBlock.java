@@ -97,13 +97,7 @@ public class BranchBlock implements Block {
 		if (backwards == null) {
 			backwards = Cell.of((input, next) -> {
 				OperationList op = new OperationList("BranchBlock Backward");
-				op.add(() -> () -> {
-					gradient.print();
-				});
 				op.add(aggregator.push(input));
-				op.add(() -> () -> {
-					gradient.print();
-				});
 				op.add(next.push(p(gradient)));
 				op.add(a("clearBranchGradient", p(gradient.each()), c(0.0)));
 				return op;
@@ -113,7 +107,6 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
-	@Override
 	public <T extends Block> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);

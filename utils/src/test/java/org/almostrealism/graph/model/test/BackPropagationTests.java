@@ -45,8 +45,8 @@ public class BackPropagationTests implements TestFeatures {
 		Model model = new Model(shape(size), 1e-1);
 		CellularLayer dense = dense(size, nodes);
 		CellularLayer softmax = softmax(nodes);
-		model.addLayer(dense);
-		model.addLayer(softmax);
+		model.add(dense);
+		model.add(softmax);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 
@@ -125,7 +125,7 @@ public class BackPropagationTests implements TestFeatures {
 
 		Model model = new Model(inputShape, 1e-1);
 		CellularLayer pool = pool2d(inputShape, size);
-		model.addLayer(pool);
+		model.add(pool);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape);
 		input.fill(pos -> (double) (int) (100 * Math.random()));
@@ -172,9 +172,9 @@ public class BackPropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 
-		model.addLayer(conv);
+		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -186,7 +186,7 @@ public class BackPropagationTests implements TestFeatures {
 		PackedCollection<?> originalFilter = new PackedCollection<>(filterShape);
 		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
 
-		TraversalPolicy gradientShape = model.getShape();
+		TraversalPolicy gradientShape = model.getOutputShape();
 		PackedCollection<?> gradient = new PackedCollection<>(gradientShape);
 		gradient.fill(pos -> Math.random());
 		runner.backward(gradient);
@@ -230,7 +230,7 @@ public class BackPropagationTests implements TestFeatures {
 		PackedCollection<?> gradient = pack(5, 4, 1);
 
 		CompiledModel model = new Model(shape(3), 1e-1)
-								.addBlock(block)
+								.add(block)
 								.compile(true, true);
 		model.forward(input);
 		gradient = model.backward(gradient);

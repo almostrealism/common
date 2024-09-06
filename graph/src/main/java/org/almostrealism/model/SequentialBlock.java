@@ -14,12 +14,14 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class SequentialBlock implements Block, Learning, LayerFeatures {
 	public static boolean enableWarnings = false;
+	public static boolean enableComposites = true;
 
 	private TraversalPolicy inputShape;
 
@@ -33,16 +35,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private Receptor<PackedCollection<?>> back;
 	private Receptor<PackedCollection<?>> upstream;
 
-	private List<Receptor<PackedCollection<?>>> receptors;
-
 	public SequentialBlock(TraversalPolicy inputShape) {
 		this.inputShape = inputShape;
 		this.blocks = new ArrayList<>();
-		this.receptors = new ArrayList<>();
 
 		this.push = in -> {
 			OperationList op = new OperationList();
-			receptors.forEach(r -> op.add(r.push(in)));
 			if (downstream != null) op.add(downstream.push(in));
 			return op;
 		};
@@ -103,7 +101,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	public SequentialBlock branch() {
-		Block split = new BranchBlock(getOutputShape());
+		BranchBlock split = new BranchBlock(getOutputShape());
 		SequentialBlock branch = split.append(new SequentialBlock(getOutputShape()));
 		add(split);
 		return branch;
@@ -117,24 +115,58 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		if (branch.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 
-		Block split = new BranchBlock(getOutputShape());
+		BranchBlock split = new BranchBlock(getOutputShape());
 		split.append(branch);
 		add(split);
 		return branch;
 	}
 
-	public CellularLayer accum(Block value, ComputeRequirement... requirements) {
-		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
-		return add(accum(getOutputShape(), value.getForward(), requirements));
+	// TODO
+	public List<Block> split(TraversalPolicy subsetShape) {
+		throw new UnsupportedOperationException();
 	}
 
-	public CellularLayer product(Block a, Block b, ComputeRequirement... requirements) {
+	// TODO  Should return 'this'?
+	public void accum(Block value, ComputeRequirement... requirements) {
+		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+
+		if (enableComposites) {
+			// Create a branch to direct the current output
+			// to the other block
+			value = branch(value);
+
+			// Creat a Block which combines the residual and
+			// the output of the other block
+			add(accum(value.getOutputShape(), value, requirements));
+		} else {
+			add(accum(getOutputShape(), value.getForward(), requirements));
+		}
+	}
+
+	// TODO  Should return 'this'?
+	public void product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
-		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward(), requirements));
+
+		if (enableComposites) {
+			// Create a branch to direct the current output
+			// to Block 'b' along with the next block
+			b = branch(b);
+
+			// Create a block to apply Block 'a' and then
+			// multiply its output with the output of Block 'b'
+			SequentialBlock product = new SequentialBlock(getOutputShape());
+			product.add(a);
+			product.add(product(a.getOutputShape(), b, requirements));
+
+			// Make the product Block the next block
+			add(product);
+		} else {
+			add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward(), requirements));
+		}
 	}
 
 	@Override
@@ -163,6 +195,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public Block lastBlock() {
 		return blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
+	}
+
+	public List<Block> getBlocks() {
+		return Collections.unmodifiableList(blocks);
 	}
 
 	@Override

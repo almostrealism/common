@@ -27,6 +27,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.Component;
+import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
 
 import java.util.function.Supplier;
@@ -62,10 +63,6 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 				requirements));
 	}
 
-	default <T extends Block> T append(T l) {
-		throw new UnsupportedOperationException();
-	}
-
 	default <T extends Block> Block andThen(T next) {
 		SequentialBlock block = new SequentialBlock(getInputShape());
 		block.add(this);
@@ -74,13 +71,15 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {
-		warn("andThen(" + next + ") may not support backpropagation");
+		if (Layer.propagationWarnings)
+			warn("andThen(" + next + ") may not support backpropagation");
 		getForward().setReceptor(next);
 		return next;
 	}
 
 	default CollectionReceptor andThen(PackedCollection<?> destination) {
-		warn("andThen(" + destination + ") may not support backpropagation");
+		if (Layer.propagationWarnings)
+			warn("andThen(" + destination + ") may not support backpropagation");
 		CollectionReceptor r = new CollectionReceptor(destination);
 		getForward().setReceptor(r);
 		return r;

@@ -16,12 +16,14 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,6 +35,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
@@ -45,7 +48,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
-	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
+
+	Console console = CollectionFeatures.console.child();
 
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -98,9 +102,16 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape, forward, backwardCell, weights, setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
-		layer.init(inputShape, ioTracking, true);
+		layer.init(inputShape, Layer.ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
+	}
+
+	default Function<TraversalPolicy, CellularLayer> compose(String name,
+															 Block aux,
+															 Composition<PackedCollection<?>> operator,
+															 ComputeRequirement... requirements) {
+		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
 	}
 
 	default CellularLayer compose(String name,
@@ -108,7 +119,16 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 								  CellularPropagation<PackedCollection<?>> aux,
 								  Composition<PackedCollection<?>> operator,
 								  ComputeRequirement... requirements) {
-		return compose(name, shape, shape, shape, aux, operator, requirements);
+		return compose(name, shape, shape, aux, operator, requirements);
+	}
+
+	default CellularLayer compose(String name,
+								  TraversalPolicy shape,
+								  TraversalPolicy auxShape,
+								  CellularPropagation<PackedCollection<?>> aux,
+								  Composition<PackedCollection<?>> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, shape, auxShape, shape, aux, operator, requirements);
 	}
 
 	default CellularLayer compose(String name,
@@ -118,7 +138,7 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 								  CellularPropagation<PackedCollection<?>> aux,
 								  Composition<PackedCollection<?>> operator,
 								  ComputeRequirement... requirements) {
-		PackedCollection<?> auxInput = ioTracking ? new PackedCollection<>(auxShape) : null;
+		PackedCollection<?> auxInput = Layer.ioTracking ? new PackedCollection<>(auxShape) : null;
 
 		// Capture the input coming in via aux, storing
 		// the actual value (if it is necessary)
@@ -146,16 +166,16 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				null);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
-		layer.init(inputShape, ioTracking, true);
+		layer.init(inputShape, Layer.ioTracking, true);
 
 		// Create gradient propagation for the main input
-		BackPropagationCell mainBackward = new BackPropagationCell(name,
+		BackPropagationCell mainBackward = new BackPropagationCell(name + " main",
 				new DefaultGradientPropagation(in -> operator.compose(in, p(auxInput))));
 		mainBackward.setForwardInput(layer.getInput());
 
 		// Create gradient propagation for the aux input
 		// and direct its output to the aux backward Cell
-		BackPropagationCell auxBackward = new BackPropagationCell(name,
+		BackPropagationCell auxBackward = new BackPropagationCell(name + " aux",
 				new DefaultGradientPropagation(in -> operator.compose(p(layer.getInput()), in)));
 		auxBackward.setForwardInput(auxInput);
 		auxBackward.setReceptor(aux.getBackward());
@@ -272,15 +292,14 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	}
 
 	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+										int size, boolean bias, ComputeRequirement... requirements) {
+		return convolution2d(inputShape, filterCount, size, 0, bias, requirements);
+	}
+
+	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, int padding,
 										boolean bias, ComputeRequirement... requirements) {
-		if (inputShape.getDimensions() == 2) {
-			inputShape = inputShape.prependDimension(1);
-		}
-
-		if (inputShape.getDimensions() == 3) {
-			inputShape = inputShape.prependDimension(1);
-		}
+		inputShape = padDimensions(inputShape, 2, 4);
 
 		if (inputShape.getDimensions() != 4) {
 			throw new IllegalArgumentException();
@@ -370,13 +389,7 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	}
 
 	default CellularLayer pool2d(TraversalPolicy inputShape, int size, ComputeRequirement... requirements) {
-		if (inputShape.getDimensions() == 2) {
-			inputShape = inputShape.prependDimension(1);
-		}
-
-		if (inputShape.getDimensions() == 3) {
-			inputShape = inputShape.prependDimension(1);
-		}
+		inputShape = padDimensions(inputShape, 2, 4);
 
 		if (inputShape.getDimensions() != 4) {
 			throw new IllegalArgumentException();
@@ -495,7 +508,9 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				requirements);
 	}
 
+	@Deprecated
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
+		warn("accum will not support backpropagation");
 		return layer("accum", shape, shape, Cell.of((input, next) -> {
 			CaptureReceptor r = new CaptureReceptor();
 			value.setReceptor(r);
@@ -507,16 +522,28 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		}), null, requirements);
 	}
 
-	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
-		TraversalPolicy shape = shape(value);
-		return layer("product", shape, shape,
-					input -> multiply(traverseEach(input), traverseEach(value)),
+	default CellularLayer accum(TraversalPolicy shape,
+								  CellularPropagation<PackedCollection<?>> aux,
+								  ComputeRequirement... requirements) {
+		return compose("accum", shape, aux,
+				(input, auxValue) -> add(traverseEach(input), traverseEach(auxValue)),
 				requirements);
 	}
 
+	@Deprecated
+	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
+		warn("product will not support backpropagation");
+		TraversalPolicy shape = shape(value);
+		return layer("product", shape, shape,
+				input -> multiply(traverseEach(input), traverseEach(value)),
+				requirements);
+	}
+
+	@Deprecated
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
 								  Cell<PackedCollection<?>> a, Cell<PackedCollection<?>> b,
 								  ComputeRequirement... requirements) {
+		warn("product will not support backpropagation");
 		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
 			CaptureReceptor ar = new CaptureReceptor();
 			a.setReceptor(ar);
@@ -531,6 +558,14 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
 			return ops;
 		}), null, requirements);
+	}
+
+	default CellularLayer product(TraversalPolicy shape,
+								  CellularPropagation<PackedCollection<?>> aux,
+								  ComputeRequirement... requirements) {
+		return compose("product", shape, aux,
+					(input, auxValue) -> multiply(traverseEach(input), traverseEach(auxValue)),
+				requirements);
 	}
 
 	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {

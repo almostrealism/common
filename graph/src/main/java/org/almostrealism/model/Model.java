@@ -22,8 +22,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
@@ -31,10 +30,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Model implements Setup, CodeFeatures {
-	private List<Block> blocks;
-	private TraversalPolicy shape;
+	private SequentialBlock blocks;
+	private List<Block> inputs;
 
 	private PackedCollection<?> learningRate;
 
@@ -47,8 +48,8 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model(TraversalPolicy shape, double learningRate) {
-		this.shape = shape;
-		this.blocks = new ArrayList<>();
+		this.blocks = new SequentialBlock(shape);
+		this.inputs = new ArrayList<>();
 		this.learningRate = new PackedCollection<>(1);
 		setLearningRate(learningRate);
 	}
@@ -62,56 +63,35 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public List<Block> getBlocks() {
-		return Collections.unmodifiableList(blocks);
+		return blocks.getBlocks();
 	}
 
-	public Model addBlock(Block b) {
-		if (shape == null) {
-			if (b.getInputShape() == null) {
-				throw new IllegalArgumentException("Cannot infer input shape");
-			}
-		} else if (b.getInputShape() != null && !shape.equals(b.getInputShape())) {
-			if (blocks.isEmpty()) {
-				throw new IllegalArgumentException("Block input shape does not match initial shape for model");
-			} else {
-				throw new IllegalArgumentException("Block input shape does not match output shape of last block");
-			}
-		}
-
-		if (!blocks.isEmpty()) {
-			blocks.get(blocks.size() - 1).getForward().setReceptor(b.getForward());
-			b.getBackward().setReceptor(blocks.get(blocks.size() - 1).getBackward());
-		}
-
+	public Model add(Block b) {
 		if (b instanceof Learning) {
 			((Learning) b).setLearningRate(p(learningRate));
 		}
 
 		blocks.add(b);
-		shape = b.getOutputShape();
 		return this;
 	}
 
-	public Block addBlock(Function<TraversalPolicy, Block> block) {
-		Block b = block.apply(shape);
-		addBlock(b);
-		return b;
+	public Model add(Function<TraversalPolicy, ? extends Block> block) {
+		add(block.apply(blocks.getOutputShape()));
+		return this;
 	}
 
-	public Model addLayer(CellularLayer layer) {
-		if (layer instanceof Learning) ((Learning) layer).setLearningRate(p(learningRate));
-		return addBlock(layer);
+	public Model addInput(Block b) {
+		inputs.add(b);
+		return this;
 	}
 
-	public Model addLayer(Function<TraversalPolicy, CellularLayer> layer) {
-		return addLayer(layer.apply(shape));
+	public List<Block> getInputs() {
+		return Collections.unmodifiableList(inputs);
 	}
 
-	public Block firstBlock() { return blocks.get(0); }
+	public Block firstBlock() { return blocks.firstBlock(); }
 
-	public Block lastBlock() { return blocks.get(blocks.size() - 1); }
-
-	public TraversalPolicy getShape() { return shape; }
+	public Block lastBlock() { return blocks.lastBlock(); }
 
 	public TraversalPolicy getInputShape() { return firstBlock().getInputShape(); }
 
@@ -119,12 +99,17 @@ public class Model implements Setup, CodeFeatures {
 
 	@Override
 	public Supplier<Runnable> setup() {
-		return blocks.stream().map(Block::setup).collect(OperationList.collector());
+		return blocks.setup();
 	}
 
-	public Cell<PackedCollection<?>> forward() { return blocks.get(0).getForward(); }
+	public List<Cell<PackedCollection<?>>> forward() {
+		return Stream.concat(Stream.of(
+							blocks.getForward()),
+							inputs.stream().map(CellularPropagation::getForward))
+				.collect(Collectors.toUnmodifiableList());
+	}
 
-	public Cell<PackedCollection<?>> backward() { return lastBlock().getBackward(); }
+	public Cell<PackedCollection<?>> backward() { return blocks.getBackward(); }
 
 	public CompiledModel compile() {
 		return CompiledModel.compile(this);
