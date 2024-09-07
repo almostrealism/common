@@ -256,6 +256,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
+	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
+		return new DefaultBlock(inputShape, subsetShape,
+				Cell.of((in, next) -> next.push(subset(subsetShape, in, pos))),
+				Cell.of((in, next) -> next.push(pad(inputShape, shape(pos), in))));
+	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {

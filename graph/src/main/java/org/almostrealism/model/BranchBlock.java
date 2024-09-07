@@ -25,6 +25,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -73,6 +74,10 @@ public class BranchBlock implements Block {
 		return shape;
 	}
 
+	public List<CellularPropagation<PackedCollection<?>>> getChildren() {
+		return Collections.unmodifiableList(children);
+	}
+
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
 		if (entry == null) {
@@ -107,7 +112,7 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
-	public <T extends Block> T append(T l) {
+	public <T extends CellularPropagation<PackedCollection<?>>> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;

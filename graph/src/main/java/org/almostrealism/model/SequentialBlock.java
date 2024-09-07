@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class SequentialBlock implements Block, Learning, LayerFeatures {
 	public static boolean enableWarnings = false;
@@ -60,8 +61,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		});
 	}
 
-	public <T extends Block> T add(Function<TraversalPolicy, T> factory) {
-		return add(factory.apply(getOutputShape()));
+	public <T extends Block> void add(Function<TraversalPolicy, T> factory) {
+		add(factory.apply(getOutputShape()));
 	}
 
 	public CellularLayer add(String name, Factor<PackedCollection<?>> operator,
@@ -121,9 +122,32 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return branch;
 	}
 
-	// TODO
 	public List<Block> split(TraversalPolicy subsetShape) {
-		throw new UnsupportedOperationException();
+		TraversalPolicy superShape = getOutputShape();
+
+		if (superShape.length(0) % subsetShape.length(0) != 0) {
+			throw new IllegalArgumentException("Split subset must evenly divide its input");
+		} else if (superShape.getDimensions() != subsetShape.getDimensions()) {
+			throw new IllegalArgumentException("Split cannot change the total number of dimensions");
+		}
+
+		for (int i = 1; i < superShape.getDimensions(); i++) {
+			if (subsetShape.length(i) != superShape.length(i))
+				throw new IllegalArgumentException("Split is only permitted along first dimension");
+		}
+
+		int count = superShape.length(0) / subsetShape.length(0);
+		BranchBlock split = new BranchBlock(superShape);
+		List<Block> blocks = new ArrayList<>();
+
+		for (int i = 0; i < count; i++) {
+			int section = i;
+			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == 0 ? section : 0).toArray();
+			blocks.add(split.append(subset(superShape, subsetShape, pos)));
+		}
+
+		add(split);
+		return blocks;
 	}
 
 	// TODO  Should return 'this'?
