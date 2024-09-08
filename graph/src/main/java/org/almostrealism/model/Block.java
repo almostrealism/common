@@ -65,10 +65,14 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default <T extends Block> Block andThen(T next) {
-		SequentialBlock block = new SequentialBlock(getInputShape());
-		block.add(this);
-		block.add(next);
-		return block;
+//		SequentialBlock block = new SequentialBlock(getInputShape());
+//		block.add(this);
+//		block.add(next);
+//		return block;
+
+		getForward().setReceptor(next.getForward());
+		next.getBackward().setReceptor(getBackward());
+		return next;
 	}
 
 	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {

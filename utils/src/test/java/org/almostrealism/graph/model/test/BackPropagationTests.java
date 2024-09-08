@@ -243,24 +243,20 @@ public class BackPropagationTests implements TestFeatures {
 	}
 
 	@Test
-	public void splitBackwards() {
+	public void splitBackwardsRepeat() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches =  block.split(shape(1, 2));
-
-		// TODO  It seems that andThen breaks the connection between the branches
-		// TODO  and the original block
 		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
 		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
-//		block.add(compose("add", shape(3, 2), a, (x, y) -> add(x, y)));
 		block.add(compose("replace", b, (x, y) ->
 				repeat(3, y).reshape(3, 2)));
 
 		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
 										.reshape(3, 2);
-		PackedCollection<?> gradient = pack(5, 4, 1, 3, 2, -4)
+		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
 										.reshape(3, 2);
 
 		CompiledModel model = new Model(shape(3, 2))
@@ -268,7 +264,66 @@ public class BackPropagationTests implements TestFeatures {
 				.compile(true, true);
 		model.forward(input).print();
 
-		gradient = model.backward(gradient);
-		gradient.print();
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			if (i == 2) {
+				double total = gradient.toDouble(0) +
+						gradient.toDouble(2) +
+						gradient.toDouble(4);
+				assertEquals(3 * total, result.toDouble(i));
+			} else if (i == 3) {
+				double total = gradient.toDouble(1) +
+						gradient.toDouble(3) +
+						gradient.toDouble(5);
+				assertEquals(3 * total, result.toDouble(i));
+			} else {
+				assertEquals(0.0, result.toDouble(i));
+			}
+		}
+	}
+
+	@Test
+	public void splitBackwardsAdd() {
+		SequentialBlock block = new SequentialBlock(shape(3, 2));
+
+		List<Block> branches =  block.split(shape(1, 2));
+		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
+		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+
+		block.add(compose("add", b, (x, y) -> add(x, y)));
+
+		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+				.reshape(3, 2);
+		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
+				.reshape(3, 2);
+
+		CompiledModel model = new Model(shape(3, 2))
+				.add(block)
+				.compile(true, true);
+		model.forward(input).print();
+
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			double direct = gradient.toDouble(i);
+
+			if (i == 2) {
+				double total = gradient.toDouble(0) +
+						gradient.toDouble(2) +
+						gradient.toDouble(4);
+				assertEquals(direct + 3 * total, result.toDouble(i));
+			} else if (i == 3) {
+				double total = gradient.toDouble(1) +
+						gradient.toDouble(3) +
+						gradient.toDouble(5);
+				assertEquals(direct + 3 * total, result.toDouble(i));
+			} else {
+				assertEquals(direct, result.toDouble(i));
+			}
+		}
 	}
 }
