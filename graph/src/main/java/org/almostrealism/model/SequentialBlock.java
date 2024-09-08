@@ -236,6 +236,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (SequentialBlock.this.downstream != null) {
+						warn("Replacing receptor");
+					}
+
 					SequentialBlock.this.downstream = r;
 				}
 			};
@@ -255,6 +259,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (SequentialBlock.this.upstream != null) {
+						warn("Replacing receptor");
+					}
+
 					SequentialBlock.this.upstream = r;
 				}
 			};

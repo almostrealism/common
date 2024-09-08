@@ -17,12 +17,14 @@
 package org.almostrealism.model;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.DefaultGradientPropagation;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,10 +55,22 @@ public class BranchBlock implements Block {
 
 		this.children = new ArrayList<>();
 		this.gradient = new PackedCollection<>(shape);
-		this.aggregator = (input) -> {
-			return a("aggregate",
-					p(gradient.each()), add(p(gradient.each()), input));
-		};
+
+		if (DefaultGradientPropagation.enableDiagnosticGrad) {
+			this.aggregator = (input) -> {
+				OperationList op = new OperationList("BranchBlock Aggregate");
+				op.add(a("aggregate",
+						p(gradient.each()), add(p(gradient.each()), input)));
+				op.add(() -> () -> {
+					gradient.print();
+				});
+				return op;
+			};
+		} else {
+			this.aggregator = (input) ->
+					a("aggregate",
+							p(gradient.each()), add(p(gradient.each()), input));
+		}
 	}
 
 	@Override
@@ -89,6 +103,10 @@ public class BranchBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (BranchBlock.this.downstream != null) {
+						warn("Replacing receptor");
+					}
+
 					BranchBlock.this.downstream = r;
 				}
 			};

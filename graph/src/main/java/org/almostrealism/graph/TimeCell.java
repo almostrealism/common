@@ -23,6 +23,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.computations.TimeCellReset;
 import org.almostrealism.hardware.OperationList;
@@ -118,7 +119,13 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	}
 
 	@Override
-	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
+	public void setReceptor(Receptor<Scalar> r) {
+		if (this.r != null) {
+			warn("Replacing receptor");
+		}
+
+		this.r = r;
+	}
 
 	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
 

@@ -56,7 +56,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
 										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(null, shape, validateArgs(args));
+		super("delta", shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);

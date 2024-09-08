@@ -16,7 +16,6 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Factor;
@@ -37,7 +36,6 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
@@ -259,7 +257,7 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		return new DefaultBlock(inputShape, subsetShape,
 				Cell.of((in, next) -> next.push(subset(subsetShape, in, pos))),
-				Cell.of((in, next) -> next.push(pad(inputShape, shape(pos), in))));
+				Cell.of((in, next) -> next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
 	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,

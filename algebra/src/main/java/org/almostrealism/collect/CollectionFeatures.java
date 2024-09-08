@@ -541,6 +541,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new TraversableExpressionComputation<>(null, shape, (args, idx) -> indexExpression.apply(idx));
 	}
 
+	default TraversableExpressionComputation<PackedCollection<?>> compute(CollectionExpression expression) {
+		return new TraversableExpressionComputation<>(null, expression.getShape(), expression);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Evaluable<T> shortCircuit, Producer<T>... arguments) {

@@ -30,6 +30,7 @@ import org.almostrealism.layers.Component;
 import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Block extends Component, CellularPropagation<PackedCollection<?>>, Setup, LayerFeatures {
@@ -68,6 +69,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		block.add(this);
 		block.add(next);
 		return block;
+	}
+
+	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {
+		return andThen(next.apply(getOutputShape()));
 	}
 
 	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {

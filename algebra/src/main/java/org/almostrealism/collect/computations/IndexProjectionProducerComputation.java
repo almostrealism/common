@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -170,7 +171,28 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (getInputs().get(1) instanceof CollectionProducer) {
+		Supplier in = getInputs().get(1);
+
+		if (DeltaFeatures.cannotMatch(in, target)) {
+			TraversalPolicy shape = getShape();
+			TraversalPolicy targetShape = shape(target);
+			return (CollectionProducer)
+					compute(zeros(shape(shape.getTotalSize(), targetShape.getTotalSize())))
+						.reshape(shape.append(targetShape));
+		}
+
+		CollectionProducer<PackedCollection<?>> delta = null;
+
+		if (in instanceof CollectionProducer) {
+			delta = ((CollectionProducer) in).delta(target);
+		} else if (DeltaFeatures.match(in, target)) {
+			TraversalPolicy shape = shape(in);
+			TraversalPolicy targetShape = shape(target);
+			delta = identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+							.reshape(shape.append(targetShape));
+		}
+
+		if (delta != null) {
 			TraversalPolicy outShape = getShape();
 			TraversalPolicy inShape = shape(getInputs().get(1));
 			TraversalPolicy targetShape = shape(target);
@@ -181,8 +203,6 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 			TraversalPolicy deltaShape = shape(inSize, targetSize);
 			TraversalPolicy overallShape = shape(outSize, targetSize);
-
-			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
 			int traversalAxis = shape.getTraversalAxis();
