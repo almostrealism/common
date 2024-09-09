@@ -124,26 +124,32 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public List<Block> split(TraversalPolicy subsetShape) {
 		TraversalPolicy superShape = getOutputShape();
+		TraversalPolicy splitShape = padDimensions(subsetShape, 1, superShape.getDimensions());
 
-		if (superShape.length(0) % subsetShape.length(0) != 0) {
+		if (superShape.length(0) % splitShape.length(0) != 0) {
 			throw new IllegalArgumentException("Split subset must evenly divide its input");
-		} else if (superShape.getDimensions() != subsetShape.getDimensions()) {
+		} else if (superShape.getDimensions() != splitShape.getDimensions()) {
 			throw new IllegalArgumentException("Split cannot change the total number of dimensions");
 		}
 
 		for (int i = 1; i < superShape.getDimensions(); i++) {
-			if (subsetShape.length(i) != superShape.length(i))
+			if (splitShape.length(i) != superShape.length(i))
 				throw new IllegalArgumentException("Split is only permitted along first dimension");
 		}
 
-		int count = superShape.length(0) / subsetShape.length(0);
+		int count = superShape.length(0) / splitShape.length(0);
 		BranchBlock split = new BranchBlock(superShape);
 		List<Block> blocks = new ArrayList<>();
 
 		for (int i = 0; i < count; i++) {
 			int section = i;
 			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == 0 ? section : 0).toArray();
-			blocks.add(split.append(subset(superShape, subsetShape, pos)));
+
+			Block sub = split.append(subset(superShape, splitShape, pos));
+			if (sub.getOutputShape().getDimensions() != subsetShape.getDimensions())
+				sub = sub.reshape(subsetShape);
+
+			blocks.add(sub);
 		}
 
 		add(split);
