@@ -571,10 +571,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				requirements);
 	}
 
-	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		if (shape.getDimensions() != 1)
-			throw new IllegalArgumentException();
+	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
+		return layer("scale", shape, shape, input -> multiply(input, c(scale)), requirements);
+	}
 
+	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
 

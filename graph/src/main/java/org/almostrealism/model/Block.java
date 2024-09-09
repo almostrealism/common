@@ -52,6 +52,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		return andThen(reshape(getOutputShape(), shape));
 	}
 
+	default Block scale(double factor) {
+		return andThen(scale(getOutputShape(), factor));
+	}
+
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
 			throw new IllegalArgumentException();
