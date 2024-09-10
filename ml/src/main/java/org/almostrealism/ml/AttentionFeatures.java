@@ -124,7 +124,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(ropeRotation(headShapeComplex, freqCis, position));
 		attention.add(reshape(headShapeComplex, headShape));
 		attention.add(attentionKeys(headShape, p(keyCache)));
-		attention.add(softmax2d(attentionShape, true));
+		attention.add(softmax(attentionShape, true));
 		attention.add(attentionValues(attentionShape, p(valueCache)));
 		attention.add(dense(wo));
 		/* ---- **/

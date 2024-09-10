@@ -306,38 +306,87 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 	@Test
 	public void enumerate2dProduct2() {
+		int c = 2;
 		int h = 6;
 		int d = 4;
 		int s = 3;
 
-		PackedCollection<?> a = new PackedCollection<>(h, d, s).randFill();
-		PackedCollection<?> b = new PackedCollection<>(h, d, s).randFill();
+		PackedCollection<?> a = new PackedCollection<>(c, h, d, s).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s).randFill();
 
 		CollectionProducer<PackedCollection<?>> pa = cp(a)
-				.traverse(1)
-				.enumerate(2, 1)
 				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(3)
 				.repeat(s);
 		CollectionProducer<PackedCollection<?>> pb = cp(b)
-				.traverse(1)
-				.enumerate(2, 1)
+				.traverse(2)
+				.enumerate(3, 1)
 				.repeat(s);
 
-		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(3);
+		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
 
 		Evaluable<PackedCollection<?>> ev = product.get();
-		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(h, s, s));
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s, s));
 
-		for (int n = 0; n < h; n++) {
-			for (int i = 0; i < s; i++) {
-				for (int j = 0; j < s; j++) {
-					double total = 0.0;
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s; i++) {
+					for (int j = 0; j < s; j++) {
+						double total = 0.0;
 
-					for (int k = 0; k < d; k++) {
-						total += a.valueAt(n, k, i) * b.valueAt(n, k, j);
+						for (int k = 0; k < d; k++) {
+							total += a.valueAt(p, n, k, i) * b.valueAt(p, n, k, j);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
 					}
+				}
+			}
+		}
+	}
 
-					assertEquals(total, enumerated.valueAt(n, i, j));
+	@Test
+	public void enumerate2dProduct3() {
+		int c = 2;
+		int h = 6;
+		int d = 4;
+		int s1 = 3;
+		int s2 = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(c, h, s1, s2).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(4)
+				.repeat(d);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(2)
+				.repeat(s1);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb)
+				.reshape(shape(c, h, s1, s2, d))
+				.traverse(3)
+				.enumerate(4, 1)
+				.sum(4);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, d));
+
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s1; i++) {
+					for (int j = 0; j < d; j++) {
+						double total = 0.0;
+
+						for (int k = 0; k < s2; k++) {
+							total += a.valueAt(p, n, i, k) * b.valueAt(p, n, j, k);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
+					}
 				}
 			}
 		}

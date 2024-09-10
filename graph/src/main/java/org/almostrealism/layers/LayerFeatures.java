@@ -112,6 +112,14 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> compose(String name,
+															 Block aux,
+															 TraversalPolicy outputShape,
+															 Composition<PackedCollection<?>> operator,
+															 ComputeRequirement... requirements) {
+		return shape -> compose(name, shape, aux.getOutputShape(), outputShape, aux, operator, requirements);
+	}
+
 	default CellularLayer compose(String name,
 								  TraversalPolicy shape,
 								  CellularPropagation<PackedCollection<?>> aux,
@@ -476,23 +484,29 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
 	}
 
-	default CellularLayer softmax2d(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
-		if (shape.getDimensions() != 2)
-			throw new IllegalArgumentException();
+	default Function<TraversalPolicy, CellularLayer> softmax(boolean subtractMax, ComputeRequirement... requirements) {
+		return shape -> softmax(shape, subtractMax, requirements);
+	}
 
-		int heads = shape.length(0);
-		int seqLen = shape.length(1);
+
+	default CellularLayer softmax(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
+		if (shape.getDimensions() < 2) {
+			throw new IllegalArgumentException();
+		}
+
+		int axis = shape.getDimensions() - 1;
+		int seqLen = shape.length(axis);
 
 		return layer("softmax2d", shape, shape, input -> {
-			CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+			CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
 
 			if (subtractMax) {
 				o = o.max();
 				o = o.expand(seqLen);
-				o = traverse(2, input).subtractIgnoreZero(o);
+				o = traverse(axis + 1, input).subtractIgnoreZero(o);
 			}
 
-			o = o.expIgnoreZero().traverse(1);
+			o = o.expIgnoreZero().traverse(axis);
 			o = o.divide(o.sum().expand(seqLen));
 
 			return o;
