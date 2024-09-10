@@ -25,6 +25,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
+import org.almostrealism.io.Describable;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -95,5 +96,12 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	public void destroy() {
 		super.destroy();
 		if (provider != null) provider.destroy();
+	}
+
+	@Override
+	public String describe() {
+		return getDelegate() instanceof Describable ?
+				((Describable) getDelegate()).describe() :
+				getDelegate().getClass().getSimpleName();
 	}
 }

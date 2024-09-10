@@ -24,6 +24,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
+import org.almostrealism.io.Describable;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -37,7 +38,7 @@ import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
+public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable {
 	public static boolean enableStrictSizes = true;
 	public static boolean enableDivisibleSizes = true;
 
@@ -352,6 +353,9 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 
 		return false;
 	}
+
+	@Override
+	public String describe() { return toStringDetail(); }
 
 	public String toStringDetail() {
 		if (getSizeLong() == 0) {

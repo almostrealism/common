@@ -376,6 +376,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
+	@Override
+	public String describe() {
+		if (getShape().getTotalSize() == 1) {
+			return getShape() + " " + toDouble(0);
+		} else {
+			return getShape().toStringDetail();
+		}
+	}
+
 	public PackedCollection<T> clone() {
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());

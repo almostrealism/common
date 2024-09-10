@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Process;
+import org.almostrealism.io.Describable;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public interface OperationInfo {
+public interface OperationInfo extends Describable {
 	OperationMetadata getMetadata();
 
 	default List<ComputeRequirement> getComputeRequirements() {

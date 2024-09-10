@@ -40,9 +40,11 @@ import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
@@ -408,6 +410,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public String describe() {
+		return Optional.ofNullable(getMetadata().getShortDescription()).orElse("") +
+				" " + getCount() + "x " +
+				(getComputeRequirements() == null ? "" : Arrays.toString(getComputeRequirements().toArray()));
 	}
 
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {

@@ -58,6 +58,11 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 			public OptionalInt getMaximumLength() {
 				return count;
 			}
+
+			@Override
+			public String describe() {
+				return getMetadata().getShortDescription();
+			}
 		};
 	}
 }

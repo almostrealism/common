@@ -28,6 +28,7 @@ import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Describable;
 
 public interface TraversableExpression<T> extends Computable, ExpressionFeatures, ConsoleFeatures {
 

@@ -208,6 +208,11 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		resetArguments();
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
+	}
+
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
 		if (input == null) return null;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package io.almostrealism.collect;
 
+import org.almostrealism.io.Describable;
+
 import java.util.stream.IntStream;
 
-public interface Shape<T> extends Traversable<T> {
+public interface Shape<T> extends Traversable<T>, Describable {
 	TraversalPolicy getShape();
 
 	default T reshape(int... dims) {
@@ -54,4 +56,9 @@ public interface Shape<T> extends Traversable<T> {
 
 	default T consolidate() { return traverse(getShape().getTraversalAxis() - 1); }
 	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
+
+	@Override
+	default String describe() {
+		return getShape().toStringDetail();
+	}
 }

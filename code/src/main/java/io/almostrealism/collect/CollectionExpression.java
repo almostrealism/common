@@ -24,6 +24,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
+import org.almostrealism.io.Describable;
 
 import java.util.List;
 import java.util.function.Function;
@@ -32,7 +33,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 // TODO  Shouldn't this implement Shape?
-public interface CollectionExpression extends TraversableExpression<Double> {
+public interface CollectionExpression extends TraversableExpression<Double>, Describable {
 	boolean enableArrayTraversal = false;
 
 	TraversalPolicy getShape();
@@ -65,6 +66,11 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 
 	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	default String describe() {
+		return getShape().toStringDetail();
 	}
 
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {

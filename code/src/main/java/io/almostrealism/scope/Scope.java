@@ -610,6 +610,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	@Override
+	public String describe() { return getName(); }
+
+	@Override
 	public Console console() { return console; }
 
 	@Deprecated

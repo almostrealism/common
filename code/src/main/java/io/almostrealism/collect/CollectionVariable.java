@@ -165,6 +165,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return new CollectionVariable<>(shape, this, pos);
 	}
 
+	@Override
+	public String describe() {
+		return getName() + " " + getShape().toStringDetail();
+	}
+
 	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);

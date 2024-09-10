@@ -158,4 +158,11 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed)" : " (variable)");
+	}
 }

@@ -147,4 +147,9 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 		return result;
 	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";
+	}
 }
