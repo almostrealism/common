@@ -283,7 +283,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerate2dProduct() {
+	public void enumerate2dProduct1() {
 		Tensor<Double> t = tensor(shape(4, 6));
 		PackedCollection<?> input = t.pack();
 		PackedCollection<?> operand = new PackedCollection<>(shape(6, 4)).randFill();
@@ -300,6 +300,45 @@ public class CollectionEnumerateTests implements TestFeatures {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 4; j++) {
 				assertEquals(input.valueAt(j, i) * operand.valueAt(i, j), enumerated.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void enumerate2dProduct2() {
+		int h = 6;
+		int d = 4;
+		int s = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(h, d, s).randFill();
+		PackedCollection<?> b = new PackedCollection<>(h, d, s).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(1)
+				.enumerate(2, 1)
+				.traverse(2)
+				.repeat(s);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(1)
+				.enumerate(2, 1)
+				.repeat(s);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(3);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(h, s, s));
+
+		for (int n = 0; n < h; n++) {
+			for (int i = 0; i < s; i++) {
+				for (int j = 0; j < s; j++) {
+					double total = 0.0;
+
+					for (int k = 0; k < d; k++) {
+						total += a.valueAt(n, k, i) * b.valueAt(n, k, j);
+					}
+
+					assertEquals(total, enumerated.valueAt(n, i, j));
+				}
 			}
 		}
 	}

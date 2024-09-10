@@ -101,7 +101,7 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 					.each();
 
 			if (enableDiagnosticGrad) {
-				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize));
+				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize)).traverse(1);
 				Producer<PackedCollection<?>> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
 
 				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
@@ -111,7 +111,7 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 					return () -> {
-						String name = getName();
+						String name = getName() + " " + outSize + " " + inSize;
 						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();

@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
@@ -127,6 +128,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -148,6 +154,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -169,6 +180,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -190,6 +206,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};

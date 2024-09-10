@@ -17,14 +17,17 @@
 package org.almostrealism.model;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.DefaultGradientPropagation;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -52,10 +55,22 @@ public class BranchBlock implements Block {
 
 		this.children = new ArrayList<>();
 		this.gradient = new PackedCollection<>(shape);
-		this.aggregator = (input) -> {
-			return a("aggregate",
-					p(gradient.each()), add(p(gradient.each()), input));
-		};
+
+		if (DefaultGradientPropagation.enableDiagnosticGrad) {
+			this.aggregator = (input) -> {
+				OperationList op = new OperationList("BranchBlock Aggregate");
+				op.add(a("aggregate",
+						p(gradient.each()), add(p(gradient.each()), input)));
+				op.add(() -> () -> {
+					gradient.print();
+				});
+				return op;
+			};
+		} else {
+			this.aggregator = (input) ->
+					a("aggregate",
+							p(gradient.each()), add(p(gradient.each()), input));
+		}
 	}
 
 	@Override
@@ -73,6 +88,10 @@ public class BranchBlock implements Block {
 		return shape;
 	}
 
+	public List<CellularPropagation<PackedCollection<?>>> getChildren() {
+		return Collections.unmodifiableList(children);
+	}
+
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
 		if (entry == null) {
@@ -84,6 +103,10 @@ public class BranchBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (BranchBlock.this.downstream != null) {
+						warn("Replacing receptor");
+					}
+
 					BranchBlock.this.downstream = r;
 				}
 			};
@@ -107,7 +130,7 @@ public class BranchBlock implements Block {
 		return backwards;
 	}
 
-	public <T extends Block> T append(T l) {
+	public <T extends CellularPropagation<PackedCollection<?>>> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;

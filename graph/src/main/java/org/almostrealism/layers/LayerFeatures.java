@@ -16,7 +16,6 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Factor;
@@ -37,7 +36,6 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
@@ -256,6 +254,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
+	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
+		return new DefaultBlock(inputShape, subsetShape,
+				Cell.of((in, next) -> next.push(subset(subsetShape, in, pos))),
+				Cell.of((in, next) -> next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
+	}
 
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
@@ -568,10 +571,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				requirements);
 	}
 
-	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
-		if (shape.getDimensions() != 1)
-			throw new IllegalArgumentException();
+	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
+		return layer("scale", shape, shape, input -> multiply(input, c(scale)), requirements);
+	}
 
+	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("relu", shape, shape, input -> rectify(input), requirements);
 	}
 

@@ -23,8 +23,6 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Supplier;
 
 public class DefaultBlock implements Block {
@@ -95,6 +93,10 @@ public class DefaultBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (DefaultBlock.this.downstream != null) {
+						warn("Replacing receptor");
+					}
+
 					DefaultBlock.this.downstream = r;
 				}
 			};

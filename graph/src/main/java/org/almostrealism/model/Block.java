@@ -30,6 +30,7 @@ import org.almostrealism.layers.Component;
 import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Block extends Component, CellularPropagation<PackedCollection<?>>, Setup, LayerFeatures {
@@ -51,6 +52,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		return andThen(reshape(getOutputShape(), shape));
 	}
 
+	default Block scale(double factor) {
+		return andThen(scale(getOutputShape(), factor));
+	}
+
 	default Block enumerate(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (getOutputShape().getTotalSize() % shape.getTotalSize() != 0) {
 			throw new IllegalArgumentException();
@@ -64,10 +69,18 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default <T extends Block> Block andThen(T next) {
-		SequentialBlock block = new SequentialBlock(getInputShape());
-		block.add(this);
-		block.add(next);
-		return block;
+//		SequentialBlock block = new SequentialBlock(getInputShape());
+//		block.add(this);
+//		block.add(next);
+//		return block;
+
+		getForward().setReceptor(next.getForward());
+		next.getBackward().setReceptor(getBackward());
+		return next;
+	}
+
+	default <T extends Block> Block andThen(Function<TraversalPolicy, T> next) {
+		return andThen(next.apply(getOutputShape()));
 	}
 
 	default <T extends Receptor<PackedCollection<?>>> T andThen(T next) {

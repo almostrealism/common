@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
@@ -73,6 +74,10 @@ public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning,
 
 	@Override
 	public void setReceptor(Receptor<PackedCollection<?>> next) {
+		if (this.next != null) {
+			warn("Replacing receptor");
+		}
+
 		this.next = next;
 	}
 }
