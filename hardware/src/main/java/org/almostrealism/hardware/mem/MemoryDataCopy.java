@@ -84,4 +84,9 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 
 	@Override
 	public Parent<Process<?, Runnable>> generate(List<Process<?, Runnable>> children) { return this; }
+
+	@Override
+	public String describe() {
+		return (name == null ? toString() : name) + " (Copy " + getOutputSize() + " values)";
+	}
 }

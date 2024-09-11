@@ -475,5 +475,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				}
 			}
 		}
+
+		@Override
+		public String describe() {
+			return getMetadata().getShortDescription();
+		}
 	}
 }

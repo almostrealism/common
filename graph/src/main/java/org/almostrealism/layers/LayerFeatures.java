@@ -585,6 +585,10 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 				requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> scale(double scale, ComputeRequirement... requirements) {
+		return shape -> scale(shape, scale, requirements);
+	}
+
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(input, c(scale)), requirements);
 	}

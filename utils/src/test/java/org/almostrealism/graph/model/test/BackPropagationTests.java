@@ -326,4 +326,62 @@ public class BackPropagationTests implements TestFeatures {
 			}
 		}
 	}
+
+	@Test
+	public void splitBackwardsChildIndex() {
+		SequentialBlock block = new SequentialBlock(shape(3, 2));
+
+		List<Block> branches =  block.split(shape(1, 2), 0);
+		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
+		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+
+		block.add(compose("add", b, (x, y) -> add(x, y)));
+
+		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+				.reshape(3, 2);
+		PackedCollection<?> gradient = pack(5, -4)
+				.reshape(1, 2);
+
+		CompiledModel model = new Model(shape(3, 2))
+				.add(block)
+				.compile(true, true);
+		PackedCollection<?> out = model.forward(input);
+		out.print();
+
+		for (int i = 0; i < 2; i++) {
+			double total = 0.0;
+
+			for (int j = 0; j < 6; j++) {
+				double factor = j % 2 == i ? 1.0 : 0.0;
+
+				if (j == 0 || j == 1) {
+					factor *= 2.0;
+				} else if (j == 2 || j == 3) {
+					factor *= 3.0;
+				} else {
+					factor = 0.0;
+				}
+
+				total += factor * input.toDouble(j);
+			}
+
+			assertEquals(total, out.toDouble(i));
+		}
+
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			double factor = 0.0;
+
+			if (i == 0 || i == 1) {
+				factor = 2.0;
+			} else if (i == 2 || i == 3) {
+				factor = 3.0;
+			}
+
+			assertEquals(factor * gradient.toDouble(i % 2), result.toDouble(i));
+		}
+	}
 }

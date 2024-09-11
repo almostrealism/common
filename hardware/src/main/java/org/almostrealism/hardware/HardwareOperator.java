@@ -200,6 +200,11 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		}
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getDisplayName() + " (" + getGlobalWorkSize() + "x)";
+	}
+
 	public static void recordCompilation(boolean gpu) {
 		if (gpu) {
 			gpuCompileCount++;

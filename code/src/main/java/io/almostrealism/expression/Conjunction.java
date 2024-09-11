@@ -65,4 +65,16 @@ public class Conjunction extends NAryExpression<Boolean> {
 		if (children.size() == 1) return (Expression) children.get(0);
 		return new Conjunction(children);
 	}
+
+	public static Expression<Boolean> of(Expression<Boolean>... values) {
+		return of(List.of(values));
+	}
+
+	public static Expression<Boolean> of(List<Expression<?>> values) {
+		if (values.size() == 0)
+			throw new IllegalArgumentException();
+
+		if (values.size() == 1) return (Expression<Boolean>) values.get(0);
+		return new Conjunction(values);
+	}
 }

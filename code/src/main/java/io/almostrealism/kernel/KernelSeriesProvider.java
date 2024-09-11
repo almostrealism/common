@@ -119,4 +119,9 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes);
 
 	OptionalInt getMaximumLength();
+
+	@Override
+	default String describe() {
+		return getMetadata().getShortDescription();
+	}
 }

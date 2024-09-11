@@ -1,3 +1,19 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.model;
 
 import io.almostrealism.code.ComputeRequirement;
@@ -91,7 +107,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 		if (block.getBackward() == null) {
 			if (enableWarnings)
-				System.out.println("WARN: No backward Cell for " + Named.nameOf(block));
+				warn("No backward Cell for " + Named.nameOf(block));
 		} else {
 			block.getBackward().setReceptor(prev);
 		}
@@ -122,7 +138,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return branch;
 	}
 
+
 	public List<Block> split(TraversalPolicy subsetShape) {
+		return split(subsetShape, -1);
+	}
+
+	public List<Block> split(TraversalPolicy subsetShape, int mainIndex) {
 		TraversalPolicy superShape = getOutputShape();
 		TraversalPolicy splitShape = padDimensions(subsetShape, 1, superShape.getDimensions());
 
@@ -138,21 +159,35 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 
 		int count = superShape.length(0) / splitShape.length(0);
-		BranchBlock split = new BranchBlock(superShape);
 		List<Block> blocks = new ArrayList<>();
+
+		BranchBlock split = new BranchBlock(superShape);
+		Block main = null;
 
 		for (int i = 0; i < count; i++) {
 			int section = i;
 			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == 0 ? section : 0).toArray();
 
-			Block sub = split.append(subset(superShape, splitShape, pos));
+			SequentialBlock sub = new SequentialBlock(superShape);
+			sub.add(subset(superShape, splitShape, pos));
 			if (sub.getOutputShape().getDimensions() != subsetShape.getDimensions())
-				sub = sub.reshape(subsetShape);
+				sub.reshape(subsetShape);
+
+			if (i == mainIndex) {
+				main = sub;
+			} else {
+				split.append(sub);
+			}
 
 			blocks.add(sub);
 		}
 
 		add(split);
+
+		if (main != null) {
+			add(main);
+		}
+
 		return blocks;
 	}
 

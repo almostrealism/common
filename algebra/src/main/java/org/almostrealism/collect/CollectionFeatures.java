@@ -585,6 +585,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
+		if (a == null || b == null) {
+			throw new IllegalArgumentException();
+		}
+
 		return compute("add", shape -> args -> sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				null, a, b);
 	}

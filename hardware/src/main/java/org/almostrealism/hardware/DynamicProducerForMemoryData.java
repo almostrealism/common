@@ -103,4 +103,9 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
 	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
+	}
 }

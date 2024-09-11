@@ -63,6 +63,11 @@ public class CLProgram implements OperationInfo {
 		prog = null;
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getDisplayName();
+	}
+
 	public static CLProgram create(CLComputeContext ctx, OperationMetadata metadata, String src) {
 		int[] result = new int[1];
 		cl_program prog = CL.clCreateProgramWithSource(ctx.getCLContext(), 1, new String[] { src }, null, result);
