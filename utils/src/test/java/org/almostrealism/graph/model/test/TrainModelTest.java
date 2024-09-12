@@ -50,17 +50,16 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	private TraversalPolicy inputShape = shape(h, w);
 
 	static {
+		File results = new File("results");
+		if (!results.exists()) {
+			results.mkdir();
+		}
+
 		if (TestUtils.getTrainTests()) {
 			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 
-			File results = new File("results");
-
-			if (results.exists()) {
-				Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
-			} else {
-				results.mkdir();
-			}
+			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
 	}
 
