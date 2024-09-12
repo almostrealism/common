@@ -488,7 +488,6 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return shape -> softmax(shape, subtractMax, requirements);
 	}
 
-
 	default CellularLayer softmax(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
 		if (shape.getDimensions() < 2) {
 			throw new IllegalArgumentException();
@@ -605,6 +604,10 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
+		return norm(1);
+	}
+
 	default Function<TraversalPolicy, CellularLayer> norm(int groups, ComputeRequirement... requirements) {
 		return shape -> norm(shape, groups, requirements);
 	}
@@ -614,9 +617,11 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, boolean trainable, ComputeRequirement... requirements) {
+		shape = padDimensions(shape, 1, 3);
+		int size = shape.traverse(1).item().getTotalSize();
 		return norm(shape, groups,
-				trainable ? new PackedCollection<>(shape.getTotalSize()) : null,
-				trainable ? new PackedCollection<>(shape.getTotalSize()) : null,
+				trainable ? new PackedCollection<>(size) : null,
+				trainable ? new PackedCollection<>(size) : null,
 				true, requirements);
 	}
 
@@ -627,7 +632,8 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return norm(groups, weights, biases, false, requirements);
 	}
 
-	default CellularLayer norm(int groups, PackedCollection<?> weights, PackedCollection<?> biases, boolean init, ComputeRequirement... requirements) {
+	default CellularLayer norm(int groups, PackedCollection<?> weights, PackedCollection<?> biases,
+							   boolean init, ComputeRequirement... requirements) {
 		TraversalPolicy shape;
 
 		if (weights != null) {
@@ -646,9 +652,10 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 							   PackedCollection<?> biases,
 							   boolean init,
 							   ComputeRequirement... requirements) {
-		int size = shape.getTotalSize();
+		shape = padDimensions(shape, 1, 3);
+		long size = shape.traverse(1).item().getTotalSizeLong();
 
-		if (shape.traverse(1).item().getTotalSizeLong() % groups != 0) {
+		if (size % groups != 0) {
 			if (shape.getTotalSizeLong() % groups == 0) {
 				warn("Group normalization may span across batches");
 			} else {
@@ -677,9 +684,9 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 		return layer("norm", shape, shape, input -> {
 			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
-			CollectionProducer<?> in = c(input).reshape(-1, groups, size / groups);
+			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
-			out = out.reshape(-1, size);
+			out = out.reshape(-1, Math.toIntExact(size));
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));

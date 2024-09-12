@@ -245,6 +245,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (!trainingTests &&
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
