@@ -38,6 +38,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
@@ -53,7 +54,13 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			HardwareOperator.enableLargeInstructionSetMonitoring = true;
 			MetalMemoryProvider.enableLargeAllocationLogging = true;
 
-			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
+			File results = new File("results");
+
+			if (results.exists()) {
+				Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
+			} else {
+				results.mkdir();
+			}
 		}
 	}
 
