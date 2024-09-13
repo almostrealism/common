@@ -202,7 +202,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double expected = dLdXGroup.valueAt(i) / stdG;
 				double actual = result.valueAt(start + i);
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
@@ -338,7 +338,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log("Gradient " + expected + " vs " + actual);
+				// log("Gradient " + expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
@@ -346,7 +346,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log("Bias " + expected + " vs " + actual);
+				// log("Bias " + expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
@@ -417,6 +417,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsTrainableProgressiveLarge() throws IOException {
 		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 200;
 		int groups = 4;
@@ -519,7 +520,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdGamma.valueAt(i);
@@ -527,7 +528,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
@@ -535,7 +536,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 			}
 		}
