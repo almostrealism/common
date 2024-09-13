@@ -439,6 +439,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionRepeat<>(repeat, collection);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int axis, int repeat, Producer<?> collection) {
+		return repeat(repeat, traverse(axis, (Producer) collection));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
 	}
@@ -498,6 +502,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		shape = new TraversalPolicy(dims).traverse(shape.getTraversalAxis());
 		return pad(shape, new TraversalPolicy(true, depths), collection);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
+																				 Producer<?> collection,
+																				 int... pos) {
+		return pad(shape, new TraversalPolicy(true, pos), collection);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,

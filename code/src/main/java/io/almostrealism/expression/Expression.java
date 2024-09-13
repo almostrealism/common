@@ -493,6 +493,7 @@ public abstract class Expression<T> implements
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }
 	public Tangent tan() { return new Tangent((Expression) this); }
+	public Tangent tanh() { return new Tangent((Expression) this, true); }
 
 	public Negation not() {
 		if (getType() != Boolean.class)

@@ -36,16 +36,32 @@ import java.util.function.Supplier;
 public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
+	double ROOT_2_BY_PI = Math.sqrt(2 / PI);
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
 		return compute("sin",
 				shape -> args -> sin(shape, args[1]),
 				null, (Producer) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
 		return compute("cos",
 				shape -> args -> cos(shape, args[1]),
+				null, (Producer) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
+		return compute("tan",
+				shape -> args -> tan(shape, args[1]),
+				null, (Producer) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		return compute("tanh",
+				shape -> args -> tanh(shape, args[1]),
 				null, (Producer) input);
 	}
 

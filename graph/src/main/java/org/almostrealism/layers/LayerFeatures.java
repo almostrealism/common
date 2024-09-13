@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.Random;
+import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
@@ -45,7 +46,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
+public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, ConsoleFeatures {
 
 	Console console = CollectionFeatures.console.child();
 
@@ -602,6 +603,22 @@ public interface LayerFeatures extends MatrixFeatures, ConsoleFeatures {
 
 	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		return layer("silu", shape, shape, input -> multiply(traverseEach(input), sigmoid(traverseEach(input))), requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> gelu(ComputeRequirement... requirements) {
+		return shape -> gelu(shape, requirements);
+	}
+
+	default CellularLayer gelu(TraversalPolicy shape, ComputeRequirement... requirements) {
+		// 0.5 * x * (1 + math.tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))
+		return layer("gelu", shape, shape, input -> {
+			CollectionProducer<PackedCollection<?>> x = c(input).traverseEach();
+			CollectionProducer<PackedCollection<?>> x3 = pow(x, c(3));
+			CollectionProducer<PackedCollection<?>> tanh =
+					tanh(x.add(x3.multiply(c(0.044715)))
+						.multiply(c(ROOT_2_BY_PI)));
+			return c(0.5).multiply(x).multiply(tanh.add(c(1)));
+		}, requirements);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {

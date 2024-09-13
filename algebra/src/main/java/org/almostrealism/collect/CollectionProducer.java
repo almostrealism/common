@@ -51,6 +51,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return repeat(repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int axis, int repeat) {
+		return repeat(axis, repeat, this);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int len) {
 		return enumerate(0, len, len, 1);
 	}

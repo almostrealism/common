@@ -40,6 +40,7 @@ import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Rectify;
 import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.expression.Tangent;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
@@ -182,6 +183,14 @@ public interface ExpressionFeatures {
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default CollectionExpression tan(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0]), input);
+	}
+
+	default CollectionExpression tanh(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0], true), input);
 	}
 
 	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {

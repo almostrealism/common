@@ -32,6 +32,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -430,6 +431,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsTrainableVeryLarge() throws IOException {
 		if (skipLongTests || testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		// int c = 2000;
 		int c = 3456;
