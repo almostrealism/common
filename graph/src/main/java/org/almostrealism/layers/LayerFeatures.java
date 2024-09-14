@@ -278,7 +278,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 																   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
-				int c = shape.getDimensions() > 2 ? shape.length(shape.getDimensions() - 2) : 1;
+				shape = padDimensions(shape, 2, 4);
+				int c = shape.getDimensions() > 2 ? shape.length(1) : 1;
 				if (c != inputChannels) {
 					throw new IllegalArgumentException();
 				}
