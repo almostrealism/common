@@ -58,9 +58,11 @@ public interface GradientTestFeatures extends CodeFeatures {
 		PackedCollection<?> dLdHatXGroup;
 
 		if (weights == null) {
-			dLdHatXGroup = cp(gradient).evaluate();
+			dLdHatXGroup = gradient;
 		} else {
-			dLdHatXGroup = cp(gradient).multiply(cp(weights)).evaluate();
+			// dLdHatXGroup = cp(gradient).multiply(cp(weights)).evaluate();
+			dLdHatXGroup = new PackedCollection<>(gradient.getShape())
+					.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
 		}
 
 		double dLdHatXGroupMean = dLdHatXGroup.doubleStream().sum() / groupSize;
@@ -98,9 +100,13 @@ public interface GradientTestFeatures extends CodeFeatures {
 										  double dLdHatXGroupMean,
 										  PackedCollection<?> xHatGroup,
 										  double dLdHatXGroupXHatGroupMean) {
-		return cp(dLdHatXGroup)
-				.subtract(c(dLdHatXGroupMean))
-				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
-				.evaluate();
+		return new PackedCollection<>(dLdHatXGroup.getShape())
+				.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
+						- xHatGroup.valueAt(pos) * dLdHatXGroupXHatGroupMean);
+
+//		return cp(dLdHatXGroup)
+//				.subtract(c(dLdHatXGroupMean))
+//				.subtract(cp(xHatGroup).multiply(c(dLdHatXGroupXHatGroupMean)))
+//				.evaluate();
 	}
 }
