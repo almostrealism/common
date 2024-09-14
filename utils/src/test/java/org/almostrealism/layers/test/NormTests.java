@@ -18,6 +18,7 @@ package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
@@ -493,6 +494,11 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		int groupSize = c / groups;
 
+		Evaluable<PackedCollection<?>> xHatGroupEval =
+				cv(shape(groupSize), 0)
+					.subtract(cv(shape(1), 1))
+						.divide(cv(shape(1), 2)).get();
+
 		for (int g = 0; g < groups; g++) {
 			int start = g * groupSize;
 
@@ -503,7 +509,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			double varG = variance(cp(xGroup)).evaluate().toDouble();
 			double stdG = Math.sqrt(varG + eps);
 
-			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+//			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, muG, stdG);
 
 			PackedCollection<?> dLdBeta = dLdyGroup;
 			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();

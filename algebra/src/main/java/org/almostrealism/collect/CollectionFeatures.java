@@ -68,8 +68,10 @@ import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.Console;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -290,6 +292,49 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		} else {
 			return new ExpressionComputation(shape(producers.length, depth), expressions, producers);
 		}
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> concat(TraversalPolicy shape, Producer<PackedCollection<?>>... producers) {
+		List<TraversalPolicy> shapes = Stream.of(producers)
+				.map(this::shape)
+				.filter(s -> s.getDimensions() == shape.getDimensions())
+				.collect(Collectors.toList());
+
+		if (shapes.size() != producers.length) {
+			throw new IllegalArgumentException("All inputs must have the same number of dimensions");
+		}
+
+		int axis = -1;
+
+		for (TraversalPolicy s : shapes) {
+			for (int d = 0; d < shape.getDimensions(); d++) {
+				if (s.length(d) != shape.length(d)) {
+					if (axis < 0) axis = d;
+
+					if (axis != d) {
+						throw new IllegalArgumentException("Cannot concatenate over more than one axis at once");
+					}
+				}
+			}
+		}
+
+		int total = 0;
+		List<TraversalPolicy> positions = new ArrayList<>();
+
+		for (TraversalPolicy s : shapes) {
+			if (total >= shape.length(axis)) {
+				throw new IllegalArgumentException("The result is not large enough to concatenate all inputs");
+			}
+
+			int pos[] = new int[s.getDimensions()];
+			pos[axis] = total;
+			total += s.length(axis);
+			positions.add(new TraversalPolicy(true, pos));
+		}
+
+		return add(IntStream.range(0, shapes.size())
+				.mapToObj(i -> pad(shape, positions.get(i), producers[i]))
+				.collect(Collectors.toList()));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer producer) {
@@ -599,8 +644,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return compute("add", shape -> args -> sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+		return compute("add", shape -> args ->
+						sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				null, a, b);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> add(List<Producer<?>> operands) {
+		if (operands.stream().anyMatch(Objects::isNull)) {
+			throw new IllegalArgumentException();
+		}
+
+		return compute("add", shape -> args ->
+						sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+				null, operands.toArray(new Producer[0]));
 	}
 
 	@Deprecated
