@@ -117,13 +117,6 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return block;
 	}
 
-	public SequentialBlock branch() {
-		BranchBlock split = new BranchBlock(getOutputShape());
-		SequentialBlock branch = split.append(new SequentialBlock(getOutputShape()));
-		add(split);
-		return branch;
-	}
-
 	public <T extends Block> T branch(Function<TraversalPolicy, T> factory) {
 		return branch(factory.apply(getOutputShape()));
 	}

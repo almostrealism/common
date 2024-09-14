@@ -18,13 +18,19 @@ package org.almostrealism.layers;
 
 import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.io.Describable;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 
-public interface Component {
+public interface Component extends Describable {
 
 	TraversalPolicy getOutputShape();
+
+	@Override
+	default String describe() {
+		return getOutputShape().toStringDetail();
+	}
 
 	static <T> Optional<TraversalPolicy> shape(T v) {
 		if (v instanceof Component) {

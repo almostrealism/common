@@ -498,6 +498,9 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				cv(shape(groupSize), 0)
 					.subtract(cv(shape(1), 1))
 						.divide(cv(shape(1), 2)).get();
+		Evaluable<PackedCollection<?>> dLdGammaEval =
+				cv(shape(groupSize), 0)
+					.multiply(cv(shape(groupSize), 1)).get();
 
 		for (int g = 0; g < groups; g++) {
 			int start = g * groupSize;
@@ -513,7 +516,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));
 
 			PackedCollection<?> dLdBeta = dLdyGroup;
-			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();
+//			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();
+			PackedCollection<?> dLdGamma = dLdGammaEval.evaluate(dLdyGroup, xHatGroup);
 
 			PackedCollection<?> expectedGrad = normBackwards(
 					input.range(shape(groupSize), start),

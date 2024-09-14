@@ -74,6 +74,13 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 				requirements));
 	}
 
+	default SequentialBlock branch() {
+		BranchBlock split = new BranchBlock(getOutputShape());
+		SequentialBlock branch = split.append(new SequentialBlock(getOutputShape()));
+		andThen(split);
+		return branch;
+	}
+
 	default <T extends Block> Block andThen(T next) {
 //		SequentialBlock block = new SequentialBlock(getInputShape());
 //		block.add(this);
@@ -102,5 +109,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		CollectionReceptor r = new CollectionReceptor(destination);
 		getForward().setReceptor(r);
 		return r;
+	}
+
+	@Override
+	default String describe() {
+		return getInputShape().toStringDetail() + " -> " + getOutputShape().toStringDetail();
 	}
 }

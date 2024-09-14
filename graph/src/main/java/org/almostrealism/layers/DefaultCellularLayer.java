@@ -200,4 +200,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		if (forward instanceof Learning) ((Learning) forward).setLearningRate(learningRate);
 		if (backward instanceof Learning) ((Learning) backward).setLearningRate(learningRate);
 	}
+
+	@Override
+	public String describe() {
+		return getName() + " " + getInputShape() + "->" + getOutputShape();
+	}
 }

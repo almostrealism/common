@@ -547,6 +547,27 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> concat(int axis, Block aux, ComputeRequirement... requirements) {
+		return shape -> {
+			TraversalPolicy auxShape = aux.getOutputShape();
+			if (auxShape.getDimensions() != shape.getDimensions()) {
+				throw new IllegalArgumentException();
+			}
+
+			return concat(
+					shape.replaceDimension(axis, shape.length(axis) + auxShape.length(axis)),
+					aux, requirements);
+		};
+	}
+
+	default CellularLayer concat(TraversalPolicy shape,
+								CellularPropagation<PackedCollection<?>> aux,
+								ComputeRequirement... requirements) {
+		return compose("concat", shape, aux,
+				(input, auxValue) -> concat(shape, input, auxValue),
+				requirements);
+	}
+
 	@Deprecated
 	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		warn("product will not support backpropagation");

@@ -85,6 +85,12 @@ public class Model implements Setup, CodeFeatures {
 		return this;
 	}
 
+	public SequentialBlock sequential() {
+		SequentialBlock seq = new SequentialBlock(blocks.getOutputShape());
+		add(seq);
+		return seq;
+	}
+
 	public List<Block> getInputs() {
 		return Collections.unmodifiableList(inputs);
 	}
