@@ -68,11 +68,10 @@ public interface GradientTestFeatures extends CodeFeatures {
 
 		double dLdHatXGroupXHatGroupMean = dLdHatXGroupXHatGroup.doubleStream().sum() / groupSize;
 
-		PackedCollection<?> result = dlDxGroup(
-				dLdHatXGroup, dLdHatXGroupMean,
-				xHatGroup, dLdHatXGroupXHatGroupMean);
-		result = cp(result).divide(stdG).evaluate();
-		return result;
+		return dlDxGroup(
+					dLdHatXGroup, dLdHatXGroupMean,
+					xHatGroup, dLdHatXGroupXHatGroupMean)
+				.replace(v -> v / stdG);
 	}
 
 	default PackedCollection<?> dlDxGroup(int c, PackedCollection<?> o, PackedCollection<?> g) {

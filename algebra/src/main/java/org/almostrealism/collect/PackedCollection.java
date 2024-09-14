@@ -47,7 +47,9 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleFunction;
 import java.util.function.DoubleSupplier;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
@@ -207,6 +209,13 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	public PackedCollection<T> fill(Function<int[], Double> f) {
 		double data[] = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<?> replace(DoubleUnaryOperator f) {
+		double in[] = toArray(0, getMemLength());
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
 		setMem(0, data);
 		return this;
 	}
