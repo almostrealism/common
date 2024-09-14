@@ -501,7 +501,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		IndexSequence s = b.sequence();
 		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
-		if (seqA.length < 1000) {
+		if (seqA.length < 100) {
 			System.out.println(Arrays.toString(seqA));
 			System.out.println(Arrays.toString(seqB));
 		}

@@ -510,7 +510,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			double stdG = Math.sqrt(varG + eps);
 
 //			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
-			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, muG, stdG);
+			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));
 
 			PackedCollection<?> dLdBeta = dLdyGroup;
 			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();

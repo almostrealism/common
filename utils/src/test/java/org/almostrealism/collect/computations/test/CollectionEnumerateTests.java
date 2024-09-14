@@ -150,7 +150,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 						for (int k = 0; k < len; k++) {
 							int inPos[] = new int[] { np, cp, j, i * stride + k };
 							int outPos[] = new int[] { np, cp, i, j, k };
-							log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
+							if (verboseLogs)
+								log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
 							assertEquals(input.valueAt(inPos), enumerated.valueAt(outPos));
 						}
 					}
@@ -179,7 +180,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 			for (int x = 0; x < size; x++) {
 				for (int y = 0; y < size; y++) {
 					double expected = input.valueAt(x, y, i);
-					log(expected + " vs " + output.valueAt(i, x, y, 0));
+					if (verboseLogs)
+						log(expected + " vs " + output.valueAt(i, x, y, 0));
 					assertEquals(expected, output.valueAt(i, x, y, 0));
 				}
 			}
@@ -275,7 +277,9 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 					total /= Math.sqrt(d);
 
-					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(n, t));
+					if (verboseLogs)
+						log("[" + n + ", " + t + "] " + total + " vs " + out.valueAt(n, t));
+
 					assertEquals(total, out.valueAt(n, t));
 				}
 			}
@@ -442,7 +446,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 					for (int l = 0; l < 2; l++) {
 						double expected = input.toDouble(input.getShape().index(i * 2 + k, j * 2 + l));
 						double actual = output.toDouble(output.getShape().index(i, j, k, l));
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -472,7 +477,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 					for (int l = 0; l < w; l++) {
 						double expected = input.valueAt(i + k, j + l);
 						double actual = output.valueAt(i / s, j / s, k, l);
-						log(expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -509,10 +515,12 @@ public class CollectionEnumerateTests implements TestFeatures {
 			for (int cp = 0; cp < c; cp++) {
 				for (int i = 0; i < h; i += s) {
 					for (int j = 0; j + pad < w; j += s) {
-						log("i: " + i + " j: " + j);
+						if (verboseLogs)
+							log("i: " + i + " j: " + j);
 
 						for (int k = 0; k < x; k++) {
-							log("(" + np + "," +  cp + "," + i + "," + (j + k) + ") -> " +
+							if (verboseLogs)
+								log("(" + np + "," +  cp + "," + i + "," + (j + k) + ") -> " +
 									"(" + np + "," + cp + "," + (j / s) + "," + i + "," + k + ")");
 
 							if ((j / s) >= output.getShape().length(2)) {
@@ -521,7 +529,9 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 							double expected = input.valueAt(np, cp, i, j + k);
 							double actual = output.valueAt(np, cp, j / s, i, k);
-							// log("\t" + expected + " vs " + actual);
+							if (verboseLogs)
+								log("\t" + expected + " vs " + actual);
+
 							assertEquals(expected, actual);
 						}
 					}
@@ -564,7 +574,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 							for (int l = 0; l < x; l++) {
 								double expected = input.valueAt(np, cp, i + k, j + l);
 								double actual = output.valueAt(np, cp, i / s, j / s, k, l);
-								log(expected + " vs " + actual);
+								if (verboseLogs)
+									log(expected + " vs " + actual);
 								assertEquals(expected, actual);
 							}
 						}
@@ -595,7 +606,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 						for (int l = 0; l < 3; l++) {
 							double expected = input.valueAt(i + k, j + l);
 							double actual = output.valueAt(i, j, k, l);
-							log(expected + " vs " + actual);
+							if (verboseLogs)
+								log(expected + " vs " + actual);
 							assertEquals(expected, actual);
 						}
 					}

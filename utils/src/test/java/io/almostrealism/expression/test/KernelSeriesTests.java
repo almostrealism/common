@@ -24,10 +24,11 @@ import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import org.almostrealism.io.ConsoleFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class KernelSeriesTests implements ExpressionFeatures {
+public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
 	private static LanguageOperations lang = new LanguageOperationsStub();
 
 	@Test
@@ -283,20 +284,22 @@ public class KernelSeriesTests implements ExpressionFeatures {
 	}
 
 	protected void validateSeries(Expression exp) {
-		System.out.println("Expression: " + exp.getExpression(lang));
+		log(exp.getExpression(lang));
 
 		KernelSeries series = exp.kernelSeries();
 		int period = series.getPeriod().orElseThrow();
-		System.out.println("Reported Period: " + period);
+		log("Reported period = " + period);
 
 		Number[] values = exp.sequence(new KernelIndex(), period * 4L).toArray();
 
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < period; j++) {
-				System.out.print(values[i * period + j] + " ");
-			}
+		if (period < 500) {
+			for (int i = 0; i < 4; i++) {
+				for (int j = 0; j < period; j++) {
+					System.out.print(values[i * period + j] + " ");
+				}
 
-			System.out.println();
+				System.out.println();
+			}
 		}
 
 		for (int i = 0; i < period; i++) {

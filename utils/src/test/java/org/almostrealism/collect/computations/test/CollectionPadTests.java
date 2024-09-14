@@ -65,8 +65,6 @@ public class CollectionPadTests implements TestFeatures {
 
 	@Test
 	public void pad3d() {
-		HardwareOperator.enableInstructionSetMonitoring = true;
-
 		int n = 2;
 
 		PackedCollection<?> data = new PackedCollection<>(n, 2, 3).randFill();

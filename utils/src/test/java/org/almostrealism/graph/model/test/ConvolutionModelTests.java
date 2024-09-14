@@ -116,7 +116,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 						}
 
 						double actual = output.valueAt(np, f, row, col);
-						log("[" + f + ", " + row + ", " + col + "] " + expected + " vs " + actual);
+						if (verboseLogs)
+							log("[" + f + ", " + row + ", " + col + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
