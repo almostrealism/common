@@ -168,7 +168,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					expected += input.toDouble(input.getShape().index(i, j));
 				}
 
-				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
+				if (verboseLogs)
+					log(expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
 				Assert.assertEquals(expected, output.toDouble(output.getShape().index(i, 0)), 0.0001);
 			}
 		});
@@ -199,7 +200,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 
-				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, 0));
+				if (verboseLogs)
+					log(expected + " vs " + output.valueAt(i, 0));
 				Assert.assertEquals(expected, output.valueAt(i, 0), 0.0001);
 			}
 		});
@@ -230,7 +232,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 
-				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, 0));
+				if (verboseLogs)
+					log(expected + " vs " + output.valueAt(i, 0));
 				Assert.assertEquals(expected, output.valueAt(i, 0), 0.0001);
 			}
 		});
@@ -261,7 +264,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 
-				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, 0));
+				if (verboseLogs)
+					log(expected + " vs " + output.valueAt(i, 0));
 				Assert.assertEquals(expected, output.valueAt(i, 0), 0.0001);
 			}
 		});
@@ -287,7 +291,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 
-				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
+				if (verboseLogs)
+					log(expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
 				Assert.assertEquals(expected, output.toDouble(output.getShape().index(i, 0)), 0.0001);
 			}
 		};
@@ -319,7 +324,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 						expected += input.valueAt(i, k) * filter.valueAt(j, k);
 					}
 
-					System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.valueAt(i, j, 0));
+					if (verboseLogs)
+						log(expected + " vs " + output.valueAt(i, j, 0));
 					Assert.assertEquals(expected, output.valueAt(i, j, 0), 0.0001);
 				}
 			}
@@ -361,7 +367,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					total += x.valueAt(n, i) * in.valueAt(t, n, i);
 				}
 
-				System.out.println("PackedCollectionMapTests[" + t + "]: " + total + " vs " + out.valueAt(n, t));
+				if (verboseLogs)
+					log("[" + t + "]: " + total + " vs " + out.valueAt(n, t));
 				assertEquals(total, out.valueAt(n, t));
 			}
 		}
@@ -394,7 +401,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 			for (int i = 0; i < r - pad; i++) {
 				for (int j = 0; j < c - pad; j++) {
-					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+					log(i + ", " + j);
 
 					for (int k = 0; k < w; k++) {
 						System.out.print("\t[");
@@ -455,7 +462,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
-							System.out.println("\tPackedCollectionMapTests: " + expected + " vs " + actual);
+							if (verboseLogs)
+								log("\tPackedCollectionMapTests: " + expected + " vs " + actual);
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 					}
@@ -539,7 +547,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 					double actual = output.toDouble(output.getShape().index(i, j, 0));
 
-					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+					if (verboseLogs)
+						log(expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -656,7 +665,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -678,7 +688,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -728,7 +739,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -750,7 +762,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -824,7 +837,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							System.out.println(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -873,7 +887,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.valueAt(i, j, copy);
 
-						System.out.println("PackedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
+						if (verboseLogs)
+							log("[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -904,7 +919,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 						double expected = input.toDouble(input.getShape().index(i, j, k));
 						double actual = output.toDouble(output.getShape().index(i, j, k));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 
@@ -912,7 +928,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 						double expected = addOn.toDouble(addOn.getShape().index(k));
 						double actual = output.toDouble(output.getShape().index(i, j, k + 3));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
