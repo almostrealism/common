@@ -214,14 +214,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSumEnumerateOptimized() {
-		boolean chainRule = AggregatedProducerComputation.enableTransitiveDelta;
-
-		try {
-			AggregatedProducerComputation.enableTransitiveDelta = false;
-			productSumEnumerate(true);
-		} finally {
-			AggregatedProducerComputation.enableTransitiveDelta = chainRule;
-		}
+		productSumEnumerate(true);
 	}
 
 	public void productSumEnumerate(boolean optimize) {
