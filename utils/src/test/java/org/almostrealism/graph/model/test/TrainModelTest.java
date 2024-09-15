@@ -93,7 +93,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			Assert.assertNotEquals(expected, actual, 0.0001);
 
 			expected += biases.valueAt(i);
-			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			if (verboseLogs)
+				log("[" + i + "] " + expected + " vs " + actual);
+
 			Assert.assertEquals(expected, actual, 0.0001);
 		}
 
@@ -116,7 +118,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			double expected = expValues[i] / sum;
 			double actual = output.toDouble(i);
 
-			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			if (verboseLogs)
+				log("[" + i + "] " + expected + " vs " + actual);
 			Assert.assertEquals(expected, actual, 0.0001);
 		}
 	}
@@ -203,7 +206,10 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 						}
 
 						double actual = output.valueAt(n, p, q, r);
-						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+
+						if (verboseLogs)
+							log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+
 						assertEquals(expected, actual);
 					}
 				}

@@ -29,6 +29,7 @@ import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
@@ -245,7 +246,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		double result[] = new double[size];
 
 		Model model = new Model(shape(size));
-		model.add(new DefaultCellularLayer("blank", shape(2),
+		model.add(new DefaultBlock(shape(2), shape(2),
 				Cell.of((in, next) -> next.push(in)),
 				Cell.of((grad, next) -> () -> {
 					Evaluable<PackedCollection<?>> gr = grad.get();
