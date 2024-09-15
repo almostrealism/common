@@ -103,7 +103,7 @@ public class BranchBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
-					if (BranchBlock.this.downstream != null) {
+					if (cellWarnings && BranchBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
 

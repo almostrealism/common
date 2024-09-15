@@ -36,7 +36,7 @@ public class ReceptorCell<T> implements Cell<T> {
 
 	@Override
 	public void setReceptor(Receptor<T> r) {
-		if (this.r != null) {
+		if (cellWarnings && this.r != null) {
 			CollectionFeatures.console.features(ReceptorCell.class)
 					.warn("Replacing receptor");
 		}

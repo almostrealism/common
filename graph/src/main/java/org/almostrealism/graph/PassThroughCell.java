@@ -33,7 +33,7 @@ public class PassThroughCell<T> implements Cell<T> {
 
 	@Override
 	public void setReceptor(Receptor<T> r) {
-		if (this.r != null) {
+		if (cellWarnings && this.r != null) {
 			CollectionFeatures.console.features(PassThroughCell.class)
 					.warn("Replacing receptor");
 		}

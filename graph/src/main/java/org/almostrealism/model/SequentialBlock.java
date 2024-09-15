@@ -184,15 +184,21 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return blocks;
 	}
 
-	// TODO  Should return 'this'?
+
 	public void accum(Block value, ComputeRequirement... requirements) {
-		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
+		accum(value, true, requirements);
+	}
+
+	// TODO  Should return 'this'?
+	public void accum(Block value, boolean branch, ComputeRequirement... requirements) {
+		if (branch && value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 
 		if (enableComposites) {
 			// Create a branch to direct the current output
 			// to the other block
-			value = branch(value);
+			if (branch)
+				value = branch(value);
 
 			// Creat a Block which combines the residual and
 			// the output of the other block
@@ -271,7 +277,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
-					if (SequentialBlock.this.downstream != null) {
+					if (cellWarnings && SequentialBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
 
@@ -294,7 +300,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
-					if (SequentialBlock.this.upstream != null) {
+					if (cellWarnings && SequentialBlock.this.upstream != null) {
 						warn("Replacing receptor");
 					}
 

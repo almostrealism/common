@@ -118,7 +118,15 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 															 TraversalPolicy outputShape,
 															 Composition<PackedCollection<?>> operator,
 															 ComputeRequirement... requirements) {
-		return shape -> compose(name, shape, aux.getOutputShape(), outputShape, aux, operator, requirements);
+		return shape -> compose(name, shape, aux, outputShape, operator, requirements);
+	}
+
+	default CellularLayer compose(String name,
+								  TraversalPolicy inputShape,
+								  Block aux, TraversalPolicy outputShape,
+								  Composition<PackedCollection<?>> operator,
+								  ComputeRequirement... requirements) {
+		return compose(name, inputShape, aux.getOutputShape(), outputShape, aux, operator, requirements);
 	}
 
 	default CellularLayer compose(String name,
@@ -555,17 +563,18 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				throw new IllegalArgumentException();
 			}
 
-			return concat(
+			return concat(shape,
 					shape.replaceDimension(axis, shape.length(axis) + auxShape.length(axis)),
 					aux, requirements);
 		};
 	}
 
-	default CellularLayer concat(TraversalPolicy shape,
-								CellularPropagation<PackedCollection<?>> aux,
-								ComputeRequirement... requirements) {
-		return compose("concat", shape, aux,
-				(input, auxValue) -> concat(shape, input, auxValue),
+	default CellularLayer concat(TraversalPolicy inputShape,
+								 TraversalPolicy outputShape,
+								 Block aux,
+								 ComputeRequirement... requirements) {
+		return compose("concat", inputShape, aux, outputShape,
+				(input, auxValue) -> concat(outputShape, input, auxValue),
 				requirements);
 	}
 

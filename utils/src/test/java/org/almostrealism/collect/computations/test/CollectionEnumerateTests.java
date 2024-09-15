@@ -355,6 +355,49 @@ public class CollectionEnumerateTests implements TestFeatures {
 		int c = 2;
 		int h = 6;
 		int d = 4;
+		int s1 = 5;
+		int s2 = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(c, h, d, s1).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(3)
+				.repeat(s2);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(2)
+				.enumerate(3, 1)
+				.repeat(s1);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, s2));
+
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s1; i++) {
+					for (int j = 0; j < s2; j++) {
+						double total = 0.0;
+
+						for (int k = 0; k < d; k++) {
+							total += a.valueAt(p, n, k, i) * b.valueAt(p, n, k, j);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerate2dProduct4() {
+		int c = 2;
+		int h = 6;
+		int d = 4;
 		int s1 = 3;
 		int s2 = 3;
 

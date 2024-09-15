@@ -93,7 +93,7 @@ public class DefaultBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
-					if (DefaultBlock.this.downstream != null) {
+					if (cellWarnings && DefaultBlock.this.downstream != null) {
 						warn("Replacing receptor");
 					}
 

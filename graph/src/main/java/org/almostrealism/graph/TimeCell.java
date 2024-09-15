@@ -120,7 +120,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 
 	@Override
 	public void setReceptor(Receptor<Scalar> r) {
-		if (this.r != null) {
+		if (cellWarnings && this.r != null) {
 			warn("Replacing receptor");
 		}
 

@@ -24,12 +24,15 @@ import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
+	boolean cellWarnings = SystemUtils.isEnabled("AR_GRAPH_CELL_WARNINGS").orElse(false);
+
 	default Supplier<Runnable> setup() {
 		return new OperationList();
 	}
@@ -128,7 +131,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (this.r != null) {
+				if (cellWarnings && this.r != null) {
 					CollectionFeatures.console.features(Cell.class)
 							.warn("Replacing receptor");
 				}
@@ -154,7 +157,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (this.r != null) {
+				if (cellWarnings && this.r != null) {
 					CollectionFeatures.console.features(Cell.class)
 							.warn("Replacing receptor");
 				}
@@ -206,7 +209,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
-				if (this.r != null) {
+				if (cellWarnings && this.r != null) {
 					CollectionFeatures.console.features(Cell.class)
 							.warn("Replacing receptor");
 				}

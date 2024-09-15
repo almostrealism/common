@@ -35,7 +35,7 @@ public abstract class CellAdapter<T> implements Cell<T> {
 
 	@Override
 	public void setReceptor(Receptor<T> r) {
-		if (this.r != null) {
+		if (cellWarnings && this.r != null) {
 			CollectionFeatures.console.features(CellAdapter.class)
 					.warn("Replacing receptor");
 		}
