@@ -171,7 +171,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		aux.getForward().setReceptor(auxExit);
 
 		// Capture the result intended as input for the composition
-		CaptureReceptor auxReceptor = new CaptureReceptor();
+		Cell.CaptureReceptor<PackedCollection<?>> auxReceptor = new Cell.CaptureReceptor<>();
 		auxExit.setReceptor(auxReceptor);
 
 		// Create a layer that composes its input with whatever was received for aux
@@ -538,7 +538,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		warn("accum will not support backpropagation");
 		return layer("accum", shape, shape, Cell.of((input, next) -> {
-			CaptureReceptor r = new CaptureReceptor();
+			Cell.CaptureReceptor<PackedCollection<?>> r = new Cell.CaptureReceptor<>();
 			value.setReceptor(r);
 
 			OperationList ops = new OperationList();
@@ -593,10 +593,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								  ComputeRequirement... requirements) {
 		warn("product will not support backpropagation");
 		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
-			CaptureReceptor ar = new CaptureReceptor();
+			Cell.CaptureReceptor<PackedCollection<?>> ar = new Cell.CaptureReceptor<>();
 			a.setReceptor(ar);
 
-			CaptureReceptor br = new CaptureReceptor();
+			Cell.CaptureReceptor<PackedCollection<?>> br = new Cell.CaptureReceptor<>();
 			b.setReceptor(br);
 
 			OperationList ops = new OperationList();
@@ -759,17 +759,5 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			ss = c(1.0).divide(ss.pow(c(0.5)));
 			return multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss);
 		}, List.of(weights), requirements);
-	}
-
-	class CaptureReceptor implements Receptor<PackedCollection<?>> {
-		private Producer<PackedCollection<?>> receipt;
-
-		public Producer<PackedCollection<?>> getReceipt() { return receipt; }
-
-		@Override
-		public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
-			receipt = in;
-			return new OperationList();
-		}
 	}
 }

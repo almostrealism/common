@@ -16,7 +16,13 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Producer;
+
 public interface CellularPropagation<T> {
+	default Producer<T> apply(Producer<T> input) {
+		return getForward().apply(input);
+	}
+
 	Cell<T> getForward();
 
 	Cell<T> getBackward();

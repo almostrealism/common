@@ -292,7 +292,10 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> in = traverseEach(p(input));
 			CollectionProducer<PackedCollection<?>> subset = c(subset(shape(1, seqLength), in, h, 0)).traverseEach();
-			CollectionProducer<PackedCollection<?>> p = subset.exp().divide(subset.exp().traverse(0).sum());
+
+			Producer<PackedCollection<?>> p = softmax(subset.getShape(), true).apply(subset);
+
+			// CollectionProducer<PackedCollection<?>> p = subset.exp().divide(subset.exp().traverse(0).sum());
 
 			double values[] = originalInput.toArray(0, originalInput.getShape().getTotalSize());
 			softmax(values, h * seqLength, seqLength);
