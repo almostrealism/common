@@ -196,7 +196,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		auxBackward.setReceptor(aux.getBackward());
 
 		// Combine both backpropagation steps and attach the result to the layer
-		layer.setBackward(new Cell<>() {
+		layer.setBackward(new LearningCell() {
+			@Override
+			public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+				if (aux instanceof Learning) {
+					((Learning) aux).setLearningRate(learningRate);
+				}
+			}
+
 			@Override
 			public Supplier<Runnable> push(Producer<PackedCollection<?>> input) {
 				OperationList op = new OperationList(name + " Composed Backward");
@@ -760,4 +767,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			return multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss);
 		}, List.of(weights), requirements);
 	}
+
+	interface LearningCell extends Cell<PackedCollection<?>>, Learning { }
 }

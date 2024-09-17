@@ -56,6 +56,7 @@ public class Model implements Setup, CodeFeatures {
 
 	public void setLearningRate(double rate) {
 		learningRate.setMem(0, rate);
+		blocks.setLearningRate(p(learningRate));
 	}
 
 	public double getLearningRate() {
@@ -67,10 +68,6 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model add(Block b) {
-		if (b instanceof Learning) {
-			((Learning) b).setLearningRate(p(learningRate));
-		}
-
 		blocks.add(b);
 		return this;
 	}
@@ -81,6 +78,10 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model addInput(Block b) {
+		if (b instanceof Learning) {
+			((Learning) b).setLearningRate(p(learningRate));
+		}
+
 		inputs.add(b);
 		return this;
 	}

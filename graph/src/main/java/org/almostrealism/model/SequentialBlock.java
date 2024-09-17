@@ -26,6 +26,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.Component;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.Learning;
 
@@ -52,6 +53,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private Receptor<PackedCollection<?>> back;
 	private Receptor<PackedCollection<?>> upstream;
 
+	private Producer<PackedCollection<?>> learningRate;
+
 	public SequentialBlock(TraversalPolicy inputShape) {
 		this.inputShape = inputShape;
 		this.blocks = new ArrayList<>();
@@ -71,6 +74,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	@Override
 	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+		this.learningRate = learningRate;
+
 		blocks.forEach(b -> {
 			if (b instanceof Learning)
 				((Learning) b).setLearningRate(learningRate);
@@ -113,6 +118,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 
 		blocks.add(block);
+		updateLearningRate(block);
 		lastBlock().getForward().setReceptor(push);
 		return block;
 	}
@@ -239,6 +245,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return this;
 	}
 
+	protected void updateLearningRate(Component block) {
+		if (block instanceof Learning) {
+			((Learning) block).setLearningRate(learningRate);
+		}
+	}
+
 	@Override
 	public Supplier<Runnable> setup() {
 		return blocks.stream().map(Block::setup).collect(OperationList.collector());
@@ -272,7 +284,13 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			entry = new Cell<>() {
 				@Override
 				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
-					return firstBlock().getForward().push(in);
+					Block first = firstBlock();
+
+					if (first == null) {
+						return SequentialBlock.this.downstream.push(in);
+					} else {
+						return first.getForward().push(in);
+					}
 				}
 
 				@Override
@@ -295,7 +313,13 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			propagate = new Cell<>() {
 				@Override
 				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
-					return lastBlock().getBackward().push(in);
+					Block last = lastBlock();
+
+					if (last == null) {
+						return SequentialBlock.this.upstream.push(in);
+					} else {
+						return last.getBackward().push(in);
+					}
 				}
 
 				@Override
