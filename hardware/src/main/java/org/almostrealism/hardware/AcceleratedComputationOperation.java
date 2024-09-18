@@ -193,7 +193,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (verboseCompile) log("Compiling " + getFunctionName());
 
-		return new ExpressionCache().use(() -> {
+		return new ExpressionCache().use(getMetadata(), () -> {
 			prepareScope();
 
 			if (getComputation() instanceof OperationAdapter

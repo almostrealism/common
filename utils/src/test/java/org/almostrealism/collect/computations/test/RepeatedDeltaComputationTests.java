@@ -18,6 +18,8 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Process;
 import org.almostrealism.algebra.Tensor;
@@ -32,6 +34,8 @@ import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSettings;
 import org.junit.Test;
+
+import java.io.IOException;
 
 public class RepeatedDeltaComputationTests implements TestFeatures {
 
@@ -233,6 +237,65 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		assertEquals(0.0, out.valueAt(1, 1));
 		assertEquals(2.0, out.valueAt(2, 1));
 		assertEquals(1.0, out.valueAt(3, 1));
+	}
+
+	@Test
+	public void productSumEnumerate4d() throws IOException {
+		int l = 2; int d = 28;
+
+		int n = 1;
+		int c = 4 * l;
+		int h = d; int w = d;
+		int f = 2 * l;
+
+		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("productSumEnumerate4d"));
+
+		try {
+			productSumEnumerate4d(n, c, h, w, f);
+		} finally {
+			profile.save("results/productSumEnumerate4d.xml");
+		}
+	}
+
+	public void productSumEnumerate4d(int n, int c, int h, int w, int f) {
+		int s = 3;
+		int diff = s - 1;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
+		PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
+
+		CollectionProducer<PackedCollection<?>> conv =
+				cp(input).reshape(n, c, h * w)
+						.traverse(1).enumerate(2, 1)
+						.reshape(n, h, w, c);
+		conv = conv.traverse(1)
+				.enumerate(2, s, 1)
+				.enumerate(2, s, 1)
+				.traverse(1)
+				.repeat(f)
+				.each();
+
+		int bs = conv.getShape().length(0);
+
+		CollectionProducer<PackedCollection<?>> filter =
+				cp(filters.reshape(-1, c, s * s))
+						.traverse(1).enumerate(2, 1)
+						.reshape(-1, s, s, c);
+		filter = filter.traverse(1)
+				.repeat(h - diff)
+				.repeat(w - diff)
+				.traverse(0)
+				.repeat(bs)
+				.each();
+
+		CollectionProducer<PackedCollection<?>> result =
+				conv.multiply(filter).sum(4);
+		log(result.getShape());
+
+		PackedCollection<?> out =
+				Process.optimized(result.delta(cp(input))).get()
+				.evaluate().traverse(2);
+		log(out.getShape());
 	}
 
 	@Test

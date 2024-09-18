@@ -329,6 +329,14 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		ProducerCache.purgeEvaluableCache(this);
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed) " : " (variable) ") +
+				getShape().toString();
+	}
+
 	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		Stream.of(args).forEach(Objects::requireNonNull);
 		return args;

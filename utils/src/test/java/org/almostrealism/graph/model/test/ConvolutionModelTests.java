@@ -74,6 +74,13 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
+	@Test
+	public void convMultiChannelLarge() {
+		if (skipKnownIssues) return;
+
+		convMultiChannel(1, 56, 28, 28, 3, 28);
+	}
+
 	public void convMultiChannel(int n, int c, int h, int w, int convSize, int filterCount) {
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);

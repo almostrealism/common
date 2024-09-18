@@ -36,6 +36,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -44,6 +45,8 @@ import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
+
 	/**
 	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
 	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
@@ -123,12 +126,15 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		private CollectionProducer<T> op;
 
 		public IsolatedProcess(CollectionProducer<T> op) {
-			// Computation.console.features(this).log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
+			if (isolationLogging)
+				Computation.console.features(this)
+						.log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
 
 			this.op = op;
 
 			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
-				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
+				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " +
+						MemoryProvider.MAX_RESERVATION);
 			}
 		}
 
