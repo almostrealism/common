@@ -113,16 +113,13 @@ public class ExpressionCache {
 	}
 
 	public static <T> Expression<T> match(Expression<T> expression) {
-		Supplier<Expression<T>> matcher = () -> {
-			ExpressionCache cache = getCurrent();
-			if (cache == null) return expression;
-			return cache.get(expression);
-		};
+		ExpressionCache cache = getCurrent();
+		if (cache == null) return expression;
 
 		if (timing == null) {
-			return matcher.get();
+			return cache.get(expression);
 		} else {
-			return timing.recordDuration(currentMetadata.get(), "expressionCacheMatch", matcher);
+			return timing.recordDuration(currentMetadata.get(), "expressionCacheMatch", () -> cache.get(expression));
 		}
 	}
 

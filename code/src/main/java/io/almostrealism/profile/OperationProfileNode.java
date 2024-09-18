@@ -164,6 +164,8 @@ public class OperationProfileNode extends OperationProfile implements Tree<Opera
 	}
 
 	public OperationProfileNode getProfileNode(OperationMetadata metadata, boolean top) {
+		if (metadata == null) return null;
+
 		OperationProfileNode node = null;
 
 		if (Objects.equals(metadata.getDisplayName(), getName())) {
