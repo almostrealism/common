@@ -54,7 +54,7 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.isEmpty()) {
 			throw new IllegalArgumentException("NAryExpression must have at least 2 values");
 		}

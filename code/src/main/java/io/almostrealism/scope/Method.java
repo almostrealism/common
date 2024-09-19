@@ -113,7 +113,7 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		Method m = new Method<>(getType(), getMember(), getName(), children);
 		if (arrayVariableReplacements != null) {
 			arrayVariableReplacements.forEach(m::setArgument);

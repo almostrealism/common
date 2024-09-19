@@ -84,7 +84,7 @@ public class Equals extends Comparison {
 	}
 
 	@Override
-	public Expression<Boolean> generate(List<Expression<?>> children) {
+	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
 		return Equals.of(children.get(0), children.get(1));
 	}

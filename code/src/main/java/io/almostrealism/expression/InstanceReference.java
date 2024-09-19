@@ -119,7 +119,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				target, e(1), e(0));
 	}
 
-	public InstanceReference<T> generate(List<Expression<?>> children) {
+	public InstanceReference<T> recreate(List<Expression<?>> children) {
 		if (children.size() == 0) {
 			return new InstanceReference<>(var);
 		} else if (children.size() == 1) {

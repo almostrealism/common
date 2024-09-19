@@ -544,6 +544,14 @@ public abstract class Expression<T> implements
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
+		boolean identical = children.size() == getChildren().size() &&
+				IntStream.range(0, children.size())
+						.map(i -> children.get(i) == getChildren().get(i) ? 1 : 0)
+						.sum() == children.size();
+		return identical ? this : recreate(children);
+	}
+
+	protected Expression<T> recreate(List<Expression<?>> children) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -573,49 +581,58 @@ public abstract class Expression<T> implements
 			return this;
 		}
 
+		boolean altered = false;
 		Expression<?> simplified[] = new Expression[getChildren().size()];
 
 		i: for (int i = 0; i < simplified.length; i++) {
-			simplified[i] = children.get(i);
-			simplified[i] = simplified[i].simplify(context, depth + 1);
+			try {
+				simplified[i] = children.get(i);
+				simplified[i] = simplified[i].simplify(context, depth + 1);
 
-			if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
-				continue i;
-			}
-
-			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
-
-			Set<Index> indices = simplified[i].getIndices();
-			Index target = null;
-
-			if (!indices.isEmpty()) {
-				target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
-						.orElse(indices.stream().findFirst().orElse(null));
-			}
-
-			IndexValues v = new IndexValues();
-			if (target != null) v.put(target, 0);
-
-			if (simplified[i].isValue(v)) {
-				if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
-						target.getLimit().orElse(0) < Integer.MAX_VALUE) {
-					IndexSequence orig = children.get(i).sequence();
-					IndexSequence seq = simplified[i].sequence();
-					if (!orig.congruent(seq)) {
-						throw new UnsupportedOperationException();
-					}
+				if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
+					continue i;
 				}
 
-				simplified[i] = provider.getSeries(simplified[i]);
-				if (ScopeSettings.isDeepSimplification())
-					simplified[i] = simplified[i].getSimplified(context);
-				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+				if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
+
+				Set<Index> indices = simplified[i].getIndices();
+				Index target = null;
+
+				if (!indices.isEmpty()) {
+					target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
+							.orElse(indices.stream().findFirst().orElse(null));
+				}
+
+				IndexValues v = new IndexValues();
+				if (target != null) v.put(target, 0);
+
+				if (simplified[i].isValue(v)) {
+					if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
+							target.getLimit().orElse(0) < Integer.MAX_VALUE) {
+						IndexSequence orig = children.get(i).sequence();
+						IndexSequence seq = simplified[i].sequence();
+						if (!orig.congruent(seq)) {
+							throw new UnsupportedOperationException();
+						}
+					}
+
+					simplified[i] = provider.getSeries(simplified[i]);
+					if (ScopeSettings.isDeepSimplification())
+						simplified[i] = simplified[i].getSimplified(context);
+					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+				}
+			} finally {
+				altered = altered || simplified[i] != children.get(i);
 			}
 		}
 
-		Expression simple = generate(List.of(simplified)).populate(this);
-		simple.seriesProvider = provider;
-		return simple;
+		if (altered) {
+			Expression simple = generate(List.of(simplified)).populate(this);
+			simple.seriesProvider = provider;
+			return simple;
+		} else {
+			return this;
+		}
 	}
 
 	public boolean isSeriesSimplificationTarget(int depth) {

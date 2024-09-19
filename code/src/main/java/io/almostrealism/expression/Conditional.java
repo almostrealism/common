@@ -134,7 +134,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
 		return Conditional.of((Expression<Boolean>) children.get(0),
 				(Expression<Double>) children.get(1),

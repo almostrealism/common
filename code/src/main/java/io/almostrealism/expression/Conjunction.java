@@ -39,7 +39,7 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> generate(List<Expression<?>> children) {
+	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		return new Conjunction(children.toArray(new Expression[0]));
 	}
 

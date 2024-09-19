@@ -50,7 +50,7 @@ public abstract class Constant<T> extends Expression<T> {
 
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
-	public Constant<T> generate(List<Expression<?>> children) {
+	public Constant<T> recreate(List<Expression<?>> children) {
 		if (children.size() > 0) {
 			throw new UnsupportedOperationException();
 		}

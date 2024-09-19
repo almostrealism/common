@@ -45,15 +45,26 @@ public class ExpressionCache {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
 
-		FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
+		Supplier<Expression<T>> lookup = () -> {
+			FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
 
-		Expression e = cache.get(expression);
-		if (e == null) {
-			cache.put(expression, expression);
-			e = expression;
+			Expression e = cache.get(expression);
+			if (e == null) {
+				cache.put(expression, expression);
+				e = expression;
+			}
+
+			return e;
+		};
+
+		if (timing == null) {
+			return lookup.get();
+		} else {
+			String title = "expressionCacheMatch_" + expression.treeDepth() +
+					"_" + expression.countNodes() +
+					"_" + expression.getClass().getSimpleName();
+			return timing.recordDuration(currentMetadata.get(), title, lookup);
 		}
-
-		return e;
 	}
 
 	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
@@ -116,11 +127,7 @@ public class ExpressionCache {
 		ExpressionCache cache = getCurrent();
 		if (cache == null) return expression;
 
-		if (timing == null) {
-			return cache.get(expression);
-		} else {
-			return timing.recordDuration(currentMetadata.get(), "expressionCacheMatch", () -> cache.get(expression));
-		}
+		return cache.get(expression);
 	}
 
 	public static ExpressionCache getCurrent() {

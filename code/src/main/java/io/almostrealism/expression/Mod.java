@@ -122,7 +122,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}

@@ -122,7 +122,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		return (Expression) Quotient.of(children.toArray(new Expression[0]));
 	}
 
