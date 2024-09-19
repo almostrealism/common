@@ -36,4 +36,9 @@ public class UnaryExpression<T> extends Expression<T> {
 			return operator + getChildren().get(0).getWrappedExpression(lang);
 		}
 	}
+
+	@Override
+	public boolean equals(Object obj) {
+		return super.equals(obj) && ((UnaryExpression) obj).operator.equals(operator);
+	}
 }

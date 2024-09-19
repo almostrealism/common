@@ -62,6 +62,11 @@ public class NAryExpression<T> extends Expression<T> {
 		return new NAryExpression<>(getType(), operator, children);
 	}
 
+	@Override
+	public boolean equals(Object obj) {
+		return super.equals(obj) && operator.equals(((NAryExpression) obj).operator);
+	}
+
 	private static Expression<?>[] validateExpressions(Expression<?>[] values) {
 		Objects.requireNonNull(values);
 

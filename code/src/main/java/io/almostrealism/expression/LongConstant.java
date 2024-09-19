@@ -89,4 +89,13 @@ public class LongConstant extends Constant<Long> {
 
 		return super.minus();
 	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (!(obj instanceof LongConstant)) {
+			return false;
+		}
+
+		return ((LongConstant) obj).value == value;
+	}
 }

@@ -121,6 +121,14 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 		return m;
 	}
 
+	@Override
+	public boolean equals(Object obj) {
+		return obj instanceof Method &&
+				((Method) obj).getName().equals(getName()) &&
+				((Method) obj).getMember().equals(getMember()) &&
+				((Method) obj).getArguments().equals(getArguments());
+	}
+
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 

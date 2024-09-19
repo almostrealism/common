@@ -52,4 +52,9 @@ public class Tangent extends Expression<Double> {
 
 		return new Tangent((Expression<Double>) children.get(0), hyperbolic);
 	}
+
+	@Override
+	public boolean equals(Object obj) {
+		return super.equals(obj) && ((Tangent) obj).hyperbolic == hyperbolic;
+	}
 }

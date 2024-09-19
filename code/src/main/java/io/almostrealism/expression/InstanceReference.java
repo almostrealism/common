@@ -129,6 +129,15 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		}
 	}
 
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) return true;
+		if (!(obj instanceof InstanceReference)) return false;
+
+		InstanceReference<?> alt = (InstanceReference<?>) obj;
+		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
+	}
+
 	public static <T> Expression<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
 		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
 

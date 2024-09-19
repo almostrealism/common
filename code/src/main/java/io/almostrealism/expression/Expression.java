@@ -650,8 +650,15 @@ public abstract class Expression<T> implements
 		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
 		if (!Objects.equals(countNodes(), v.countNodes())) return false;
 		if (!Objects.equals(hash, v.hash)) return false;
-		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
-		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
+
+		if (getChildren().size() != v.getChildren().size()) return false;
+		if (IntStream.range(0, getChildren().size())
+				.anyMatch(i -> !Objects.equals(getChildren().get(i), v.getChildren().get(i)))) {
+			return false;
+		}
+
+//		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
+//		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
 		return true;
 	}
 
