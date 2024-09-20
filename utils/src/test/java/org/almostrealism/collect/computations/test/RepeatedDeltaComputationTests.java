@@ -241,7 +241,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void productSumEnumerate4d() throws IOException {
-		int l = 2; int d = 28;
+		int l = 8; int d = 28;
 
 		int n = 1;
 		int c = 4 * l;

@@ -81,11 +81,11 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof IntegerConstant)) {
+	public boolean compare(Expression e) {
+		if (!(e instanceof IntegerConstant)) {
 			return false;
 		}
 
-		return ((IntegerConstant) obj).value == value;
+		return ((IntegerConstant) e).value == value;
 	}
 }

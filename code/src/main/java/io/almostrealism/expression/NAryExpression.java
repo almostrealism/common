@@ -63,8 +63,8 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return super.equals(obj) && operator.equals(((NAryExpression) obj).operator);
+	public boolean compare(Expression e) {
+		return super.compare(e) && operator.equals(((NAryExpression) e).operator);
 	}
 
 	private static Expression<?>[] validateExpressions(Expression<?>[] values) {

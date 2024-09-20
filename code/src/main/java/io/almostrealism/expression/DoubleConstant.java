@@ -79,11 +79,11 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof DoubleConstant)) {
+	public boolean compare(Expression e) {
+		if (!(e instanceof DoubleConstant)) {
 			return false;
 		}
 
-		return Double.compare(((DoubleConstant) obj).value, value) == 0;
+		return Double.compare(((DoubleConstant) e).value, value) == 0;
 	}
 }

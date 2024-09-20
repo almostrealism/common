@@ -53,7 +53,8 @@ public class KernelIndex extends DefaultIndex {
 		return lang.kernelIndex(axis);
 	}
 
-	public KernelStructureContext getContext() {
+	@Override
+	public KernelStructureContext getStructureContext() {
 		return context;
 	}
 
@@ -64,11 +65,6 @@ public class KernelIndex extends DefaultIndex {
 		if (context == null) context = this.context;
 		if (context == null) return OptionalLong.empty();
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
-	}
-
-	@Override
-	public boolean isPossiblyNegative() {
-		return false;
 	}
 
 	@Override

@@ -102,7 +102,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public boolean equals(Object o) {
+	public boolean compare(Expression o) {
 		if (!(o instanceof IndexChild)) return false;
 		return ((IndexChild) o).childIndex.equals(childIndex);
 	}

@@ -33,13 +33,13 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,33 +52,22 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements
 		KernelTree<Expression<?>>, SequenceGenerator, Signature,
 		ExpressionFeatures, ConsoleFeatures {
-	public static boolean enableKernelSeqCache = false;
-	public static boolean enableBatchEvaluation = false;
-	public static boolean enableArithmeticSequence = true;
-	public static boolean enableSequenceValidation = false;
-	public static int maxCacheItemSize = 16;
-	public static int maxCacheItems = 128;
-	public static int maxDepth = 4096;
 
-	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
-
-	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
-
+	public static ScopeTimingListener timing;
 	protected static LanguageOperations lang;
 	private static FrequencyCache<String, IndexSequence> kernelSeqCache;
 
 	static {
 		lang = new LanguageOperationsStub();
 
-		if (enableKernelSeqCache) {
-			kernelSeqCache = new FrequencyCache<>(maxCacheItems, 0.7);
+		if (ScopeSettings.enableKernelSeqCache) {
+			kernelSeqCache = new FrequencyCache<>(ScopeSettings.maxCacheItems, 0.7);
 		}
 	}
 
@@ -113,6 +102,8 @@ public abstract class Expression<T> implements
 	}
 
 	protected void init() {
+		ScopeSettings.reviewChildren(getChildren());
+
 		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
 		this.nodeCount = getChildren().stream().mapToInt(e -> e.nodeCount).sum() + 1;
 		this.containsLong = (getType() == Long.class ||
@@ -125,7 +116,7 @@ public abstract class Expression<T> implements
 			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
 		}
 
-		if (depth > maxDepth) {
+		if (depth > ScopeSettings.maxDepth) {
 			throw new UnsupportedOperationException();
 		}
 	}
@@ -212,6 +203,13 @@ public abstract class Expression<T> implements
 		return indices;
 	}
 
+	public KernelStructureContext getStructureContext() {
+		return getChildren().stream()
+				.map(Expression::getStructureContext)
+				.filter(Objects::nonNull)
+				.findFirst().orElse(null);
+	}
+
 	public boolean containsLong() { return containsLong; }
 
 	public boolean contains(Expression e) {
@@ -287,7 +285,7 @@ public abstract class Expression<T> implements
 	public IndexSequence sequence(Index index, long len, long limit) {
 		if (len < 0) throw new IllegalArgumentException();
 
-		if (enableArithmeticSequence && equals(index)) {
+		if (ScopeSettings.enableArithmeticSequence && equals(index)) {
 			return new ArithmeticIndexSequence(1, 1, len);
 		}
 
@@ -296,7 +294,7 @@ public abstract class Expression<T> implements
 		}
 
 		int nodes = countNodes();
-		String exp = nodes <= maxCacheItemSize ? getExpression(lang) : null;
+		String exp = nodes <= ScopeSettings.maxCacheItemSize ? getExpression(lang) : null;
 
 		if (kernelSeqCache != null && exp != null) {
 			IndexSequence cached = kernelSeqCache.get(exp);
@@ -313,7 +311,7 @@ public abstract class Expression<T> implements
 
 		IndexSequence seq;
 
-		if (enableBatchEvaluation) {
+		if (ScopeSettings.enableBatchEvaluation) {
 			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
 					.map(e -> e.sequence(index, len, limit).toArray())
 					.collect(Collectors.toList()), Math.toIntExact(len)));
@@ -336,7 +334,8 @@ public abstract class Expression<T> implements
 		if (isSimple(context)) return this;
 
 		if (getClass() == Expression.class) {
-			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
+			if (ScopeSettings.enableExpressionWarnings)
+				System.out.println("WARN: Unable to retrieve simplified expression");
 			return this;
 		}
 
@@ -520,7 +519,7 @@ public abstract class Expression<T> implements
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;
-		return toDouble.apply(this);
+		return LanguageOperations.toDouble.apply(this);
 	}
 
 	public Expression<Integer> toInt() {
@@ -607,7 +606,9 @@ public abstract class Expression<T> implements
 				if (target != null) v.put(target, 0);
 
 				if (simplified[i].isValue(v)) {
-					if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
+					if (ScopeSettings.enableSequenceValidation &&
+							target != null &&
+							target.getLimit().isPresent() &&
 							target.getLimit().orElse(0) < Integer.MAX_VALUE) {
 						IndexSequence orig = children.get(i).sequence();
 						IndexSequence seq = simplified[i].sequence();
@@ -639,34 +640,44 @@ public abstract class Expression<T> implements
 		return ScopeSettings.isSeriesSimplificationTarget(this, depth);
 	}
 
-	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof Expression)) return false;
-		if (this == obj) return true;
+	public boolean compare(Expression e) {
+		if (this == e) return true;
 
-		Expression v = (Expression) obj;
-		if (type != v.getType()) return false;
-		if (!Objects.equals(getClass(), v.getClass())) return false;
-		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
-		if (!Objects.equals(countNodes(), v.countNodes())) return false;
-		if (!Objects.equals(hash, v.hash)) return false;
+		if (type != e.getType()) return false;
+		if (!Objects.equals(getClass(), e.getClass())) return false;
+		if (!Objects.equals(treeDepth(), e.treeDepth())) return false;
+		if (!Objects.equals(countNodes(), e.countNodes())) return false;
+		if (!Objects.equals(hash, e.hash)) return false;
 
-		if (getChildren().size() != v.getChildren().size()) return false;
+		if (getChildren().size() != e.getChildren().size()) return false;
 		if (IntStream.range(0, getChildren().size())
-				.anyMatch(i -> !Objects.equals(getChildren().get(i), v.getChildren().get(i)))) {
+				.anyMatch(i -> !Objects.equals(getChildren().get(i), e.getChildren().get(i)))) {
 			return false;
 		}
 
-//		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
-//		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
 		return true;
 	}
 
 	@Override
-	public String signature() { return getExpression(lang); }
+	public boolean equals(Object obj) {
+		if (!(obj instanceof Expression)) return false;
+
+		return timing == null ? compare((Expression) obj) :
+				timing.recordDuration("expressionEquals", () -> compare((Expression) obj));
+	}
+
+	@Override
+	public String signature() {
+		return timing == null ? getExpression(lang) :
+				timing.recordDuration("expressionSignature", () -> getExpression(lang));
+	}
 
 	@Override
 	public int hashCode() {
+		return timing == null ? hash() : timing.recordDuration("expressionHashCode", this::hash);
+	}
+
+	private int hash() {
 		return Bits.put(0, 16, hash) +
 				Bits.put(16, 10, nodeCount) +
 				Bits.put(26, 4, depth) +

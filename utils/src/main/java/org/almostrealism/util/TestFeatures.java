@@ -19,11 +19,11 @@ package org.almostrealism.util;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -216,7 +216,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
 				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries | "
 				+ (KernelSeriesCache.enableCache ? "on" : "off"));
-		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		log("Expression kernelSeq cache is " + (ScopeSettings.enableKernelSeqCache ? "on" : "off"));
 		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}
 

@@ -63,6 +63,9 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
+	public boolean isPossiblyNegative() { return false; }
+
+	@Override
 	public boolean isValue(IndexValues values) {
 		return values.containsIndex(getName());
 	}
@@ -82,8 +85,8 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return obj instanceof DefaultIndex && Objects.equals(((DefaultIndex) obj).getName(), getName());
+	public boolean compare(Expression e) {
+		return e instanceof DefaultIndex && Objects.equals(((DefaultIndex) e).getName(), getName());
 	}
 
 	@Override

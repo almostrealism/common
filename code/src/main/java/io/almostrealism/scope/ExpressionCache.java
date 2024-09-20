@@ -33,8 +33,6 @@ public class ExpressionCache {
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
 	private static ThreadLocal<OperationMetadata> currentMetadata = new ThreadLocal<>();
 
-	public static ScopeTimingListener timing;
-
 	private Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
 
 	public ExpressionCache() {
@@ -57,13 +55,13 @@ public class ExpressionCache {
 			return e;
 		};
 
-		if (timing == null) {
+		if (Expression.timing == null) {
 			return lookup.get();
 		} else {
 			String title = "expressionCacheMatch_" + expression.treeDepth() +
 					"_" + expression.countNodes() +
 					"_" + expression.getClass().getSimpleName();
-			return timing.recordDuration(currentMetadata.get(), title, lookup);
+			return Expression.timing.recordDuration(currentMetadata.get(), title, lookup);
 		}
 	}
 

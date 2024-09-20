@@ -38,7 +38,7 @@ public class UnaryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return super.equals(obj) && ((UnaryExpression) obj).operator.equals(operator);
+	public boolean compare(Expression e) {
+		return super.compare(e) && ((UnaryExpression) e).operator.equals(operator);
 	}
 }

@@ -91,11 +91,11 @@ public class LongConstant extends Constant<Long> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof LongConstant)) {
+	public boolean compare(Expression e) {
+		if (!(e instanceof LongConstant)) {
 			return false;
 		}
 
-		return ((LongConstant) obj).value == value;
+		return ((LongConstant) e).value == value;
 	}
 }

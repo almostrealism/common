@@ -54,7 +54,7 @@ public class Tangent extends Expression<Double> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return super.equals(obj) && ((Tangent) obj).hyperbolic == hyperbolic;
+	public boolean compare(Expression e) {
+		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
 	}
 }

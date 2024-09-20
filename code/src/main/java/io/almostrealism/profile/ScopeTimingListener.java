@@ -22,6 +22,10 @@ import java.util.function.Supplier;
 
 @FunctionalInterface
 public interface ScopeTimingListener {
+	default <T> T recordDuration(String stage, Supplier<T> supplier) {
+		return recordDuration(null, stage, supplier);
+	}
+
 	default <T> T recordDuration(OperationMetadata metadata, String stage, Supplier<T> supplier) {
 		long start = System.nanoTime();
 

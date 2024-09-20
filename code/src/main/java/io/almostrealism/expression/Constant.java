@@ -64,13 +64,13 @@ public abstract class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof Constant)) {
+	public boolean compare(Expression e) {
+		if (!(e instanceof Constant)) {
 			return false;
 		}
 
-		return Objects.equals(((Constant<?>) obj).getType(), getType()) &&
-				Objects.equals(((Constant<?>) obj).getValue(), getValue());
+		return Objects.equals(((Constant<?>) e).getType(), getType()) &&
+				Objects.equals(((Constant<?>) e).getValue(), getValue());
 	}
 
 	@Override

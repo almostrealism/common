@@ -17,19 +17,35 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
+	public static boolean enableKernelSeqCache = false;
+	public static boolean enableBatchEvaluation = false;
+	public static boolean enableArithmeticSequence = true;
+	public static boolean enableSequenceValidation = false;
+	public static int maxCacheItemSize = 16;
+	public static int maxCacheItems = 128;
+	public static int maxDepth = 4096;
+
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
 
+	public static boolean enableExpressionReview =
+			SystemUtils.isEnabled("AR_EXPRESSION_REVIEW").orElse(false);
+
 	public static long simplificationCount = 0;
+	public static long unsimplifiedChildren = 0;
 	public static long cacheCount = 0;
 
 	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
@@ -64,6 +80,27 @@ public class ScopeSettings {
 
 			String c[] = cache.split(":");
 			caching = new SpectrumCaching(Double.parseDouble(c[0]), Double.parseDouble(c[1]));
+		}
+	}
+
+	public static void reviewChildren(List<Expression<?>> children) {
+		if (!enableExpressionReview) return;
+
+		KernelStructureContext ctx = children.stream()
+				.map(Expression::getStructureContext)
+				.filter(Objects::nonNull)
+				.findFirst().orElse(new NoOpKernelStructureContext());
+
+		boolean s = IntStream.range(0, children.size())
+				.filter(i -> !Objects.equals(children.get(i), children.get(i).simplify(ctx)))
+				.findFirst().orElse(-1) >= 0;
+		if (!s) return;
+
+		unsimplifiedChildren++;
+
+		if (unsimplifiedChildren % 100 == 0) {
+			Scope.console.features(ScopeSettings.class)
+					.log("Unsimplified Children = " + unsimplifiedChildren);
 		}
 	}
 

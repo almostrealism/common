@@ -40,6 +40,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableProductModSimplify = true;
 	public static boolean enableDenominatorCollapse = true;
 	public static boolean enableRequireNonNegative = true;
+	public static boolean enableBoundedNumeratorReplace = true;
 
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
@@ -253,6 +254,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
+		OptionalLong d = denominator.longValue();
+
+		if (enableBoundedNumeratorReplace && !numerator.isPossiblyNegative() && d.isPresent() &&
+				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
+			return new IntegerConstant(0);
+		}
+
 		if (enableDenominatorCollapse && numerator instanceof Quotient) {
 			if (denominator.longValue().isPresent() && numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
@@ -262,7 +270,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 		} else if (numerator instanceof Product) {
-			if (denominator.longValue().isPresent()) {
+			if (d.isPresent()) {
 				// When dividing a product that includes a constant value,
 				// by the same constant value, the result can be simplified
 				// to a product of the remaining values without the constant
@@ -270,7 +278,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 						.mapToLong(e -> e.longValue().orElse(1))
 						.reduce(1, (a, b) -> a * b);
 
-				if (constant == denominator.longValue().getAsLong()) {
+				if (constant == d.getAsLong()) {
 					return Product.of(numerator.getChildren().stream()
 							.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
 				}

@@ -28,7 +28,7 @@ public class ConstantValue<T> extends Constant<T> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return obj instanceof ConstantValue && Objects.equals(((ConstantValue) obj).value, value);
+	public boolean compare(Expression e) {
+		return e instanceof ConstantValue && Objects.equals(((ConstantValue) e).value, value);
 	}
 }

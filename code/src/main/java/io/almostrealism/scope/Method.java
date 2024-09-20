@@ -122,11 +122,11 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		return obj instanceof Method &&
-				((Method) obj).getName().equals(getName()) &&
-				((Method) obj).getMember().equals(getMember()) &&
-				((Method) obj).getArguments().equals(getArguments());
+	public boolean compare(Expression e) {
+		return e instanceof Method &&
+				((Method) e).getName().equals(getName()) &&
+				((Method) e).getMember().equals(getMember()) &&
+				((Method) e).getArguments().equals(getArguments());
 	}
 
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
