@@ -21,25 +21,52 @@ import io.almostrealism.kernel.Index;
 
 import java.util.function.UnaryOperator;
 
-public class IndexProjectionCollectionExpression extends CollectionExpressionAdapter {
+public class IndexProjectionCollectionExpression extends OperandCollectionExpression {
 	private UnaryOperator<Expression<?>> indexProjection;
-	private TraversableExpression<Double> input;
 
 	public IndexProjectionCollectionExpression(TraversalPolicy shape,
 											   UnaryOperator<Expression<?>> indexProjection,
 											   TraversableExpression<Double> input) {
-		super(shape);
+		super(shape, input);
 		this.indexProjection = indexProjection;
-		this.input = input;
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return input.getValueAt(indexProjection.apply(index));
+		return operands[0].getValueAt(indexProjection.apply(index));
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		TraversableExpression<Double> in = getOperands().get(0);
+		if (!(in instanceof CollectionExpression))
+			return super.delta(target);
+
+		CollectionExpression delta = ((CollectionExpression) in).delta(target);
+
+		TraversalPolicy outShape = getShape();
+		TraversalPolicy inShape = ((CollectionExpression<?>) in).getShape();
+		TraversalPolicy targetShape = target.getShape();
+
+		int outSize = outShape.getTotalSize();
+		int inSize = inShape.getTotalSize();
+		int targetSize = targetShape.getTotalSize();
+
+		TraversalPolicy deltaShape = new TraversalPolicy(inSize, targetSize);
+		TraversalPolicy overallShape = new TraversalPolicy(outSize, targetSize);
+
+		TraversalPolicy shape = outShape.append(targetShape);
+
+		UnaryOperator<Expression<?>> project = idx -> {
+			Expression pos[] = overallShape.position(idx);
+			return deltaShape.index(indexProjection.apply(pos[0]), pos[1]);
+		};
+
+		return new IndexProjectionCollectionExpression(shape, project, delta);
 	}
 
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return input.uniqueNonZeroOffset(globalIndex, localIndex, indexProjection.apply(targetIndex));
+		return operands[0].uniqueNonZeroOffset(globalIndex, localIndex, indexProjection.apply(targetIndex));
 	}
 }

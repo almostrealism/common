@@ -26,17 +26,15 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class UniformCollectionExpression extends CollectionExpressionAdapter {
+public class UniformCollectionExpression extends OperandCollectionExpression {
 	private Function<Expression[], Expression<?>> operation;
-	private TraversableExpression[] operands;
 	private NonZeroIndexPolicy indexPolicy;
 
 	public UniformCollectionExpression(TraversalPolicy shape,
 									   Function<Expression[], Expression<?>> operation,
 									   TraversableExpression... operands) {
-		super(shape);
+		super(shape, operands);
 		this.operation = operation;
-		this.operands = operands;
 	}
 
 	public NonZeroIndexPolicy getIndexPolicy() {
@@ -45,10 +43,6 @@ public class UniformCollectionExpression extends CollectionExpressionAdapter {
 
 	public void setIndexPolicy(NonZeroIndexPolicy indexPolicy) {
 		this.indexPolicy = indexPolicy;
-	}
-
-	public List<TraversableExpression<Double>> getOperands() {
-		return List.of(operands);
 	}
 
 	@Override

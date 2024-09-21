@@ -114,6 +114,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return getExpression(index).containsIndex(index);
+	}
+
+	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
