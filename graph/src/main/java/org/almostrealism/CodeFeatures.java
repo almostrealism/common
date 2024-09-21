@@ -157,9 +157,18 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	@Override
 	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
 									Producer<? extends MemoryData> target, int length) {
+		TraversalPolicy sourceShape = source instanceof Shape ? ((Shape) source).getShape() : null;
+		TraversalPolicy targetShape = target instanceof Shape ? ((Shape) target).getShape() : null;
+
+		if (sourceShape != null && sourceShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
+		} else if (targetShape != null && targetShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
+		}
+
 		if (enableAssignmentCopy) {
-			if (source instanceof Shape) source = new ReshapeProducer(((Shape) source).getShape().traverseEach(), source);
-			if (target instanceof Shape) target = new ReshapeProducer(((Shape) target).getShape().traverseEach(), target);
+			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), source);
+			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), target);
 			return new Assignment(1, target, source);
 		} else {
 			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);

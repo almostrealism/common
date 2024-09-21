@@ -108,7 +108,7 @@ public class CompiledModel implements CodeFeatures {
 
 		List<InputManager> in = new ArrayList<>();
 		in.add(new InputManager(model.firstBlock().getInputShape()));
-		model.getInputs().forEach(p -> in.add(new InputManager(p.getOutputShape())));
+		model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
 
 		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
 

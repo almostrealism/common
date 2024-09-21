@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Composition;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
@@ -237,8 +238,15 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		op.setComputeRequirements(requirements);
 
 		if (!copy || shape.getCountLong() > 1) {
+			int axis = shape.getTraversalAxis();
+			long count = Countable.countLong(in);
+
+			while (shape.traverse(axis).getCountLong() < count && axis < shape.getDimensions()) {
+				axis++;
+			}
+
 			if (shape.equalsIgnoreAxis(shape(out))) {
-				op.add(a(name, traverse(shape.getTraversalAxis(), (Producer) out), in));
+				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
 			} else {
 				op.add(a(name, reshape(shape, out), in));
 			}
@@ -628,7 +636,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
-		return layer("scale", shape, shape, input -> multiply(input, c(scale)), requirements);
+		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
 	}
 
 	default CellularLayer relu(TraversalPolicy shape, ComputeRequirement... requirements) {

@@ -64,8 +64,9 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		return replaceLoop;
 	}
 
-	public void setReplaceLoop(boolean replaceLoop) {
+	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
+		return this;
 	}
 
 	@Override
@@ -171,6 +172,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			delta = delta.enumerate(1, count).traverse(2);
 			return new AggregatedProducerComputation<>(shape(delta).replace(shape(1)),
 						count, initial, expression, (Supplier) delta)
+					.setReplaceLoop(isReplaceLoop())
 					.reshape(getShape().append(shape(target)));
 		} else {
 			delta = super.delta(target);
