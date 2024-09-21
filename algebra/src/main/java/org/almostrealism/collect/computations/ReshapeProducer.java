@@ -218,6 +218,18 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		if (shape != null && shape.getOrder() != null) {
+			// TODO
+			throw new UnsupportedOperationException();
+		}
+
+		return producer instanceof TraversableExpression ?
+				((TraversableExpression) producer).getValueAt(index) :
+				TraversableExpression.super.containsIndex(index);
+	}
+
+	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
 	}

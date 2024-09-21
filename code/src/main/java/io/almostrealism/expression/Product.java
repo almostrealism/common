@@ -155,15 +155,15 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		List<Expression<?>> operands = getChildren();
-		List<CollectionExpression> sum = new ArrayList<>();
+		List<CollectionExpression<?>> sum = new ArrayList<>();
 
 		for (int i = 0; i < operands.size(); i++) {
-			List<CollectionExpression> product = new ArrayList<>();
+			List<CollectionExpression<?>> product = new ArrayList<>();
 
 			for (int j = 0; j < operands.size(); j++) {
-				CollectionExpression op = i == j ? operands.get(j).delta(target) :
+				CollectionExpression<?> op = i == j ? operands.get(j).delta(target) :
 						new ConstantCollectionExpression(target.getShape(), operands.get(j));
 				product.add(op);
 			}
@@ -171,7 +171,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			sum.add(product(target.getShape(), product));
 		}
 
-		CollectionExpression result;
+		CollectionExpression<?> result;
 
 		if (sum.isEmpty()) {
 			result = zeros(target.getShape());

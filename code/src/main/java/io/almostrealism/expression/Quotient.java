@@ -128,26 +128,26 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
 		Expression numerator = getChildren().get(0);
 		Expression denominator = getChildren().get(1);
 
-		CollectionExpression numeratorDelta = numerator.delta(target);
-		CollectionExpression denominatorDelta = denominator.delta(target);
+		CollectionExpression<?> numeratorDelta = numerator.delta(target);
+		CollectionExpression<?> denominatorDelta = denominator.delta(target);
 
 		// f'(x)g(x)
-		CollectionExpression term1 = product(target.getShape(),
+		CollectionExpression<?> term1 = product(target.getShape(),
 				List.of(numeratorDelta, new ConstantCollectionExpression(target.getShape(), denominator)));
 		// f(x)g'(x)
-		CollectionExpression term2 = product(target.getShape(),
+		CollectionExpression<?> term2 = product(target.getShape(),
 				List.of(new ConstantCollectionExpression(target.getShape(), numerator), denominatorDelta));
 
-		CollectionExpression derivativeNumerator =
+		CollectionExpression<?> derivativeNumerator =
 				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
-		CollectionExpression derivativeDenominator =
+		CollectionExpression<?> derivativeDenominator =
 				new ConstantCollectionExpression(target.getShape(),
 //						new Product(List.of(denominator, denominator))); // [g(x)]^2
 						Product.of(denominator, denominator)); // [g(x)]^2

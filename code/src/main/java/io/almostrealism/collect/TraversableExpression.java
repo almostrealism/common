@@ -30,7 +30,8 @@ import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 
-public interface TraversableExpression<T> extends Computable, ExpressionFeatures, ConsoleFeatures {
+@FunctionalInterface
+public interface TraversableExpression<T> extends IndexSet, Computable, ExpressionFeatures, ConsoleFeatures {
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();
@@ -40,6 +41,12 @@ public interface TraversableExpression<T> extends Computable, ExpressionFeatures
 
 	default Expression<T> getValueRelative(Expression index) {
 		return getValueAt(index);
+	}
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		// TODO  exploit unique non-zero offset to determine this?
+		throw new UnsupportedOperationException();
 	}
 
 	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {

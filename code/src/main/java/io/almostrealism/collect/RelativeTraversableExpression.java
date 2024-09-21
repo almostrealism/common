@@ -53,6 +53,11 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 		throw new UnsupportedOperationException();
 	}
 
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return Shape.super.containsIndex(index);
+	}
+
 	public TraversableExpression<T> getExpression() {
 		return expression;
 	}

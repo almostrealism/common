@@ -532,7 +532,7 @@ public abstract class Expression<T> implements
 		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
 	}
 
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		throw new UnsupportedOperationException();
 	}
 

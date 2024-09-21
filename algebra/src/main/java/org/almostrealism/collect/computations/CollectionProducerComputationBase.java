@@ -25,6 +25,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
@@ -55,8 +56,8 @@ import java.util.stream.Stream;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
-												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														ComputerFeatures {
+												implements CollectionProducerComputation<O>, IndexSet,
+														   MemoryDataComputation<O>, ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
 	private String name;
@@ -210,6 +211,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public long getCountLong() {
 		return getShape().getCountLong();
+	}
+
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return CollectionProducerComputation.super.containsIndex(index);
 	}
 
 	@Override

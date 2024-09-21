@@ -61,9 +61,9 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
-		CollectionExpression delta = getChildren().get(0).delta(target);
-		CollectionExpression exp = new ConstantCollectionExpression(target.getShape(), this);
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		CollectionExpression<?> delta = getChildren().get(0).delta(target);
+		CollectionExpression<?> exp = new ConstantCollectionExpression(target.getShape(), this);
 		return product(target.getShape(), List.of(delta, exp));
 	}
 

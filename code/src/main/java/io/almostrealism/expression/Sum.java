@@ -120,7 +120,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		CollectionExpression delta = sum(target.getShape(),
 				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
 		return ExpressionMatchingCollectionExpression.create(

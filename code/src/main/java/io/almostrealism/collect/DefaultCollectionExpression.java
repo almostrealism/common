@@ -35,7 +35,7 @@ public class DefaultCollectionExpression extends CollectionExpressionAdapter {
 		return (Expression) valueAt.apply(index);
 	}
 
-	public static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
+	public static CollectionExpressionBase create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
 	}
 }

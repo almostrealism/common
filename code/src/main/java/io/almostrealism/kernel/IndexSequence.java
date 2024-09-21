@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -35,7 +36,12 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
+/**
+ * A {@link Sequence} of {@link Number}s which represent index values.
+ *
+ * @author  Michael Murray
+ */
+public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatures {
 	boolean enableGranularityDetection = true;
 	boolean enableModValidation = false;
 	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
@@ -110,6 +116,12 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	}
 
 	IndexSequence subset(long len);
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		// TODO
+		throw new UnsupportedOperationException();
+	}
 
 	default boolean congruent(IndexSequence other) {
 		if (equals(other)) return true;

@@ -32,11 +32,8 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-// TODO  Shouldn't this implement Shape?
-public interface CollectionExpression extends TraversableExpression<Double>, Describable {
+public interface CollectionExpression<T> extends TraversableExpression<Double>, Shape<T>, Describable {
 	boolean enableArrayTraversal = false;
-
-	TraversalPolicy getShape();
 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
@@ -66,6 +63,11 @@ public interface CollectionExpression extends TraversableExpression<Double>, Des
 
 	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return Shape.super.containsIndex(index);
 	}
 
 	@Override

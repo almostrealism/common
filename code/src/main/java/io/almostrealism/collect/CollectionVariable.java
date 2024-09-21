@@ -28,7 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 
 import java.util.function.Supplier;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
+public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
 	public static boolean enableAbsoluteValueAt = false;
 
 	private TraversalPolicy shape;
@@ -54,6 +54,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public CollectionVariable<T> reshape(TraversalPolicy shape) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CollectionVariable<T> traverse(int axis) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public Expression<Integer> length() {

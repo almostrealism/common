@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -42,7 +43,7 @@ import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
-					TraversableExpression<Double>, Shape<PassThroughProducer<T>>,
+					CollectionExpression<PassThroughProducer<T>>,
 					ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
