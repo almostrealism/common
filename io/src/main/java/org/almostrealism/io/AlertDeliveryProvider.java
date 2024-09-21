@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.io;
 
-/**
- * @author  Michael Murray
- */
-public interface Help {
-	String getHelpInfo();
+public interface AlertDeliveryProvider {
+	void sendAlert(Alert alert);
 }

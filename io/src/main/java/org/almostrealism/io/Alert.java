@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,34 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.io;
 
-/**
- * @author  Michael Murray
- */
-public interface Help {
-	String getHelpInfo();
+public class Alert {
+	private Severity severity;
+	private String message;
+
+	public Alert(Severity severity, String message) {
+		this.severity = severity;
+		this.message = message;
+	}
+
+	public Severity getSeverity() {
+		return severity;
+	}
+
+	public void setSeverity(Severity severity) {
+		this.severity = severity;
+	}
+
+	public String getMessage() {
+		return message;
+	}
+
+	public void setMessage(String message) {
+		this.message = message;
+	}
+
+	public enum Severity {
+		INFO, WARNING, ERROR
+	}
 }
