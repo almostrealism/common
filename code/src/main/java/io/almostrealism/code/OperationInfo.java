@@ -42,6 +42,19 @@ public interface OperationInfo extends Describable {
 		}
 	}
 
+	static <T> String nameWithId(T value) {
+		if (value instanceof OperationInfo) {
+			if (((OperationInfo) value).getMetadata() == null) {
+				return String.valueOf(value);
+			}
+
+			return ((OperationInfo) value).getMetadata().getDisplayName() + ":" +
+					((OperationInfo) value).getMetadata().getId();
+		} else {
+			return String.valueOf(value);
+		}
+	}
+
 	static <T> String display(T value) {
 		if (value instanceof OperationInfo) {
 			return ((OperationInfo) value).getMetadata().getShortDescription();

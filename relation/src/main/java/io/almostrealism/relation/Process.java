@@ -16,8 +16,11 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -34,6 +37,7 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
+	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
 
 	default Process<P, T> optimize() { return optimize(null); }
 
@@ -92,10 +96,23 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	static <T, P extends Supplier<T>> Supplier<T> isolated(P process) {
-		if (process instanceof Process) {
-			return ((Process<?, T>) process).isolate();
-		} else {
+		if (!(process instanceof Process)) {
 			return Process.of(process);
 		}
+
+		if (isolationPermitted(process)) {
+			return ((Process<?, T>) process).isolate();
+		}
+
+		return process;
+	}
+
+	static <T, P extends Supplier<T>> boolean isolationPermitted(P process) {
+		return !isExplicitIsolation() ||
+				explicitIsolationTargets.stream().anyMatch(p -> p.test((Process) process));
+	}
+
+	static boolean isExplicitIsolation() {
+		return !explicitIsolationTargets.isEmpty();
 	}
 }

@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ParallelProcessWithInfo;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
@@ -46,11 +47,12 @@ import java.util.List;
 
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
-					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					OperationInfo, ScopeLifecycle {
+					ParallelProcessWithInfo<Process<?, ?>, Evaluable<? extends T>>,
+					ScopeLifecycle {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = false;
 
+	private OperationMetadata metadata;
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -58,6 +60,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	public ReshapeProducer(int traversalAxis, Producer<T> producer) {
 		this.traversalAxis = traversalAxis;
 		this.producer = producer;
+		init();
 	}
 
 	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
@@ -67,29 +70,30 @@ public class ReshapeProducer<T extends Shape<T>>
 		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
 			throw new IllegalArgumentException();
 		}
+
+		init();
+	}
+
+	protected void init() {
+		if (producer instanceof OperationInfo) {
+			OperationMetadata child = ((OperationInfo) producer).getMetadata();
+
+			if (child == null) {
+				return;
+			} else if (shape == null) {
+				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
+						child.getShortDescription() + " {-> axis " + traversalAxis + "}");
+			} else {
+				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
+						child.getShortDescription() + " {-> " + getShape() + "}");
+			}
+
+			metadata = new OperationMetadata(metadata, List.of(child));
+		}
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {
-		if (producer instanceof OperationInfo) {
-			OperationMetadata child = ((OperationInfo) producer).getMetadata();
-			OperationMetadata metadata;
-
-			if (child == null) {
-				return null;
-			} else if (shape == null) {
-				metadata = new OperationMetadata(child.getDisplayName() + " {-> axis " + traversalAxis + "}",
-						"Reshape");
-			} else {
-				metadata = new OperationMetadata(child.getDisplayName() + " {-> " + getShape() + "}",
-						"Reshape");
-			}
-
-			return new OperationMetadata(metadata, List.of(child));
-		}
-
-		return null;
-	}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public TraversalPolicy getShape() {
@@ -107,11 +111,7 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public boolean isConstant() {
-		if (producer instanceof Computable) {
-			return ((Computable) producer).isConstant();
-		}
-
-		return false;
+		return producer.isConstant();
 	}
 
 	@Override
@@ -154,7 +154,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+	public ReshapeProducer<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
 
 		return shape == null ?
@@ -165,7 +165,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
-			return generate(List.of(optimize(ctx, ((Process) producer))));
+			ReshapeProducer<T> p =
+					generate(List.of(optimize(ctx, ((Process) producer))));
+			p.getMetadata().setId(getMetadata().getId());
+			return p;
 		}
 
 		return this;
@@ -178,17 +181,23 @@ public class ReshapeProducer<T extends Shape<T>>
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
 
 				if (isolated != producer) {
-					return generate(List.of(isolated));
+					ReshapeProducer p = generate(List.of(isolated));
+					p.getMetadata().setId(getMetadata().getId());
+					return p;
 				}
 			}
 
-			return new CollectionProducerComputation.IsolatedProcess(this);
+			return Process.isolationPermitted(this) ?
+					new CollectionProducerComputation.IsolatedProcess(this) :
+					this;
 		} else {
 			if (enableShapeDelegateIsolation && producer instanceof Process) {
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
 
 				if (isolated != producer) {
-					return generate(List.of(isolated));
+					ReshapeProducer p = generate(List.of(isolated));
+					p.getMetadata().setId(getMetadata().getId());
+					return p;
 				}
 			}
 

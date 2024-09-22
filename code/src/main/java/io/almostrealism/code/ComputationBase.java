@@ -34,7 +34,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T> {
+public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcessWithInfo<Process<?, ?>, T> {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 

@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -66,9 +65,6 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 
 	@Override
 	public Countable getDelegate() { return process; }
-
-	@Override
-	public OperationMetadata getMetadata() { return null; }
 
 	@Override
 	public long getCountLong() {

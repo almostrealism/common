@@ -25,7 +25,6 @@ import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
-	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
 	List<Predicate<Process>> isolationFlags = new ArrayList<>();
 
 	boolean enableNarrowMax = true;
@@ -46,19 +45,26 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
 		process = process.optimize(ctx);
-		if (process.isIsolationTarget(ctx))
-			process = isolate(process);
-		return process;
+
+		boolean isolate;
+
+		if (Process.isExplicitIsolation()) {
+			isolate = Process.isolationPermitted(process);
+		} else {
+			isolate = process.isIsolationTarget(ctx);
+		}
+
+		return isolate ? isolate(process) : process;
 	}
 
 	default Process<P, T> isolate(Process<P, T> process) {
-		return process.isolate();
+		return Process.isolationPermitted(process) ? process.isolate() : process;
 	}
 
 	@Override
 	default boolean isIsolationTarget(ProcessContext context) {
-		if (!explicitIsolationTargets.isEmpty()) {
-			return explicitIsolationTargets.stream().anyMatch(p -> p.test(this));
+		if (Process.isExplicitIsolation()) {
+			return Process.isolationPermitted(this);
 		}
 
 		return Process.super.isIsolationTarget(context);
@@ -116,9 +122,10 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		boolean isolate = true;
 
-		if (!explicitIsolationTargets.isEmpty()) {
-			isolate = processChildren(children).anyMatch(c -> explicitIsolationTargets.stream().anyMatch(t -> t.test(c)));
-		} else if ((p <= 1 && tot == cn) || cn >= max) {
+//		if (!explicitIsolationTargets.isEmpty()) {
+//			isolate = processChildren(children).anyMatch(c -> explicitIsolationTargets.stream().anyMatch(t -> t.test(c)));
+//		} else
+		if ((p <= 1 && tot == cn) || cn >= max) {
 			isolate = false;
 		} else if (enableContextualCount && max <= context.getCountLong()) {
 			isolate = false;
@@ -138,16 +145,20 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 			isolate = false;
 		}
 
-		if (isolate && currentScore / altScore > 4) {
+		if (isolate && currentScore / altScore > 4 && explicitIsolationTargets.isEmpty()) {
 			System.out.println("Isolation is " + (currentScore / altScore) + " times worse - skipping");
 			isolate = false;
 		}
 
+		ParallelProcess<P, T> result;
+
 		if (isolate) {
-			return generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
+			result = generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
 		} else {
-			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+			result = generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
+
+		return result;
 	}
 
 	default long getParallelism() {

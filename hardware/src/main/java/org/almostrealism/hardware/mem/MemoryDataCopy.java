@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo {
 	public static boolean enableVerbose = false;
 
-	private String name;
+	private OperationMetadata metadata;
 	private Supplier<MemoryData> source;
 	private Supplier<MemoryData> target;
 	private int sourcePosition, targetPosition;
@@ -38,7 +38,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	}
 
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
-		this.name = name;
+		this.metadata = new OperationMetadata(name == null ? toString() : name, name, "Copy " + length + " values");
 		this.source = source;
 		this.target = target;
 		this.sourcePosition = sourcePosition;
@@ -47,9 +47,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {
-		return new OperationMetadata(name == null ? toString() : name, name, "Copy " + length + " values");
-	}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public Collection<Process<?, Runnable>> getChildren() {
@@ -63,12 +61,12 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 			MemoryData target = this.target.get();
 
 			if (enableVerbose) {
-				System.out.println("MemoryDataCopy[" + name + "]: Copying " + source + " (" +
+				System.out.println("MemoryDataCopy[" + getMetadata().getDisplayName() + "]: Copying " + source + " (" +
 						sourcePosition + ") to " + target + " (" + targetPosition + ") [" + length + "]");
 			}
 
 			if (source == null) {
-				throw new UnsupportedOperationException(name);
+				throw new UnsupportedOperationException(getMetadata().getDisplayName());
 			}
 
 			// TODO  This can be done faster if the source and target are on the same MemoryProvider
@@ -87,6 +85,6 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 
 	@Override
 	public String describe() {
-		return (name == null ? toString() : name) + " (Copy " + getOutputSize() + " values)";
+		return metadata.getDisplayName() + " (Copy " + getOutputSize() + " values)";
 	}
 }

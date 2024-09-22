@@ -17,6 +17,7 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -36,10 +37,13 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
 	Console console = Console.root.child();
@@ -226,6 +230,16 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		} else {
 			r.run();
 		}
+	}
+
+	default Predicate<Process> operationFilter(long... operationIds) {
+		return operationFilter(LongStream.of(operationIds)
+				.mapToObj(Long::valueOf).collect(Collectors.toSet()));
+	}
+
+	default Predicate<Process> operationFilter(Set<Long> operationIds) {
+		return p -> p instanceof OperationInfo &&
+				operationIds.contains(((OperationInfo) p).getMetadata().getId());
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {

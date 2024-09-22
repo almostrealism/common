@@ -97,7 +97,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (!permitOptimization(process)) return process;
+		if (!permitOptimization(process))
+			return process;
 		return super.optimize(ctx, process);
 	}
 

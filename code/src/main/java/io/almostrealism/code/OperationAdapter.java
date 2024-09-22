@@ -136,6 +136,11 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		return metadata;
 	}
 
+	protected <O extends OperationInfo> O applyMetadata(O operation) {
+		operation.getMetadata().setId(getMetadata().getId());
+		return operation;
+	}
+
 	/**
 	 * Presently this serves a dual purpose: to do actual compilation of Scope
 	 * from Computation in implementors that facilitate the invocation of a

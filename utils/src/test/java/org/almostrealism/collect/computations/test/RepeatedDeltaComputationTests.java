@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -243,7 +244,15 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convDeltaGradSmall() throws IOException {
-		convDelta("convDeltaGradLarge", 2, 6, true);
+		try {
+			// 29, 30, 32
+			ParallelProcess.explicitIsolationTargets
+					.add(operationFilter(21, 23, 25, 27, 141, 123));
+
+			convDelta("convDeltaGradLarge", 2, 6, true);
+		} finally {
+			ParallelProcess.explicitIsolationTargets.clear();
+		}
 	}
 
 	@Test

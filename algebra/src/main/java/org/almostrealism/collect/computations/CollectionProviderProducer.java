@@ -22,6 +22,7 @@ import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -30,22 +31,25 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
 				OperationInfo,
 				CollectionFeatures {
+	private OperationMetadata metadata;
 	private Shape value;
 
 	public CollectionProviderProducer(Shape value) {
+		this.metadata = new OperationMetadata(OperationInfo.name(value), "Provided collection",
+				"Provide a collection " + value.getShape().toStringDetail());
 		this.value = value;
 	}
 
 	@Override
 	public OperationMetadata getMetadata() {
-		return new OperationMetadata(OperationInfo.name(value), "Provided collection",
-				"Provide a collection " + value.getShape().toStringDetail());
+		return metadata;
 	}
 
 	@Override
@@ -65,7 +69,7 @@ public class CollectionProviderProducer<T extends Shape>
 	}
 
 	@Override
-	public Producer reshape(TraversalPolicy shape) {
+	public Producer<T> reshape(TraversalPolicy shape) {
 		return reshape(shape, this);
 	}
 
@@ -78,10 +82,14 @@ public class CollectionProviderProducer<T extends Shape>
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	@Override
+	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
+		return this;
+	}
+
+	@Override
 	public boolean equals(Object obj) {
 		if (super.equals(obj)) return true;
-		if (!(obj instanceof  CollectionProviderProducer)) return false;
-//		return Objects.equals(((CollectionProviderProducer) obj).value, value);
+		if (!(obj instanceof CollectionProviderProducer)) return false;
 		return ((CollectionProviderProducer) obj).value == value;
 	}
 

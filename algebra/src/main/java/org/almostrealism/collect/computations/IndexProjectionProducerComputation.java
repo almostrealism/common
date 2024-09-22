@@ -128,7 +128,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	private Process<Process<?, ?>, Evaluable<? extends T>> isolateForce() {
-		return super.isolate();
+		return Process.isolationPermitted(this) ? super.isolate() : this;
 	}
 
 	private Process<Process<?, ?>, Evaluable<? extends T>> isolateInput() {
@@ -141,11 +141,14 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 					generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 		}
 
+		c.getMetadata().setId(getMetadata().getId());
 		return c;
 	}
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		if (Process.isExplicitIsolation()) return super.isolate();
+
 		if (enableDelegatedIsolate || (enableConstantDelegatedIsolate && isConstant())) {
 			IndexProjectionProducerComputation c;
 
@@ -156,6 +159,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 						generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 			}
 
+			c.getMetadata().setId(getMetadata().getId());
 			return c.isolateForce();
 		}
 
@@ -164,9 +168,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
-		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
+		return applyMetadata(new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
 				(Producer<?>) children.get(1),
-				children.stream().skip(2).toArray(Producer[]::new));
+				children.stream().skip(2).toArray(Producer[]::new)));
 	}
 
 	@Override

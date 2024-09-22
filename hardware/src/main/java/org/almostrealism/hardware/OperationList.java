@@ -22,6 +22,7 @@ import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ParallelProcessWithInfo;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -53,8 +54,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
-		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, OperationInfo, HardwareFeatures {
+		implements OperationComputation<Void>,
+					ParallelProcessWithInfo<Process<?, ?>, Runnable>,
+					NamedFunction, HardwareFeatures {
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
 
@@ -289,10 +291,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcessWithInfo.super.optimize(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
-		if (!match) return ParallelProcess.super.optimize(context);
+		if (!match) return ParallelProcessWithInfo.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
