@@ -26,6 +26,7 @@ import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.gradient.GradientFeatures;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
@@ -34,7 +35,7 @@ import org.almostrealism.io.SystemUtils;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class DefaultGradientPropagation implements BackPropagation, Nameable, CodeFeatures {
+public class DefaultGradientPropagation implements BackPropagation, GradientFeatures, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
 	public static boolean enableOptimizedDiagnostics = false;
@@ -90,15 +91,7 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 		OperationList op = new OperationList("Gradient Propagation");
 
 		if (next != null) {
-			Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
-					.reshape(outSize, inSize)
-					.traverse(1)
-					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
-					.traverse(0)
-					.enumerate(1, 1)
-					.sum(1)
-					.reshape(shape(inSize))
-					.each();
+			Producer<PackedCollection<?>> deltaOutDeltaIn = combineGradient(function.get(), input, gradient);
 
 			if (enableDiagnosticGrad) {
 				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize)).traverse(1);

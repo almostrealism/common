@@ -41,7 +41,13 @@ public class SequenceFunctionEvaluator<I, O> extends MatrixFunctionEvaluator<I, 
 			if (e.isValue(IndexValues.of(index))) {
 				setupRowDuplicates(true);
 
-				IndexSequence results = e.sequence(index, valueCount);
+				if (valueCount > 100000000) {
+					alert("Creating sequence with length " + valueCount);
+				}
+
+				IndexSequence results = e.sequence(index, valueCount, ExpressionMatrix.MAX_SEQUENCE_LENGTH);
+				if (results == null) return super.attemptSequence();
+
 				if (results.getMod() == 1) {
 					return ArrayIndexSequence.of(results.valueAt(0), seq.lengthLong());
 				}

@@ -44,4 +44,18 @@ public class Alert {
 	public enum Severity {
 		INFO, WARNING, ERROR
 	}
+
+	public static Alert forThrowable(Throwable ex) {
+		return forThrowable(null, ex);
+	}
+
+	public static Alert forThrowable(String message, Throwable ex) {
+		String msg = ex.getMessage();
+		if (msg == null) {
+			msg = ex.getClass().getSimpleName();
+		}
+
+		return new Alert(Severity.ERROR, message == null ?
+						msg : (message + " (" + msg + ")"));
+	}
 }

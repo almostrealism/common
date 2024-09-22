@@ -18,26 +18,21 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
-import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
+import org.almostrealism.gradient.GradientFeatures;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
-public class RepeatedDeltaComputationTests implements TestFeatures {
+public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeatures {
 
 	@Test
 	public void repeatProduct() {
@@ -240,32 +235,76 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void productSumEnumerate4d() throws IOException {
+	public void convDelta() throws IOException {
 		int l = 8; int d = 28;
 
+		convDelta("convDelta", l, d, false);
+	}
+
+	@Test
+	public void convDeltaGradSmall() throws IOException {
+		convDelta("convDeltaGradLarge", 2, 6, true);
+	}
+
+	@Test
+	public void convDeltaGradLarge() throws IOException {
+		if (skipKnownIssues) return;
+
+		convDelta("convDeltaGradLarge", 14, 28, true);
+	}
+
+	public void convDelta(String name, int l, int d, boolean byGradient) throws IOException {
 		int n = 1;
 		int c = 4 * l;
 		int h = d; int w = d;
 		int f = 2 * l;
 
-		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("productSumEnumerate4d"));
+		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode(name));
 
 		try {
-			productSumEnumerate4d(n, c, h, w, f);
+			convDelta(n, c, h, w, f, byGradient);
 		} finally {
-			profile.save("results/productSumEnumerate4d.xml");
+			profile.save("results/" + name + ".xml");
 		}
 	}
 
-	public void productSumEnumerate4d(int n, int c, int h, int w, int f) {
+	public void convDelta(int n, int c, int h, int w, int f, boolean byGradient) {
 		int s = 3;
-		int diff = s - 1;
 
 		PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
 		PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
+		CollectionProducer<PackedCollection<?>> result =
+				conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
+
+		TraversalPolicy r = result.getShape();
+		log(r);
+
+		Supplier<Evaluable<? extends PackedCollection<?>>> d;
+
+		if (byGradient) {
+			PackedCollection<?> grad = new PackedCollection<>(r).randFill();
+			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
+		} else {
+			d = Process.optimized(result.delta(cp(input)));
+		}
+
+		PackedCollection<?> out = d.get().evaluate();
+		log(out.getShape());
+	}
+
+	protected CollectionProducer<PackedCollection<?>> conv(int s,
+														   CollectionProducer<PackedCollection<?>> input,
+														   CollectionProducer<PackedCollection<?>> filters) {
+		TraversalPolicy shape = shape(input);
+		int n = shape.length(0);
+		int c = shape.length(1);
+		int h = shape.length(2);
+		int w = shape.length(3);
+		int f = filters.getShape().length(0);
+		int diff = s - 1;
 
 		CollectionProducer<PackedCollection<?>> conv =
-				cp(input).reshape(n, c, h * w)
+				input.reshape(n, c, h * w)
 						.traverse(1).enumerate(2, 1)
 						.reshape(n, h, w, c);
 		conv = conv.traverse(1)
@@ -278,7 +317,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 		int bs = conv.getShape().length(0);
 
 		CollectionProducer<PackedCollection<?>> filter =
-				cp(filters.reshape(-1, c, s * s))
+				filters
 						.traverse(1).enumerate(2, 1)
 						.reshape(-1, s, s, c);
 		filter = filter.traverse(1)
@@ -288,14 +327,7 @@ public class RepeatedDeltaComputationTests implements TestFeatures {
 				.repeat(bs)
 				.each();
 
-		CollectionProducer<PackedCollection<?>> result =
-				conv.multiply(filter).sum(4);
-		log(result.getShape());
-
-		PackedCollection<?> out =
-				Process.optimized(result.delta(cp(input))).get()
-				.evaluate().traverse(2);
-		log(out.getShape());
+		return conv.multiply(filter).sum(4);
 	}
 
 	@Test

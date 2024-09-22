@@ -33,6 +33,8 @@ import java.util.Base64;
 import java.util.Properties;
 
 public class SignalWireDeliveryProvider implements AlertDeliveryProvider, ConsoleFeatures {
+	private static final int maxMessages = 30;
+	private static int totalMessages;
 
 	private static SignalWireDeliveryProvider defaultProvider;
 
@@ -52,6 +54,11 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 
 	@Override
 	public void sendAlert(Alert alert) {
+		if (totalMessages > maxMessages) {
+			warn("Cannot send more SMS messages");
+			return;
+		}
+
 		try {
 			int responseCode = sendSms("https://" + space +
 							".signalwire.com/api/laml/2010-04-01/Accounts/" +
@@ -68,6 +75,8 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 			}
 		} catch (Exception e) {
 			warn("Failed to send SMS", e);
+		} finally {
+			totalMessages++;
 		}
 	}
 

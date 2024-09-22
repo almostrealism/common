@@ -105,7 +105,7 @@ public abstract class Expression<T> implements
 		ScopeSettings.reviewChildren(getChildren());
 
 		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
-		this.nodeCount = getChildren().stream().mapToInt(e -> e.nodeCount).sum() + 1;
+		this.nodeCount = Math.toIntExact(getChildren().stream().mapToLong(e -> e.nodeCount).sum() + 1);
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
