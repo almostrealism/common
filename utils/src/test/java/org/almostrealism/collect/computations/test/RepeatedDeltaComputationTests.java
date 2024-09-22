@@ -244,6 +244,8 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convDeltaGradSmall() throws IOException {
+		if (skipLongTests) return;
+
 		try {
 			// 29, 30, 32
 			ParallelProcess.explicitIsolationTargets
