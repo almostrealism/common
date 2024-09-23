@@ -19,8 +19,39 @@ package io.almostrealism.code;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
+import org.almostrealism.io.Console;
+
+import java.util.function.Supplier;
 
 public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends ParallelProcess<P, T>, OperationInfo {
+	boolean enableOptimizationLog = false;
+
+	@Override
+	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
+		Supplier<String> info = enableOptimizationLog ? () -> {
+			StringBuilder msg = new StringBuilder();
+			for (int i = 0; i < ctx.getDepth(); i++) {
+				msg.append("\t");
+			}
+
+			msg.append("start optimize ").append(OperationInfo.nameWithId(process));
+			return msg.toString();
+		} : null;
+
+		if (info != null) {
+			Console.root.features(ParallelProcessWithInfo.class)
+					.log("start optimize " + info.get());
+		}
+
+		Process<P, T> result = ParallelProcess.super.optimize(ctx, process);
+
+		if (info != null) {
+			Console.root.features(ParallelProcessWithInfo.class)
+					.log("end optimize " + info.get());
+		}
+
+		return result;
+	}
 
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {

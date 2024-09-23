@@ -247,11 +247,10 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 		if (skipLongTests) return;
 
 		try {
-			// 29, 30, 32
 			ParallelProcess.explicitIsolationTargets
-					.add(operationFilter(21, 23, 25, 27, 141, 123));
+					.add(operationFilter(21, 23, 25, 27, 29, 123));
 
-			convDelta("convDeltaGradLarge", 2, 6, true);
+			convDelta("convDeltaGradSmall", 2, 6, true);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}

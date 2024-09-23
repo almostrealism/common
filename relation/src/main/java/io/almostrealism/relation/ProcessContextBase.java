@@ -16,10 +16,13 @@
 
 package io.almostrealism.relation;
 
-public interface ProcessContext {
-	int getDepth();
+public class ProcessContextBase implements ProcessContext {
+	private int depth;
 
-	static ProcessContext base() {
-		return new ProcessContextBase(0);
+	protected ProcessContextBase(int depth) {
+		this.depth = depth;
 	}
+
+	@Override
+	public int getDepth() { return depth; }
 }
