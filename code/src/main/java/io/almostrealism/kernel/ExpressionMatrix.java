@@ -29,7 +29,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 
 	public static boolean enableMaskMatrix = true;
 	public static boolean enableUnsequencedMatrices = false;
-	public static long maxMatrixSize = (long) 10e7;
+	public static long maxMatrixSize = (long) Math.min(MAX_SEQUENCE_LENGTH, 10e7);
 
 	protected final Index row;
 	protected final Index col;

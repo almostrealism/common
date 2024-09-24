@@ -46,7 +46,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
-			System.out.println("WARN: Module zero encountered while creating expression");
+			warn("Module zero encountered while creating expression");
 		}
 	}
 

@@ -573,6 +573,11 @@ public abstract class Expression<T> implements
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
+	public Expression<?> simplify(KernelStructureContext context) {
+		return KernelTree.super.simplify(context);
+	}
+
+	@Override
 	public Expression<T> simplify(KernelStructureContext context, int depth) {
 		KernelSeriesProvider provider = context.getSeriesProvider();
 

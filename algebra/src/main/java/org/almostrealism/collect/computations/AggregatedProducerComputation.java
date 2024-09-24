@@ -42,14 +42,15 @@ import java.util.function.Supplier;
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
 	public static boolean enableContextualKernelIndex = true;
+	public static boolean enableLogging = false;
 
 	private BiFunction<Expression, Expression, Expression> expression;
 	private boolean replaceLoop;
 
 	private TraversableExpression<Double> inputArg;
 	private DefaultIndex row, ref;
-	private Expression uniqueOffset;
-	private Expression uniqueIndex;
+	private Expression<Integer> uniqueOffset;
+	private Expression<? extends Number> uniqueIndex;
 
 	public AggregatedProducerComputation(TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
@@ -58,13 +59,16 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		super(shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
+
+		if (enableLogging)
+			log("Created AggregatedProducerComputation (" + count + " items)");
 	}
 
 	public boolean isReplaceLoop() {
 		return replaceLoop;
 	}
 
-	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
+	public AggregatedProducerComputation<T> setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
 		return this;
 	}
@@ -95,11 +99,23 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 			Expression index = Index.child(row, ref);
 			uniqueOffset = inputArg.uniqueNonZeroOffset(row, ref, index);
-			if (uniqueOffset == null) return;
+			if (uniqueOffset == null) {
+				if (enableLogging)
+					log("Unable to determine unique offset for AggregatedProducerComputation:" +
+							getMetadata().getId() + " (" + count + " items)");
+
+				return;
+			}
 
 			uniqueIndex = row
 					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
 					.add(uniqueOffset);
+
+			if (enableLogging) {
+				log("Unique offset for AggregatedProducerComputation:" +
+						getMetadata().getId() + " (" + count + " items) is " +
+						uniqueOffset.getExpressionSummary());
+			}
 		}
 	}
 
@@ -121,10 +137,21 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			TraversableExpression args[] = getTraversableArguments(index);
 
 			Expression value = initial.apply(args, e(0));
+			if (enableLogging)
+				log("Generating values for aggregation " + getShape().toStringDetail());
 
 			for (int i = 0; i < count; i++) {
 				value = expression.apply(value, args[1].getValueRelative(e(i)));
+
+				if (enableLogging)
+					log("Added value " + i + "/" + count + " (" + value.countNodes() + " total nodes)");
+
 				value = value.generate(value.flatten());
+
+				if (enableLogging && value.countNodes() > 10000000) {
+					log("Returning early due to excessive node count (" + value.countNodes() + ")");
+					return value;
+				}
 			}
 
 			return value;

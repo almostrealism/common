@@ -192,6 +192,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelModProduct3() {
+		// (((kernel0 * 64) + _52_i) % 64) * 72
+
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+		Expression e = kernel.multiply(64).add(child).imod(64).multiply(72);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
+	}
+
+	@Test
 	public void modSumSeq1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2));
@@ -439,6 +451,37 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.add(idx.multiply(n).add(idx.imod(n)).imod(n)).imod(n * n);
 		log(e.getExpression(lang));
 		compareSimplifiedSequence(e);
+	}
+
+	@Test
+	public void kernelSumMod5() {
+		// (((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((kernel0 * 64) + _52_i) % 64) * 72)) % 4608
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+
+		Expression e = kernel.multiply(64).add(child).divide(64).multiply(4608)
+				.add(kernel.multiply(64).add(child).imod(64).multiply(72)).imod(4608);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
+	}
+
+	@Test
+	public void kernelSumMod6() {
+		//((((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((kernel0 * 64) + _52_i) % 64) * 72)) % 4608)) % 4608) * 4609
+
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+		Expression e = kernel.multiply(64).add(child).divide(64).multiply(4608)
+				.add(kernel.multiply(64).add(child).divide(64).multiply(4608)
+						.add(kernel.multiply(64).add(child).imod(64)
+								.multiply(72)).imod(4608)).imod(4608).multiply(4609);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
 	}
 
 	@Test

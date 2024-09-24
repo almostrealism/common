@@ -42,6 +42,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableRequireNonNegative = true;
 	public static boolean enableBoundedNumeratorReplace = true;
 
+	public static long maxCombinedDenominator = Integer.MAX_VALUE;
+
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
 	}
@@ -261,12 +263,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return new IntegerConstant(0);
 		}
 
-		if (enableDenominatorCollapse && numerator instanceof Quotient) {
+		if (enableDenominatorCollapse && numerator instanceof Quotient && d.isPresent()) {
 			if (denominator.longValue().isPresent() && numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
-				if (altDenominator.isPresent()) {
+				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
 					return numerator.getChildren().get(0).divide(
-							altDenominator.getAsLong() * denominator.longValue().getAsLong());
+							altDenominator.getAsLong() * d.getAsLong());
 				}
 			}
 		} else if (numerator instanceof Product) {

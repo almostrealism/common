@@ -37,7 +37,7 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 		throw new UnsupportedOperationException();
 	}
 
-	Expression<T> getValueAt(Expression index);
+	Expression<T> getValueAt(Expression<?> index);
 
 	default Expression<T> getValueRelative(Expression index) {
 		return getValueAt(index);
