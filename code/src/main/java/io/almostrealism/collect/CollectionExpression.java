@@ -65,6 +65,14 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * If this {@link CollectionExpression} represents a subset of a larger set of values,
+	 * this method can be used to provide the {@link TraversalPolicy} for the larger
+	 * collection which may be useful in choosing the optimal behavior for the
+	 * {@link CollectionExpression}.
+	 */
+	default void setTotalShape(TraversalPolicy shape) { }
+
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return Shape.super.containsIndex(index);

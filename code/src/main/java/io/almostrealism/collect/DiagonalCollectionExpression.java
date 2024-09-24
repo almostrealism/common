@@ -57,7 +57,12 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 			index = index.simplify(ctx);
 		}
 
-		Expression pos[] = getPosition(index.imod(getPositionShape().getTotalSizeLong()));
+		if (getTotalShape() == null || !getTotalShape().isFixedCount() ||
+				getTotalShape().getTotalSizeLong() > getPositionShape().getTotalSizeLong()) {
+			index = index.imod(getPositionShape().getTotalSizeLong());
+		}
+
+		Expression pos[] = getPosition(index);
 		return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
 	}
 

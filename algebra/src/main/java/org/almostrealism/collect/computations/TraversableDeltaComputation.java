@@ -88,7 +88,9 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
-		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
+		CollectionExpression exp = expression.apply(getTraversableArguments(index)).delta(targetVariable);
+		if (isFixedCount()) exp.setTotalShape(getShape());
+		return exp;
 	}
 
 	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
