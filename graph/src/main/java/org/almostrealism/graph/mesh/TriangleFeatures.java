@@ -26,7 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,7 +80,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		return new TraversableExpressionComputation<>(null, shape(3),
+		return new DefaultTraversableExpressionComputation<>(null, shape(3),
 				(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
 						args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),
 				(Supplier) points);

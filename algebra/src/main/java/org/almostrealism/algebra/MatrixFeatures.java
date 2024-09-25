@@ -22,7 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 public interface MatrixFeatures extends CollectionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
@@ -34,7 +34,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new TraversableExpressionComputation<>("identity", shape.traverseEach(),
+		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
 

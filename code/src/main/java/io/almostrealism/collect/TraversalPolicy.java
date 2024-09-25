@@ -128,6 +128,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	public Expression index(Expression... pos) {
+		if (pos.length != getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+
 		Expression index = new IntegerConstant(0);
 
 		for (int i = 0; i < pos.length; i++) {

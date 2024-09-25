@@ -21,12 +21,12 @@ import io.almostrealism.kernel.Index;
 
 import java.util.function.UnaryOperator;
 
-public class IndexProjectionCollectionExpression extends OperandCollectionExpression {
+public class IndexProjectionExpression extends OperandCollectionExpression {
 	private UnaryOperator<Expression<?>> indexProjection;
 
-	public IndexProjectionCollectionExpression(TraversalPolicy shape,
-											   UnaryOperator<Expression<?>> indexProjection,
-											   TraversableExpression<Double> input) {
+	public IndexProjectionExpression(TraversalPolicy shape,
+									 UnaryOperator<Expression<?>> indexProjection,
+									 TraversableExpression<Double> input) {
 		super(shape, input);
 		this.indexProjection = indexProjection;
 	}
@@ -62,7 +62,7 @@ public class IndexProjectionCollectionExpression extends OperandCollectionExpres
 			return deltaShape.index(indexProjection.apply(pos[0]), pos[1]);
 		};
 
-		return new IndexProjectionCollectionExpression(shape, project, delta);
+		return new IndexProjectionExpression(shape, project, delta);
 	}
 
 	@Override

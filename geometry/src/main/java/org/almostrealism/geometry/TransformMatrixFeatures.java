@@ -27,7 +27,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -59,7 +59,7 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<>(null, shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>(null, shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
 			Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
 			Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
 			Function<Integer, Expression<Double>> p = (i) -> (Expression<Double>) Product.of(t.apply(i), v.apply(i));

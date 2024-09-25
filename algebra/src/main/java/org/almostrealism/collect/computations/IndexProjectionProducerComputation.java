@@ -17,11 +17,12 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -37,7 +38,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
+		extends TraversableExpressionComputation<T> {
 	public static boolean enableDelegatedIsolate = true;
 	public static boolean enableConstantDelegatedIsolate = true;
 	public static boolean enableInputIsolate = false;
@@ -69,12 +70,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public boolean isConstant() {
-		if (getInputs().get(1) instanceof Computable) {
-			return ((Computable) getInputs().get(1)).isConstant();
-		}
-
-		return false;
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return new IndexProjectionExpression(getShape(),
+				idx -> projectIndex(args[1], idx), args[1]);
 	}
 
 	@Override
@@ -85,10 +83,12 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 			return var.getValueRelative(projectIndex(var, index));
 		} else {
-			TraversableExpression<Double> var = getCollectionArgumentVariable(1);
-			if (var == null) return null;
+//			TraversableExpression<Double> var = getCollectionArgumentVariable(1);
+//			if (var == null) return null;
+//
+//			return var.getValueAt(projectIndex(var, index));
 
-			return var.getValueAt(projectIndex(var, index));
+			return super.getValueAt(index);
 		}
 	}
 
@@ -100,10 +100,12 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 		} else {
-			TraversableExpression var = getCollectionArgumentVariable(1);
-			if (var == null) return null;
+//			TraversableExpression var = getCollectionArgumentVariable(1);
+//			if (var == null) return null;
+//
+//			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 
-			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
 	}
 

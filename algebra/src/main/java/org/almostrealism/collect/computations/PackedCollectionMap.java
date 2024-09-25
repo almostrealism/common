@@ -234,7 +234,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

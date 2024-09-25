@@ -40,13 +40,12 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -119,7 +118,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default CollectionProducer<Scalar> value(Scalar value) {
 		if (ExpressionComputation.enableTraversableFixed) {
-			return (CollectionProducer) TraversableExpressionComputation.fixed(value, Scalar.postprocessor());
+			return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 		} else {
 			Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
 			IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
@@ -143,7 +142,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(null, shape,
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<Scalar>(null, shape,
 				(args, i) ->
 						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
 				collection, (Supplier) index);

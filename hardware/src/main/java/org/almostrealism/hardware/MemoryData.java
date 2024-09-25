@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
 
@@ -220,6 +221,11 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			getMem(i, out, 0, 1);
 			return new DoubleConstant((double) out[0]);
 		}
+	}
+
+	@Override
+	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return null;
 	}
 
 	default void setMem(int offset, double... values) {

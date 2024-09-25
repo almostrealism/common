@@ -75,4 +75,8 @@ public class Floor extends Expression<Double> {
 
 		return new Floor((Expression<Double>) children.get(0));
 	}
+
+	public static Expression of(Expression in) {
+		return new Floor(in);
+	}
 }

@@ -16,12 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
-import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -29,51 +28,27 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.MemoryData;
 
-import java.util.List;
-import java.util.OptionalInt;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class TraversableExpressionComputation<T extends PackedCollection<?>>
+public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	public static boolean enableChainRule = true;
 
-	private Function<TraversableExpression[], CollectionExpression> expression;
-
-	@Deprecated
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(name, shape, validateArgs(args));
-		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
 	}
 
-	@SafeVarargs
-	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											Function<TraversableExpression[], CollectionExpression> expression,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape, validateArgs(args));
-		this.expression = expression;
-	}
-
-	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											CollectionExpression expression) {
-		super(name, shape);
-		this.expression = (arguments) -> expression;
-	}
-
-	protected CollectionExpression getExpression(Expression index) {
-		return expression.apply(getTraversableArguments(index));
-	}
+	protected abstract CollectionExpression getExpression(TraversableExpression... args);
 
 	@Override
 	public boolean isConstant() {
-		return getInputs().size() <= 1;
+		return getInputs().stream().skip(1)
+				.map(c -> c instanceof Computable && ((Computable) c).isConstant())
+				.reduce(true, (a, b) -> a && b);
 	}
 
 	@Override
@@ -86,18 +61,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		CollectionProducer<T> delta = attemptDelta(this, target);
 		if (delta != null) return delta;
 
-		delta = TraversableDeltaComputation.create(getShape(), shape(target),
-				expression, target, getInputs().stream().skip(1).toArray(Supplier[]::new));
+		delta = TraversableDeltaComputation.create(
+				getShape(), shape(target),
+				this::getExpression, target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
 		return delta;
-	}
-
-	@Override
-	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getName(), getShape(), expression,
-					children.stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override
@@ -105,51 +73,22 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Expression getValueAt(Expression index) {
-		return getExpression(index).getValueAt(index);
+		return getExpression(getTraversableArguments(index)).getValueAt(index);
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return getExpression(new IntegerConstant(0)).getValueRelative(index);
+		return getExpression(getTraversableArguments(new IntegerConstant(0))).getValueRelative(index);
 	}
 
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
-		return getExpression(index).containsIndex(index);
+		return getExpression(getTraversableArguments(index)).containsIndex(index);
 	}
 
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		return getExpression(targetIndex).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-	}
-
-	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {
-		return fixed(value, null);
-	}
-
-	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		BiFunction<TraversableExpression[], Expression, Expression> comp = (args, index) -> {
-			index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
-
-			OptionalInt i = index.intValue();
-
-			if (i.isPresent()) {
-				return value.getValueAt(index);
-			} else {
-				Expression v = value.getValueAt(new IntegerConstant(0));
-
-				for (int j = 1; j < value.getShape().getTotalSize(); j++) {
-					v = Conditional.of(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
-				}
-
-				return v;
-			}
-		};
-
-		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(null, value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
-			PackedCollection v = new PackedCollection(value.getShape());
-			v.setMem(value.toArray(0, value.getMemLength()));
-			return postprocessor == null ? (T) v : postprocessor.apply(v, 0);
-		});
+		return getExpression(getTraversableArguments(targetIndex))
+				.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 }

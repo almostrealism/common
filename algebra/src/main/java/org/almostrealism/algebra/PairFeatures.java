@@ -34,7 +34,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
@@ -106,7 +106,7 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				}
 			}
 
-			return new TraversableExpressionComputation<>(null, shape,
+			return new DefaultTraversableExpressionComputation<>(null, shape,
 					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
 						Expression<?> pos = index.toInt().divide(2).multiply(2);
 

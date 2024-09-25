@@ -28,7 +28,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class PackedCollectionPad<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
@@ -37,9 +36,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 
 	public PackedCollectionPad(TraversalPolicy shape, TraversalPolicy position,
 							   Producer<?> input) {
-		super("pad", shape,
-				(BiFunction<TraversableExpression[], Expression, Expression>) null,
-				(Supplier) input);
+		super("pad", shape, (Supplier) input);
 		this.inputShape = shape(input);
 		this.position = position;
 
@@ -55,9 +52,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	}
 
 	@Override
-	protected CollectionExpression getExpression(Expression index) {
-		TraversableExpression args[] = getTraversableArguments(index);
-
+	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return DefaultCollectionExpression.create(getShape(), idx -> {
 			Expression<?> superPos[] = getShape().position(idx);
 			Expression<?> innerPos[] = new Expression[superPos.length];
