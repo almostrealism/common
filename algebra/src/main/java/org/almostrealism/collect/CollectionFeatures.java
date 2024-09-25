@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.ComparisonExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -589,10 +590,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default Random randn(int... dims) { return randn(shape(dims)); }
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
-	default DefaultTraversableExpressionComputation<PackedCollection<?>> compute(TraversalPolicy shape, UnaryOperator<Expression> indexExpression) {
-		return new DefaultTraversableExpressionComputation<>(null, shape, (args, idx) -> indexExpression.apply(idx));
-	}
-
 	default DefaultTraversableExpressionComputation<PackedCollection<?>> compute(CollectionExpression expression) {
 		return new DefaultTraversableExpressionComputation<>(null, expression.getShape(), expression);
 	}
@@ -801,24 +798,32 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		TraversalPolicy shape = shape(1);
+		TraversalPolicy shape;
+
 		if (shape(a).getSize() == shape(b).getSize()) {
 			shape = shape(a);
+		} else {
+			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>(null, shape,
-				(args, index) -> Min.of(args[1].getValueAt(index), args[2].getValueAt(index)),
+		return new DefaultTraversableExpressionComputation<>("min", shape,
+				args -> new UniformCollectionExpression(shape,
+								in -> Min.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		TraversalPolicy shape = shape(1);
+		TraversalPolicy shape;
+
 		if (shape(a).getSize() == shape(b).getSize()) {
 			shape = shape(a);
+		} else {
+			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>(null, shape,
-				(args, index) -> Max.of(args[1].getValueAt(index), args[2].getValueAt(index)),
+		return new DefaultTraversableExpressionComputation<>("max", shape,
+				args -> new UniformCollectionExpression(shape,
+								in -> Max.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
 
@@ -834,13 +839,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					mod(shape, args[1], args[2]),
 					null, a, b);
 		} else {
-			TraversalPolicy shape = shape(1);
+			TraversalPolicy shape;
+			
 			if (shape(a).getSize() == shape(b).getSize()) {
 				shape = shape(a);
+			} else {
+				shape = shape(1);
 			}
 
-			return new DefaultTraversableExpressionComputation<>(null, shape,
-					(args, index) -> Mod.of(args[1].getValueAt(index), args[2].getValueAt(index)),
+			return new DefaultTraversableExpressionComputation<>("mod", shape,
+					args -> new UniformCollectionExpression(shape,
+								in -> Mod.of(in[0], in[1]), args[1], args[2]),
 					(Supplier) a, (Supplier)  b);
 		}
 	}
@@ -970,15 +979,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
 																			   Producer<T> trueValue, Producer<T> falseValue,
 																			   boolean includeEqual) {
-		TraversalPolicy shape = shape(1);
+		TraversalPolicy shape;
+
 		if (shape(a).getSize() == shape(b).getSize()) {
 			shape = shape(a);
+		} else {
+			shape = shape(1);
 		}
 
-		return new DefaultTraversableExpressionComputation<>(null, shape,
-				(args, index) -> conditional(
-						greater(args[1].getValueAt(index), args[2].getValueAt(index), includeEqual),
-						args[3].getValueAt(index), args[4].getValueAt(index)),
+		return new DefaultTraversableExpressionComputation<>("greaterThan", shape,
+				args -> new ComparisonExpression(shape,
+						(l, r) -> greater(l, r, includeEqual),
+						args[1], args[2], args[3], args[4]),
 				(Supplier) a, (Supplier) b,
 				(Supplier) trueValue, (Supplier) falseValue);
 	}

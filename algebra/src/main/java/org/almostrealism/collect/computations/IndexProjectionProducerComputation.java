@@ -121,11 +121,12 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		int outSize = getShape().getTotalSize();
 		int inSize = shape(getInputs().get(1)).getTotalSize();
 		TraversalPolicy shape = shape(outSize, inSize);
-		return compute(shape.traverse(),
-					idx -> {
+
+		// TODO  This should use DiagonalCollectionExpression
+		return compute(CollectionExpression.create(shape.traverse(), idx -> {
 						Expression pos[] = shape.position(idx);
 						return conditional(pos[0].eq(projectIndex(pos[1])), e(1), e(0));
-					})
+					}))
 				.addDependentLifecycle(this);
 	}
 
