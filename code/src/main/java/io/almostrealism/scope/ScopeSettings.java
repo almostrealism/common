@@ -36,7 +36,7 @@ public class ScopeSettings {
 	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
-	public static int maxDepth = 4096;
+	public static int maxDepth = 1024;
 
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
