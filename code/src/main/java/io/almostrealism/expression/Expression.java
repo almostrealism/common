@@ -104,8 +104,13 @@ public abstract class Expression<T> implements
 	protected void init() {
 		ScopeSettings.reviewChildren(getChildren());
 
+		long c = getChildren().stream().mapToLong(e -> e.nodeCount).sum();
+		if (c >= Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
 		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
-		this.nodeCount = Math.toIntExact(getChildren().stream().mapToLong(e -> e.nodeCount).sum() + 1);
+		this.nodeCount = Math.toIntExact(c + 1);
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
