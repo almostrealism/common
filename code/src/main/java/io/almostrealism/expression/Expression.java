@@ -420,7 +420,7 @@ public abstract class Expression<T> implements
 	public Expression minus() { return Minus.of(this); }
 
 	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
-	public Expression<? extends Number> add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
+	public Expression<? extends Number> add(Expression<?> operand) { return Sum.of(this, operand); }
 	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }
 
@@ -435,7 +435,7 @@ public abstract class Expression<T> implements
 		return operand == 1.0 ? (Expression) this :
 				(Expression) Product.of(this, Constant.of(operand));
 	}
-	public Expression<? extends Number> multiply(Expression<? extends Number> operand) {
+	public Expression<? extends Number> multiply(Expression<?> operand) {
 		return (Expression) Product.of(this, operand);
 	}
 
@@ -501,6 +501,7 @@ public abstract class Expression<T> implements
 		return new Negation((Expression) this);
 	}
 
+	public Expression eqZero() { return e(0.0); }
 	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };

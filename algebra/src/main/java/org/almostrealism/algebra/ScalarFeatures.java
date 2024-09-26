@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
@@ -142,9 +143,10 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<Scalar>(null, shape,
-				(args, i) ->
-						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<Scalar>("scalar", shape,
+				args -> CollectionExpression.create(shape, i ->
+						conditional(i.toInt().eq(e(0)),
+								args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0))),
 				collection, (Supplier) index);
 		c.setPostprocessor(Scalar.postprocessor());
 		return c;

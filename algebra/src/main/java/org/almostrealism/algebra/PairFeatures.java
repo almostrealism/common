@@ -17,6 +17,8 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Cosine;
@@ -106,19 +108,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				}
 			}
 
-			return new DefaultTraversableExpressionComputation<>(null, shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
-						Expression<?> pos = index.toInt().divide(2).multiply(2);
-
-						Expression p = args[1].getValueAt(pos);
-						Expression q = args[1].getValueAt(pos.add(1));
-						Expression r = args[2].getValueAt(pos);
-						Expression s = args[2].getValueAt(pos.add(1));
-
-						return conditional(index.mod(e(2), false).eq(e(0)),
-								Sum.of(Product.of(p, r), Minus.of(Product.of(q, s))),
-								Sum.of(Product.of(p, s), Product.of(q, r)));
-					},
+			return new DefaultTraversableExpressionComputation<>("multiplyComplex", shape,
+					(Function<TraversableExpression[], CollectionExpression>)
+							args -> new ComplexProductExpression(shape, args[1], args[2]),
 					(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 		} else {
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
