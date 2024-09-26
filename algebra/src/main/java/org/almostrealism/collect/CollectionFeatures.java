@@ -18,9 +18,11 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.ArithmeticSequenceExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
+import io.almostrealism.collect.ConditionalFilterExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -537,7 +539,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(Producer<?> collection, int... depths) {
 		TraversalPolicy shape = shape(collection);
-		
+
 		int dims[] = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
 			dims[i] = shape.length(i) + 2 * depths[i];
@@ -617,7 +619,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers() {
-		return new DefaultTraversableExpressionComputation<>("integers", shape(1), (args, idx) -> idx) {
+		return new DefaultTraversableExpressionComputation<>("integers", shape(1),
+				args -> new ArithmeticSequenceExpression(shape(1))) {
 			@Override
 			public boolean isFixedCount() {
 				return false;
@@ -628,9 +631,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
+		TraversalPolicy shape = shape(len).traverseEach();
 
-		return new DefaultTraversableExpressionComputation<>("integers", shape(len).traverseEach(),
-				(args, idx) -> Sum.of(new DoubleConstant((double) from), idx));
+		return new DefaultTraversableExpressionComputation<>("integers", shape,
+				args -> new ArithmeticSequenceExpression(shape, from, 1));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
@@ -769,9 +773,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		TraversalPolicy shape = shape(value);
+
 		return new DefaultTraversableExpressionComputation<>(
-				"expIgnoreZero", shape(value), (args, index) ->
-					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), Exp.of(args[1].getValueAt(index))),
+				"expIgnoreZero", shape,
+				args ->
+						new ConditionalFilterExpression(shape,
+								Expression::eqZero, Exp::of,
+								false, args[1]),
 				(Supplier) value);
 	}
 
@@ -840,7 +849,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					null, a, b);
 		} else {
 			TraversalPolicy shape;
-			
+
 			if (shape(a).getSize() == shape(b).getSize()) {
 				shape = shape(a);
 			} else {

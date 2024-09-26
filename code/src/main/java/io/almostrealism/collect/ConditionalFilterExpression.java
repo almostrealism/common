@@ -19,15 +19,18 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 
-import java.util.function.BiFunction;
+import java.util.function.Function;
 
-public class ComparisonExpression extends UniformConditionalExpression {
-	public ComparisonExpression(TraversalPolicy shape,
-								BiFunction<Expression<?>, Expression<?>, Expression<Boolean>> comparison,
-								TraversableExpression a, TraversableExpression b,
-								TraversableExpression positive, TraversableExpression negative) {
+public class ConditionalFilterExpression extends UniformConditionalExpression {
+	public ConditionalFilterExpression(TraversalPolicy shape,
+									   Function<Expression<?>, Expression<Boolean>> condition,
+									   Function<Expression<?>, Expression<?>> filter,
+									   boolean positive,
+									   TraversableExpression input) {
 		super(shape,
-					args -> Conditional.of(comparison.apply(args[0], args[1]), args[2], args[3]),
-				a, b, positive, negative);
+				args -> Conditional.of(condition.apply(args[0]),
+						positive ? filter.apply(args[0]) : args[0],
+						positive ? args[0] : filter.apply(args[0])),
+				input);
 	}
 }

@@ -16,18 +16,19 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 
+import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.UnaryOperator;
 
-public class ComparisonExpression extends UniformConditionalExpression {
-	public ComparisonExpression(TraversalPolicy shape,
-								BiFunction<Expression<?>, Expression<?>, Expression<Boolean>> comparison,
-								TraversableExpression a, TraversableExpression b,
-								TraversableExpression positive, TraversableExpression negative) {
-		super(shape,
-					args -> Conditional.of(comparison.apply(args[0], args[1]), args[2], args[3]),
-				a, b, positive, negative);
+public class BinaryGroupExpression extends GroupExpression {
+	public BinaryGroupExpression(TraversalPolicy shape,
+								 TraversableExpression a,
+								 TraversableExpression b,
+								 BiFunction<Expression[], Expression[], Expression<?>> combiner,
+								 UnaryOperator<Expression<?>>... memberIndices) {
+		super(shape, List.of(memberIndices),
+				members -> combiner.apply(members.get(0), members.get(1)), a, b);
 	}
 }

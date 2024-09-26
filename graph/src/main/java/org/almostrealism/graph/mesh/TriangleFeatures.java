@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -80,10 +82,11 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		return new DefaultTraversableExpressionComputation<>(null, shape(3),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
-						args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),
-				(Supplier) points);
+		return new DefaultTraversableExpressionComputation<>("point", shape(3),
+				(Function<TraversableExpression[], CollectionExpression>) args ->
+						new IndexProjectionExpression(shape(3),
+							idx -> e(index * 3).add(idx.mod(e(3))), args[1]),
+						(Supplier) points);
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,

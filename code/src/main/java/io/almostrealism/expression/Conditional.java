@@ -141,7 +141,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 				(Expression<Double>) children.get(2));
 	}
 
-	public static Expression of(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
 
@@ -162,7 +162,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 
 		if (positive.getType() == negative.getType()) {
-			return new Conditional<>(positive.getType(), condition, positive, negative);
+			return new Conditional(positive.getType(), condition, positive, negative);
 		} else {
 			return new Conditional(Double.class, condition, positive, negative);
 		}
