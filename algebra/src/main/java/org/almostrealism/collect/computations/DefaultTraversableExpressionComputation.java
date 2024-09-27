@@ -37,15 +37,6 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
-	@Deprecated
-	@SafeVarargs
-	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
-												   BiFunction<TraversableExpression[], Expression, Expression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape, validateArgs(args));
-		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
-	}
-
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,

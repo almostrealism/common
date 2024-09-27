@@ -23,12 +23,21 @@ import java.util.function.BiFunction;
 import java.util.function.UnaryOperator;
 
 public class BinaryGroupExpression extends GroupExpression {
-	public BinaryGroupExpression(TraversalPolicy shape,
+	public BinaryGroupExpression(TraversalPolicy shape, int memberCount,
 								 TraversableExpression a,
 								 TraversableExpression b,
 								 BiFunction<Expression[], Expression[], Expression<?>> combiner,
-								 UnaryOperator<Expression<?>>... memberIndices) {
-		super(shape, List.of(memberIndices),
+								 MemberIndexGenerator memberIndexGenerator) {
+		super(shape, memberCount, memberIndexGenerator,
 				members -> combiner.apply(members.get(0), members.get(1)), a, b);
+	}
+
+	public BinaryGroupExpression(TraversalPolicy shape,
+								 TraversableExpression a,
+								 TraversableExpression b,
+								 List<UnaryOperator<Expression<?>>> memberIndices,
+								 BiFunction<Expression[], Expression[], Expression<?>> combiner) {
+		super(shape, memberIndices, members ->
+				combiner.apply(members.get(0), members.get(1)), a, b);
 	}
 }

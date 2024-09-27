@@ -29,10 +29,10 @@ public class ComplexProductExpression extends ConditionalExpressionBase {
 				realPart(shape, a, b), imagPart(shape, a, b));
 	}
 
-	private static BinaryGroupExpression realPart(TraversalPolicy shape,
-												  TraversableExpression a,
-												  TraversableExpression b) {
-		return new BinaryGroupExpression(shape, a, b, (left, right) -> {
+	private static UniformBinaryGroupExpression realPart(TraversalPolicy shape,
+														 TraversableExpression a,
+														 TraversableExpression b) {
+		return new UniformBinaryGroupExpression(shape, a, b, (left, right) -> {
 				Expression p = left[0]; Expression q = left[1];
 				Expression r = right[0]; Expression s = right[1];
 				return Sum.of(Product.of(p, r), Minus.of(Product.of(q, s)));
@@ -41,10 +41,10 @@ public class ComplexProductExpression extends ConditionalExpressionBase {
 				idx -> idx.toInt().divide(2).multiply(2).add(1));
 	}
 
-	private static BinaryGroupExpression imagPart(TraversalPolicy shape,
-												  TraversableExpression a,
-												  TraversableExpression b) {
-		return new BinaryGroupExpression(shape, a, b, (left, right) -> {
+	private static UniformBinaryGroupExpression imagPart(TraversalPolicy shape,
+														 TraversableExpression a,
+														 TraversableExpression b) {
+		return new UniformBinaryGroupExpression(shape, a, b, (left, right) -> {
 				Expression p = left[0]; Expression q = left[1];
 				Expression r = right[0]; Expression s = right[1];
 				return Sum.of(Product.of(p, s), Product.of(q, r));

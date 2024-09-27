@@ -20,29 +20,53 @@ import io.almostrealism.expression.Expression;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class GroupExpression extends OperandCollectionExpression {
-	private final List<UnaryOperator<Expression<?>>> memberIndices;
+	private final int memberCount;
+	private final MemberIndexGenerator memberGenerator;
+
 	private final Function<List<Expression[]>, Expression> combiner;
 
 	public GroupExpression(TraversalPolicy shape,
 						   List<UnaryOperator<Expression<?>>> memberIndices,
 						   Function<List<Expression[]>, Expression> combiner,
 						   TraversableExpression... operands) {
+		this(shape, memberIndices.size(), memberIndices::get, combiner, operands);
+	}
+
+	public GroupExpression(TraversalPolicy shape,
+						   int memberCount,
+						   IntFunction<UnaryOperator<Expression<?>>> memberIndexGenerator,
+						   Function<List<Expression[]>, Expression> combiner,
+						   TraversableExpression... operands) {
+		this(shape, memberCount, (memberIndex, operandIndex) ->
+						memberIndexGenerator.apply(memberIndex),
+				combiner, operands);
+	}
+
+	public GroupExpression(TraversalPolicy shape,
+						   int memberCount,
+						   MemberIndexGenerator memberIndexGenerator,
+						   Function<List<Expression[]>, Expression> combiner,
+						   TraversableExpression... operands) {
 		super(shape, operands);
-		this.memberIndices = memberIndices;
+		this.memberCount = memberCount;
+		this.memberGenerator = memberIndexGenerator;
 		this.combiner = combiner;
 	}
 
 	protected List<Expression[]> getMembers(Expression<?> index) {
-		return getOperands().stream()
-				.map(operand -> {
-					Expression opMembers[] = new Expression[memberIndices.size()];
+		return IntStream.range(0, getOperands().size())
+				.mapToObj(operand -> {
+					Expression opMembers[] = new Expression[memberCount];
 
-					for (int i = 0; i < memberIndices.size(); i++) {
-						opMembers[i] = operand.getValueAt(memberIndices.get(i).apply(index));
+					for (int memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+						opMembers[memberIndex] = getOperands().get(operand).getValueAt(
+								memberGenerator.indexGenerator(memberIndex, operand).apply(index));
 					}
 
 					return opMembers;
@@ -52,5 +76,9 @@ public class GroupExpression extends OperandCollectionExpression {
 	@Override
 	public Expression<Double> getValueAt(Expression<?> index) {
 		return combiner.apply(getMembers(index));
+	}
+
+	public interface MemberIndexGenerator {
+		UnaryOperator<Expression<?>> indexGenerator(int memberIndex, int operandIndex);
 	}
 }
