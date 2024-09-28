@@ -57,7 +57,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 		int n = shape.length(1);
 
 		if (enableCollectionExpression) {
-			int p = vshape.length(1);
+			int p = padDimensions(vshape, 1, 2).length(1);
 
 			TraversalPolicy resultShape = shape(m, p);
 
