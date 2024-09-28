@@ -18,8 +18,6 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 
-import java.util.stream.IntStream;
-
 public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression {
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
@@ -32,7 +30,8 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions, TraversalPolicy weightPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
 												TraversableExpression input, TraversableExpression weights) {
-		this(inputPositions, inputPositions, weightPositions, inputShape, groupShape, input, weights);
+		this(new TraversalPolicy(inputPositions.extent()),
+				inputPositions, weightPositions, inputShape, groupShape, input, weights);
 	}
 
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy shape,
@@ -76,32 +75,39 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 		}
 
 		return (groupIndex, operandIndex) -> outputIndex -> {
-			// The position in the output being computed
-			// Expression[] outputPosition = resultShape.position(outputIndex);
-
-			// The position of the member in the group
-			TraversalPolicy groupShape = operandIndex == 0 ? inputGroupShape : weightGroupShape;
-			int[] groupPosition = groupShape.position(groupIndex);
-
-			// The position of the subset being operated on in the
-			// space of the output
-			TraversalPolicy positions = operandIndex == 0 ? inputPositions : weightPositions;
-			Expression[] subsetPosition = positions.position(outputIndex.imod(positions.getTotalSize()));
-
-			// The position of the member in the input will be composed
-			// of the position of the subset extended along each dimension
-			// by the position of the specific member in the group
 			TraversalPolicy operandShape = operandIndex == 0 ? inputShape : weightShape;
-			Expression[] inputPosition = new Expression[operandShape.getDimensions()];
+			TraversalPolicy groupShape = operandIndex == 0 ? inputGroupShape : weightGroupShape;
+			TraversalPolicy positions = operandIndex == 0 ? inputPositions : weightPositions;
+
+			// The position in the output being computed
+			Expression[] outputPosition = resultShape.position(outputIndex.imod(resultShape.getTotalSize()));
+
+			// The output index needs to be projected into the space of the
+			// positions before it can be used with the input (or weights)
+			Expression index = positions.index(outputPosition);
+
+			// The position of this group member and the current subset.
+			// in the space of the input (or weights)
+			int[] groupPosition = groupShape.position(groupIndex);
+			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalSize()));
+
+//			System.out.println("Operand "  + operandIndex + " " + operandShape +
+//					" in " + groupShape + " group over " + positions +
+//					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
 
 			// Find the location in the input of the current group member,
 			// within the subset of the input that is being operated on
-			// to produce the provided outputIndex
+			// to produce the provided outputIndex. This is composed of
+			// the position of the subset extended along each dimension
+			// by the relative position of the group member
+			Expression[] inputPosition = new Expression[operandShape.getDimensions()];
 			for (int i = 0; i < inputPosition.length; i++) {
 				inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
+//				System.out.println("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
 			}
 
-			// Provide the index in the input associated with that position
+			// Provide the index in the operand that is associated
+			// with that position for the current group member
 			return operandShape.index(inputPosition);
 		};
 	}

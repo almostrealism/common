@@ -190,6 +190,22 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 	}
 
+	public int[] extent() {
+		int[] ext = new int[dims.length];
+		for (int i = 0; i < dims.length; i++) {
+			ext[i] = length(i);
+		}
+		return ext;
+	}
+
+	public long[] extentLong() {
+		long[] ext = new long[dims.length];
+		for (int i = 0; i < dims.length; i++) {
+			ext[i] = lengthLong(i);
+		}
+		return ext;
+	}
+
 	public int index(int... pos) {
 		int index = 0;
 		for (int i = 0; i < pos.length; i++) {
@@ -206,8 +222,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		Expression index = new IntegerConstant(0);
 
 		for (int i = 0; i < pos.length; i++) {
+			Expression p = pos[i];
+			p = Quotient.of(p, new IntegerConstant(rateDenominator(i)));
+			p = Product.of(p, new IntegerConstant(rateNumerator(i)));
+
 			Expression s = new IntegerConstant(inputSize(i + 1));
-			index = Sum.of(index, Product.of(pos[i], s));
+			index = Sum.of(index, Product.of(p, s));
 		}
 
 		return index;
@@ -497,14 +517,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	public boolean equalsIgnoreAxis(TraversalPolicy p) {
-		return Arrays.equals(dims, p.dims);
+		return Arrays.equals(dims, p.dims) &&
+				Arrays.equals(rateNumerator, p.rateNumerator) &&
+				Arrays.equals(rateDenominator, p.rateDenominator);
 	}
 
 	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof TraversalPolicy) {
 			TraversalPolicy p = (TraversalPolicy) obj;
-			return Arrays.equals(dims, p.dims) && traversalAxis == p.traversalAxis;
+			return equalsIgnoreAxis(p) && traversalAxis == p.traversalAxis;
 		}
 
 		return false;

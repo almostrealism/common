@@ -67,6 +67,27 @@ public class CollectionTraversalTests implements TestFeatures {
 	public void stride3() {
 		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
 
+		TraversalPolicy policy = shape(4, 8)
+				.withRate(1, 1, 2);
+
+		assertEquals(4, policy.inputLength(0));
+		assertEquals(4, policy.inputLength(1));
+
+		PackedCollection<?> strided = root.range(policy);
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 8; j++) {
+				log("index = " + policy.index(i, j));
+				log(root.valueAt(i, j / 2) + " vs " + strided.valueAt(i, j));
+				assertEquals(root.valueAt(i, j / 2), strided.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void stride4() {
+		PackedCollection<?> root = new PackedCollection<>(shape(4, 4)).randFill();
+
 		TraversalPolicy policy = shape(8, 4)
 				.withRate(0, 1, 2);
 
@@ -80,6 +101,58 @@ public class CollectionTraversalTests implements TestFeatures {
 				log("index = " + policy.index(i, j));
 				log(root.valueAt(i / 2, j) + " vs " + strided.valueAt(i, j));
 				assertEquals(root.valueAt(i / 2, j), strided.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void stride5() {
+		int m = 2;
+		int n = 2;
+		int p = 4;
+
+		PackedCollection<?> root = new PackedCollection<>(shape(m, n)).randFill();
+
+		TraversalPolicy policy = shape(m, p)
+				.withRate(1, n, p);
+
+		assertEquals(m, policy.inputLength(0));
+		assertEquals(n, policy.inputLength(1));
+
+		PackedCollection<?> strided = root.range(policy);
+
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < p; j++) {
+				log("index = " + policy.index(i, j));
+				assertEquals(policy.index(i, j), policy.index(e(i), e(j)).intValue().getAsInt());
+
+				log(root.valueAt(i, 0) + " vs " + strided.valueAt(i, j));
+				assertEquals(root.valueAt(i, 0), strided.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void stride6() {
+		int m = 4;
+		int n = 2;
+		int p = 3;
+
+		PackedCollection<?> root = new PackedCollection<>(shape(m, n)).randFill();
+
+		TraversalPolicy policy = shape(m, p)
+				.withRate(1, n, p);
+
+		assertEquals(m, policy.inputLength(0));
+		assertEquals(n, policy.inputLength(1));
+
+		PackedCollection<?> strided = root.range(policy);
+
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < p; j++) {
+				log("index = " + policy.index(i, j));
+				log(root.valueAt(i, 0) + " vs " + strided.valueAt(i, j));
+				assertEquals(root.valueAt(i, 0), strided.valueAt(i, j));
 			}
 		}
 	}

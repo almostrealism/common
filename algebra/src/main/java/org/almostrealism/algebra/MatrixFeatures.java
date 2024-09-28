@@ -64,7 +64,7 @@ public interface MatrixFeatures extends CollectionFeatures {
 			return new DefaultTraversableExpressionComputation<>("matmul", resultShape.traverseEach(),
 					(args) -> {
 						TraversalPolicy inputPositions = shape(m, p)
-								.withRate(1, 1, p);
+								.withRate(1, n, p);
 						TraversalPolicy weightPositions = shape(1, p);
 						TraversalPolicy inputShape = shape(matrix);
 						TraversalPolicy weightShape = shape(vector);
