@@ -273,7 +273,11 @@ public abstract class Expression<T> implements
 
 	public IndexSequence sequence() {
 		Set<Index> indices = getIndices();
-		if (indices.size() != 1) throw new UnsupportedOperationException();
+		if (indices.size() > 1) throw new UnsupportedOperationException();
+
+		if (indices.isEmpty()) {
+			return sequence(null, 1, Integer.MAX_VALUE);
+		}
 
 		return sequence(indices.iterator().next(),
 				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);

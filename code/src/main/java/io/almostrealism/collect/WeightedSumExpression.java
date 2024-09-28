@@ -27,6 +27,7 @@ public class WeightedSumExpression extends BinaryGroupExpression {
 			Expression<?> result = new IntegerConstant(0);
 			for (int i = 0; i < input.length; i++) {
 				result = result.add(input[i].multiply(weights[i]));
+				result = result.generate(result.flatten());
 			}
 			return result;
 		}, memberIndexGenerator);

@@ -89,7 +89,7 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 			// The position of this group member and the current subset.
 			// in the space of the input (or weights)
 			int[] groupPosition = groupShape.position(groupIndex);
-			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalSize()));
+			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalInputSize()));
 
 //			System.out.println("Operand "  + operandIndex + " " + operandShape +
 //					" in " + groupShape + " group over " + positions +

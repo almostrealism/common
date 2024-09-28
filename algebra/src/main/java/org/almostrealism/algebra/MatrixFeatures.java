@@ -57,7 +57,8 @@ public interface MatrixFeatures extends CollectionFeatures {
 		int n = shape.length(1);
 
 		if (enableCollectionExpression) {
-			int p = padDimensions(vshape, 1, 2).length(1);
+			TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
+			int p = weightShape.length(1);
 
 			TraversalPolicy resultShape = shape(m, p);
 
@@ -67,7 +68,6 @@ public interface MatrixFeatures extends CollectionFeatures {
 								.withRate(1, n, p);
 						TraversalPolicy weightPositions = shape(1, p);
 						TraversalPolicy inputShape = shape(matrix);
-						TraversalPolicy weightShape = shape(vector);
 						TraversalPolicy inputGroupShape = shape(1, n);
 						TraversalPolicy weightGroupShape = shape(n, 1);
 						return new SubsetTraversalWeightedSumExpression(
