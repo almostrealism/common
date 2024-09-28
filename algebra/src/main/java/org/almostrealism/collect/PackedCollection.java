@@ -144,12 +144,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	@Override
 	public int getMemLength() {
-		return shape.getTotalSize();
+		return shape.getTotalInputSize();
 	}
 
 	@Override
 	public int getAtomicMemLength() {
-		return shape.getSize();
+		return shape.getInputSize();
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -255,8 +255,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		int required = shape.getOrder() == null ? shape.getTotalSize() :
-				shape.getOrder().getLength().orElse(shape.getTotalSize());
+		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
+				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
 
 		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");

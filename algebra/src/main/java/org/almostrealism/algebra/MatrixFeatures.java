@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.IdentityCollectionExpression;
+import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
@@ -24,7 +25,11 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
+import java.util.function.Supplier;
+
 public interface MatrixFeatures extends CollectionFeatures {
+	boolean enableCollectionExpression = true;
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
 		return identity(shape(size, size));
 	}
@@ -48,30 +53,51 @@ public interface MatrixFeatures extends CollectionFeatures {
 		CollectionProducer<PackedCollection<?>> a;
 		CollectionProducer<PackedCollection<?>> b;
 
-		int n = shape.length(0);
+		int m = shape.length(0);
+		int n = shape.length(1);
 
-		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
+		if (enableCollectionExpression) {
+			int p = vshape.length(1);
+
+			TraversalPolicy resultShape = shape(m, p);
+
+			return new DefaultTraversableExpressionComputation<>("matmul", resultShape.traverseEach(),
+					(args) -> {
+						TraversalPolicy inputPositions = shape(m, p)
+								.withRate(1, 1, p);
+						TraversalPolicy weightPositions = shape(1, p);
+						TraversalPolicy inputShape = shape(matrix);
+						TraversalPolicy weightShape = shape(vector);
+						TraversalPolicy inputGroupShape = shape(1, n);
+						TraversalPolicy weightGroupShape = shape(n, 1);
+						return new SubsetTraversalWeightedSumExpression(
+								resultShape,
+								inputPositions, weightPositions,
+								inputShape, weightShape,
+								inputGroupShape, weightGroupShape,
+								args[1], args[2]);
+					}, (Supplier) matrix, (Supplier) vector);
+		} else if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
 			// System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
 
-			int m = shape.length(1);
 			int p = vshape.length(1);
 
 			a = c(matrix).repeat(p);
 			b = c(vector).enumerate(1, 1)
-					.reshape(p, m)
+					.reshape(p, n)
 					.traverse(1)
-					.repeat(n)
-					.reshape(p, n, m)
+					.repeat(m)
+					.reshape(p, m, n)
 					.traverse(1);
 			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
 			return (CollectionProducer) product
-					.reshape(p, n, m).sum(2)
+					.reshape(p, m, n).sum(2)
 					.traverse(0)
 					.enumerate(1, 1)
-					.reshape(n, p);
+					.reshape(m, p);
 		} else {
 			a = c(matrix);
-			b = repeat(n, vector);
+			b = repeat(m, vector);
 		}
 
 		return multiply(traverseEach(a), traverseEach(b)).traverse(1).sum();

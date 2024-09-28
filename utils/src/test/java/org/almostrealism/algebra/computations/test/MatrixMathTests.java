@@ -54,7 +54,8 @@ public class MatrixMathTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> product = matmul(cp(a), cp(b));
 
 		PackedCollection<?> c = product.get().evaluate();
-		c.traverse().print();
+		c.traverse(1).print();
+		System.out.println("--");
 
 		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);
