@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
@@ -420,6 +421,10 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	@Test
 	public void convSmall() {
 		if (testDepth < 2) return;
+
+		if (skipKnownIssues && MatrixFeatures.enableCollectionExpression) {
+			throw new UnsupportedOperationException();
+		}
 
 		int dim = 16;
 		int size = 3;
