@@ -76,8 +76,6 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 	@Test
 	public void convMultiChannelLarge() {
-		if (skipKnownIssues) return;
-
 		convMultiChannel(1, 56, 28, 28, 3, 28);
 	}
 

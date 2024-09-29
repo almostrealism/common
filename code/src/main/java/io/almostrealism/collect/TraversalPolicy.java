@@ -329,8 +329,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		long newDenominator[] = new long[dims.length];
 
 		for (int i = 0; i < dims.length; i++) {
-			newNumerator[i] = i == axis ? numerator : rateNumeratorLong(i);
-			newDenominator[i] = i == axis ? denominator : rateDenominatorLong(i);
+			newNumerator[i] = (i == axis ? numerator : 1) * rateNumeratorLong(i);
+			newDenominator[i] = (i == axis ? denominator : 1) * rateDenominatorLong(i);
 		}
 
 		return new TraversalPolicy(

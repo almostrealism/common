@@ -27,7 +27,7 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 
 import java.util.function.Supplier;
 
-public interface MatrixFeatures extends CollectionFeatures {
+public interface MatrixFeatures extends AlgebraFeatures {
 	boolean enableCollectionExpression = true;
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
@@ -42,7 +42,6 @@ public interface MatrixFeatures extends CollectionFeatures {
 		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
-
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
@@ -60,23 +59,11 @@ public interface MatrixFeatures extends CollectionFeatures {
 			TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
 			int p = weightShape.length(1);
 
-			TraversalPolicy resultShape = shape(m, p);
-
-			return new DefaultTraversableExpressionComputation<>("matmul", resultShape.traverseEach(),
-					(args) -> {
-						TraversalPolicy inputPositions = shape(m, p)
-								.withRate(1, n, p);
-						TraversalPolicy weightPositions = shape(1, p);
-						TraversalPolicy inputShape = shape(matrix);
-						TraversalPolicy inputGroupShape = shape(1, n);
-						TraversalPolicy weightGroupShape = shape(n, 1);
-						return new SubsetTraversalWeightedSumExpression(
-								resultShape,
-								inputPositions, weightPositions,
-								inputShape, weightShape,
-								inputGroupShape, weightGroupShape,
-								args[1], args[2]);
-					}, (Supplier) matrix, (Supplier) vector);
+			return weightedSum("matmul",
+					shape(m, p).withRate(1, n, p),
+					shape(1, p),
+					shape(1, n), shape(n, 1),
+					matrix, reshape(weightShape, vector));
 		} else if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
 			// System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
 
