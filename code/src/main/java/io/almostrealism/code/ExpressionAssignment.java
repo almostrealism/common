@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
@@ -90,6 +91,8 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 
 	@Override
 	public ExpressionAssignment<T> simplify(KernelStructureContext context, int depth) {
-		return new ExpressionAssignment<>(declaration, destination.simplify(context, depth + 1), expression.simplify(context, depth + 1));
+		return new ExpressionAssignment<>(declaration,
+				ScopeSettings.reviewSimplification(destination, destination.simplify(context, depth + 1)),
+				ScopeSettings.reviewSimplification(expression, expression.simplify(context, depth + 1)));
 	}
 }

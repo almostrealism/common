@@ -260,13 +260,14 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			int end = m;
 			i: for (int i = 2 * granularity; i < m; i += granularity) {
 				double actual = doubleAt(i);
-				double prediction = doubleAt(i - 1) + delta;
+				double prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
 
 				if (end == m && prediction != actual) {
 					end = i;
+					prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
 				}
 
-				if (prediction % end != actual) {
+				if (prediction != actual) {
 					isArithmetic = false;
 					break i;
 				}
@@ -314,6 +315,12 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	@Override
 	default Console console() {
 		return Scope.console;
+	}
+
+	static double arithmeticSequenceValue(int index, int mod, int granularity,
+										  double initial, double delta) {
+		int position = (index % mod) / granularity;
+		return initial + position * delta;
 	}
 
 	static boolean fractionalValue(Number[] distinct) {

@@ -1086,28 +1086,43 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test
-	public void multiplyTwice() {
-		int dim = 5;
+	public void multiplyTwiceSmall() {
+		multiplyTwice(2, false);
+	}
 
+	@Test
+	public void multiplyTwiceLarge() {
+		multiplyTwice(5, false);
+	}
+
+	public void multiplyTwice(int dim, boolean optimize) {
 		PackedCollection<?> input = new PackedCollection<>(shape(dim));
 		CollectionProducer<PackedCollection<?>> c = cp(input)
 				.multiply(3)
 				.multiply(2);
 
-		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-//		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-		PackedCollection<?> dout = dy.get().evaluate();
-		dout.traverse().print();
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+			PackedCollection<?> dout;
 
-		for (int i = 0; i < dim; i++) {
-			for (int j = 0; j < dim; j++) {
-				if (i == j) {
-					assertEquals(6.0, dout.toDouble(i * dim + j));
-				} else {
-					assertEquals(0.0, dout.toDouble(i * dim + j));
+			if (optimize) {
+				dout = Process.optimized(dy).get().evaluate();
+			} else {
+				dout = dy.get().evaluate();
+			}
+
+			dout.traverse().print();
+
+			for (int i = 0; i < dim; i++) {
+				for (int j = 0; j < dim; j++) {
+					if (i == j) {
+						assertEquals(6.0, dout.toDouble(i * dim + j));
+					} else {
+						assertEquals(0.0, dout.toDouble(i * dim + j));
+					}
 				}
 			}
-		}
+		});
 	}
 
 	@Test

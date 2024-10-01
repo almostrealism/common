@@ -17,6 +17,9 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
@@ -102,6 +105,40 @@ public class ScopeSettings {
 			Scope.console.features(ScopeSettings.class)
 					.log("Unsimplified Children = " + unsimplifiedChildren);
 		}
+	}
+
+	public static <T> Expression<T> reviewSimplification(Expression<?> expression, Expression<T> simplified) {
+		Index target = simplified.getIndices().stream().findFirst().orElse(null);
+		return reviewSimplification(target, expression, simplified);
+	}
+
+	public static <T> Expression<T> reviewSimplification(Index target, Expression<?> expression, Expression<T> simplified) {
+		if (!enableSequenceValidation || target == null) return simplified;
+
+		IndexValues v = new IndexValues();
+		v.put(target, 0);
+
+		if (target.getLimit().isPresent() &&
+				target.getLimit().orElse(0) < Integer.MAX_VALUE) {
+			return reviewSimplification(v, expression, simplified);
+		}
+
+		return simplified;
+	}
+
+	public static <T> Expression<T> reviewSimplification(IndexValues values, Expression<?> expression, Expression<T> simplified) {
+		if (!enableSequenceValidation || values == null) return simplified;
+
+		if (simplified.isValue(values)) {
+			IndexSequence orig = expression.sequence();
+			IndexSequence seq = simplified.sequence();
+
+			if (!orig.congruent(seq)) {
+				throw new UnsupportedOperationException();
+			}
+		}
+
+		return simplified;
 	}
 
 	public static boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {

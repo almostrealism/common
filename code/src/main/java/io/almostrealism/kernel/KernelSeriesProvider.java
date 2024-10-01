@@ -43,7 +43,7 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		return Integer.MAX_VALUE;
 	}
 
-	default Expression getSeries(Expression exp) {
+	default <T> Expression<T> getSeries(Expression<T> exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
 		Set<Index> indices = exp.getIndices();

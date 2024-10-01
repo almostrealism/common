@@ -18,7 +18,11 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 
+import java.util.Arrays;
+
 public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression {
+	public static boolean enableLogging = false;
+
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
 												TraversableExpression input, TraversableExpression weights) {
@@ -91,9 +95,11 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 			int[] groupPosition = groupShape.position(groupIndex);
 			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalInputSize()));
 
-//			System.out.println("Operand "  + operandIndex + " " + operandShape +
-//					" in " + groupShape + " group over " + positions +
-//					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
+			if (enableLogging) {
+				System.out.println("Operand " + operandIndex + " " + operandShape +
+						" in " + groupShape + " group over " + positions +
+						" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
+			}
 
 			// Find the location in the input of the current group member,
 			// within the subset of the input that is being operated on
@@ -103,7 +109,9 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 			Expression[] inputPosition = new Expression[operandShape.getDimensions()];
 			for (int i = 0; i < inputPosition.length; i++) {
 				inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
-//				System.out.println("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
+
+				if (enableLogging)
+					System.out.println("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
 			}
 
 			// Provide the index in the operand that is associated

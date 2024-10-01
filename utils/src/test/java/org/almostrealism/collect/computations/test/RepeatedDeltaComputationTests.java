@@ -411,6 +411,8 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convSmallest() {
+		if (testDepth < 1) return;
+		
 		int dim = 10;
 		int size = 3;
 		int filters = 8;

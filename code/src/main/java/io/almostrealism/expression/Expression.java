@@ -584,7 +584,8 @@ public abstract class Expression<T> implements
 
 	@Override
 	public Expression<?> simplify(KernelStructureContext context) {
-		return KernelTree.super.simplify(context);
+		return ScopeSettings.reviewSimplification(this,
+				KernelTree.super.simplify(context));
 	}
 
 	@Override
@@ -620,21 +621,15 @@ public abstract class Expression<T> implements
 				IndexValues v = new IndexValues();
 				if (target != null) v.put(target, 0);
 
-				if (simplified[i].isValue(v)) {
-					if (ScopeSettings.enableSequenceValidation &&
-							target != null &&
-							target.getLimit().isPresent() &&
-							target.getLimit().orElse(0) < Integer.MAX_VALUE) {
-						IndexSequence orig = children.get(i).sequence();
-						IndexSequence seq = simplified[i].sequence();
-						if (!orig.congruent(seq)) {
-							throw new UnsupportedOperationException();
-						}
-					}
+				simplified[i] = ScopeSettings.reviewSimplification(children.get(i), simplified[i]);
 
-					simplified[i] = provider.getSeries(simplified[i]);
+				if (simplified[i].isValue(v)) {
+					simplified[i] = ScopeSettings.reviewSimplification(simplified[i],
+								provider.getSeries(simplified[i]));
+
 					if (ScopeSettings.isDeepSimplification())
 						simplified[i] = simplified[i].getSimplified(context);
+
 					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
 				}
 			} finally {
