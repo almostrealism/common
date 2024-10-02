@@ -411,6 +411,9 @@ public abstract class Expression<T> implements
 		OptionalDouble v = doubleValue();
 		if (v.isPresent()) return (T) (Double) v.getAsDouble();
 
+		Optional<Boolean> b = booleanValue();
+		if (b.isPresent()) return (T) b.get();
+
 		return null;
 	}
 
@@ -651,14 +654,13 @@ public abstract class Expression<T> implements
 		if (!Objects.equals(countNodes(), v.countNodes())) return false;
 		if (!Objects.equals(hash, v.hash)) return false;
 
-		if (getChildren().size() != v.getChildren().size()) return false;
-		if (IntStream.range(0, getChildren().size())
+		if (getChildren().size() != v.getChildren().size()) {
+			return false;
+		} else if (IntStream.range(0, getChildren().size())
 				.anyMatch(i -> !Objects.equals(getChildren().get(i), v.getChildren().get(i)))) {
 			return false;
 		}
-
-//		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
-//		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
+		
 		return true;
 	}
 
