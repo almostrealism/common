@@ -42,6 +42,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		super(a.getType(), a, b);
 		this.fp = fp;
 
+		if (fp && !a.isFP() && !b.isFP()) {
+			throw new UnsupportedOperationException();
+		}
+
 		if (!fp && (a.isFP() || b.isFP()))
 			throw new UnsupportedOperationException();
 

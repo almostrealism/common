@@ -97,21 +97,21 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default Producer<Vector> vector() { return Vector.blank(); }
 
-	default ExpressionComputation<Scalar> x(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducerComputationBase<?, Scalar> x(Supplier<Evaluable<? extends Vector>> v) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(0),
 				args -> expressionForDouble(1.0)),
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> y(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducerComputationBase<?, Scalar> y(Supplier<Evaluable<? extends Vector>> v) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(1),
 				args -> expressionForDouble(1.0)),
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> z(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducerComputationBase<?, Scalar> z(Supplier<Evaluable<? extends Vector>> v) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(2),
 				args -> expressionForDouble(1.0)),

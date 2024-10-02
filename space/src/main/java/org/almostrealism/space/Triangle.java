@@ -65,7 +65,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	
 	static {
 //		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
-		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
+		ExpressionComputation<PackedCollection<Vector>> triangle =
+				triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
 		dataProducer = triangle.get();
 
 //		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
@@ -90,8 +91,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 	
 	/**
-	 * Constructs a new {@link Triangle} object with the specified vertices
-	 * with the color represented by the specified {@link RGB} object.
+	 * Constructs a new {@link Triangle} with the specified vertices
+	 * using the color represented by the specified {@link RGB}.
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3, RGB color) {
 		super(null, 1.0, color, false);
@@ -136,8 +137,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		this.p3 = p3;
 
 		if (enableHardwareOperator) {
-			this.data = (PackedCollection<Vector>) dataProducer.evaluate(getPointData().traverse(0))
-													.reshape(shape(4, 3)).traverse(1);
+			this.data = dataProducer.evaluate(getPointData().traverse(0))
+								.reshape(shape(4, 3)).traverse(1);
 		} else {
 			Vector a = this.p2.subtract(this.p1);
 			Vector b = this.p3.subtract(this.p1);

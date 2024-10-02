@@ -77,7 +77,8 @@ public interface TriangleFeatures extends VectorFeatures {
 																	 Supplier<Evaluable<? extends Vector>> jkl,
 																	 Supplier<Evaluable<? extends Vector>> normal) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueRelative(i % 3)));
+		IntStream.range(0, 12).forEach(i -> expression.add(args ->
+				args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(shape(4, 3), expression, (Supplier) abc, (Supplier) def, (Supplier) jkl, (Supplier) normal);
 	}
 
@@ -85,8 +86,9 @@ public interface TriangleFeatures extends VectorFeatures {
 		return new DefaultTraversableExpressionComputation<>("point", shape(3),
 				(Function<TraversableExpression[], CollectionExpression>) args ->
 						new IndexProjectionExpression(shape(3),
-							idx -> e(index * 3).add(idx.mod(e(3))), args[1]),
-						(Supplier) points);
+							idx -> e(index * 3).add(idx.imod(3)), args[1]),
+						(Supplier) points)
+				.setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,
