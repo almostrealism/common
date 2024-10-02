@@ -17,6 +17,7 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
@@ -40,6 +41,11 @@ import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
 	private LanguageOperations lang = new LanguageOperationsStub();
+
+	@Test
+	public void notEqual() {
+		Assert.assertFalse(new BooleanConstant(true).equals(new BooleanConstant(false)));
+	}
 
 	@Test
 	public void productToInt() {

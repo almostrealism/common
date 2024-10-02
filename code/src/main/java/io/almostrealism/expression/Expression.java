@@ -419,6 +419,9 @@ public abstract class Expression<T> implements
 		OptionalDouble v = doubleValue();
 		if (v.isPresent()) return (T) (Double) v.getAsDouble();
 
+		Optional<Boolean> b = booleanValue();
+		if (b.isPresent()) return (T) b.get();
+
 		return null;
 	}
 

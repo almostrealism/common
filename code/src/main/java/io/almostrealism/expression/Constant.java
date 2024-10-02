@@ -69,6 +69,12 @@ public abstract class Constant<T> extends Expression<T> {
 			return false;
 		}
 
+		if (getValue() == null || ((Constant<?>) e).getValue() == null) {
+			throw new UnsupportedOperationException(
+					"It is not possible to compare Constant implementation(s)" +
+					" which do not use the value field");
+		}
+
 		return Objects.equals(((Constant<?>) e).getType(), getType()) &&
 				Objects.equals(((Constant<?>) e).getValue(), getValue());
 	}
