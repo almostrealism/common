@@ -28,6 +28,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.gradient.GradientFeatures;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -86,24 +87,26 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 		PackedCollection<?> multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection<?> in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
 
-		CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
-				.reshape(2, 4);
-		c = new IndexProjectionProducerComputation<>(c.getShape().traverseEach(), index -> index, c) {
-			@Override
-			public int getMemLength() { return 1; }
-		};
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
+					.reshape(2, 4);
+			c = new IndexProjectionProducerComputation<>(c.getShape().traverseEach(), index -> index, c) {
+				@Override
+				public int getMemLength() {return 1;}
+			};
 
-		PackedCollection<?> out = c.evaluate();
-		out.print();
+			PackedCollection<?> out = c.evaluate();
+			out.print();
 
-		assertEquals(4.0, out.valueAt(0, 0));
-		assertEquals(3.0, out.valueAt(0, 1));
-		assertEquals(0.0, out.valueAt(0, 2));
-		assertEquals(0.0, out.valueAt(0, 3));
-		assertEquals(0.0, out.valueAt(1, 0));
-		assertEquals(0.0, out.valueAt(1, 1));
-		assertEquals(2.0, out.valueAt(1, 2));
-		assertEquals(1.0, out.valueAt(1, 3));
+			assertEquals(4.0, out.valueAt(0, 0));
+			assertEquals(3.0, out.valueAt(0, 1));
+			assertEquals(0.0, out.valueAt(0, 2));
+			assertEquals(0.0, out.valueAt(0, 3));
+			assertEquals(0.0, out.valueAt(1, 0));
+			assertEquals(0.0, out.valueAt(1, 1));
+			assertEquals(2.0, out.valueAt(1, 2));
+			assertEquals(1.0, out.valueAt(1, 3));
+		});
 	}
 
 	@Test
@@ -245,7 +248,7 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convDeltaGradSmall() throws IOException {
-		if (skipLongTests) return;
+		if (skipLongTests || testDepth < 1) return;
 
 		try {
 			ParallelProcess.explicitIsolationTargets

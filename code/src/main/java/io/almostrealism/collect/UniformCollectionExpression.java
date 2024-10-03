@@ -76,13 +76,16 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 						Expression v = operands[i].getValueAt(e(0));
 						if (v.doubleValue().orElse(-1.0) != 0.0)
 							return null;
-					} else if (offset != null) {
-						Expression next = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-						if (!Objects.equals(offset, next))
-							return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 					} else {
-						offset = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-						if (offset == null) return null;
+						Expression next = operands[i].uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+						if (next == null)
+							return null;
+
+						if (offset == null) {
+							offset = next;
+						} else if (!Objects.equals(offset, next)) {
+							return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+						}
 					}
 				}
 

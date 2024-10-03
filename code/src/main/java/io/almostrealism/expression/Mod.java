@@ -111,6 +111,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
+		if (!isFP()) {
+			OptionalLong u = getChildren().get(1).longValue();
+
+			if (u.isPresent()) {
+				return OptionalLong.of(u.getAsLong() - 1);
+			}
+		}
+
 		return getChildren().get(1).upperBound(context);
 	}
 
@@ -230,6 +238,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		} else if (enableDistributiveSum && input instanceof Sum && !input.isFP()) {
 			input = Sum.of(input.getChildren().stream().map(e -> e.imod(m)).toArray(Expression[]::new));
+		}
+
+		OptionalLong u = input.upperBound();
+		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
+			return input;
 		}
 
 		return new Mod(input, mod, fp);

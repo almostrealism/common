@@ -64,9 +64,9 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 
 		OptionalLong len = index.getLimit();
 
-		if (!len.isPresent()) {
+		if (!len.isPresent() && getMaximumLength().isPresent()) {
 			len = index.upperBound(
-						new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
+							new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
 					.stream().map(i -> i + 1).findFirst();
 		}
 
@@ -107,8 +107,8 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 			if (ScopeSettings.timing != null) {
 				boolean isPos = result != null;
 				ScopeSettings.timing.recordDuration(getMetadata(),
-						"kernelSeries " + exp.treeDepth() +
-								"-" + exp.countNodes() + "-" + isPos,
+						"kernelSeries [" + exp.treeDepth() +
+								"/" + exp.countNodes() + ", " + isPos + "]",
 						System.nanoTime() - start);
 			}
 		}

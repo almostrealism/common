@@ -69,9 +69,22 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			throw new UnsupportedOperationException();
 
 		OptionalLong l = getChildren().get(0).upperBound(context);
-		OptionalLong r = getChildren().get(1).upperBound(context);
-		if (l.isPresent() && r.isPresent()) {
-			return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+
+		if (l.isPresent()) {
+			OptionalLong r = getChildren().get(1).longValue();
+
+			if (r.isPresent()) {
+				if (isFP()) {
+					return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+				} else {
+					return OptionalLong.of(l.getAsLong() / r.getAsLong());
+				}
+			}
+
+			r = getChildren().get(1).upperBound(context);
+			if (r.isPresent()) {
+				return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+			}
 		}
 
 		return OptionalLong.empty();

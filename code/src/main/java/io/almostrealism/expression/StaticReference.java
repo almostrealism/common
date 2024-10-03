@@ -93,7 +93,11 @@ public class StaticReference<T> extends Expression<T> {
 	@Override
 	public boolean compare(Expression expression) {
 		if (expression instanceof StaticReference) {
-			return ((StaticReference) expression).expression.equals(this.expression);
+			if (((StaticReference) expression).expression == null || this.expression == null) {
+				return Objects.equals(expression.getExpression(lang), getExpression(lang));
+			}
+
+			return Objects.equals(((StaticReference) expression).expression, this.expression);
 		}
 
 		return false;
