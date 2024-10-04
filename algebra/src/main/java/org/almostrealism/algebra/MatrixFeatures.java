@@ -17,19 +17,14 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.IdentityCollectionExpression;
-import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.function.Supplier;
-
 public interface MatrixFeatures extends AlgebraFeatures {
-	boolean enableCollectionExpression = true;
-
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
 		return identity(shape(size, size));
 	}
@@ -56,7 +51,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		int n = shape.length(1);
 
 		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
-			if (enableCollectionExpression) {
+			if (WeightedSumExpression.enableCollectionExpression) {
 				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
 				int p = weightShape.length(1);
 
@@ -94,7 +89,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
-		if (enableCollectionExpression) {
+		if (WeightedSumExpression.enableCollectionExpression) {
 			return matmul(traverse(0, a), traverse(0, b));
 		}
 		

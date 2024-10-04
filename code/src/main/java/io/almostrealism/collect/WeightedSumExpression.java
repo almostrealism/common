@@ -20,6 +20,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 
 public class WeightedSumExpression extends BinaryGroupExpression {
+	public static boolean enableCollectionExpression = true;
+
 	public WeightedSumExpression(TraversalPolicy shape, int memberCount,
 								 TraversableExpression a, TraversableExpression b,
 								 MemberIndexGenerator memberIndexGenerator) {

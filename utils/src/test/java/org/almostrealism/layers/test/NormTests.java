@@ -17,6 +17,7 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -464,7 +465,17 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast) throws IOException {
-		normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+
+		try {
+			if (c > 64) {
+				WeightedSumExpression.enableCollectionExpression = false;
+			}
+
+			normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
+		}
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast, Supplier<PackedCollection<?>> inputSource) throws IOException {

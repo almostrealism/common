@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Factor;
@@ -365,7 +366,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		Factor<PackedCollection<?>> operator;
 
-		if (enableWeightedSum) {
+		if (enableWeightedSum && WeightedSumExpression.enableCollectionExpression) {
 			operator = input -> {
 				CollectionProducer<PackedCollection<?>> in;
 

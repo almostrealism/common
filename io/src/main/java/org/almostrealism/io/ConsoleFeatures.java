@@ -49,6 +49,7 @@ public interface ConsoleFeatures {
 
 	default void alert(String message, Throwable ex) {
 		console().alert(message, ex);
+		warn(message, ex);
 	}
 
 	default Console console() {
