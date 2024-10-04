@@ -17,12 +17,12 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
@@ -290,27 +290,36 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	}
 
 	public void convDelta(int n, int c, int h, int w, int f, boolean byGradient) {
-		int s = 3;
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
 
-		PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
-		PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
-		CollectionProducer<PackedCollection<?>> result =
-				conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
+		try {
+			if (f > 4)
+				WeightedSumExpression.enableCollectionExpression = false;
 
-		TraversalPolicy r = result.getShape();
-		log(r);
+			int s = 3;
 
-		Supplier<Evaluable<? extends PackedCollection<?>>> d;
+			PackedCollection<?> input = new PackedCollection<>(shape(n, c, h, w)).randFill();
+			PackedCollection<?> filters = new PackedCollection<>(shape(f, c, s, s)).randFill();
+			CollectionProducer<PackedCollection<?>> result =
+					conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
 
-		if (byGradient) {
-			PackedCollection<?> grad = new PackedCollection<>(r).randFill();
-			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
-		} else {
-			d = Process.optimized(result.delta(cp(input)));
+			TraversalPolicy r = result.getShape();
+			log(r);
+
+			Supplier<Evaluable<? extends PackedCollection<?>>> d;
+
+			if (byGradient) {
+				PackedCollection<?> grad = new PackedCollection<>(r).randFill();
+				d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
+			} else {
+				d = Process.optimized(result.delta(cp(input)));
+			}
+
+			PackedCollection<?> out = d.get().evaluate();
+			log(out.getShape());
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
 		}
-
-		PackedCollection<?> out = d.get().evaluate();
-		log(out.getShape());
 	}
 
 	protected CollectionProducer<PackedCollection<?>> conv(int s,
@@ -434,10 +443,6 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 
-		if (skipKnownIssues && MatrixFeatures.enableCollectionExpression) {
-			throw new UnsupportedOperationException();
-		}
-
 		int dim = 16;
 		int size = 3;
 		int filters = 8;
@@ -457,10 +462,15 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	}
 
 	public void convolution2d(String name, TraversalPolicy inputShape, int size, int filterCount) throws IOException {
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+
 		OperationProfileNode profile = new OperationProfileNode(name);
 
 		try {
-			initKernelMetrics(profile);
+			if (filterCount > 4)
+				WeightedSumExpression.enableCollectionExpression = false;
+
+			initKernelMetrics();
 
 			int pad = size - 1;
 			TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
@@ -481,6 +491,7 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 					.delta(cp(input)))
 					.get().evaluate();
 		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
 			logKernelMetrics();
 			profile.save("results/" + name + ".xml");
 		}

@@ -18,17 +18,11 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.code.ExpressionList;
-import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Quotient;
-import io.almostrealism.expression.Sum;
 import org.almostrealism.io.Describable;
 
-import java.util.List;
 import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.function.LongFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -87,7 +81,7 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 		return new DefaultCollectionExpression(shape, valueAt);
 	}
 
-	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {
+	static TraversableExpression traverse(Object o, LongFunction<Expression<?>> offset) {
 		TraversableExpression exp = TraversableExpression.traverse(o);
 		if (exp == null) {
 			if (enableArrayTraversal && o instanceof Array) {

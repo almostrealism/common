@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
@@ -256,11 +257,19 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
 
-		int dim = 28;
-		int filters = 8;
-		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 2, 10));
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+
+		try {
+			WeightedSumExpression.enableCollectionExpression = false;
+
+			int dim = 28;
+			int filters = 8;
+			Tensor<Double> t = tensor(shape(dim, dim));
+			PackedCollection<?> input = t.pack();
+			train(input, model(dim, dim, 3, filters, 2, 10));
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
+		}
 	}
 
 	@Test

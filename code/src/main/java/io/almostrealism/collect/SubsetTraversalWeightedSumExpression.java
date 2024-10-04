@@ -84,7 +84,7 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 			TraversalPolicy positions = operandIndex == 0 ? inputPositions : weightPositions;
 
 			// The position in the output being computed
-			Expression[] outputPosition = resultShape.position(outputIndex.imod(resultShape.getTotalSize()));
+			Expression[] outputPosition = resultShape.position(outputIndex.imod(resultShape.getTotalSizeLong()));
 
 			// The output index needs to be projected into the space of the
 			// positions before it can be used with the input (or weights)
@@ -93,7 +93,7 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 			// The position of this group member and the current subset.
 			// in the space of the input (or weights)
 			int[] groupPosition = groupShape.position(groupIndex);
-			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalInputSize()));
+			Expression[] subsetPosition = positions.position(index.imod(positions.getTotalInputSizeLong()));
 
 			if (enableLogging) {
 				System.out.println("Operand " + operandIndex + " " + operandShape +
