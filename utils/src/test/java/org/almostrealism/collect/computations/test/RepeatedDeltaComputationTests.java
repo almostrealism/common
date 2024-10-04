@@ -30,6 +30,7 @@ import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.gradient.GradientFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -241,6 +242,8 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convDeltaSmall() throws IOException {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int l = 2; int d = 6;
 
 		convDelta("convDeltaSmall", l, d, false);
