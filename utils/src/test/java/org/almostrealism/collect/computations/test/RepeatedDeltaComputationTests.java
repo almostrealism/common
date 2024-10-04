@@ -240,7 +240,14 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	}
 
 	@Test
-	public void convDelta() throws IOException {
+	public void convDeltaSmall() throws IOException {
+		int l = 2; int d = 6;
+
+		convDelta("convDeltaSmall", l, d, false);
+	}
+
+	@Test
+	public void convDeltaMedium() throws IOException {
 		int l = 8; int d = 28;
 
 		convDelta("convDelta", l, d, false);
@@ -413,18 +420,18 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 	}
 
 	@Test
-	public void convSmallest() {
+	public void convSmallest() throws IOException {
 		if (testDepth < 1) return;
 		
 		int dim = 10;
 		int size = 3;
 		int filters = 8;
 
-		convolution2d(shape(dim, dim), size, filters);
+		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
 	@Test
-	public void convSmall() {
+	public void convSmall() throws IOException {
 		if (testDepth < 2) return;
 
 		if (skipKnownIssues && MatrixFeatures.enableCollectionExpression) {
@@ -435,23 +442,25 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 		int size = 3;
 		int filters = 8;
 
-		convolution2d(shape(dim, dim), size, filters);
+		convolution2d("convSmall", shape(dim, dim), size, filters);
 	}
 
 	@Test
-	public void convLarge() {
+	public void convLarge() throws IOException {
 		if (skipKnownIssues) return;
 
 		int dim = 64;
 		int size = 3;
 		int filters = 8;
 
-		convolution2d(shape(dim, dim), size, filters);
+		convolution2d("convLarge", shape(dim, dim), size, filters);
 	}
 
-	public void convolution2d(TraversalPolicy inputShape, int size, int filterCount) {
+	public void convolution2d(String name, TraversalPolicy inputShape, int size, int filterCount) throws IOException {
+		OperationProfileNode profile = new OperationProfileNode(name);
+
 		try {
-			initKernelMetrics();
+			initKernelMetrics(profile);
 
 			int pad = size - 1;
 			TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
@@ -473,6 +482,7 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 					.get().evaluate();
 		} finally {
 			logKernelMetrics();
+			profile.save("results/" + name + ".xml");
 		}
 	}
 }
