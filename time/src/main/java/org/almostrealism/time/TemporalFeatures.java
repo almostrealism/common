@@ -96,7 +96,12 @@ public interface TemporalFeatures extends GeometryFeatures {
 	}
 
 	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
-		FourierTransform fft = new FourierTransform(bins, input);
+		return fft(bins, false, input, requirements);
+	}
+
+	default FourierTransform fft(int bins, boolean inverse,
+								 Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
+		FourierTransform fft = new FourierTransform(bins, inverse, input);
 		if (requirements.length > 0) fft.setComputeRequirements(List.of(requirements));
 		return fft;
 	}

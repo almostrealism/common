@@ -65,6 +65,20 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 				null, (Producer) input);
 	}
 
+
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+														 Producer<PackedCollection<?>> wavelength,
+														 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
+	}
+
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+														 Producer<PackedCollection<?>> wavelength,
+														 Producer<PackedCollection<?>> phase,
+														 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
+	}
+
 	@Deprecated
 	default ExpressionComputation relativeSin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
@@ -79,16 +93,16 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-														 Producer<PackedCollection<?>> wavelength,
-														 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection<?>> relativeSinw(Producer<PackedCollection<?>> input,
+																 Producer<PackedCollection<?>> wavelength,
+																 Producer<PackedCollection<?>> amp) {
 		return relativeSin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-																							 Producer<PackedCollection<?>> wavelength,
-																							 Producer<PackedCollection<?>> phase,
-																							 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection<?>> relativeSinw(Producer<PackedCollection<?>> input,
+																 Producer<PackedCollection<?>> wavelength,
+																 Producer<PackedCollection<?>> phase,
+																 Producer<PackedCollection<?>> amp) {
 		return relativeSin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
