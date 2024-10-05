@@ -513,7 +513,7 @@ public abstract class Expression<T> implements
 		return new Negation((Expression) this);
 	}
 
-	public Expression eqZero() { return e(0.0); }
+	public Expression eqZero() { return eq(0.0); }
 	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };

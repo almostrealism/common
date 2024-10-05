@@ -639,9 +639,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					for (int i = 0; i < c; i++) {
 						double expected = dLdXGroup.valueAt(i) / stdG;
 						double actual = output.valueAt(i);
-						log(expected + " vs " + actual);
 
-						Assert.assertEquals(expected, actual, 1e-5);
+						log(expected + " vs " + actual);
+						assertSimilar(expected, actual);
 					}
 				});
 	}

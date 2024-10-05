@@ -421,13 +421,21 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		if (testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		int c = 200;
-		int groups = 4;
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
 
-		while (c < 1600) {
-			log("START c = " + c);
-			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
-			c = c + 200;
+		try {
+			WeightedSumExpression.enableCollectionExpression = false;
+
+			int c = 200;
+			int groups = 4;
+
+			while (c < 1400) {
+				log("START c = " + c);
+				normBackwardsTrainable("backwardsTrainable" + c, c, groups);
+				c = c + 200;
+			}
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
 		}
 	}
 

@@ -157,6 +157,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return cond.get() ? positive : negative;
 		}
 
+		OptionalDouble cd = condition.doubleValue();
+
+		if (cd.isPresent()) {
+			Scope.console.features(Conditional.class)
+					.warn("Conditional created with numeric condition");
+			return cd.getAsDouble() == 0.0 ? negative : positive;
+		}
+
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
 
