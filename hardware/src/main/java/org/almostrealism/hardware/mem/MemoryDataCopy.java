@@ -38,7 +38,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	}
 
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
-		this.metadata = new OperationMetadata(name == null ? toString() : name, name, "Copy " + length + " values");
+		this.metadata = new OperationMetadata("copy_" + length, name, "Copy " + length + " values");
 		this.source = source;
 		this.target = target;
 		this.sourcePosition = sourcePosition;
