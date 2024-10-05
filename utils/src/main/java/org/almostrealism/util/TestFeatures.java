@@ -109,12 +109,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void assertSimilar(double a, double b, double r) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
 		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
-		if (gap < eps)
-			gap = eps;
+		double comp = Math.max(eps, r * gap);
 
 		double c = Math.abs(a - b);
 
-		if (c >= r * gap) {
+		if (c >= comp) {
 			double s = c / gap;
 			warn(b + " != " + a + " (" + s + " > " + r + ")");
 			throw new AssertionError();

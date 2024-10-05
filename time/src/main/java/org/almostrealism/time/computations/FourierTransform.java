@@ -60,6 +60,14 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				getArgument(0, e(size)).ref(),
 				getArgument(1, e(size)).ref(),
 				e(size / 2), inverse ? e(1) : e(0), e(0)));
+
+		if (inverse) {
+			for (int i = 0; i < size; i++) {
+				Expression<?> arg = getArgument(0, e(size)).valueAt(i);
+				scope.getStatements().add(arg.assign(arg.divide(e(size / 2))));
+			}
+		}
+
 		return scope;
 	}
 

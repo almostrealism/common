@@ -76,20 +76,12 @@ public class FourierTransformTests implements TestFeatures {
 		FourierTransform ift = fft(bins, true, cp(out), requirement);
 		PackedCollection<?> reversed = ift.get().evaluate();
 		log(reversed.getShape());
-		
-		int total = 0;
 
 		for (int i = 0; i < bins; i++) {
-			double expected = bins * input.valueAt(0, i);
-
-			if (expected != 0) {
-				double actual = reversed.toDouble(i);
-				log(expected + " vs " + actual);
-				assertSimilar(expected, actual, 0.0001);
-				total++;
-			}
+			double expected = input.valueAt(0, i);
+			double actual = reversed.toDouble(i);
+			// log(expected + " vs " + actual);
+			assertSimilar(expected, actual, 0.0001);
 		}
-
-		Assert.assertTrue(total > (bins * 0.9));
 	}
 }
