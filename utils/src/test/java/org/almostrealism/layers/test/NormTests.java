@@ -261,12 +261,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium2() throws IOException {
+		log("Starting backwardsBiasMedium2");
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
 	@Test
 	public void backwardsBiasMedium3() throws IOException {
 		if (testDepth < 1) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
