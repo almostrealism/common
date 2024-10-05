@@ -136,11 +136,6 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		return metadata;
 	}
 
-	protected <O extends OperationInfo> O applyMetadata(O operation) {
-		operation.getMetadata().setId(getMetadata().getId());
-		return operation;
-	}
-
 	/**
 	 * Presently this serves a dual purpose: to do actual compilation of Scope
 	 * from Computation in implementors that facilitate the invocation of a
@@ -151,7 +146,7 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 	 * simply execute code). There seems to be no reason to deal with this now,
 	 * as there will eventually be no need for accelerated operations which
 	 * are not Computation based, so when that process is over one of the two
-	 * roles this methods plays won't exist, and it will be clear what it is for.
+	 * roles this method plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
 

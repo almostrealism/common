@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
@@ -25,7 +26,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
@@ -117,7 +117,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+	public ComputationBase<T, T, Evaluable<? extends T>> optimize(ProcessContext ctx) {
 		if (!enableOptimization) return this;
 		return super.optimize(ctx);
 	}

@@ -36,9 +36,15 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	public static boolean enableRecursion = true;
 
 	private int varIdx = 0;
+	private boolean inverse;
 
 	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
-		super(null, new TraversalPolicy(bins, 2), input);
+		this(bins, false, input);
+	}
+
+	public FourierTransform(int bins, boolean inverse, Producer<PackedCollection<?>> input) {
+		super("fourierTransform", new TraversalPolicy(bins, 2), input);
+		this.inverse = inverse;
 	}
 
 	@Override
@@ -53,7 +59,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		scope.getStatements().add(calculateTransform.call(
 				getArgument(0, e(size)).ref(),
 				getArgument(1, e(size)).ref(),
-				e(size / 2), e(0), e(0)));
+				e(size / 2), inverse ? e(1) : e(0), e(0)));
 		return scope;
 	}
 

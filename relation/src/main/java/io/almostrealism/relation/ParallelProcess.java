@@ -122,9 +122,6 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		boolean isolate = true;
 
-//		if (!explicitIsolationTargets.isEmpty()) {
-//			isolate = processChildren(children).anyMatch(c -> explicitIsolationTargets.stream().anyMatch(t -> t.test(c)));
-//		} else
 		if ((p <= 1 && tot == cn) || cn >= max) {
 			isolate = false;
 		} else if (enableContextualCount && max <= context.getCountLong()) {

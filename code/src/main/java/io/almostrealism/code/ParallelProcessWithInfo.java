@@ -21,6 +21,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import org.almostrealism.io.Console;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends ParallelProcess<P, T>, OperationInfo {
@@ -53,9 +54,35 @@ public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends Par
 		return result;
 	}
 
+	/**
+	 * Delegates to {@link ParallelProcess#optimize(ProcessContext)} while also ensuring that
+	 * the operation {@link OperationMetadata#getId() id} is preserved.
+	 *
+	 * @see  OperationMetadata#getId()
+	 */
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {
 		ParallelProcess<P, T> result = ParallelProcess.super.optimize(ctx);
+
+		if (result instanceof OperationInfo) {
+			if (((OperationInfo) result).getMetadata() == null) {
+				throw new UnsupportedOperationException();
+			}
+
+			((OperationInfo) result).getMetadata().setId(getMetadata().getId());
+		}
+
+		return result;
+	}
+
+	/**
+	 * Delegates to {@link ParallelProcessWithInfo#generate(List)} while also ensuring that
+	 * the operation {@link OperationMetadata#getId() id} is preserved.
+	 *
+	 * @see  OperationMetadata#getId()
+	 */
+	default ParallelProcess<P, T> generateReplacement(List<P> inputs) {
+		ParallelProcess<P, T> result = generate(inputs);
 
 		if (result instanceof OperationInfo) {
 			if (((OperationInfo) result).getMetadata() == null) {

@@ -167,17 +167,16 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		boolean computable = in instanceof Computation;
 
 		if (!enableIsolation && !computable) {
-			PackedCollectionRepeat<T> isolated = generate(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
-			isolated.getMetadata().setId(getMetadata().getId());
+			PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+					generateReplacement(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
 			return isolated;
 		}
 
 		if (!enableInputIsolation || !computable)
 			return super.isolate();
 
-		PackedCollectionRepeat<T> isolated =
-				generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
-		isolated.getMetadata().setId(getMetadata().getId());
+		PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
 
 		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;
 	}

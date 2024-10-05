@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -157,6 +158,33 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 		scope.getVariables().addAll(getVariables());
 		return scope;
+	}
+
+	/**
+	 * Extends {@link ParallelProcessWithInfo#optimize(ProcessContext)} to ensure that
+	 * the {@link ComputeRequirement}s are preserved.
+	 *
+	 * @see  ComputationBase#getComputeRequirements()
+	 */
+	@Override
+	public ComputationBase<I, O, T> optimize(ProcessContext ctx) {
+		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
+				ParallelProcessWithInfo.super.optimize(ctx);
+		replacement.setComputeRequirements(getComputeRequirements());
+		return replacement;
+	}
+
+	/**
+	 * Extends to {@link ParallelProcessWithInfo#generateReplacement(List)} to ensure
+	 * that the {@link ComputeRequirement}s are preserved.
+	 *
+	 * @see  ComputationBase#getComputeRequirements()
+	 */
+	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
+		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
+				ParallelProcessWithInfo.super.generateReplacement(inputs);
+		replacement.setComputeRequirements(getComputeRequirements());
+		return replacement;
 	}
 
 	@Override

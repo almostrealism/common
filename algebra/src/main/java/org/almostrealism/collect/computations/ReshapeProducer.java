@@ -165,10 +165,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
-			ReshapeProducer<T> p =
-					generate(List.of(optimize(ctx, ((Process) producer))));
-			p.getMetadata().setId(getMetadata().getId());
-			return p;
+			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
 		}
 
 		return this;
@@ -181,9 +178,7 @@ public class ReshapeProducer<T extends Shape<T>>
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
 
 				if (isolated != producer) {
-					ReshapeProducer p = generate(List.of(isolated));
-					p.getMetadata().setId(getMetadata().getId());
-					return p;
+					return generateReplacement(List.of(isolated));
 				}
 			}
 
@@ -195,9 +190,7 @@ public class ReshapeProducer<T extends Shape<T>>
 				Process<?, ?> isolated = ((Process<?, ?>) this.producer).isolate();
 
 				if (isolated != producer) {
-					ReshapeProducer p = generate(List.of(isolated));
-					p.getMetadata().setId(getMetadata().getId());
-					return p;
+					return generateReplacement(List.of(isolated));
 				}
 			}
 

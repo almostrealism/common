@@ -141,10 +141,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
 		} else {
 			c = (IndexProjectionProducerComputation)
-					generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+					generateReplacement((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 		}
 
-		c.getMetadata().setId(getMetadata().getId());
 		return c;
 	}
 
@@ -159,10 +158,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 				c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
 			} else {
 				c = (IndexProjectionProducerComputation)
-						generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+						generateReplacement((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 			}
 
-			c.getMetadata().setId(getMetadata().getId());
 			return c.isolateForce();
 		}
 
@@ -171,9 +169,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
-		return applyMetadata(new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
+		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
 				(Producer<?>) children.get(1),
-				children.stream().skip(2).toArray(Producer[]::new)));
+				children.stream().skip(2).toArray(Producer[]::new));
 	}
 
 	@Override
