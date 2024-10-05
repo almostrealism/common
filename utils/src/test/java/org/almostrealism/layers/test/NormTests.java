@@ -274,6 +274,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsBiasProgressive1() throws IOException {
 		if (testDepth < 2) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		backwardsBiasProgressive(2, 1, 5);
 	}

@@ -57,8 +57,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 	@Test
 	public void purgeTest() {
-		Hardware.enableVerbose = true;
-
 //		dc(() -> {
 			for (int i = 0; i < 2; i++) {
 //				cc(() -> {

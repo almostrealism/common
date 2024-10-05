@@ -401,7 +401,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public static PackedCollection<?> of(double... values) {
-		PackedCollection<?> collection = new PackedCollection<>(values.length);
+		PackedCollection<?> collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}
