@@ -56,6 +56,10 @@ public class ProducerCache {
 	 * returned by this method if it is called again.
 	 */
 	public static <T> Evaluable<? extends T> getEvaluableForSupplier(Supplier<Evaluable<? extends T>> producer) {
+		if (producer == null) {
+			throw new IllegalArgumentException();
+		}
+
 		if (enableEvaluableCache) {
 			return getEvaluableCache().computeIfAbsent(producer, p -> {
 				Heap.addOperation(p);

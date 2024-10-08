@@ -54,11 +54,20 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
-		super(referent.getType(), pos);
+		super(referent.getType(), false, pos);
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;
 		init();
+	}
+
+	@Override
+	protected void init() {
+		if (getReferent() == null || getReferent().getName() == null) {
+			throw new UnsupportedOperationException();
+		}
+
+		super.init();
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
