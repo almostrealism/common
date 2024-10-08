@@ -17,11 +17,12 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -80,8 +81,105 @@ public class FourierTransformTests implements TestFeatures {
 		for (int i = 0; i < bins; i++) {
 			double expected = input.valueAt(0, i);
 			double actual = reversed.toDouble(i);
-			// log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
+		}
+	}
+
+	protected PackedCollection<?> generateWaves(int sampleRate, int frames, TraversalPolicy shape) {
+		Frequency f1 = new Frequency(440.00);
+		Frequency f2 = new Frequency(587.33);
+
+		PackedCollection<?> input = new PackedCollection<>(shape);
+		a(cp(input.range(shape(frames)).each()),
+				add(
+						sinw(integers(0, frames).divide(sampleRate), c(f1.getWaveLength()), c(0.9)),
+						sinw(integers(0, frames).divide(sampleRate), c(f2.getWaveLength()), c(0.6))))
+				.get().run();
+		return input;
+	}
+
+	@Test
+	public void multiBatchTransform1() {
+		int sampleRate = 44100;
+		int bins = 1024;
+		int totalSlices = 2;
+		int comparisonSlice = 1;
+
+		PackedCollection<?> input = generateWaves(sampleRate, bins, shape(2, bins));
+		input = cp(input).repeat(totalSlices).evaluate();
+
+		// Confirm that the input slices are identical
+		for (int i = 0; i < 2 * bins; i++) {
+			double expected = input.toDouble(i);
+			double actual = input.toDouble(2 * bins * comparisonSlice + i);
+			log(expected + " vs " + actual);
+			assertSimilar(expected, actual, 0.0001);
+		}
+
+		// Apply the transform the the batches
+		FourierTransform ft = fft(bins, (Producer) cp(input).traverse(1),
+									ComputeRequirement.CPU);
+		PackedCollection<?> out = ft.get().evaluate();
+		log(out.getShape());
+
+		// Confirm that the output slices are identical
+		for (int i = 0; i < bins; i++) {
+			double expected = out.toDouble(i);
+			double actual = out.toDouble(2 * bins * comparisonSlice + i);
+			log(expected + " vs " + actual);
+			assertSimilar(expected, actual, 0.0001);
+		}
+	}
+
+	@Test
+	public void multiBatchTransform2() {
+		int sampleRate = 44100;
+		int bins = 1024;
+		int totalSlices = 2; // 8;
+		int comparisonSlice = 0; // 4;
+		boolean enableRepeat = false;
+
+		Frequency f1 = new Frequency(440.00);
+		Frequency f2 = new Frequency(587.33);
+
+		int frames = totalSlices * bins;
+		PackedCollection<?> input = new PackedCollection<>(frames / bins, bins);
+
+		a(cp(input.range(shape(frames)).each()),
+				add(
+						sinw(integers(0, frames).divide(sampleRate), c(f1.getWaveLength()), c(0.9)),
+						sinw(integers(0, frames).divide(sampleRate), c(f2.getWaveLength()), c(0.6))))
+				.get().run();
+
+		if (!enableRepeat) {
+			input = cp(input).traverse(1).repeat(2).evaluate();
+
+			for (int i = 0; i < totalSlices; i++) {
+				for (int j = 0; j < bins; j++) {
+					input.range(shape(bins), bins * (1 + 2 * i)).each().set(j, 0.0);
+				}
+			}
+		}
+
+		FourierTransform ft = fft(bins,
+				(Producer) (enableRepeat ? cp(input).traverse(1).repeat(2) : cp(input).traverse(1)),
+				ComputeRequirement.CPU);
+		PackedCollection<?> out = ft.get().evaluate();
+		log(out.getShape());
+
+		FourierTransform ift = ifft(bins,
+				cp(out.range(shape(2, bins), comparisonSlice * bins)),
+				ComputeRequirement.CPU);
+		PackedCollection<?> reversed = ift.get().evaluate();
+		log(reversed.getShape());
+
+		PackedCollection<?> range = input.range(shape(bins), comparisonSlice * bins);
+
+		for (int i = 0; i < bins; i++) {
+			double expected = range.valueAt(i);
+			double actual = reversed.toDouble(i);
+			log(expected + " vs " + actual);
+			// assertSimilar(expected, actual, 0.0001);
 		}
 	}
 }

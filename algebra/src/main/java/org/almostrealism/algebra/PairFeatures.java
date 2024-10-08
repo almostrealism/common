@@ -142,11 +142,18 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromParts(Supplier<Evaluable<? extends PackedCollection<?>>> real,
-																 Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+															Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+		long size = shape(real).getTotalSizeLong();
+		if (shape(imag).getTotalSizeLong() != size) {
+			throw new IllegalArgumentException();
+		}
+
 		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
 		comp[0] = args -> args.get(1).getValueRelative(0);
 		comp[1] = args -> args.get(2).getValueRelative(0);
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(List.of(comp), real, imag).setPostprocessor(Pair.postprocessor());
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(
+				new TraversalPolicy(size, 2).traverse(1),
+				List.of(comp), real, imag).setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {

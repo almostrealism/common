@@ -39,11 +39,15 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	private boolean inverse;
 
 	public FourierTransform(int bins, Producer<PackedCollection<?>> input) {
-		this(bins, false, input);
+		this(1, bins, input);
 	}
 
-	public FourierTransform(int bins, boolean inverse, Producer<PackedCollection<?>> input) {
-		super("fourierTransform", new TraversalPolicy(bins, 2), input);
+	public FourierTransform(int count, int bins, Producer<PackedCollection<?>> input) {
+		this(count, bins, false, input);
+	}
+
+	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection<?>> input) {
+		super("fourierTransform", new TraversalPolicy(count, 2, bins), input);
 		this.inverse = inverse;
 	}
 
@@ -89,6 +93,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		calculateTransform.getParameters().add(inverseTransform);
 		calculateTransform.getParameters().add(isFirstSplit);
 
+		// TODO  ArrayVariables output and input should be adapted so that references to them are
+		// TODO  relative to the current global index
 		return populateCalculateTransform(calculateTransform, output, input,
 							len.ref(), inverseTransform, isFirstSplit.ref(), size);
 	}

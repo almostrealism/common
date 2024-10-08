@@ -95,13 +95,34 @@ public interface TemporalFeatures extends GeometryFeatures {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 
-	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
+	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input,
+								 ComputeRequirement... requirements) {
 		return fft(bins, false, input, requirements);
 	}
 
+	default FourierTransform ifft(int bins, Producer<PackedCollection<?>> input,
+								  ComputeRequirement... requirements) {
+		return fft(bins, true, input, requirements);
+	}
+
 	default FourierTransform fft(int bins, boolean inverse,
-								 Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
-		FourierTransform fft = new FourierTransform(bins, inverse, input);
+								 Producer<PackedCollection<?>> input,
+								 ComputeRequirement... requirements) {
+		TraversalPolicy shape = shape(input);
+
+		int targetAxis = shape.getDimensions() - 2;
+
+		if (shape.getDimensions() > 1 && shape.getTraversalAxis() != targetAxis) {
+			input = traverse(targetAxis, input);
+		}
+
+		int count = shape(input).getCount();
+
+		if (count > 1 && shape.getDimensions() < 3) {
+			throw new IllegalArgumentException();
+		}
+
+		FourierTransform fft = new FourierTransform(count, bins, inverse, input);
 		if (requirements.length > 0) fft.setComputeRequirements(List.of(requirements));
 		return fft;
 	}
