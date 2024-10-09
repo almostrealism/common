@@ -447,7 +447,7 @@ public abstract class Expression<T> implements
 		return operand == 1.0 ? (Expression) this :
 				(Expression) Product.of(this, Constant.of(operand));
 	}
-	public Expression<? extends Number> multiply(Expression<?> operand) {
+	public Expression<T> multiply(Expression<?> operand) {
 		return (Expression) Product.of(this, operand);
 	}
 

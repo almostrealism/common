@@ -73,7 +73,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 			if (i > 0) exp.accept(" else ");
 
 			Expression<Boolean> condition = getResets().valueAt(1).greaterThan(e(0.0));
-			condition = condition.and(getTime().ref(1).eq(getResets().valueAt(i)));
+			condition = condition.and(getTime().referenceRelative(1).eq(getResets().valueAt(i)));
 
 //			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
 			exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");

@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -69,18 +70,22 @@ public class FourierTransformTests implements TestFeatures {
 						sinw(integers(0, bins), c(f1.getWaveLength()), c(0.9)),
 						sinw(integers(0, bins), c(f2.getWaveLength()), c(0.6))))
 				.get().run();
+		log("Total = " + input.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ft = fft(bins, cp(input), requirement);
 		PackedCollection<?> out = ft.get().evaluate();
 		log(out.getShape());
+		log("Total = " + input.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ift = fft(bins, true, cp(out), requirement);
 		PackedCollection<?> reversed = ift.get().evaluate();
 		log(reversed.getShape());
+		log("Total = " + input.doubleStream().map(Math::abs).sum());
 
 		for (int i = 0; i < bins; i++) {
 			double expected = input.valueAt(0, i);
 			double actual = reversed.toDouble(i);
+			log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
 		}
 	}
@@ -112,33 +117,56 @@ public class FourierTransformTests implements TestFeatures {
 		for (int i = 0; i < 2 * bins; i++) {
 			double expected = input.toDouble(i);
 			double actual = input.toDouble(2 * bins * comparisonSlice + i);
-			log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
 		}
 
-		// Apply the transform the the batches
+		// Apply the transform to the batches
 		FourierTransform ft = fft(bins, (Producer) cp(input).traverse(1),
 									ComputeRequirement.CPU);
 		PackedCollection<?> out = ft.get().evaluate();
 		log(out.getShape());
 
+		int total = 0;
+
 		// Confirm that the output slices are identical
 		for (int i = 0; i < bins; i++) {
 			double expected = out.toDouble(i);
 			double actual = out.toDouble(2 * bins * comparisonSlice + i);
-			log(expected + " vs " + actual);
+			// log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
+			if (expected > 0) total++;
 		}
+
+		Assert.assertTrue(total > 300);
 	}
 
 	@Test
 	public void multiBatchTransform2() {
 		int sampleRate = 44100;
 		int bins = 1024;
-		int totalSlices = 2; // 8;
-		int comparisonSlice = 0; // 4;
-		boolean enableRepeat = false;
 
+		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, false);
+	}
+
+	@Test
+	public void multiBatchTransform3() {
+		int sampleRate = 44100;
+		int bins = 1024;
+
+		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, true);
+	}
+
+	@Test
+	public void multiBatchTransform4() {
+		int sampleRate = 44100;
+		int bins = 1024;
+
+		multiBatchTransformAndReverse(sampleRate, bins, 8, 3, true);
+	}
+
+	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
+												 int totalSlices, int comparisonSlice,
+												  boolean embedRepeat) {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
 
@@ -151,7 +179,7 @@ public class FourierTransformTests implements TestFeatures {
 						sinw(integers(0, frames).divide(sampleRate), c(f2.getWaveLength()), c(0.6))))
 				.get().run();
 
-		if (!enableRepeat) {
+		if (!embedRepeat) {
 			input = cp(input).traverse(1).repeat(2).evaluate();
 
 			for (int i = 0; i < totalSlices; i++) {
@@ -162,24 +190,26 @@ public class FourierTransformTests implements TestFeatures {
 		}
 
 		FourierTransform ft = fft(bins,
-				(Producer) (enableRepeat ? cp(input).traverse(1).repeat(2) : cp(input).traverse(1)),
+				(Producer) (embedRepeat ? cp(input).traverse(1).repeat(2) : cp(input).traverse(1)),
 				ComputeRequirement.CPU);
 		PackedCollection<?> out = ft.get().evaluate();
 		log(out.getShape());
 
 		FourierTransform ift = ifft(bins,
-				cp(out.range(shape(2, bins), comparisonSlice * bins)),
+				cp(out.range(shape(2, bins), comparisonSlice * 2 * bins)),
 				ComputeRequirement.CPU);
 		PackedCollection<?> reversed = ift.get().evaluate();
 		log(reversed.getShape());
 
-		PackedCollection<?> range = input.range(shape(bins), comparisonSlice * bins);
+		PackedCollection<?> range = embedRepeat ?
+				input.range(shape(bins), comparisonSlice * bins) :
+				input.range(shape(bins), comparisonSlice * 2 * bins);
 
 		for (int i = 0; i < bins; i++) {
 			double expected = range.valueAt(i);
 			double actual = reversed.toDouble(i);
-			log(expected + " vs " + actual);
-			// assertSimilar(expected, actual, 0.0001);
+			// log(expected + " vs " + actual);
+			assertSimilar(expected, actual, 0.0001);
 		}
 	}
 }

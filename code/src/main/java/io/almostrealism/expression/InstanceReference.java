@@ -63,7 +63,8 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 
 	@Override
 	protected void init() {
-		if (getReferent() == null || getReferent().getName() == null) {
+		if (getReferent() == null ||
+				(getReferent().getDelegate() == null && getReferent().getName() == null)) {
 			throw new UnsupportedOperationException();
 		}
 

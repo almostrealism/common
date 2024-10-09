@@ -18,20 +18,27 @@ package io.almostrealism.scope;
 
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelIndex;
 
 public class RelativeArrayVariable extends ArrayVariable<Double> {
 	private ArrayVariable<Double> ref;
 	private Expression offset;
 
 	public RelativeArrayVariable(ArrayVariable<Double> ref, Expression offset) {
-		super(null, null, null, (Expression<Integer>) null);
+		super(null, ref.getType(), null, null);
 		this.ref = ref;
 		this.offset = offset;
 
 		if (offset.isFP()) {
 			throw new IllegalArgumentException();
 		}
+	}
+
+	@Override
+	public InstanceReference<?> ref() {
+		return ref.ref();
 	}
 
 	@Override
@@ -50,5 +57,12 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 		}
 
 		return ref.reference(offset.add(new IntegerConstant(index)), false);
+	}
+
+	@Override
+	public Expression<Double> referenceRelative(Expression<?> pos, KernelIndex idx) {
+		if (ref.getDelegate() != null) return ref.referenceRelative(pos, idx);
+
+		return ref.referenceRelative(pos.add(offset), idx);
 	}
 }

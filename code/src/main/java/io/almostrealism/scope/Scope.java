@@ -755,7 +755,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		if (arguments != null) {
 			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
 					.map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
-			c = c.thenComparing(v -> v == null ? "" : v.getName());
+			c = c.thenComparing(v -> v == null || v.getName() == null ? "" : v.getName());
 			arguments.sort(c);
 			return true;
 		}

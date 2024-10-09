@@ -107,7 +107,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			TraversableExpression out = TraversableExpression.traverse(output);
 
 			if (out == null) {
-				v = output.ref(i).assign(value);
+				v = output.referenceRelative(i).assign(value);
 			} else {
 				Expression o = out.getValueAt(index);
 				v = o.assign(value);

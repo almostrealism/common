@@ -114,7 +114,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getTrueValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
@@ -127,7 +127,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getFalseValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");

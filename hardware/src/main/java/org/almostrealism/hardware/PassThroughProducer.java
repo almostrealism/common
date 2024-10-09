@@ -119,7 +119,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public Scope<T> getScope(KernelStructureContext context) {
 		Scope<T> scope = super.getScope(context);
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i))));
+			scope.getVariables().add(((ArrayVariable) getOutputVariable()).referenceRelative(i).assign(getValueRelative(e(i))));
 		}
 
 		return scope;

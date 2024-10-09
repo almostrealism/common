@@ -181,7 +181,7 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	@Override
-	public int hashCode() { return name.hashCode(); }
+	public int hashCode() { return delegate == null ? name.hashCode() : delegate.hashCode(); }
 
 	@Override
 	public String describe() {

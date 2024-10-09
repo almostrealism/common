@@ -34,6 +34,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public static boolean enableRecursion = true;
+	public static boolean enableRelative = true;
 
 	private int varIdx = 0;
 	private boolean inverse;
@@ -47,7 +48,11 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	}
 
 	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection<?>> input) {
-		super("fourierTransform", new TraversalPolicy(count, 2, bins), input);
+		super("fourierTransform",
+				enableRelative ?
+						new TraversalPolicy(count, 2, bins).traverse(1) :
+						new TraversalPolicy(count, 2, bins),
+				input);
 		this.inverse = inverse;
 	}
 
@@ -56,13 +61,17 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
-		int size = getShape().getTotalSize();
+		int size = getShape().getSize();
 
-		Scope<?> calculateTransform = calculateTransform(size);
+		Expression<Integer> outputPosition = kernel(context).multiply(e(size));
+
+		ArrayVariable<Double> output = getArgument(0, e(getShape().getTotalSize()));
+		ArrayVariable<Double> input = getArgument(1, e(getShape().getTotalSize()));
+
+		Scope<?> calculateTransform = calculateTransform(outputPosition, size, getShape().getTotalSize());
 		scope.getRequiredScopes().add(calculateTransform);
 		scope.getStatements().add(calculateTransform.call(
-				getArgument(0, e(size)).ref(),
-				getArgument(1, e(size)).ref(),
+				output.ref(outputPosition), input.ref(outputPosition),
 				e(size / 2), inverse ? e(1) : e(0), e(0)));
 
 		if (inverse) {
@@ -75,35 +84,42 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		return scope;
 	}
 
-	protected Scope<?> calculateTransform(int size) {
-		ArrayVariable<Double> input = new ArrayVariable<>(this, Double.class, "input", e(size));
-		ArrayVariable<Double> output = new ArrayVariable<>(this, Double.class, "output", e(size));
+	protected ArrayVariable<Double> addParameter(Scope<?> method, String name,
+												 Expression<Integer> outputPosition,
+												 int size, int totalSize) {
+		ArrayVariable<Double> source = new ArrayVariable<>(this, Double.class, name, e(size));
+		method.getParameters().add(source);
+		return source;
+	}
+
+	protected Scope<?> calculateTransform(Expression<Integer> outputPosition, int size, int totalSize) {
+		OperationMetadata calculateTransformMetadata = new OperationMetadata
+				(getFunctionName() + "_calculateTransform", "Calculate Transform");
+		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
+
+		ArrayVariable<Double> output = addParameter(calculateTransform, "output", outputPosition, size, totalSize);
+		ArrayVariable<Double> input = addParameter(calculateTransform, "input", outputPosition, size, totalSize);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
 		Variable<Integer, ?> inverseTransform = Variable.integer("inverseTransform");
 		Variable<Integer, ?> isFirstSplit = Variable.integer("isFirstSplit");
 
-		OperationMetadata calculateTransformMetadata = new OperationMetadata
-				(getFunctionName() + "_calculateTransform", "Calculate Transform");
-		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
-		calculateTransform.getParameters().add(output);
-		calculateTransform.getParameters().add(input);
 		calculateTransform.getParameters().add(len);
 		calculateTransform.getParameters().add(inverseTransform);
 		calculateTransform.getParameters().add(isFirstSplit);
 
-		// TODO  ArrayVariables output and input should be adapted so that references to them are
-		// TODO  relative to the current global index
 		return populateCalculateTransform(calculateTransform, output, input,
-							len.ref(), inverseTransform, isFirstSplit.ref(), size);
+							len.ref(), inverseTransform, isFirstSplit.ref(),
+							outputPosition, size, totalSize);
 	}
 
 	protected Scope<?> populateCalculateTransform(Scope<?> calculateTransform,
 												 ArrayVariable<Double> output, ArrayVariable<Double> input,
 												 Expression<?> len, Variable<Integer, ?> inverseTransform,
 												 Expression<?> isFirstSplit,
-												 int size) {
+												 Expression<Integer> outputPosition,
+												 int size, int totalSize) {
 		ArrayVariable<Double> radix2 = size >= 2 ?
 				calculateTransform.declareArray(this,"radix2_" + varIdx++, e(size / 2)) : null;
 		ArrayVariable<Double> radix4Part1 =
@@ -208,7 +224,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					four.getChildren().add(
 							recursion(calculateTransform, radix2, radix4Part1, radix4Part2,
 									radix2FFT, radix4Part1FFT, radix4Part2FFT,
-									halfN, quarterN, inverseTransform, size));
+									halfN, quarterN, inverseTransform,
+									outputPosition, size, totalSize));
 
 					Repeated loop2 = new Repeated<>();
 					{
@@ -260,7 +277,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				Scope<?> two = cases.addCase(len.greaterThanOrEqual(e(2)), new Scope<>());
 				{
 					if (enableRecursion) {
-						Scope calculateRadix2 = radix2(size);
+						Scope calculateRadix2 = radix2(outputPosition, size, totalSize);
 						calculateTransform.getRequiredScopes().add(calculateRadix2);
 						two.getStatements().add(
 								calculateRadix2.call(output.ref(), input.ref(),
@@ -302,7 +319,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 								 ArrayVariable<Double> radix4Part1FFT, ArrayVariable<Double> radix4Part2FFT,
 								 Expression<?> halfN, Expression<?> quarterN,
 								 Variable<Integer, ?> inverseTransform,
-								 int size) {
+								 Expression<Integer> outputPosition,
+								 int size, int totalSize) {
 
 		Scope recursion = new Scope();
 
@@ -321,35 +339,37 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		} else if (size >= 4) {
 			recursion.getChildren().add(
 					populateCalculateTransform(new Scope<>(), radix2FFT, radix2,
-							halfN, inverseTransform, e(0), size / 2));
+							halfN, inverseTransform, e(0),
+							outputPosition, size / 2, totalSize));
 
 			recursion.getChildren().add(
 					populateCalculateTransform(new Scope<>(), radix4Part1FFT, radix4Part1,
-							quarterN, inverseTransform, e(0), size / 4));
+							quarterN, inverseTransform, e(0),
+							outputPosition, size / 4, totalSize));
 
 			recursion.getChildren().add(
 					populateCalculateTransform(new Scope<>(), radix4Part2FFT, radix4Part2,
-							quarterN, inverseTransform, e(0), size / 4));
+							quarterN, inverseTransform, e(0),
+							outputPosition, size / 4, totalSize));
 		}
 
 		return recursion;
 	}
 
 
-	protected Scope<?> radix2(int size) {
-		ArrayVariable<Double> input = new ArrayVariable<>(this, Double.class, "input", e(size));
-		ArrayVariable<Double> output = new ArrayVariable<>(this, Double.class, "output", e(size));
+	protected Scope<?> radix2(Expression<Integer> outputPosition, int size, int totalSize) {
+		OperationMetadata radix2Metadata = new OperationMetadata
+				(getFunctionName() + "_radix2", "Radix 2");
+		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
+
+		ArrayVariable<Double> output = addParameter(radix2, "output", outputPosition, size, totalSize);
+		ArrayVariable<Double> input = addParameter(radix2, "input", outputPosition, size, totalSize);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
 		Variable<Integer, ?> inverseTransform = Variable.integer("inverseTransform");
 		Variable<Integer, ?> isFirstSplit = Variable.integer("isFirstSplit");
 
-		OperationMetadata radix2Metadata = new OperationMetadata
-				(getFunctionName() + "_radix2", "Radix 2");
-		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
-		radix2.getParameters().add(output);
-		radix2.getParameters().add(input);
 		radix2.getParameters().add(len);
 		radix2.getParameters().add(inverseTransform);
 		radix2.getParameters().add(isFirstSplit);

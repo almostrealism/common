@@ -44,6 +44,7 @@ import io.almostrealism.expression.Tangent;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collection;
@@ -83,6 +84,8 @@ public interface ExpressionFeatures {
 	default MinimumValue minValue() { return new MinimumValue(); }
 
 	default KernelIndex kernel() { return new KernelIndex(); }
+
+	default KernelIndex kernel(KernelStructureContext context) { return new KernelIndex(context); }
 
 	default StaticReference<Double> pi() {
 		return new StaticReference<>(Double.class, null) {
