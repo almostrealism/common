@@ -95,6 +95,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	Console console = Computation.console.child();
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
+	default TraversalPolicy position(int... dims) { return new TraversalPolicy(true, dims); }
 
 	default TraversalPolicy shape(Supplier s) {
 		if (s instanceof Shape) {

@@ -18,6 +18,7 @@ package org.almostrealism.time.computations.test;
 
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
@@ -164,9 +165,32 @@ public class FourierTransformTests implements TestFeatures {
 		multiBatchTransformAndReverse(sampleRate, bins, 8, 3, true);
 	}
 
+	@Test
+	public void multiBatchTransform5() {
+		int sampleRate = 44100;
+		int bins = 1024;
+
+		multiBatchTransformAndReverse(sampleRate, bins, 8, 3, true,
+				in -> {
+					TraversalPolicy shape = shape(in);
+					shape = shape(shape.length(0), 2, shape.length(1));
+					return pad(shape, position(0, 0, 0),
+							c(in).reshape(shape.length(0), 1, shape.length(2)));
+				});
+	}
+
 	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
 												 int totalSlices, int comparisonSlice,
-												  boolean embedRepeat) {
+												 boolean embedExpansion) {
+		multiBatchTransformAndReverse(sampleRate, bins,
+				totalSlices, comparisonSlice,
+				embedExpansion, in -> traverse(1, in).repeat(2));
+	}
+
+	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
+												 int totalSlices, int comparisonSlice,
+												 boolean embedExpansion,
+												 Factor<PackedCollection<?>> expansion) {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
 
@@ -179,7 +203,7 @@ public class FourierTransformTests implements TestFeatures {
 						sinw(integers(0, frames).divide(sampleRate), c(f2.getWaveLength()), c(0.6))))
 				.get().run();
 
-		if (!embedRepeat) {
+		if (!embedExpansion) {
 			input = cp(input).traverse(1).repeat(2).evaluate();
 
 			for (int i = 0; i < totalSlices; i++) {
@@ -190,7 +214,7 @@ public class FourierTransformTests implements TestFeatures {
 		}
 
 		FourierTransform ft = fft(bins,
-				(Producer) (embedRepeat ? cp(input).traverse(1).repeat(2) : cp(input).traverse(1)),
+				(Producer) (embedExpansion ? expansion.getResultant(cp(input)) : cp(input).traverse(1)),
 				ComputeRequirement.CPU);
 		PackedCollection<?> out = ft.get().evaluate();
 		log(out.getShape());
@@ -201,15 +225,21 @@ public class FourierTransformTests implements TestFeatures {
 		PackedCollection<?> reversed = ift.get().evaluate();
 		log(reversed.getShape());
 
-		PackedCollection<?> range = embedRepeat ?
+		PackedCollection<?> range = embedExpansion ?
 				input.range(shape(bins), comparisonSlice * bins) :
 				input.range(shape(bins), comparisonSlice * 2 * bins);
+
+		int total = 0;
 
 		for (int i = 0; i < bins; i++) {
 			double expected = range.valueAt(i);
 			double actual = reversed.toDouble(i);
 			// log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
+			if (expected > 0) total++;
 		}
+
+		log(total);
+		Assert.assertTrue(total > 300);
 	}
 }

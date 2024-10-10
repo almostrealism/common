@@ -427,6 +427,17 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return p;
 	}
 
+	public TraversalPolicy trim() {
+		if (length(getDimensions() - 1) == 1) {
+			return traverse(getDimensions() - 1)
+					.replace(new TraversalPolicy(true))
+					.traverse(getTraversalAxis())
+					.trim();
+		}
+
+		return this;
+	}
+
 	public TraversalPolicy flatten() {
 		return flatten(false);
 	}

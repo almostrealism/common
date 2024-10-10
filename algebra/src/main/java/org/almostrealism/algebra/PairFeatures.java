@@ -41,7 +41,6 @@ import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -148,12 +147,15 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
+		boolean pair = size == 1;
+
 		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
 		comp[0] = args -> args.get(1).getValueRelative(0);
 		comp[1] = args -> args.get(2).getValueRelative(0);
 		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(
-				new TraversalPolicy(size, 2).traverse(1),
-				List.of(comp), real, imag).setPostprocessor(Pair.postprocessor());
+//				new TraversalPolicy(size, 2).traverse(1),
+				shape(real).traverseEach().append(shape(2)),
+				List.of(comp), real, imag).setPostprocessor(pair ? Pair.postprocessor() : null);
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
