@@ -21,6 +21,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
@@ -31,6 +34,8 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+
+import java.util.List;
 
 public class FourierTransform extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public static boolean enableRecursion = true;
@@ -82,6 +87,11 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		}
 
 		return scope;
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection<?>>> generate(List<Process<?, ?>> children) {
+		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 
 	protected ArrayVariable<Double> addParameter(Scope<?> method, String name,
@@ -484,7 +494,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		return radix2;
 	}
 
-	public Scope recursionRadix2(Scope<?> radix2,
+	protected Scope recursionRadix2(Scope<?> radix2,
 									ArrayVariable<Double> evenFft, ArrayVariable<Double> even,
 									ArrayVariable<Double> oddFft, ArrayVariable<Double> odd,
 									Expression<?> halfN,
