@@ -28,6 +28,8 @@ import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import java.util.function.IntFunction;
 
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements KernelizedEvaluable<T> {
+	public static boolean enableRedundantCompilation = true;
+
 	private IntFunction<Multiple<T>> destinationFactory;
 
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
@@ -60,11 +62,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	}
 
 	@Override
-	public T evaluate(Object... args) {
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
-		}
+	public synchronized void postCompile() {
+		super.postCompile();
 
 		ArrayVariable outputVariable = (ArrayVariable) getOutputVariable();
 
@@ -81,6 +80,26 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		if (outputArgIndex < 0) {
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
+
+		getInstructionSetManager().setOutputArgumentIndex(outputArgIndex);
+		getInstructionSetManager().setOutputOffset(offset);
+	}
+
+	@Override
+	public T evaluate(Object... args) {
+		if (getArgumentVariables() == null &&
+				(enableRedundantCompilation || getInstructionSetManager() == null)) {
+			if (getInstructionSetManager() == null) {
+				warn(getName() + " was not compiled ahead of time");
+			} else {
+				warn("Instructions already available for " + getName() + " - but it will be redundantly compiled");
+			}
+
+			compile();
+		}
+
+		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex();
+		int offset = getInstructionSetManager().getOutputOffset();
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);

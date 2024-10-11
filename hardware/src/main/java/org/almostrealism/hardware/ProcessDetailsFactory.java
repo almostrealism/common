@@ -50,7 +50,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private int count;
 
 	private List<ArrayVariable<? extends T>> arguments;
-	private ArrayVariable<?> outputVariable;
+	private int outputArgIndex;
 
 	private ThreadLocal<CreatedMemoryData> created;
 	private MemoryProvider target;
@@ -62,23 +62,26 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private MemoryData memoryDataArgs[];
 
 	private long kernelSize;
-	private Map<ArrayVariable<?>, MemoryData> mappings;
 	private MemoryData kernelArgs[];
 	private Evaluable kernelArgEvaluables[];
 	private Evaluable kernelArgDestinations[];
 
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
-								 Variable<?, ?> outputVariable,
+								 int outputArgIndex,
 								 ThreadLocal<CreatedMemoryData> created,
 								 MemoryProvider target,
 								 AcceleratedProcessDetails.TempMemoryFactory tempFactory) {
+		if (arguments == null) {
+			throw new IllegalArgumentException();
+		}
+
 		this.kernel = kernel;
 		this.fixedCount = fixedCount;
 		this.count = count;
 
 		this.arguments = arguments;
-		this.outputVariable = (ArrayVariable<?>) outputVariable;
+		this.outputArgIndex = outputArgIndex;
 
 		this.created = created;
 		this.target = target;
@@ -111,9 +114,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelSize = -1;
 			}
 
-			mappings = output == null ? Collections.emptyMap() :
-					Collections.singletonMap(outputVariable, output);
-
 			kernelArgs = new MemoryData[arguments.size()];
 			kernelArgEvaluables = new Evaluable[arguments.size()];
 			kernelArgDestinations = new Evaluable[arguments.size()];
@@ -126,8 +126,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			for (int i = 0; i < arguments.size(); i++) {
 				if (arguments.get(i) == null) continue i;
 
-				if (mappings.containsKey(arguments.get(i))) {
-					kernelArgs[i] = mappings.get(arguments.get(i));
+				if (i == outputArgIndex && output != null) {
+					kernelArgs[i] = output;
 					continue i;
 				} else {
 					int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));

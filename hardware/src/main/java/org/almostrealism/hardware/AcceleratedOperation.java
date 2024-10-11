@@ -115,7 +115,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
-	public abstract Execution getOperator();
+	public abstract InstructionSetManager getInstructionSetManager();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
@@ -126,12 +126,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
-	/**
-	 * @return  GLOBAL
-	 */
+	/** @return  -1 */
+	protected int getOutputArgumentIndex() { return -1; }
+
+	/** @return  {@link PhysicalScope#GLOBAL} */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
+	/** @return  -1 */
 	@Override
 	public long getCountLong() { return -1; }
 
@@ -224,7 +226,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
 			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputVariable(), created,
+					getArgumentVariables(), getOutputArgumentIndex(), created,
 					getComputeContext().getDataContext().getKernelMemoryProvider(),
 					this::createAggregatedInput);
 		}
@@ -237,7 +239,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
-		if (getArguments() == null) {
+		if (getArguments() == null && getInstructionSetManager() == null) {
 			warn(getName() + " was not compiled ahead of time");
 			compile();
 		}
@@ -247,7 +249,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
 		long start = System.nanoTime();
-		Execution operator = getOperator();
+		Execution operator = getInstructionSetManager().getOperator();
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {

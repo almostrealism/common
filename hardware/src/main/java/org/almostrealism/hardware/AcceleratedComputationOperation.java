@@ -50,7 +50,7 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData>
+public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
 		implements NameProvider, KernelStructureContext, Countable {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
 	public static boolean enablePostConversionSimplify = true;
@@ -63,6 +63,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	private Scope<T> scope;
 	private Variable outputVariable;
+	private ComputationInstructionsManager instructions;
 
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
 		super(context, kernel, new ArrayVariable[0]);
@@ -94,7 +95,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public boolean isFixedCount() {
-		return getComputation() instanceof Countable ? ((Countable) getComputation()).isFixedCount() : true;
+		return !(getComputation() instanceof Countable) || ((Countable) getComputation()).isFixedCount();
 	}
 
 	@Override
@@ -135,6 +136,22 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public KernelTraversalProvider getTraversalProvider() {
 		return isKernelStructureSupported() ? traversalGenerator : null;
+	}
+
+	@Override
+	public ComputationInstructionsManager getInstructionSetManager() {
+		if (instructions == null && scope != null) {
+			instructions = new ComputationInstructionsManager(
+					getComputeContext(), getFunctionName(),
+					getArgsCount(), scope);
+		}
+
+		return instructions;
+	}
+
+	@Override
+	protected int getOutputArgumentIndex() {
+		return getInstructionSetManager().getOutputArgumentIndex();
 	}
 
 	@Override
@@ -184,6 +201,21 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		getComputation().resetArguments();
 	}
 
+	protected void setupOutputVariable() {
+		Variable<T, ?> output = null;
+
+		// TODO  Is this even necessary?
+		if (getComputation() instanceof OperationAdapter
+				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
+			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+			output = c.getArgumentForInput(c.getInputs().get(0));
+		}
+
+		if (output != null) {
+			getComputation().setOutputVariable(output);
+		}
+	}
+
 	@Override
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
@@ -195,46 +227,40 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		return new ExpressionCache().use(getMetadata(), () -> {
 			prepareScope();
+			setupOutputVariable();
 
-			if (getComputation() instanceof OperationAdapter
-					&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-				OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
-				return compile(c.getArgumentForInput(c.getInputs().get(0)));
-			} else {
-				return compile(null);
+			Computation<T> c = getComputation();
+
+			long start = System.nanoTime();
+
+			scope = c.getScope(this);
+			if (timing != null) {
+				timing.recordDuration(getMetadata(), scope.getMetadata(),
+						"getScope", System.nanoTime() - start);
 			}
+
+			if (!enablePostConversionSimplify)
+				scope = scope.simplify(this);
+
+			start = System.nanoTime();
+			scope.convertArgumentsToRequiredScopes(this);
+			if (timing != null) {
+				timing.recordDuration(getMetadata(), scope.getMetadata(),
+						"convertRequired", System.nanoTime() - start);
+			}
+
+			if (enablePostConversionSimplify)
+				scope = scope.simplify(this);
+
+			postCompile();
+
+			if (verboseCompile) log("Done compiling " + getFunctionName());
+			return scope;
 		});
 	}
 
-	protected synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
-		Computation<T> c = getComputation();
-		if (outputVariable != null) c.setOutputVariable(outputVariable);
-
-		long start = System.nanoTime();
-
-		scope = c.getScope(this);
-		if (timing != null) {
-			timing.recordDuration(getMetadata(), scope.getMetadata(),
-					"getScope", System.nanoTime() - start);
-		}
-
-		if (!enablePostConversionSimplify)
-			scope = scope.simplify(this);
-
-		start = System.nanoTime();
-		scope.convertArgumentsToRequiredScopes(this);
-		if (timing != null) {
-			timing.recordDuration(getMetadata(), scope.getMetadata(),
-					"convertRequired", System.nanoTime() - start);
-		}
-
-		if (enablePostConversionSimplify)
-			scope = scope.simplify(this);
-
-		postCompile();
-
-		if (verboseCompile) log("Done compiling " + getFunctionName());
-		return scope;
+	public void compile(ComputationInstructionsManager instructions) {
+		this.instructions = instructions;
 	}
 
 	@Override
@@ -252,17 +278,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public boolean isCompiled() { return scope != null; }
-
-	@Override
-	public synchronized Execution getOperator() {
-		if (operators == null || operators.isDestroyed()) {
-			operators = getComputeContext().deliver(scope);
-			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
-		}
-
-		return operators.get(getFunctionName(), getArgsCount());
-	}
+	public boolean isCompiled() { return scope != null || getInstructionSetManager() != null; }
 
 	@Override
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
@@ -278,7 +294,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? computation.getOutputVariable() : outputVariable; }
+	public Variable getOutputVariable() {
+		return outputVariable == null ? computation.getOutputVariable() : outputVariable;
+	}
 
 	@Override
 	public boolean isAggregatedInput() { return true; }
@@ -286,9 +304,21 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public void destroy() {
 		super.destroy();
-		scope = null;
+
+		// If there is no Scope, then the instructions were created
+		// somewhere else and do not need to be destroyed
+		if (scope != null) {
+			if (instructions != null) {
+				instructions.destroy();
+				instructions = null;
+			}
+
+			scope = null;
+		}
+
 		setInputs((List) null);
 		outputVariable = null;
+
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
 		}
@@ -303,7 +333,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public static void printTimes(boolean verbose) {
-
 		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
 			KernelTraversalProvider.timing.print();
 		}

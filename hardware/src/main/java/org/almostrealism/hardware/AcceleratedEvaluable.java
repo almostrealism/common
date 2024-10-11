@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.cl.CLInstructionsManager;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
@@ -37,8 +38,6 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
-	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
-
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private IntFunction<MemoryBank<O>> kernelDestination;
 
@@ -63,23 +62,6 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		setArgumentMapping(false);
 	}
 
-	@Override
-	public Execution getOperator() {
-		// TODO  This needs to be by class in addition to function, as function names may collide
-		synchronized (AcceleratedOperation.class) {
-			if (operators.get(getFunctionName()) == null) {
-				operators.put(getFunctionName(), new ThreadLocal<>());
-			}
-
-			if (operators.get(getFunctionName()).get() == null) {
-				operators.get(getFunctionName()).set(((CLComputeContext) getComputeContext())
-						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
-			}
-		}
-
-		return operators.get(getFunctionName()).get();
-	}
-
 	public BiFunction<MemoryData, Integer, O> getPostprocessor() { return postprocessor; }
 	public void setPostprocessor(BiFunction<MemoryData, Integer, O> postprocessor) { this.postprocessor = postprocessor; }
 
@@ -88,6 +70,13 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
+
+	@Override
+	public InstructionSetManager getInstructionSetManager() {
+		return new CLInstructionsManager(
+				getComputeContext(), getSourceClass(),
+				getFunctionName(), getArgsCount());
+	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
