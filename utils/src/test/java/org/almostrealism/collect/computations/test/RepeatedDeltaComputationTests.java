@@ -251,6 +251,8 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 
 	@Test
 	public void convDeltaMedium() throws IOException {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int l = 8; int d = 28;
 
 		convDelta("convDelta", l, d, false);
