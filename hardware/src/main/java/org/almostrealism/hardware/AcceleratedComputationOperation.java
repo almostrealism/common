@@ -20,7 +20,6 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.Execution;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
@@ -41,6 +40,10 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
+import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -63,7 +66,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	private Scope<T> scope;
 	private Variable outputVariable;
-	private ComputationInstructionsManager instructions;
+	private ComputableInstructionSetManager<?> instructions;
+	private ExecutionKey executionKey;
 
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
 		super(context, kernel, new ArrayVariable[0]);
@@ -139,19 +143,25 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	@Override
-	public ComputationInstructionsManager getInstructionSetManager() {
+	public <K extends ExecutionKey> ComputableInstructionSetManager<K> getInstructionSetManager() {
 		if (instructions == null && scope != null) {
 			instructions = new ComputationInstructionsManager(
-					getComputeContext(), getFunctionName(),
-					getArgsCount(), scope);
+					getComputeContext(), scope);
 		}
 
-		return instructions;
+		return (ComputableInstructionSetManager) instructions;
+	}
+
+	@Override
+	public ExecutionKey getExecutionKey() {
+		return executionKey == null ?
+				new DefaultExecutionKey(getFunctionName(), getArgsCount()) :
+					executionKey;
 	}
 
 	@Override
 	protected int getOutputArgumentIndex() {
-		return getInstructionSetManager().getOutputArgumentIndex();
+		return getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
 	}
 
 	@Override
@@ -259,8 +269,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		});
 	}
 
-	public void compile(ComputationInstructionsManager instructions) {
+	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
 		this.instructions = instructions;
+		this.executionKey = executionKey;
 	}
 
 	@Override

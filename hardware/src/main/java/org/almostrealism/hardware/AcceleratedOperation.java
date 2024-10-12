@@ -35,8 +35,11 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.instructions.ExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeExecution;
+import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -44,7 +47,6 @@ import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
-import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,7 +117,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
-	public abstract InstructionSetManager getInstructionSetManager();
+	public abstract <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager();
+
+	public abstract <K extends ExecutionKey> K getExecutionKey();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
@@ -249,7 +253,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
 		long start = System.nanoTime();
-		Execution operator = getInstructionSetManager().getOperator();
+		Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {

@@ -14,16 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.relation;
 
-public interface KernelWork {
-	long getGlobalWorkSize();
-	void setGlobalWorkSize(long globalWorkSize);
-
-	default int getWorkgroupSize() {
-		return 1;
-	}
-
-	long getGlobalWorkOffset();
-	void setGlobalWorkOffset(long globalWorkOffset);
+public interface ProducerFeatures {
+	<T> Producer<?> delegate(Producer<T> producer);
 }

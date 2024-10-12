@@ -41,7 +41,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
+public interface VectorFeatures extends CollectionFeatures {
 	default CollectionProducer<Vector> v(Vector value) { return value(value); }
 
 	default CollectionProducer<Vector> value(Vector value) {

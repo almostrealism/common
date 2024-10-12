@@ -52,7 +52,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
+public interface ScalarFeatures extends CollectionFeatures {
 
 	static ExpressionComputation<Scalar> minusOne() { return of(-1.0); }
 

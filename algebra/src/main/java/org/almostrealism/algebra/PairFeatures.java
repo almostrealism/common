@@ -37,7 +37,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
+public interface PairFeatures extends CollectionFeatures {
 	boolean enableTraversableComplex = true;
 
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }

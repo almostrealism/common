@@ -46,6 +46,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.ProducerFeatures;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
@@ -83,7 +84,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public interface CollectionFeatures extends ExpressionFeatures {
+public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableTraversableRepeated = true;
@@ -190,6 +191,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				}
 			};
 		}
+	}
+
+	@Override
+	default <T> Producer<?> delegate(Producer<T> producer) {
+		return new DelegatedCollectionProducer<>(c(producer));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {

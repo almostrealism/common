@@ -33,7 +33,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, HardwareFeatures {
+public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
 	private Scalar value;

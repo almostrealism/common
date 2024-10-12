@@ -29,7 +29,8 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.ComputationInstructionsManager;
+import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
+import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -37,7 +38,8 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ReusableEvaluableTests implements TestFeatures {
-	private static ComputationInstructionsManager sharedInstructions;
+	private static ComputableInstructionSetManager<?> sharedInstructions;
+	private static ExecutionKey sharedKey;
 
 	@Test
 	public void add() {
@@ -151,8 +153,9 @@ public class ReusableEvaluableTests implements TestFeatures {
 				if (sharedInstructions == null) {
 					ev.compile();
 					sharedInstructions = ev.getInstructionSetManager();
+					sharedKey = ev.getExecutionKey();
 				} else {
-					ev.compile(sharedInstructions);
+					ev.compile(sharedInstructions, sharedKey);
 				}
 
 

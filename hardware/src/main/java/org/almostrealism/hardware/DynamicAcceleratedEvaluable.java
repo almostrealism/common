@@ -21,9 +21,10 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -53,8 +54,13 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Override
-	public InstructionSetManager getInstructionSetManager() {
+	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public DefaultExecutionKey getExecutionKey() {
+		return new DefaultExecutionKey(getFunctionName(), getArgsCount());
 	}
 
 	@Override

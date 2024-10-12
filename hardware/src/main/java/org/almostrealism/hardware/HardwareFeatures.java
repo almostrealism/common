@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,17 +18,23 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.ProducerFeatures;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.computations.DelegatedProducer;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.hardware.instructions.ProcessTreeInstructionsManager;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface HardwareFeatures extends ConsoleFeatures {
+public interface HardwareFeatures extends ConsoleFeatures, ProducerFeatures {
 	boolean enableAssignmentCopy = false;
 
 	default Runnable compileRunnable(Computation<Void> c) {
@@ -47,7 +53,35 @@ public interface HardwareFeatures extends ConsoleFeatures {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
-	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+	default <T extends MemoryData> Producer<T> instruct(Function<Producer[], Producer<T>> func, Producer... args) {
+		Producer delegates[] = Arrays.stream(args)
+				.map(arg -> delegate(arg))
+				.toArray(Producer[]::new);
+		Producer<T> producer = func.apply(delegates);
+
+		if (!(producer instanceof Process)) {
+			return producer;
+		}
+
+		// TODO  This last step needs to be moved into Hardware, because it needs to retrieve
+		// TODO  the ProcessTreeInstructionsManager based on some kind of key that can be reused
+		// TODO  later. What we ultimately do here will be different if this is the first time
+		// TODO  the key has been seen (and we need to process everything) or if we have seen it
+		// TODO  and all we need to do is make sure that every member of the Process tree knows
+		// TODO  to try and use the ProcessTreeInstructionsManager to get its instructions instead
+		// TODO  of compiling itself from scratch again.
+		ProcessTreeInstructionsManager manager = new ProcessTreeInstructionsManager();
+		return (Producer) manager.applyAll((Process) producer);
+	}
+
+	@Override
+	default <T> Producer<?> delegate(Producer<T> producer) {
+		return new DelegatedProducer<>(producer);
+	}
+
+	default <T extends MemoryData> Assignment<T> a(int memLength,
+												   Supplier<Evaluable<? extends T>> result,
+												   Supplier<Evaluable<? extends T>> value) {
 		return new Assignment<>(memLength, result, value);
 	}
 

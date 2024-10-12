@@ -14,15 +14,31 @@
  * limitations under the License.
  */
 
-package org.almostrealism.io;
+package org.almostrealism.hardware.instructions;
 
-public interface Describable {
-	String describe();
+import java.util.Arrays;
+import java.util.Objects;
 
-	static String describe(Object o) {
-		if (o == null)
-			return null;
+public class ProcessTreePositionKey implements ExecutionKey {
+	private final int[] position;
 
-		return o instanceof Describable ? ((Describable) o).describe() : o.toString();
+	public ProcessTreePositionKey(int... position) {
+		this.position = position;
+	}
+
+	public int[] getPosition() {
+		return position;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (!(o instanceof ProcessTreePositionKey that)) return false;
+		return Objects.deepEquals(position, that.position);
+	}
+
+	@Override
+	public int hashCode() {
+		return Arrays.hashCode(position);
 	}
 }

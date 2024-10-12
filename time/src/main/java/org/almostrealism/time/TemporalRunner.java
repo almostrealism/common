@@ -35,7 +35,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
+public class TemporalRunner implements Setup, Temporal, OperationComputation<Void> {
 	public static boolean enableFlatten = true;
 	public static boolean enableOptimization = false;
 	public static boolean enableIsolation = false;

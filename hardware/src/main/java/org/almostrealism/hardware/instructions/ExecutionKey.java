@@ -14,15 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.io;
+package org.almostrealism.hardware.instructions;
 
-public interface Describable {
-	String describe();
-
-	static String describe(Object o) {
-		if (o == null)
-			return null;
-
-		return o instanceof Describable ? ((Describable) o).describe() : o.toString();
-	}
+public interface ExecutionKey {
 }

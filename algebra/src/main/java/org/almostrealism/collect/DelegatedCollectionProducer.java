@@ -16,45 +16,22 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.computations.DelegatedProducer;
 
-import java.util.Collection;
-import java.util.Collections;
-
-public class DelegatedCollectionProducer<T extends PackedCollection<?>> implements
-					Process<Process<?, ?>, Evaluable<? extends T>>,
-					CollectionProducerBase<T, Producer<T>>,
-					OperationInfo {
-	protected CollectionProducer<T> op;
+public class DelegatedCollectionProducer<T extends PackedCollection<?>>
+						extends DelegatedProducer<T>
+						implements CollectionProducerBase<T, Producer<T>> {
 
 	public DelegatedCollectionProducer(CollectionProducer<T> op) {
-		this.op = op;
-	}
-
-	@Override
-	public OperationMetadata getMetadata() {
-		return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
-	}
-
-	@Override
-	public Collection<Process<?, ?>> getChildren() {
-		return op instanceof Process ? ((Process) op).getChildren() : Collections.emptyList();
-	}
-
-	@Override
-	public Evaluable<T> get() {
-		return op.get();
+		super(op);
 	}
 
 	@Override
 	public TraversalPolicy getShape() {
-		return op.getShape();
+		return ((CollectionProducer) op).getShape();
 	}
 
 	@Override
@@ -66,12 +43,21 @@ public class DelegatedCollectionProducer<T extends PackedCollection<?>> implemen
 	}
 
 	@Override
-	public long getOutputSize() {
-		return op.getShape().getTotalSize();
+	public long getCountLong() {
+		// TODO  This may not be necessary
+		return CollectionProducerBase.super.getCountLong();
 	}
 
 	@Override
-	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		return this;
+	public boolean isFixedCount() {
+		// TODO  This was returning the default implementation (which just returns true)
+		// TODO  before, but this was almost certainly wrong
+		// return true;
+		return super.isFixedCount();
+	}
+
+	@Override
+	public long getOutputSize() {
+		return ((CollectionProducer) op).getShape().getTotalSize();
 	}
 }

@@ -16,6 +16,9 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.HardwareFeatures;
+
 import java.util.function.Supplier;
 
 /**
@@ -25,7 +28,7 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 @FunctionalInterface
-public interface Temporal extends TemporalFeatures {
+public interface Temporal extends TemporalFeatures, HardwareFeatures {
 	Supplier<Runnable> tick();
 
 	default Supplier<Runnable> iter(int iter) {
@@ -34,5 +37,10 @@ public interface Temporal extends TemporalFeatures {
 
 	default Supplier<Runnable> iter(int iter, boolean resetAfter) {
 		return iter(this, iter, resetAfter);
+	}
+
+	@Override
+	default <T> Producer<?> delegate(Producer<T> producer) {
+		return TemporalFeatures.super.delegate(producer);
 	}
 }

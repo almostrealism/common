@@ -23,10 +23,11 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
+import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
 
-public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
+public class AdjustableDelayCell extends SummationCell implements TemporalFeatures {
 	public static double defaultPurgeFrequency = 1.0;
 
 	private final int sampleRate;

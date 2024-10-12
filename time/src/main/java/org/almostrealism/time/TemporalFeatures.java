@@ -20,11 +20,14 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
@@ -78,6 +81,14 @@ public interface TemporalFeatures extends GeometryFeatures {
 
 	default Supplier<Runnable> loop(Temporal t, int iter) {
 		return HardwareFeatures.getInstance().loop(t.tick(), iter);
+	}
+
+	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time,
+														Supplier<Evaluable<? extends Scalar>> value) {
+		return new ExpressionComputation<>(
+				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
+				(Supplier) time, (Supplier) value)
+				.setPostprocessor(TemporalScalar.postprocessor());
 	}
 	
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,

@@ -14,49 +14,59 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.hardware.HardwareOperator;
 
-public class ComputationInstructionsManager extends AbstractInstructionSetManager {
+import java.util.HashMap;
+import java.util.Map;
+
+public class ComputationInstructionsManager
+		extends AbstractInstructionSetManager<DefaultExecutionKey>
+		implements ComputableInstructionSetManager<DefaultExecutionKey> {
 	private Scope<?> scope;
 	private InstructionSet operators;
-	private int outputArgIndex;
-	private int outputOffset;
+
+	private Map<DefaultExecutionKey, Integer> outputArgIndices;
+	private Map<DefaultExecutionKey, Integer> outputOffsets;
 
 	public ComputationInstructionsManager(ComputeContext<?> computeContext,
-										  String functionName, int argsCount,
 										  Scope<?> scope) {
-		super(computeContext, functionName, argsCount);
+		super(computeContext);
 		this.scope = scope;
-	}
-
-	public int getOutputArgumentIndex() {
-		return outputArgIndex;
-	}
-
-	public void setOutputArgumentIndex(int outputArgIndex) {
-		this.outputArgIndex = outputArgIndex;
-	}
-
-	public int getOutputOffset() {
-		return outputOffset;
-	}
-
-	public void setOutputOffset(int outputOffset) {
-		this.outputOffset = outputOffset;
+		this.outputArgIndices = new HashMap<>();
+		this.outputOffsets = new HashMap<>();
 	}
 
 	@Override
-	public synchronized Execution getOperator() {
+	public int getOutputArgumentIndex(DefaultExecutionKey key) {
+		return outputArgIndices.get(key);
+	}
+
+	public void setOutputArgumentIndex(DefaultExecutionKey key, int outputArgIndex) {
+		this.outputArgIndices.put(key, outputArgIndex);
+	}
+
+	@Override
+	public int getOutputOffset(DefaultExecutionKey key) {
+		return outputOffsets.get(key);
+	}
+
+	public void setOutputOffset(DefaultExecutionKey key, int outputOffset) {
+		this.outputOffsets.put(key, outputOffset);
+	}
+
+	@Override
+	public synchronized Execution getOperator(DefaultExecutionKey key) {
 		if (operators == null || operators.isDestroyed()) {
 			operators = getComputeContext().deliver(scope);
 			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
 
-		return operators.get(getFunctionName(), getArgsCount());
+		return operators.get(key.getFunctionName(), key.getArgsCount());
 	}
 }

@@ -18,19 +18,19 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import org.almostrealism.hardware.AbstractInstructionSetManager;
+import org.almostrealism.hardware.instructions.AbstractInstructionSetManager;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class CLInstructionsManager extends AbstractInstructionSetManager {
+public class CLInstructionsManager extends AbstractInstructionSetManager<DefaultExecutionKey> {
 	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
 
 	private Class<?> sourceClass;
 
-	public CLInstructionsManager(ComputeContext<?> computeContext, Class<?> sourceClass,
-								 String functionName, int argsCount) {
-		super(computeContext, functionName, argsCount);
+	public CLInstructionsManager(ComputeContext<?> computeContext, Class<?> sourceClass) {
+		super(computeContext);
 		this.sourceClass = sourceClass;
 	}
 
@@ -41,19 +41,19 @@ public class CLInstructionsManager extends AbstractInstructionSetManager {
 	public Class<?> getSourceClass() { return sourceClass; }
 
 	@Override
-	public Execution getOperator() {
+	public Execution getOperator(DefaultExecutionKey key) {
 		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (CLInstructionsManager.class) {
-			if (operators.get(getFunctionName()) == null) {
-				operators.put(getFunctionName(), new ThreadLocal<>());
+			if (operators.get(key.getFunctionName()) == null) {
+				operators.put(key.getFunctionName(), new ThreadLocal<>());
 			}
 
-			if (operators.get(getFunctionName()).get() == null) {
-				operators.get(getFunctionName()).set(getComputeContext()
-						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
+			if (operators.get(key.getFunctionName()).get() == null) {
+				operators.get(key.getFunctionName()).set(getComputeContext()
+						.getFunctions().getOperators(getSourceClass()).get(key.getFunctionName(), key.getArgsCount()));
 			}
 		}
 
-		return operators.get(getFunctionName()).get();
+		return operators.get(key.getFunctionName()).get();
 	}
 }

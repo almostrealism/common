@@ -10,7 +10,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.junit.Test;
 
-public class AcceleratedComputationEvaluableTests implements HardwareFeatures, CodeFeatures {
+public class AcceleratedComputationEvaluableTests implements CodeFeatures {
 	@Test
 	public void staticProducer() {
 		Producer<Vector> res = vector(0.0, 1.0, 2.0);

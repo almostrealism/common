@@ -16,13 +16,12 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-public class SummationCell extends CollectionCachedStateCell implements CodeFeatures {
+public class SummationCell extends CollectionCachedStateCell {
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
 		if (protein == null) throw new NullPointerException();

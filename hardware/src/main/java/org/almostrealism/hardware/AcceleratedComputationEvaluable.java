@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.uml.Multiple;
+import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
+import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.function.IntFunction;
@@ -81,8 +82,16 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		getInstructionSetManager().setOutputArgumentIndex(outputArgIndex);
-		getInstructionSetManager().setOutputOffset(offset);
+		ComputableInstructionSetManager<?> manager = getInstructionSetManager();
+
+		if (manager instanceof ComputationInstructionsManager mgr) {
+			mgr.setOutputArgumentIndex((DefaultExecutionKey) getExecutionKey(), outputArgIndex);
+			mgr.setOutputOffset((DefaultExecutionKey) getExecutionKey(), offset);
+		} else {
+			warn("Compilation post processing on " + getName() +
+					" with unexpected InstructionSetManager (" +
+					manager.getClass().getSimpleName() + ")");
+		}
 	}
 
 	@Override
@@ -98,8 +107,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			compile();
 		}
 
-		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex();
-		int offset = getInstructionSetManager().getOutputOffset();
+		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
+		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);

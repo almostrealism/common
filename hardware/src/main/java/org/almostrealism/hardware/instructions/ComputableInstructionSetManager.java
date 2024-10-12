@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.instructions;
 
-import io.almostrealism.code.Execution;
-import io.almostrealism.lifecycle.Destroyable;
+public interface ComputableInstructionSetManager<K extends ExecutionKey> extends InstructionSetManager<K> {
+	int getOutputArgumentIndex(K key);
 
-public interface InstructionSetManager extends Destroyable {
-	Execution getOperator();
+	int getOutputOffset(K key);
 }

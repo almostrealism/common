@@ -14,15 +14,11 @@
  * limitations under the License.
  */
 
-package org.almostrealism.io;
+package org.almostrealism.hardware.instructions;
 
-public interface Describable {
-	String describe();
+import io.almostrealism.code.Execution;
+import io.almostrealism.lifecycle.Destroyable;
 
-	static String describe(Object o) {
-		if (o == null)
-			return null;
-
-		return o instanceof Describable ? ((Describable) o).describe() : o.toString();
-	}
+public interface InstructionSetManager<K extends ExecutionKey> extends Destroyable {
+	Execution getOperator(K key);
 }

@@ -65,12 +65,16 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
-								PairFeatures, PairBankFeatures,
-								TriangleFeatures,
-								TransformMatrixFeatures, GeometryFeatures,
+public interface CodeFeatures extends LayerFeatures,
+								ScalarBankFeatures, PairBankFeatures,
+								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, HardwareFeatures {
 	boolean enableFixedCollections = true;
+
+	@Override
+	default <T> Producer<?> delegate(Producer<T> producer) {
+		return LayerFeatures.super.delegate(producer);
+	}
 
 	default <T> Producer<T> v(T v) {
 		if (v instanceof TraversalPolicy) {
@@ -107,13 +111,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
-	}
-
-	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-		return new ExpressionComputation<>(
-				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
-					(Supplier) time, (Supplier) value)
-				.setPostprocessor(TemporalScalar.postprocessor());
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }

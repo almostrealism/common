@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  * The {@link ProducerCache} provides static methods for keeping track
  * of the last result of a {@link Evaluable} in the current {@link Thread}.
  * Based on the assumption that a thread processes only one set of arguments
- * at a time, this allows {@link Evaluable} evaluation to be short circuited
+ * at a time, this allows {@link Evaluable} evaluation to be short-circuited
  * when the arguments have not changed.
  *
  * @author  Michael Murray
@@ -38,11 +38,7 @@ public class ProducerCache {
 
 	private static ThreadLocal<Map<Supplier, Evaluable>> evaluableCache = new ThreadLocal<>();
 
-	private static ThreadLocal<Object[]> lastParameter = new ThreadLocal<>();
-
-	/**
-	 * This type is not to be instantiated.
-	 */
+	/** This type is not to be instantiated. */
 	private ProducerCache() { }
 
 	/**

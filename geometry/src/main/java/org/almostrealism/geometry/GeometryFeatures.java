@@ -22,6 +22,7 @@ import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
@@ -33,7 +34,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
+public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 	double ROOT_2_BY_PI = Math.sqrt(2 / PI);

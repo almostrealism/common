@@ -18,6 +18,7 @@ package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
@@ -152,5 +153,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> producer) {
+		return CollectionProducerComputation.super.delegate(producer);
 	}
 }

@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.Temporal;
@@ -25,7 +24,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal, CodeFeatures {
+public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
 	private final T cachedValue;
 	private final T outValue;
 

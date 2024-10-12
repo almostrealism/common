@@ -32,6 +32,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -341,6 +342,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				getCountLong() + "x" +
 				(isFixedCount() ? " (fixed) " : " (variable) ") +
 				getShape().toString();
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> producer) {
+		return CollectionProducerComputation.super.delegate(producer);
 	}
 
 	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

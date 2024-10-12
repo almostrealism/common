@@ -33,7 +33,7 @@ import org.almostrealism.time.Temporal;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
+public class TimeCell implements Cell<Scalar>, Temporal {
 	public static boolean enableConditional = true;
 
 	private Receptor r;

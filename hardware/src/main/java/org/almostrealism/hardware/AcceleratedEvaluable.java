@@ -17,7 +17,6 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.Execution;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
@@ -27,11 +26,10 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLInstructionsManager;
-import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -72,10 +70,14 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	public Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
-	public InstructionSetManager getInstructionSetManager() {
+	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
 		return new CLInstructionsManager(
-				getComputeContext(), getSourceClass(),
-				getFunctionName(), getArgsCount());
+				getComputeContext(), getSourceClass());
+	}
+
+	@Override
+	public DefaultExecutionKey getExecutionKey() {
+		return new DefaultExecutionKey(getFunctionName(), getArgsCount());
 	}
 
 	@Override

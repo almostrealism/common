@@ -188,7 +188,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		expected[1] -= 1.0;
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
+			assertEquals(expected[i], result[i]);
 		}
 	}
 
@@ -202,8 +202,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		PackedCollection<?> gradient = new PackedCollection<>(size);
 		gradient.setMem(3, 1.0);
 
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+		// log("Input = " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		// log("Gradient = " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
 		double tot = input.doubleStream().map(Math::exp).sum();
 
@@ -215,7 +215,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 			return () -> {
 				PackedCollection<?> out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log("out = " + out.toArrayString());
 
 				out.getMem(0, result, 0, result.length);
 			};
@@ -223,11 +223,18 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, size).mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot).toArray();
+		double expected[] = IntStream.range(0, size)
+				.mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot)
+				.toArray();
+		int idx = gradient.argmax();
+		log("Gradient max idx = " + idx);
+
 		expected[gradient.argmax()] += 1.0;
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
+			log("result[" + i + "] = " + result[i] +
+					" (expected " + expected[i] + ")");
+			assertEquals(expected[i], result[i]);
 		}
 	}
 

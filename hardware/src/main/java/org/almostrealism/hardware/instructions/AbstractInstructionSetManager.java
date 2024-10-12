@@ -14,23 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.ComputeContext;
 
-public abstract class AbstractInstructionSetManager implements InstructionSetManager {
+public abstract class AbstractInstructionSetManager<K extends ExecutionKey>
+											implements InstructionSetManager<K> {
 	private ComputeContext<?> computeContext;
-	private String functionName;
-	private int argsCount;
 
-	public AbstractInstructionSetManager(ComputeContext<?> computeContext,
-										 String functionName, int argsCount) {
+	public AbstractInstructionSetManager(ComputeContext<?> computeContext) {
 		this.computeContext = computeContext;
-		this.functionName = functionName;
-		this.argsCount = argsCount;
 	}
 
 	public ComputeContext<?> getComputeContext() { return computeContext; }
-	public String getFunctionName() { return functionName; }
-	public int getArgsCount() { return argsCount; }
 }
