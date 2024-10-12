@@ -99,7 +99,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression<Double> value = getValueAt(index);
 
 			if (value == null && mapped instanceof OperationAdapter) {
-				OperationAdapter<?> op = (OperationAdapter) mapped;
+				OperationAdapter<?, ?> op = (OperationAdapter) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
 				value = v.referenceRelative(e(i));

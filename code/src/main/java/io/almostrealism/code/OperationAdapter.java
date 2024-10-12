@@ -20,6 +20,7 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
@@ -37,7 +38,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements NameProvider, Destroyable, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T, C> implements
+											NameProvider, Parent<C>,
+											Destroyable, OperationInfo,
+											NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;

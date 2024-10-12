@@ -148,7 +148,13 @@ public class Variable<T, V extends Variable<T, ?>>
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	@Deprecated
-	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
+	public Supplier<Evaluable<? extends T>> getOriginalProducer() {
+		if (producer != null && producer != originalProducer) {
+			throw new UnsupportedOperationException();
+		}
+
+		return producer;
+	}
 
 	public Class<T> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();

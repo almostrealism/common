@@ -32,9 +32,15 @@ public class DelegatedProducer<T> implements
 		Producer<T>, Countable,
 		OperationInfo {
 	protected Producer<T> op;
+	protected boolean direct;
 
 	public DelegatedProducer(Producer<T> op) {
+		this(op, true);
+	}
+
+	public DelegatedProducer(Producer<T> op, boolean directDelegate) {
 		this.op = op;
+		this.direct = directDelegate;
 	}
 
 	@Override
@@ -49,7 +55,14 @@ public class DelegatedProducer<T> implements
 
 	@Override
 	public Evaluable<T> get() {
-		return op.get();
+		if (direct) {
+			// Return the original Evaluable
+			return op.get();
+		} else {
+			// Hide any information about the original Evaluable
+			Evaluable<T> original = op.get();
+			return original::evaluate;
+		}
 	}
 
 	@Override

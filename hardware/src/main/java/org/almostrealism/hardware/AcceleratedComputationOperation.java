@@ -217,7 +217,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		// TODO  Is this even necessary?
 		if (getComputation() instanceof OperationAdapter
 				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+			OperationAdapter<T, ?> c = (OperationAdapter<T, ?>) getComputation();
 			output = c.getArgumentForInput(c.getInputs().get(0));
 		}
 

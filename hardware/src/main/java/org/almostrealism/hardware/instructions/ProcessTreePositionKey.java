@@ -16,10 +16,12 @@
 
 package org.almostrealism.hardware.instructions;
 
+import org.almostrealism.io.Describable;
+
 import java.util.Arrays;
 import java.util.Objects;
 
-public class ProcessTreePositionKey implements ExecutionKey {
+public class ProcessTreePositionKey implements ExecutionKey, Describable {
 	private final int[] position;
 
 	public ProcessTreePositionKey(int... position) {
@@ -28,6 +30,17 @@ public class ProcessTreePositionKey implements ExecutionKey {
 
 	public int[] getPosition() {
 		return position;
+	}
+
+	public ProcessTreePositionKey append(int i) {
+		int[] newPosition = Arrays.copyOf(position, position.length + 1);
+		newPosition[position.length] = i;
+		return new ProcessTreePositionKey(newPosition);
+	}
+
+	@Override
+	public String describe() {
+		return Arrays.toString(position);
 	}
 
 	@Override

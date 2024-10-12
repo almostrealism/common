@@ -116,27 +116,23 @@ public class ReusableEvaluableTests implements TestFeatures {
 	protected CollectionProducer<PackedCollection<?>> createSum(Producer<PackedCollection<?>> a,
 																Producer<PackedCollection<?>> b,
 																Producer<PackedCollection<?>> c) {
-		return wrap((ProducerComputation) add(v(a), b).add(c));
+		return (CollectionProducer) instruct("ReusableEvaluableTests.sum",
+						args -> (ProducerComputation) add(v(a), b).add(c));
 	}
 
 	protected CollectionProducer<PackedCollection<?>> createProduct(Producer<PackedCollection<?>> a,
 																    Producer<PackedCollection<?>> b,
 																    Producer<PackedCollection<?>> c) {
 		Producer<PackedCollection<?>> add = (Producer) ((CollectionProducerComputationBase) add(v(a), b)).isolate();
-		return wrap((ProducerComputation) multiply(add, c));
+		return (CollectionProducer) instruct("ReusableEvaluableTests.product",
+				args -> (ProducerComputation) multiply(add, c));
 	}
 
 	protected <T extends PackedCollection<?>> DelegatedCollectionProducer<T> v(Producer<T> inner) {
-		return new DelegatedCollectionProducer<>(c(inner)) {
+		return new DelegatedCollectionProducer<>(c(inner), false) {
 			@Override
 			public boolean isFixedCount() {
 				return false;
-			}
-
-			@Override
-			public Evaluable<T> get() {
-				Evaluable<T> original = op.get();
-				return original::evaluate;
 			}
 		};
 	}

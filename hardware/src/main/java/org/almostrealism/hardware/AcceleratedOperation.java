@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
@@ -50,6 +51,7 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
@@ -57,8 +59,10 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
-														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
+public abstract class AcceleratedOperation<T extends MemoryData>
+									extends OperationAdapter<T, Argument<? extends T>>
+									implements Runnable, ArgumentList<T>, ScopeLifecycle,
+										KernelizedOperation, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static Console console = Computation.console.child();
 
@@ -132,6 +136,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	/** @return  -1 */
 	protected int getOutputArgumentIndex() { return -1; }
+
+	@Override
+	public List<Argument<? extends T>> getChildren() {
+		return getArguments();
+	}
 
 	/** @return  {@link PhysicalScope#GLOBAL} */
 	@Override

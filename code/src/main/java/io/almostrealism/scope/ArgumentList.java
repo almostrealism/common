@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,22 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.scope;
 
-import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Parent;
 
-public interface KernelizedOperation extends Countable {
-
-	// TODO  It makes no sense for operation inputs to be divided
-	// TODO  into an "output" and the remaining arguments
-
-	/**
-	 * {@link #kernelOperate(MemoryData...)} is preferred.
-	 */
-	@Deprecated
-	void kernelOperate(MemoryBank output, MemoryData args[]);
-
-	default void kernelOperate(MemoryData... args) {
-		kernelOperate(null, args);
-	}
+public interface ArgumentList<T> extends Parent<Argument<? extends T>> {
 }

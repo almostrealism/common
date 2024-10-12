@@ -53,7 +53,9 @@ public interface HardwareFeatures extends ConsoleFeatures, ProducerFeatures {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
-	default <T extends MemoryData> Producer<T> instruct(Function<Producer[], Producer<T>> func, Producer... args) {
+	default <T extends MemoryData> Producer<T> instruct(String key,
+														Function<Producer[], Producer<T>> func,
+														Producer... args) {
 		Producer delegates[] = Arrays.stream(args)
 				.map(arg -> delegate(arg))
 				.toArray(Producer[]::new);
@@ -63,15 +65,8 @@ public interface HardwareFeatures extends ConsoleFeatures, ProducerFeatures {
 			return producer;
 		}
 
-		// TODO  This last step needs to be moved into Hardware, because it needs to retrieve
-		// TODO  the ProcessTreeInstructionsManager based on some kind of key that can be reused
-		// TODO  later. What we ultimately do here will be different if this is the first time
-		// TODO  the key has been seen (and we need to process everything) or if we have seen it
-		// TODO  and all we need to do is make sure that every member of the Process tree knows
-		// TODO  to try and use the ProcessTreeInstructionsManager to get its instructions instead
-		// TODO  of compiling itself from scratch again.
-		ProcessTreeInstructionsManager manager = new ProcessTreeInstructionsManager();
-		return (Producer) manager.applyAll((Process) producer);
+		return (Producer) Hardware.getLocalHardware().getComputer()
+				.applyInstructionsManager(key, (Process) producer);
 	}
 
 	@Override

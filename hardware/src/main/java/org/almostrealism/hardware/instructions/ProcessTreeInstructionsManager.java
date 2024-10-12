@@ -18,14 +18,25 @@ package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.Execution;
 import io.almostrealism.relation.Process;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ProducerCache;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Describable;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-public class ProcessTreeInstructionsManager implements ComputableInstructionSetManager<ProcessTreePositionKey> {
+public class ProcessTreeInstructionsManager implements
+		ComputableInstructionSetManager<ProcessTreePositionKey>, ConsoleFeatures {
 	private Map<ProcessTreePositionKey, ProcessInstructions> instructions;
 
 	public ProcessTreeInstructionsManager() {
@@ -34,20 +45,8 @@ public class ProcessTreeInstructionsManager implements ComputableInstructionSetM
 
 	@Override
 	public Execution getOperator(ProcessTreePositionKey key) {
+		log("Retrieving Execution for " + key.describe());
 		return instructions.get(key).getOperator();
-	}
-
-	public <T, P extends Supplier<T>> Supplier<T> apply(ProcessTreePositionKey key, P process) {
-		T compiled = process.get();
-
-		if (!(compiled instanceof AcceleratedOperation<?>)) {
-			return process;
-		}
-
-		AcceleratedComputationOperation<?> op = (AcceleratedComputationOperation) compiled;
-		instructions.put(key, new ProcessInstructions(op.getExecutionKey(), op.getInstructionSetManager()));
-		op.compile(this, key);
-		return null;
 	}
 
 	@Override
@@ -60,9 +59,97 @@ public class ProcessTreeInstructionsManager implements ComputableInstructionSetM
 		return instructions.get(key).getOutputOffset();
 	}
 
-	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T> applyAll(V process) {
-		// Traverse process tree, calling apply for each node
-		throw new UnsupportedOperationException();
+	public AcceleratedOperation<?> replaceInstructions(ProcessTreePositionKey key,
+													   ArgumentList<?> compiled) {
+		AcceleratedOperation<?> operation = extract(compiled);
+
+		if (operation instanceof AcceleratedComputationOperation<?> op) {
+			log("Replacing instructions for " + Describable.describe(op.getComputation()));
+			op.compile(this, key);
+		}
+
+		return compiled instanceof AcceleratedOperation<?> ? (AcceleratedOperation<?>) compiled : null;
+	}
+
+	public AcceleratedOperation<?> replaceAll(ProcessTreePositionKey key, ArgumentList<?> compiled) {
+		List<ArgumentList<?>> children = children(compiled);
+		IntStream.range(0, children.size()).forEach(i -> replaceAll(key.append(i), children.get(i)));
+		return replaceInstructions(key, compiled);
+	}
+
+	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T> replaceAll(V process) {
+		T compiled = process.get();
+
+		if (compiled instanceof ArgumentList<?>) {
+			replaceAll(new ProcessTreePositionKey(), (ArgumentList<?>) compiled);
+		}
+
+		return process;
+	}
+
+	protected <T> AcceleratedOperation<?> extract(T compiled) {
+		if (compiled instanceof AcceleratedOperation<?> op) {
+			return op;
+		} else if (compiled instanceof HardwareEvaluable<?> ev) {
+			return extract(ev.getKernel().getValue());
+		} else {
+			return null;
+		}
+	}
+
+	public AcceleratedOperation<?> extractCompiled(ProcessTreePositionKey key, ArgumentList<?> compiled) {
+		AcceleratedOperation<?> operation = extract(compiled);
+		if (operation == null) return null;
+
+		InstructionSetManager<?> mgr = operation.getInstructionSetManager();
+
+		if (mgr == null) {
+			throw new IllegalArgumentException();
+		} else if (!(mgr instanceof ComputableInstructionSetManager)) {
+			return operation;
+		}
+
+		instructions.put(key,
+				new ProcessInstructions(operation.getExecutionKey(),
+							(ComputableInstructionSetManager) mgr));
+		if (operation instanceof AcceleratedComputationOperation<?> op) {
+			log("Extracted instructions from " + Describable.describe(op.getComputation()));
+			op.compile(this, key);
+		} else {
+			log("Extracted instructions from " + Describable.describe(operation));
+		}
+
+		return operation;
+	}
+
+	public AcceleratedOperation<?> extractAll(ProcessTreePositionKey key, ArgumentList<?> compiled) {
+		List<ArgumentList<?>> children = children(compiled);
+		IntStream.range(0, children.size()).forEach(i -> extractAll(key.append(i), children.get(i)));
+		return extractCompiled(key, compiled);
+	}
+
+	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T> extractAll(V process) {
+		T compiled = process.get();
+
+		if (compiled instanceof ArgumentList<?>) {
+			extractAll(new ProcessTreePositionKey(), (ArgumentList<?>) compiled);
+		}
+
+		return process;
+	}
+
+	@Override
+	public Console console() {
+		return Hardware.console;
+	}
+
+	protected List<ArgumentList<?>> children(ArgumentList<?> operation) {
+		return operation.getChildren().stream()
+				.map(Argument::getProducer)
+				.map(ProducerCache::getEvaluableForSupplier)
+				.filter(ArgumentList.class::isInstance)
+				.map(op -> (ArgumentList<?>) op)
+				.collect(Collectors.toUnmodifiableList());
 	}
 
 	protected class ProcessInstructions<K extends ExecutionKey> {

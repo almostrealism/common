@@ -68,6 +68,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private List<ScopeLifecycle> dependentLifecycles;
 
 	private HardwareEvaluable<O> evaluable;
+	private boolean evaluableOutdated;
 
 	protected CollectionProducerComputationBase() {
 	}
@@ -140,7 +141,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (dependentLifecycles != null)
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
-		this.evaluable = null;
+		this.evaluableOutdated = true;
+		// this.evaluable = null;
 	}
 
 	protected void setShape(TraversalPolicy shape) {

@@ -29,6 +29,10 @@ public class DelegatedCollectionProducer<T extends PackedCollection<?>>
 		super(op);
 	}
 
+	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate) {
+		super(op, directDelegate);
+	}
+
 	@Override
 	public TraversalPolicy getShape() {
 		return ((CollectionProducer) op).getShape();

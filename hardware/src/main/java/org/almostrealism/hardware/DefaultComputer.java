@@ -22,13 +22,16 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import org.almostrealism.hardware.instructions.ProcessTreeInstructionsManager;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Stack;
 
@@ -37,9 +40,12 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
 
+	private Map<String, ProcessTreeInstructionsManager> instructionsCache;
+
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(Stack::new);
+		this.instructionsCache = new HashMap<>();
 	}
 
 	@Override
@@ -77,6 +83,19 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	public void popRequirements() {
 		this.requirements.get().pop();
+	}
+
+	public ProcessTreeInstructionsManager getInstructionsManager(String key) {
+		return instructionsCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
+	}
+
+	public <P extends Process<?, ?>, T, V extends io.almostrealism.relation.Process<P, T>> Process<P, T>
+			applyInstructionsManager(String key, V process) {
+		if (instructionsCache.containsKey(key)) {
+			return getInstructionsManager(key).replaceAll(process);
+		} else {
+			return getInstructionsManager(key).extractAll(process);
+		}
 	}
 
 	@Override
