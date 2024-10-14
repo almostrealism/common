@@ -118,6 +118,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			kernelArgEvaluables = new Evaluable[arguments.size()];
 			kernelArgDestinations = new Evaluable[arguments.size()];
 
+			if (outputArgIndex < 0 && output != null) {
+				// There is no output for this process
+				throw new UnsupportedOperationException();
+			}
+
 			/*
 			 * In the first pass, kernel size is inferred from Producer arguments that
 			 * reference an Evaluable argument.

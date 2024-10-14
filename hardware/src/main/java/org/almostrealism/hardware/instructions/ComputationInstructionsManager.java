@@ -44,7 +44,12 @@ public class ComputationInstructionsManager
 
 	@Override
 	public int getOutputArgumentIndex(DefaultExecutionKey key) {
-		return outputArgIndices.get(key);
+		Integer argIndex = outputArgIndices.get(key);
+		if (argIndex == null) {
+			return -1;
+		}
+
+		return argIndex;
 	}
 
 	public void setOutputArgumentIndex(DefaultExecutionKey key, int outputArgIndex) {
