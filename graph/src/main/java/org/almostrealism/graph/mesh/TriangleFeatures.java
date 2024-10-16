@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -26,7 +28,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,15 +77,18 @@ public interface TriangleFeatures extends VectorFeatures {
 																	 Supplier<Evaluable<? extends Vector>> jkl,
 																	 Supplier<Evaluable<? extends Vector>> normal) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueRelative(i % 3)));
+		IntStream.range(0, 12).forEach(i -> expression.add(args ->
+				args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(shape(4, 3), expression, (Supplier) abc, (Supplier) def, (Supplier) jkl, (Supplier) normal);
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		return new TraversableExpressionComputation<>(null, shape(3),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
-						args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),
-				(Supplier) points);
+		return new DefaultTraversableExpressionComputation<>("point", shape(3),
+				(Function<TraversableExpression[], CollectionExpression>) args ->
+						new IndexProjectionExpression(shape(3),
+							idx -> e(index * 3).add(idx.imod(3)), args[1]),
+						(Supplier) points)
+				.setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,

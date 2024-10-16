@@ -16,7 +16,10 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
@@ -27,7 +30,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +39,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface TransformMatrixFeatures extends CollectionFeatures {
+	boolean enableCollectionExpression = true;
+
 	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
 	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
@@ -59,24 +64,47 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<>(null, shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
-			Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
-			Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
-			Function<Integer, Expression<Double>> p = (i) -> (Expression<Double>) Product.of(t.apply(i), v.apply(i));
+		TraversalPolicy shape = shape(3);
 
-			List<Expression<Double>> sum = new ArrayList<>();
-			sum.add(p.apply(0));
-			sum.add(p.apply(1));
-			sum.add(p.apply(2));
+		if (enableCollectionExpression) {
+			DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
+					(Function<TraversableExpression[], CollectionExpression>) args ->
+							new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
+									(groupIndex, operandIndex) -> outputIndex -> {
+										if (operandIndex == 0) {
+											return e(groupIndex);
+										} else if (operandIndex == 1) {
+											return outputIndex.multiply(4).add(e(groupIndex));
+										} else {
+											throw new IllegalArgumentException();
+										}
+									}),
+					(Supplier) vector, (Supplier) matrix);
+			c.setPostprocessor(Vector.postprocessor());
+			return c;
+		} else {
+			DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
+					(Function<TraversableExpression[], CollectionExpression>) (args) ->
+							CollectionExpression.create(shape, index -> {
+								Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
+								Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
+								Function<Integer, Expression<Double>> p = (i) -> (Expression<Double>) Product.of(t.apply(i), v.apply(i));
 
-			if (includeTranslation) {
-				sum.add(t.apply(3));
-			}
+								List<Expression<Double>> sum = new ArrayList<>();
+								sum.add(p.apply(0));
+								sum.add(p.apply(1));
+								sum.add(p.apply(2));
 
-			return Sum.of(sum.toArray(Expression[]::new));
-		}, (Supplier) vector, (Supplier) matrix);
-		c.setPostprocessor(Vector.postprocessor());
-		return c;
+								if (includeTranslation) {
+									sum.add(t.apply(3));
+								}
+
+								return Sum.of(sum.toArray(Expression[]::new));
+							}),
+					(Supplier) vector, (Supplier) matrix);
+			c.setPostprocessor(Vector.postprocessor());
+			return c;
+		}
 	}
 
 	static TransformMatrixFeatures getInstance() {

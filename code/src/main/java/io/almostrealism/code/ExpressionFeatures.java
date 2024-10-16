@@ -40,9 +40,11 @@ import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Rectify;
 import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.expression.Tangent;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collection;
@@ -82,6 +84,8 @@ public interface ExpressionFeatures {
 	default MinimumValue minValue() { return new MinimumValue(); }
 
 	default KernelIndex kernel() { return new KernelIndex(); }
+
+	default KernelIndex kernel(KernelStructureContext context) { return new KernelIndex(context); }
 
 	default StaticReference<Double> pi() {
 		return new StaticReference<>(Double.class, null) {
@@ -182,6 +186,14 @@ public interface ExpressionFeatures {
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+	}
+
+	default CollectionExpression tan(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0]), input);
+	}
+
+	default CollectionExpression tanh(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0], true), input);
 	}
 
 	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {

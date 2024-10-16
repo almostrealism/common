@@ -18,7 +18,9 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
@@ -67,6 +69,11 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 	@Override
 	public TraversalOrdering getDelegateOrdering() { return delegateOrder; }
+
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return MemoryData.super.containsIndex(index);
+	}
 
 	@Override
 	public void reallocate(MemoryProvider<?> provider) {

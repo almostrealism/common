@@ -27,12 +27,14 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.util.TestFeatures;
@@ -42,20 +44,46 @@ import org.junit.Test;
 import java.util.function.Supplier;
 
 public class TriangleTest implements TestFeatures {
-	@Test
-	public void data() {
-		PackedCollection<?> data = new Triangle(new Vector(1.0, 1.0, -1.0),
+	protected Triangle basicTriangle() {
+		return new Triangle(
+				new Vector(1.0, 1.0, -1.0),
 				new Vector(-1.0, 1.0, -1.0),
-				new Vector(0.0, -1.0, -1.0)).getData();
-
-		assertEquals(-2.0, data.valueAt(1, 1));
+				new Vector(0.0, -1.0, -1.0));
 	}
 
 	@Test
+	public void point() {
+		PackedCollection<Vector> data = Vector.bank(3);
+		data.set(0, new Vector(1.0, 1.0, -1.0));
+		data.set(1, new Vector(-1.0, 1.0, -1.0));
+		data.set(2, new Vector(0.0, -1.0, -1.0));
+
+		Vector v = point(Input.value(new TraversalPolicy(3, 3), 0), 1)
+				.evaluate(data.traverse(0));
+		v.print();
+		Assert.assertEquals(new Vector(-1.0, 1.0, -1.0), v);
+	}
+
+	/**
+	 * This test will not pass unless {@link #point()} passes first.
+	 */
+	@Test
+	public void data() {
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> data = basicTriangle().getData();
+
+			assertEquals(-2.0, data.valueAt(0, 0));
+			assertEquals(-1.0, data.valueAt(1, 0));
+			assertEquals(-2.0, data.valueAt(1, 1));
+		});
+	}
+
+	/**
+	 * This test will not pass unless {@link #intersectAtDistance()} passes first.
+	 */
+	@Test
 	public void distance() {
-		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
-				new Vector(-1.0, 1.0, -1.0),
-				new Vector(0.0, -1.0, -1.0));
+		Triangle t = basicTriangle();
 
 		Evaluable<Ray> r = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get();
 		Supplier<Evaluable<? extends Scalar>> distance = () -> new AdaptEvaluable<>(Triangle.intersectAt, r, new Provider<>(t.getData()));
@@ -65,26 +93,32 @@ public class TriangleTest implements TestFeatures {
 		assertEquals(1.0, s);
 	}
 
+	/**
+	 * If {@link #data()} does not pass, then it is likely the values for
+	 * {@link #triangle()} are wrong and so this test will also not pass.
+	 */
 	@Test
 	public void intersectAtDistance() {
-		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
-		PackedCollection<?> td = triangle();
+		HardwareOperator.verboseLog(() -> {
+			Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+			PackedCollection<?> td = triangle();
 
-		Scalar distance = Triangle.intersectAt.evaluate(in, td);
-		System.out.println("distance = " + distance);
-		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
+			Scalar distance = Triangle.intersectAt.evaluate(in, td);
+			log("distance = " + distance);
+			Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
+		});
 	}
 
 	protected Producer<Ray> intersectAt() {
-		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
-				new Vector(-1.0, 1.0, -1.0),
-				new Vector(0.0, -1.0, -1.0));
-		return t.intersectAt(ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
+		return basicTriangle().intersectAt(
+				ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
 	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((ExpressionComputation) noRank).getInputs().get(1);
+		CollectionProducerComputationBase<Vector, Vector> originVector =
+				(CollectionProducerComputationBase)
+						((CollectionProducerComputationBase) noRank).getInputs().get(1);
 
 		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
 	}
@@ -118,12 +152,14 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void origin() {
-		ExpressionComputation<Vector> at = vector(originProducer());
-		Evaluable<Vector> ev = at.get();
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducerComputation<Vector> at = vector(originProducer());
+			Evaluable<Vector> ev = at.get();
 
-		Vector p = ev.evaluate();
-		System.out.println(p);
-		Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
+			Vector p = ev.evaluate();
+			p.print();
+			Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
+		});
 	}
 
 	protected PackedCollection<?> triangle() {
@@ -155,10 +191,6 @@ public class TriangleTest implements TestFeatures {
 		Assert.assertEquals(0.0, td.get(3).toDouble(0), 0.0001);
 		Assert.assertEquals(0.0, td.get(3).toDouble(1), 0.0001);
 		Assert.assertEquals(1.0, td.get(3).toDouble(2), 0.0001);
-//		Assert.assertEquals(new Vector(-2.0, 0.0, 0.0), td.get(0));
-//		Assert.assertEquals(new Vector(-1.0, -2.0, 0.0), td.get(1));
-//		Assert.assertEquals(new Vector(1.0, 1.0, -1.0), td.get(2));
-//		Assert.assertEquals(new Vector(0.0, 0.0, 1.0), td.get(3));
 		return td;
 	}
 

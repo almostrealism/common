@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 
@@ -34,23 +29,5 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	@Override
 	default String getVariableSizeName(ArrayVariable v) {
 		return v.getName() + "Size";
-	}
-
-	@Deprecated
-	@Override
-	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
-		Expression offset = new IntegerConstant(0);
-
-		if (v.getProducer() instanceof Countable ||
-				(v.getProducer() instanceof KernelSupport)) {
-			KernelIndex idx = new KernelIndex(null, kernelIndex);
-			Expression dim = new StaticReference(Integer.class, getVariableDimName(v, kernelIndex));
-
-			Expression kernelOffset = idx.multiply(dim);
-
-			return kernelOffset.add(offset).add(pos.toInt());
-		} else {
-			return offset.add(pos).toInt();
-		}
 	}
 }

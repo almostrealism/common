@@ -19,7 +19,7 @@ import org.junit.Test;
 import java.util.List;
 import java.util.function.Function;
 
-public class AcceleratedComputationOperationTest implements HardwareFeatures, TestFeatures {
+public class AcceleratedComputationOperationTest implements TestFeatures {
 	@Test
 	public void sum() {
 		Producer<Vector> v = vector(1.0, 2.0, 3.0);

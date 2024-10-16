@@ -37,7 +37,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
-	private int delegateOffset;
+	private Expression<Integer> delegateOffset;
 	private Expression<Integer> arraySize;
 	private boolean disableOffset;
 	private boolean destroyed;
@@ -58,6 +58,13 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		this.names = np;
 	}
 
+	public ArrayVariable(ArrayVariable<T> delegate, Expression<Integer> delegateOffset) {
+		super(null, delegate.getPhysicalScope(), null, null);
+		this.names = delegate.names;
+		setDelegate(delegate);
+		setDelegateOffset(delegateOffset);
+	}
+
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
 	@Override
@@ -72,13 +79,13 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		super.setDelegate(delegate);
 	}
 
-	public int getDelegateOffset() { return delegateOffset; }
-	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+	public Expression<Integer> getDelegateOffset() { return delegateOffset; }
+	public void setDelegateOffset(Expression<Integer> delegateOffset) { this.delegateOffset = delegateOffset; }
+	public void setDelegateOffset(int delegateOffset) { setDelegateOffset(new IntegerConstant(delegateOffset)); }
 
 	public boolean isDisableOffset() {
 		return disableOffset;
 	}
-
 	public void setDisableOffset(boolean disableOffset) {
 		this.disableOffset = disableOffset;
 	}
@@ -89,7 +96,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (getDelegate() == null) {
 			return 0;
 		} else {
-			return getDelegate().getOffset() + getDelegateOffset();
+			return getDelegate().getOffset() + getDelegateOffset().intValue().getAsInt();
 		}
 	}
 
@@ -104,7 +111,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 
 		if (getDelegate() != null) {
-			return getDelegate().getValueRelative(index + getDelegateOffset());
+			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
 		}
 
 		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
@@ -116,7 +123,16 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return referenceRelative(exp);
 	}
 
-	public Expression<T> ref(int pos) {
+	public InstanceReference<T> ref(int pos) {
+		return ref(new IntegerConstant(pos));
+	}
+
+	public InstanceReference<T> ref(Expression<Integer> offset) {
+		if (destroyed) throw new UnsupportedOperationException();
+		return new InstanceReference<>(new ArrayVariable<>(this, offset));
+	}
+
+	public Expression<T> referenceRelative(int pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}

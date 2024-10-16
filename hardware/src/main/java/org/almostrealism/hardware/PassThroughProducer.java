@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -42,7 +43,7 @@ import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
-					TraversableExpression<Double>, Shape<PassThroughProducer<T>>,
+					CollectionExpression<PassThroughProducer<T>>,
 					ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
@@ -118,7 +119,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public Scope<T> getScope(KernelStructureContext context) {
 		Scope<T> scope = super.getScope(context);
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i))));
+			scope.getVariables().add(((ArrayVariable) getOutputVariable()).referenceRelative(i).assign(getValueRelative(e(i))));
 		}
 
 		return scope;
@@ -194,5 +195,12 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getShape().toStringDetail() +
+				(isFixedCount() ? " (fixed)" : " (variable)");
 	}
 }

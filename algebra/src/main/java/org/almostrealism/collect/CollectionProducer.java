@@ -51,6 +51,20 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return repeat(repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int axis, int repeat) {
+		return repeat(axis, repeat, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
+		CollectionProducerComputation<V> result = enumerate(shape(this).getTraversalAxis() + 1, 1);
+		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> transpose(int axis) {
+		CollectionProducerComputation<V> result = traverse(axis - 1).enumerate(axis, 1);
+		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int len) {
 		return enumerate(0, len, len, 1);
 	}
@@ -65,6 +79,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
+		return pad(this, depths);
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
@@ -184,6 +202,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
 		return magnitude((Producer) this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude(int axis) {
+		return magnitude(traverse(axis, (Producer) this));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(int axis) {

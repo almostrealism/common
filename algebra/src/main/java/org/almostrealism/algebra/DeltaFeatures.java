@@ -31,6 +31,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -216,6 +217,14 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 		};
+	}
+
+	static boolean cannotMatch(Supplier<?> p, Supplier<?> target) {
+		if (p instanceof CollectionProviderProducer && target instanceof CollectionProviderProducer) {
+			return !match(p, target);
+		}
+
+		return false;
 	}
 
 	static boolean deepMatch(Supplier<?> p, Supplier<?> target) {

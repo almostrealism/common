@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import java.util.Objects;
+
 public class ConstantValue<T> extends Constant<T> {
 	private T value;
 
@@ -23,5 +25,10 @@ public class ConstantValue<T> extends Constant<T> {
 		super(type);
 		this.value = value;
 		init();
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		return e instanceof ConstantValue && Objects.equals(((ConstantValue) e).value, value);
 	}
 }

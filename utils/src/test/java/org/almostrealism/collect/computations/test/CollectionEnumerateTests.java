@@ -150,7 +150,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 						for (int k = 0; k < len; k++) {
 							int inPos[] = new int[] { np, cp, j, i * stride + k };
 							int outPos[] = new int[] { np, cp, i, j, k };
-							log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
+							if (verboseLogs)
+								log(Arrays.toString(inPos) + " -> " + Arrays.toString(outPos));
 							assertEquals(input.valueAt(inPos), enumerated.valueAt(outPos));
 						}
 					}
@@ -179,7 +180,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 			for (int x = 0; x < size; x++) {
 				for (int y = 0; y < size; y++) {
 					double expected = input.valueAt(x, y, i);
-					log(expected + " vs " + output.valueAt(i, x, y, 0));
+					if (verboseLogs)
+						log(expected + " vs " + output.valueAt(i, x, y, 0));
 					assertEquals(expected, output.valueAt(i, x, y, 0));
 				}
 			}
@@ -275,7 +277,9 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 					total /= Math.sqrt(d);
 
-					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(n, t));
+					if (verboseLogs)
+						log("[" + n + ", " + t + "] " + total + " vs " + out.valueAt(n, t));
+
 					assertEquals(total, out.valueAt(n, t));
 				}
 			}
@@ -283,7 +287,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerate2dProduct() {
+	public void enumerate2dProduct1() {
 		Tensor<Double> t = tensor(shape(4, 6));
 		PackedCollection<?> input = t.pack();
 		PackedCollection<?> operand = new PackedCollection<>(shape(6, 4)).randFill();
@@ -300,6 +304,137 @@ public class CollectionEnumerateTests implements TestFeatures {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 4; j++) {
 				assertEquals(input.valueAt(j, i) * operand.valueAt(i, j), enumerated.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void enumerate2dProduct2() {
+		int c = 2;
+		int h = 6;
+		int d = 4;
+		int s = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(c, h, d, s).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(3)
+				.repeat(s);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(2)
+				.enumerate(3, 1)
+				.repeat(s);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s, s));
+
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s; i++) {
+					for (int j = 0; j < s; j++) {
+						double total = 0.0;
+
+						for (int k = 0; k < d; k++) {
+							total += a.valueAt(p, n, k, i) * b.valueAt(p, n, k, j);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerate2dProduct3() {
+		int c = 2;
+		int h = 6;
+		int d = 4;
+		int s1 = 5;
+		int s2 = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(c, h, d, s1).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(3)
+				.repeat(s2);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(2)
+				.enumerate(3, 1)
+				.repeat(s1);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb).sum(4);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, s2));
+
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s1; i++) {
+					for (int j = 0; j < s2; j++) {
+						double total = 0.0;
+
+						for (int k = 0; k < d; k++) {
+							total += a.valueAt(p, n, k, i) * b.valueAt(p, n, k, j);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enumerate2dProduct4() {
+		int c = 2;
+		int h = 6;
+		int d = 4;
+		int s1 = 3;
+		int s2 = 3;
+
+		PackedCollection<?> a = new PackedCollection<>(c, h, s1, s2).randFill();
+		PackedCollection<?> b = new PackedCollection<>(c, h, d, s2).randFill();
+
+		CollectionProducer<PackedCollection<?>> pa = cp(a)
+				.traverse(4)
+				.repeat(d);
+		CollectionProducer<PackedCollection<?>> pb = cp(b)
+				.traverse(2)
+				.enumerate(3, 1)
+				.traverse(2)
+				.repeat(s1);
+
+		Producer<PackedCollection<?>> product = multiply(pa, pb)
+				.reshape(shape(c, h, s1, s2, d))
+				.traverse(3)
+				.enumerate(4, 1)
+				.sum(4);
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(c, h, s1, d));
+
+		for (int p = 0; p < c; p++) {
+			for (int n = 0; n < h; n++) {
+				for (int i = 0; i < s1; i++) {
+					for (int j = 0; j < d; j++) {
+						double total = 0.0;
+
+						for (int k = 0; k < s2; k++) {
+							total += a.valueAt(p, n, i, k) * b.valueAt(p, n, j, k);
+						}
+
+						assertEquals(total, enumerated.valueAt(p, n, i, j));
+					}
+				}
 			}
 		}
 	}
@@ -354,7 +489,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 					for (int l = 0; l < 2; l++) {
 						double expected = input.toDouble(input.getShape().index(i * 2 + k, j * 2 + l));
 						double actual = output.toDouble(output.getShape().index(i, j, k, l));
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -384,7 +520,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 					for (int l = 0; l < w; l++) {
 						double expected = input.valueAt(i + k, j + l);
 						double actual = output.valueAt(i / s, j / s, k, l);
-						log(expected + " vs " + actual);
+						if (verboseLogs)
+							log(expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -421,10 +558,12 @@ public class CollectionEnumerateTests implements TestFeatures {
 			for (int cp = 0; cp < c; cp++) {
 				for (int i = 0; i < h; i += s) {
 					for (int j = 0; j + pad < w; j += s) {
-						log("i: " + i + " j: " + j);
+						if (verboseLogs)
+							log("i: " + i + " j: " + j);
 
 						for (int k = 0; k < x; k++) {
-							log("(" + np + "," +  cp + "," + i + "," + (j + k) + ") -> " +
+							if (verboseLogs)
+								log("(" + np + "," +  cp + "," + i + "," + (j + k) + ") -> " +
 									"(" + np + "," + cp + "," + (j / s) + "," + i + "," + k + ")");
 
 							if ((j / s) >= output.getShape().length(2)) {
@@ -433,7 +572,9 @@ public class CollectionEnumerateTests implements TestFeatures {
 
 							double expected = input.valueAt(np, cp, i, j + k);
 							double actual = output.valueAt(np, cp, j / s, i, k);
-							// log("\t" + expected + " vs " + actual);
+							if (verboseLogs)
+								log("\t" + expected + " vs " + actual);
+
 							assertEquals(expected, actual);
 						}
 					}
@@ -476,7 +617,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 							for (int l = 0; l < x; l++) {
 								double expected = input.valueAt(np, cp, i + k, j + l);
 								double actual = output.valueAt(np, cp, i / s, j / s, k, l);
-								log(expected + " vs " + actual);
+								if (verboseLogs)
+									log(expected + " vs " + actual);
 								assertEquals(expected, actual);
 							}
 						}
@@ -507,7 +649,8 @@ public class CollectionEnumerateTests implements TestFeatures {
 						for (int l = 0; l < 3; l++) {
 							double expected = input.valueAt(i + k, j + l);
 							double actual = output.valueAt(i, j, k, l);
-							log(expected + " vs " + actual);
+							if (verboseLogs)
+								log(expected + " vs " + actual);
 							assertEquals(expected, actual);
 						}
 					}

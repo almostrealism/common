@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
@@ -26,16 +27,16 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class PropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
+public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
 	private String name;
 
-	private final Propagation propagation;
+	private final BackPropagation propagation;
 	private PackedCollection<?> input;
 
 	private Producer<PackedCollection<?>> learningRate;
 	private Receptor<PackedCollection<?>> next;
 
-	public PropagationCell(String name, Propagation propagation) {
+	public BackPropagationCell(String name, BackPropagation propagation) {
 		setName(name);
 		this.propagation = propagation;
 
@@ -73,6 +74,10 @@ public class PropagationCell implements Cell<PackedCollection<?>>, Learning, Nam
 
 	@Override
 	public void setReceptor(Receptor<PackedCollection<?>> next) {
+		if (this.next != null) {
+			warn("Replacing receptor");
+		}
+
 		this.next = next;
 	}
 }

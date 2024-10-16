@@ -31,6 +31,7 @@ import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Describable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,7 +45,8 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V>, ConsoleFeatures {
+public class Variable<T, V extends Variable<T, ?>>
+		implements Nameable, Sortable, Delegated<V>, Describable, ConsoleFeatures {
 	private String name;
 	private PhysicalScope physicalScope;
 	private int sortHint;
@@ -146,7 +148,13 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	@Deprecated
-	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
+	public Supplier<Evaluable<? extends T>> getOriginalProducer() {
+		if (producer != null && producer != originalProducer) {
+			throw new UnsupportedOperationException();
+		}
+
+		return producer;
+	}
 
 	public Class<T> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();
@@ -179,7 +187,12 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	}
 
 	@Override
-	public int hashCode() { return name.hashCode(); }
+	public int hashCode() { return delegate == null ? name.hashCode() : delegate.hashCode(); }
+
+	@Override
+	public String describe() {
+		return getClass().getSimpleName() + " " + getName();
+	}
 
 	public static Variable<Integer, ?> integer(String name) {
 		return new Variable<>(name, null, Constant.forType(Integer.class), null);

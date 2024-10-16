@@ -49,8 +49,16 @@ public class Greater extends Comparison {
 	}
 
 	@Override
-	public Expression<Boolean> generate(List<Expression<?>> children) {
+	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
 		return new Greater(children.get(0), children.get(1), orEqual);
+	}
+
+	public static Expression<Boolean> of(Expression<?> left, Expression<?> right) {
+		return new Greater(left, right);
+	}
+
+	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
+		return new Greater(left, right, orEqual);
 	}
 }

@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
@@ -68,8 +69,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		Model model = new Model(shape(size));
 		CellularLayer dense = dense(size, nodes);
 		CellularLayer softmax = softmax(nodes);
-		model.addLayer(dense);
-		model.addLayer(softmax);
+		model.add(dense);
+		model.add(softmax);
 
 		Tensor<Double> t = tensor(shape(size));
 		PackedCollection<?> input = t.pack();
@@ -93,7 +94,9 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			Assert.assertNotEquals(expected, actual, 0.0001);
 
 			expected += biases.valueAt(i);
-			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			if (verboseLogs)
+				log("[" + i + "] " + expected + " vs " + actual);
+
 			Assert.assertEquals(expected, actual, 0.0001);
 		}
 
@@ -116,20 +119,21 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 			double expected = expValues[i] / sum;
 			double actual = output.toDouble(i);
 
-			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			if (verboseLogs)
+				log("[" + i + "] " + expected + " vs " + actual);
 			Assert.assertEquals(expected, actual, 0.0001);
 		}
 	}
 
 	@Test
 	public void pool() {
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
 		Model model = new Model(inputShape);
 		CellularLayer pool = pool2d(inputShape, poolSize);
 
-		model.addLayer(pool);
+		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -144,11 +148,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void convPool() {
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
-		model.addLayer(conv);
-		model.addLayer(pool);
+		model.add(conv);
+		model.add(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -203,7 +207,10 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 						}
 
 						double actual = output.valueAt(n, p, q, r);
-						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+
+						if (verboseLogs)
+							log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+
 						assertEquals(expected, actual);
 					}
 				}
@@ -245,15 +252,24 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void trainSmall() throws IOException {
 		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 		if (!trainingTests &&
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
 
-		int dim = 28;
-		int filters = 8;
-		Tensor<Double> t = tensor(shape(dim, dim));
-		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, filters, 2, 10));
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+
+		try {
+			WeightedSumExpression.enableCollectionExpression = false;
+
+			int dim = 28;
+			int filters = 8;
+			Tensor<Double> t = tensor(shape(dim, dim));
+			PackedCollection<?> input = t.pack();
+			train(input, model(dim, dim, 3, filters, 2, 10));
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
+		}
 	}
 
 	@Test

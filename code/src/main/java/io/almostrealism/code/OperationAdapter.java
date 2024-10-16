@@ -20,6 +20,7 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
@@ -37,7 +38,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements NameProvider, Destroyable, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T, C> implements
+											NameProvider, Parent<C>,
+											Destroyable, OperationInfo,
+											NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -146,7 +150,7 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 	 * simply execute code). There seems to be no reason to deal with this now,
 	 * as there will eventually be no need for accelerated operations which
 	 * are not Computation based, so when that process is over one of the two
-	 * roles this methods plays won't exist, and it will be clear what it is for.
+	 * roles this method plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
 
@@ -206,6 +210,11 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		}
 
 		resetArguments();
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {

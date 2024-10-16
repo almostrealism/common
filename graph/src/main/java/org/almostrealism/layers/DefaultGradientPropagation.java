@@ -26,6 +26,7 @@ import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.gradient.GradientFeatures;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
@@ -34,7 +35,7 @@ import org.almostrealism.io.SystemUtils;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
+public class DefaultGradientPropagation implements BackPropagation, GradientFeatures, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
 	public static boolean enableOptimizedDiagnostics = false;
@@ -46,14 +47,14 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 
 	private String name;
 
-	public GradientPropagation(Factor<PackedCollection<?>> operator,
-							   Stream<Producer<PackedCollection<?>>> weights) {
+	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
+									  Stream<Producer<PackedCollection<?>>> weights) {
 		this.operator = operator;
 		this.weights = weights.toArray(Producer[]::new);
 	}
 
-	public GradientPropagation(Factor<PackedCollection<?>> operator,
-							   Producer<PackedCollection<?>>... weights) {
+	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
+									  Producer<PackedCollection<?>>... weights) {
 		this.operator = operator;
 		this.weights = weights;
 	}
@@ -90,18 +91,10 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 		OperationList op = new OperationList("Gradient Propagation");
 
 		if (next != null) {
-			Producer<PackedCollection<?>> deltaOutDeltaIn = function.get().delta(input)
-					.reshape(outSize, inSize)
-					.traverse(1)
-					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize))
-					.traverse(0)
-					.enumerate(1, 1)
-					.sum(1)
-					.reshape(shape(inSize))
-					.each();
+			Producer<PackedCollection<?>> deltaOutDeltaIn = combineGradient(function.get(), input, gradient);
 
 			if (enableDiagnosticGrad) {
-				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize));
+				PackedCollection<?> deltaOut = new PackedCollection<>(shape(outSize, inSize)).traverse(1);
 				Producer<PackedCollection<?>> delta = function.get().delta(input).reshape(outSize, inSize).traverse(1);
 
 				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
@@ -111,9 +104,11 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 					Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 					return () -> {
+						String name = getName() + " (" + outSize + "x" + inSize + ")";
 						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();
+						// deltaOut.print(r -> log(name + " delta:\n" + r));
 					};
 				}));
 			} else {

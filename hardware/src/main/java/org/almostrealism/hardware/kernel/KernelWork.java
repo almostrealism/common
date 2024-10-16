@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,8 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.kernel;
 
-public interface KernelSupport {
+public interface KernelWork {
+	long getGlobalWorkSize();
+	void setGlobalWorkSize(long globalWorkSize);
 
+	default int getWorkgroupSize() {
+		return 1;
+	}
+
+	long getGlobalWorkOffset();
+	void setGlobalWorkOffset(long globalWorkOffset);
 }

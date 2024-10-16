@@ -59,7 +59,7 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense);
 
 		Model model = new Model(shape(1), 1e-5);
-		model.addBlock(block);
+		model.add(block);
 
 		int epochs = 300;
 		int steps = 100;
@@ -83,7 +83,7 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense);
 
 		Model model = new Model(shape(2));
-		model.addBlock(block);
+		model.add(block);
 
 		int epochs = 300;
 		int steps = 320;
@@ -105,7 +105,7 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense);
 
 		Model model = new Model(shape(3), 1e-5);
-		model.addBlock(block);
+		model.add(block);
 
 		int epochs = 300;
 		int steps = 260;
@@ -116,7 +116,7 @@ public class GradientDescentTests implements TestFeatures {
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
-		optimize("linear3", model, data, epochs, steps, 1.25, 0.675);
+		optimize("linear3", model, data, epochs, steps, 1.75, 0.775);
 	}
 
 	@Test
@@ -128,7 +128,7 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense(1, 1));
 
 		Model model = new Model(shape(3), 1e-5);
-		model.addBlock(block);
+		model.add(block);
 
 		int epochs = 300;
 		int steps = 260;
@@ -160,7 +160,7 @@ public class GradientDescentTests implements TestFeatures {
 			block.add(dense(hiddenDim, outLen));
 
 			Model model = new Model(shape(inChannels));
-			model.addBlock(block);
+			model.add(block);
 
 			int epochs = 600;
 			int steps = 125;
@@ -223,7 +223,7 @@ public class GradientDescentTests implements TestFeatures {
 		block.add(dense(timeLen, outLen));
 
 		Model model = new Model(shape(inChannels), 1e-3);
-		model.addBlock(block);
+		model.add(block);
 
 		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
 		Evaluable<PackedCollection<?>> loss = x().subtract(y()).pow(2.0).get();

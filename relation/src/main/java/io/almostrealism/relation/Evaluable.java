@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import io.almostrealism.uml.Function;
 import io.almostrealism.uml.Multiple;
 
 /**
- * The {@link Evaluable} interface is implemented by classes that represent a
- * repeatedly evaluated function.
+ * An {@link Evaluable} is a {@link Computable} that can be directly
+ * evaluated to produce a result.
  *
  * @author  Michael Murray
  */

@@ -53,7 +53,7 @@ public class Min extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public Expression generate(List<Expression<?>> children) {
+	public Expression recreate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}

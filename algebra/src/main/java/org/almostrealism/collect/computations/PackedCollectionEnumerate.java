@@ -18,6 +18,8 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
@@ -32,6 +34,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	public static boolean enablePreferIsolation = true;
 	public static boolean enableDetectTraversalDepth = true;
+	public static boolean enablePositionSimplification = true;
 
 	private TraversalPolicy inputShape;
 	private int traversalDepth;
@@ -84,14 +87,21 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	protected Expression<?> projectIndex(Expression<?> index) {
-		// Determine the current block
+		Expression block;
 		long blockSize = getShape().sizeLong(traversalDepth);
-		Expression block = index.divide(blockSize);
-		index = index.imod(blockSize);
+
+		if (!isFixedCount() || getShape().getTotalSizeLong() != blockSize) {
+			// Determine the current block
+			block = index.divide(blockSize);
+			index = index.imod(blockSize);
+		} else {
+			// There can be only one block
+			block = e(0);
+		}
 
 		// Determine which slice to extract
 		// Starting over from the beginning for each new block
-		Expression slice;
+		Expression<?> slice;
 
 		if (subsetShape.getTotalSize() == 1) {
 			slice = index;
@@ -102,10 +112,18 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		}
 
 		// Find the index in that slice
-		Expression offset = index.toInt().imod(subsetShape.getTotalSizeLong());
+		Expression<?> offset = index.toInt().imod(subsetShape.getTotalSizeLong());
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+
+		if (enablePositionSimplification) {
+			KernelStructureContext ctx = index.getStructureContext();
+			if (ctx == null) ctx = new NoOpKernelStructureContext();
+
+			offset = offset.simplify(ctx);
+			slice = slice.simplify(ctx);
+		}
 
 		for (int j = 0; j < subsetShape.getDimensions(); j++) {
 			if (strideShape.length(j) > 0) {

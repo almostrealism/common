@@ -21,11 +21,11 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
@@ -198,6 +198,11 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 				cpuOpTime += duration;
 			}
 		}
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getDisplayName() + " (" + getGlobalWorkSize() + "x)";
 	}
 
 	public static void recordCompilation(boolean gpu) {

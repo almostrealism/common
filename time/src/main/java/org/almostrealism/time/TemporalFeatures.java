@@ -20,11 +20,14 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
@@ -79,6 +82,14 @@ public interface TemporalFeatures extends GeometryFeatures {
 	default Supplier<Runnable> loop(Temporal t, int iter) {
 		return HardwareFeatures.getInstance().loop(t.tick(), iter);
 	}
+
+	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time,
+														Supplier<Evaluable<? extends Scalar>> value) {
+		return new ExpressionComputation<>(
+				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
+				(Supplier) time, (Supplier) value)
+				.setPostprocessor(TemporalScalar.postprocessor());
+	}
 	
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,
 									Producer<PackedCollection<?>> position,
@@ -95,8 +106,34 @@ public interface TemporalFeatures extends GeometryFeatures {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 
-	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input, ComputeRequirement... requirements) {
-		FourierTransform fft = new FourierTransform(bins, input);
+	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input,
+								 ComputeRequirement... requirements) {
+		return fft(bins, false, input, requirements);
+	}
+
+	default FourierTransform ifft(int bins, Producer<PackedCollection<?>> input,
+								  ComputeRequirement... requirements) {
+		return fft(bins, true, input, requirements);
+	}
+
+	default FourierTransform fft(int bins, boolean inverse,
+								 Producer<PackedCollection<?>> input,
+								 ComputeRequirement... requirements) {
+		TraversalPolicy shape = shape(input);
+
+		int targetAxis = shape.getDimensions() - 2;
+
+		if (shape.getDimensions() > 1 && shape.getTraversalAxis() != targetAxis) {
+			input = traverse(targetAxis, input);
+		}
+
+		int count = shape(input).getCount();
+
+		if (count > 1 && shape.getDimensions() < 3) {
+			throw new IllegalArgumentException();
+		}
+
+		FourierTransform fft = new FourierTransform(count, bins, inverse, input);
 		if (requirements.length > 0) fft.setComputeRequirements(List.of(requirements));
 		return fft;
 	}

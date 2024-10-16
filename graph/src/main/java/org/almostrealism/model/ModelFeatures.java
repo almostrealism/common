@@ -36,15 +36,15 @@ public interface ModelFeatures extends CodeFeatures {
 		Model model = new Model(shape(r, c));
 
 		for (int i = 0; i < convLayers; i++) {
-			model.addLayer(convolution2d(convFilters, convSize));
+			model.add(convolution2d(convFilters, convSize));
 			if (groups > 0 && i > 0)
-				model.addLayer(norm(groups));
-			model.addLayer(pool2d(2));
+				model.add(norm(groups));
+			model.add(pool2d(2));
 		}
 
-		model.addBlock(flattened());
-		model.addLayer(dense(denseSize));
-		model.addLayer(logSoftmax ? logSoftmax() : softmax());
+		model.add(flattened());
+		model.add(dense(denseSize));
+		model.add(logSoftmax ? logSoftmax() : softmax());
 		return model;
 	}
 }

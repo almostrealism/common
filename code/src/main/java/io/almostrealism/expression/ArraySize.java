@@ -32,4 +32,9 @@ public class ArraySize<T> extends Expression<T> {
 
 	@Override
 	public int getArraySize() { return size; }
+
+	@Override
+	public boolean compare(Expression e) {
+		return e instanceof ArraySize && ((ArraySize) e).size == size;
+	}
 }

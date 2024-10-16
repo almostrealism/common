@@ -25,12 +25,14 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -55,8 +57,8 @@ import java.util.stream.Stream;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
-												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														ComputerFeatures {
+												implements CollectionProducerComputation<O>, IndexSet,
+														   MemoryDataComputation<O>, ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
 	private String name;
@@ -66,6 +68,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private List<ScopeLifecycle> dependentLifecycles;
 
 	private HardwareEvaluable<O> evaluable;
+	private boolean evaluableOutdated;
 
 	protected CollectionProducerComputationBase() {
 	}
@@ -138,7 +141,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (dependentLifecycles != null)
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
-		this.evaluable = null;
+		this.evaluableOutdated = true;
+		// this.evaluable = null;
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -210,6 +214,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public long getCountLong() {
 		return getShape().getCountLong();
+	}
+
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return CollectionProducerComputation.super.containsIndex(index);
 	}
 
 	@Override
@@ -327,6 +336,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		super.destroy();
 		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed) " : " (variable) ") +
+				getShape().toString();
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> producer) {
+		return CollectionProducerComputation.super.delegate(producer);
 	}
 
 	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

@@ -16,6 +16,8 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.expression.Expression;
+
 import java.util.OptionalLong;
 
 public class KernelIndexChild extends IndexChild {
@@ -56,7 +58,12 @@ public class KernelIndexChild extends IndexChild {
 	}
 
 	@Override
-	public boolean equals(Object o) {
+	public boolean isPossiblyNegative() {
+		return getChildren().get(1).isPossiblyNegative();
+	}
+
+	@Override
+	public boolean compare(Expression o) {
 		if (!(o instanceof KernelIndexChild)) return false;
 		return ((KernelIndexChild) o).getChildIndex().equals(getChildIndex());
 	}

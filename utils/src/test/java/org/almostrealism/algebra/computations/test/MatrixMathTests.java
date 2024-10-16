@@ -29,7 +29,22 @@ public class MatrixMathTests implements TestFeatures {
 	private static boolean enableRepeat = true;
 
 	@Test
-	public void matmul() {
+	public void matmulVerySmall() {
+		matmul(2, 4, true);
+	}
+
+	@Test
+	public void matmulSmall() {
+		matmul(12, 4, true);
+	}
+
+	@Test
+	public void matmulMedium() {
+		matmul(64, 32, true);
+	}
+
+	@Test
+	public void matmulLarge() {
 		if (testDepth < 1) return;
 
 		matmul(2048, 1024, true);
@@ -54,7 +69,8 @@ public class MatrixMathTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> product = matmul(cp(a), cp(b));
 
 		PackedCollection<?> c = product.get().evaluate();
-		c.traverse().print();
+		c.traverse(1).print();
+		System.out.println("--");
 
 		PackedCollection<?> reference = new PackedCollection<>(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);

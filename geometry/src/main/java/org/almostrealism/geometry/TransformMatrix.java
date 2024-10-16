@@ -42,7 +42,7 @@ import java.util.function.Supplier;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TransformMatrixFeatures, RayFeatures, HardwareFeatures {
+public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TransformMatrixFeatures, RayFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;

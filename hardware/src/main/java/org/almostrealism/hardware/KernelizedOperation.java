@@ -26,6 +26,7 @@ public interface KernelizedOperation extends Countable {
 	/**
 	 * {@link #kernelOperate(MemoryData...)} is preferred.
 	 */
+	@Deprecated
 	void kernelOperate(MemoryBank output, MemoryData args[]);
 
 	default void kernelOperate(MemoryData... args) {

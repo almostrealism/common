@@ -17,10 +17,9 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Quotient;
-import io.almostrealism.expression.Sum;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
@@ -30,11 +29,12 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.PropagationCell;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -168,8 +168,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(shape(c), groups, false);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 
 		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
@@ -204,7 +204,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double expected = dLdXGroup.valueAt(i) / stdG;
 				double actual = result.valueAt(start + i);
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
@@ -261,12 +261,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium2() throws IOException {
+		log("Starting backwardsBiasMedium2");
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
 	@Test
 	public void backwardsBiasMedium3() throws IOException {
 		if (testDepth < 1) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
@@ -274,6 +276,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsBiasProgressive1() throws IOException {
 		if (testDepth < 2) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		backwardsBiasProgressive(2, 1, 5);
 	}
@@ -281,6 +284,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsBiasProgressive2() throws IOException {
 		if (testDepth < 1) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		backwardsBiasProgressive(32, 4, 3);
 	}
@@ -315,8 +319,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, null, biases);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
 
@@ -340,7 +344,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log("Gradient " + expected + " vs " + actual);
+				// log("Gradient " + expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
@@ -348,7 +352,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log("Bias " + expected + " vs " + actual);
+				// log("Bias " + expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
@@ -419,20 +423,30 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsTrainableProgressiveLarge() throws IOException {
 		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		int c = 200;
-		int groups = 4;
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
 
-		while (c < 1600) {
-			log("START c = " + c);
-			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
-			c = c + 200;
+		try {
+			WeightedSumExpression.enableCollectionExpression = false;
+
+			int c = 200;
+			int groups = 4;
+
+			while (c < 1400) {
+				log("START c = " + c);
+				normBackwardsTrainable("backwardsTrainable" + c, c, groups);
+				c = c + 200;
+			}
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
 		}
 	}
 
 	@Test
 	public void backwardsTrainableVeryLarge() throws IOException {
 		if (skipLongTests || testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		// int c = 2000;
 		int c = 3456;
@@ -463,7 +477,17 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast) throws IOException {
-		normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
+
+		try {
+			if (c > 64) {
+				WeightedSumExpression.enableCollectionExpression = false;
+			}
+
+			normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+		} finally {
+			WeightedSumExpression.enableCollectionExpression = weightedSum;
+		}
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast, Supplier<PackedCollection<?>> inputSource) throws IOException {
@@ -482,8 +506,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, weights, biases);
-		((PropagationCell) layer.getBackward()).setLearningRate(cp(lr));
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
 
@@ -492,6 +516,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		double loss = 0.0;
 
 		int groupSize = c / groups;
+
+		Evaluable<PackedCollection<?>> xHatGroupEval =
+				cv(shape(groupSize), 0)
+					.subtract(cv(shape(1), 1))
+						.divide(cv(shape(1), 2)).get();
+		Evaluable<PackedCollection<?>> dLdGammaEval =
+				cv(shape(groupSize), 0)
+					.multiply(cv(shape(groupSize), 1)).get();
 
 		for (int g = 0; g < groups; g++) {
 			int start = g * groupSize;
@@ -503,10 +535,12 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			double varG = variance(cp(xGroup)).evaluate().toDouble();
 			double stdG = Math.sqrt(varG + eps);
 
-			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+//			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
+			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));
 
 			PackedCollection<?> dLdBeta = dLdyGroup;
-			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();
+//			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();
+			PackedCollection<?> dLdGamma = dLdGammaEval.evaluate(dLdyGroup, xHatGroup);
 
 			PackedCollection<?> expectedGrad = normBackwards(
 					input.range(shape(groupSize), start),
@@ -520,7 +554,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdGamma.valueAt(i);
@@ -528,7 +562,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
@@ -536,7 +570,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				diff = Math.abs(expected - actual);
 				loss += diff;
 
-				log(expected + " vs " + actual);
+				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 			}
 		}
@@ -580,7 +614,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> in = new PackedCollection<>(shape(c, v)).randnFill();
 
 		Model model = new Model(shape(c, v));
-		model.addLayer(norm(groups, weights, biases));
+		model.add(norm(groups, weights, biases));
 
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode());
 

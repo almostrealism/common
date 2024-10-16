@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,14 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.expression.Expression;
+import org.almostrealism.io.Describable;
+
 import java.util.stream.IntStream;
 
-public interface Shape<T> extends Traversable<T> {
+public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	TraversalPolicy getShape();
-
+	
 	default T reshape(int... dims) {
 		int inf[] = IntStream.range(0, dims.length).filter(i -> dims[i] < 0).toArray();
 		if (inf.length > 1) throw new IllegalArgumentException("Only one dimension can be inferred");
@@ -54,4 +57,14 @@ public interface Shape<T> extends Traversable<T> {
 
 	default T consolidate() { return traverse(getShape().getTraversalAxis() - 1); }
 	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return getShape().getOrder().containsIndex(index);
+	}
+
+	@Override
+	default String describe() {
+		return getShape().toStringDetail();
+	}
 }

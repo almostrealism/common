@@ -22,6 +22,7 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 	protected static long idxCount;
 
 	private final TraversalPolicy shape;
+	private TraversalPolicy totalShape;
 
 	public CollectionExpressionAdapter(TraversalPolicy shape) {
 		if (shape == null) {
@@ -33,6 +34,15 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 
 	@Override
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public void setTotalShape(TraversalPolicy shape) {
+		this.totalShape = shape;
+	}
+
+	protected TraversalPolicy getTotalShape() {
+		return totalShape;
+	}
 
 	public static DefaultIndex generateTemporaryIndex() {
 		return new DefaultIndex("ci_" + idxCount++);

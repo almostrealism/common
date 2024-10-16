@@ -91,7 +91,7 @@ public enum Precision {
 		if (this == Precision.FP64) {
 			return String.valueOf(l);
 		} else if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
+			throw new UnsupportedOperationException(String.valueOf(l));
 		}
 
 		return stringForInt(Math.toIntExact(l));

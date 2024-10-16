@@ -52,7 +52,7 @@ public interface DiffusionFeatures extends LayerFeatures {
 	}
 
 	default Block timestepEmbeddings(int inputCount, int timeLen, int outLen) {
-		SequentialBlock block = new SequentialBlock(shape(inputCount, timeLen));
+		SequentialBlock block = new SequentialBlock(shape(inputCount));
 		block.add(dense(inputCount, timeLen));
 		block.add(silu(shape(timeLen)));
 		block.add(dense(timeLen, outLen));

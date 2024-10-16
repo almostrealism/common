@@ -32,6 +32,7 @@ public class Console {
 	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
 	private List<UnaryOperator<String>> filters = new ArrayList<>();
+	private List<AlertDeliveryProvider> alertDeliveryProviders = new ArrayList<>();
 	private boolean flag;
 
 	private DateTimeFormatter format;
@@ -141,6 +142,11 @@ public class Console {
 		return this;
 	}
 
+	public Console addAlertDeliveryProvider(AlertDeliveryProvider provider) {
+		alertDeliveryProviders.add(provider);
+		return this;
+	}
+
 	public void warn(String message) { warn(message, null); }
 
 	public void warn(String message, Throwable ex) {
@@ -172,6 +178,33 @@ public class Console {
 		metric.setConsole(this);
 		metrics.put(name, metric);
 		return metric;
+	}
+
+	public void alert(String message) {
+		alert(Alert.Severity.INFO, message);
+	}
+
+	public void alert(String message, Throwable ex) {
+		alert(Alert.forThrowable(message, ex));
+	}
+
+	public void alert(Alert.Severity severity, String message) {
+		alert(new Alert(severity, message));
+	}
+
+	public void alert(Alert message) {
+		alertDeliveryProviders.forEach(provider -> provider.sendAlert(message));
+
+		boolean delivered = !alertDeliveryProviders.isEmpty();
+
+		if (parent != null) {
+			parent.alert(message);
+			delivered = true;
+		}
+
+		if (!delivered) {
+			println("[ALERT]" + message);
+		}
 	}
 
 	public void flag() { this.flag = true; }

@@ -18,5 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.relation.Evaluable;
 
+@Deprecated
 public interface CollectionEvaluable<T extends PackedCollection> extends Evaluable<T>, CollectionFeatures {
 }

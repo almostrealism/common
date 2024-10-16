@@ -16,11 +16,9 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.ComputeContext;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 

@@ -62,7 +62,7 @@ public class Ceiling extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<Double> recreate(List<Expression<?>> children) {
 		if (children.size() != 1) {
 			throw new UnsupportedOperationException();
 		}

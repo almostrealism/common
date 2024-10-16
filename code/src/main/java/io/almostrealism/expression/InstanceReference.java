@@ -54,11 +54,21 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
-		super(referent.getType(), pos);
+		super(referent.getType(), false, pos);
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;
 		init();
+	}
+
+	@Override
+	protected void init() {
+		if (getReferent() == null ||
+				(getReferent().getDelegate() == null && getReferent().getName() == null)) {
+			throw new UnsupportedOperationException();
+		}
+
+		super.init();
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
@@ -119,7 +129,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				target, e(1), e(0));
 	}
 
-	public InstanceReference<T> generate(List<Expression<?>> children) {
+	public InstanceReference<T> recreate(List<Expression<?>> children) {
 		if (children.size() == 0) {
 			return new InstanceReference<>(var);
 		} else if (children.size() == 1) {
@@ -127,6 +137,15 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		if (this == e) return true;
+		if (!(e instanceof InstanceReference)) return false;
+
+		InstanceReference<?> alt = (InstanceReference<?>) e;
+		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
 	}
 
 	public static <T> Expression<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {

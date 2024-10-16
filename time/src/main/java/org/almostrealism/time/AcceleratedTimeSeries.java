@@ -28,7 +28,7 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> implements Lifecycle, HardwareFeatures {
+public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> implements Lifecycle {
 	public static final int defaultSize = 10 * 1024 * 1024; // 16 * 1024 * 1024;
 
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;

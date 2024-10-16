@@ -64,7 +64,7 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(output.ref(i).assign(getValueRelative(e(i))));
+			scope.getVariables().add(output.referenceRelative(i).assign(getValueRelative(e(i))));
 		}
 
 		return scope;

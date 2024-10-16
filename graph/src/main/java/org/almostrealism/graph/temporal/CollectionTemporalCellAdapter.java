@@ -26,7 +26,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public abstract class CollectionTemporalCellAdapter extends CollectionCachedStateCell implements CodeFeatures {
+public abstract class CollectionTemporalCellAdapter extends CollectionCachedStateCell {
 	public static final double PI = Math.PI;
 
 	public static double depth = 1.0;
