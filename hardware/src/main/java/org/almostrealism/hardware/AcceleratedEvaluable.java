@@ -22,6 +22,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.cl.CLComputeContext;
@@ -36,6 +37,7 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	private InstructionSetManager<DefaultExecutionKey> instructions;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private IntFunction<MemoryBank<O>> kernelDestination;
 
@@ -71,8 +73,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@Override
 	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
-		return new CLInstructionsManager(
-				getComputeContext(), getSourceClass());
+		return instructions;
 	}
 
 	@Override
@@ -87,6 +88,12 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		// Result should always be first
 		ArrayVariable arg = getArgumentForInput((Supplier) getInputs().get(0));
 		if (arg != null) arg.setSortHint(-1);
+	}
+
+	@Override
+	public Scope<?> compile() {
+		instructions = new CLInstructionsManager(getComputeContext(), getSourceClass());
+		return super.compile();
 	}
 
 	@Override
