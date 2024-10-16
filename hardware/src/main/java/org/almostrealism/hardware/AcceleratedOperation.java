@@ -35,6 +35,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
@@ -133,7 +134,10 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	public ArrayVariable getArgument(int index, Expression<Integer> size) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
-
+	
+	@Override
+	public Variable getOutputVariable() { return getArgument(getOutputArgumentIndex()); }
+	
 	/** @return  -1 */
 	protected int getOutputArgumentIndex() { return -1; }
 
