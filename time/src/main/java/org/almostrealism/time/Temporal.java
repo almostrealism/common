@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 @FunctionalInterface
-public interface Temporal extends TemporalFeatures, HardwareFeatures {
+public interface Temporal extends TemporalFeatures {
 	Supplier<Runnable> tick();
 
 	default Supplier<Runnable> iter(int iter) {
@@ -37,10 +37,5 @@ public interface Temporal extends TemporalFeatures, HardwareFeatures {
 
 	default Supplier<Runnable> iter(int iter, boolean resetAfter) {
 		return iter(this, iter, resetAfter);
-	}
-
-	@Override
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return TemporalFeatures.super.delegate(producer);
 	}
 }

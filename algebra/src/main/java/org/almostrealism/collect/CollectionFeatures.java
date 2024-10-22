@@ -558,10 +558,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return pad(shape, new TraversalPolicy(true, depths), collection);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
+	default <T extends PackedCollection<?>> CollectionProducer<T> pad(TraversalPolicy shape,
 																				 Producer<?> collection,
 																				 int... pos) {
-		return pad(shape, new TraversalPolicy(true, pos), collection);
+		int traversalAxis = shape.getTraversalAxis();
+
+		if (traversalAxis == shape.getDimensions()) {
+			return pad(shape, new TraversalPolicy(true, pos), collection);
+		} else {
+			return (CollectionProducer<T>) pad(shape.traverseEach(), new TraversalPolicy(true, pos), collection)
+					.traverse(traversalAxis);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
