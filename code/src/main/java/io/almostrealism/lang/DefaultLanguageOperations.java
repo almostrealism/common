@@ -176,10 +176,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				out.accept(arg.getArraySize().getExpression(this));
 			} else {
 				out.accept(argumentPre(arg, enableType, enableAnnotation, type.getType(), access));
-
-				out.accept(type.getPrefix());
-				out.accept(arguments.get(i).getName());
-				out.accept(type.getSuffix());
+				out.accept(type.render(this, arg));
 				out.accept(argumentPost(i, enableAnnotation, access));
 			}
 
@@ -273,6 +270,17 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				case SIZE: return "Size";
 				case DIM0: return "Dim0";
 				default: throw new UnsupportedOperationException();
+			}
+		}
+
+		public String render(DefaultLanguageOperations lang, ArrayVariable<?> var) {
+			if (var.getDelegate() == null) {
+				return getPrefix() + var.getName() + getSuffix();
+			} else if (this == OFFSET) {
+				return render(lang, var.getDelegate()) + " + " +
+						var.getDelegateOffset().getSimpleExpression(lang);
+			} else {
+				return getPrefix() + var.getRootDelegate().getName() + getSuffix();
 			}
 		}
 	}

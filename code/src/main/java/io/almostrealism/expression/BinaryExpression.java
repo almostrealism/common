@@ -24,4 +24,9 @@ public abstract class BinaryExpression<T> extends Expression<T> {
 
 	public Expression<?> getLeft() { return getChildren().get(0); }
 	public Expression<?> getRight() { return getChildren().get(1); }
+
+	@Override
+	public boolean isPossiblyNegative() {
+		return getLeft().isPossiblyNegative() || getRight().isPossiblyNegative();
+	}
 }

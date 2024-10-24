@@ -19,7 +19,7 @@ package org.almostrealism.c;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lang.DefaultLanguageOperations;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.ArrayVariable;
 
 import java.util.List;

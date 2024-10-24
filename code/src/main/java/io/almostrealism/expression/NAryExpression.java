@@ -54,12 +54,17 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.isEmpty()) {
 			throw new IllegalArgumentException("NAryExpression must have at least 2 values");
 		}
 
 		return new NAryExpression<>(getType(), operator, children);
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		return super.compare(e) && operator.equals(((NAryExpression) e).operator);
 	}
 
 	private static Expression<?>[] validateExpressions(Expression<?>[] values) {

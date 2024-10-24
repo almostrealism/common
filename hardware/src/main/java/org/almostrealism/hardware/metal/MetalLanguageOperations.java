@@ -17,10 +17,9 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.c.CLanguageOperations;
 

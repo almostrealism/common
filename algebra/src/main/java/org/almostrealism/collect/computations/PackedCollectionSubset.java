@@ -47,7 +47,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 
 		this.pos = pos;
 		setShape(shape);
-		setInputs(new Destination(), (Supplier) collection);
+		setInputs(new Destination<>(), (Supplier) collection);
 		init();
 	}
 
@@ -112,10 +112,10 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 	}
 
-	private class Destination implements Producer<PackedCollection<?>>, Delegated<Countable>, Countable {
+	private class Destination<T extends PackedCollection<?>> implements Producer<T>, Delegated<Countable>, Countable {
 		@Override
-		public Evaluable<PackedCollection<?>> get() {
-			return args -> new PackedCollection<>(getShape().traverseEach());
+		public Evaluable<T> get() {
+			return args -> (T) new PackedCollection<>(getShape().traverseEach());
 		}
 
 		@Override

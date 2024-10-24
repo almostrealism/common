@@ -16,6 +16,9 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.HardwareFeatures;
+
 import java.util.function.Supplier;
 
 /**

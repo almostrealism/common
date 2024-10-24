@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.io.Console;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -31,6 +32,8 @@ import java.util.function.Supplier;
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer that is contiguous in memory.
+ *
+ * @author  Michael Murray
  */
 public class Vector extends PackedCollection<Vector> implements VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
@@ -63,13 +66,13 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		this();
 
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			setMem(new double[] { x, y, z });
+			setMem(x, y, z);
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			setMem(new double[] { x * Math.sin(y) * Math.cos(z),
-								x * Math.sin(y) * Math.sin(z),
-								x * Math.cos(y) });
+			setMem(x * Math.sin(y) * Math.cos(z),
+					x * Math.sin(y) * Math.sin(z),
+					x * Math.cos(y));
 		} else {
-			throw new IllegalArgumentException("Illegal coordinate system type code: " + coordSys);
+			throw new IllegalArgumentException(coordSys + " is not a valid coordinate system type code");
 		}
 	}
 
@@ -239,10 +242,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
 	public Vector divide(double value) {
-		// TODO  Use VectorDivide
-		Vector v = (Vector) clone();
-		v.divideBy(value);
-		return v;
+		return clone().divideBy(value);
 	}
 
 	/**
@@ -250,9 +250,10 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 *
 	 * @param value The value to divide by.
 	 */
-	public synchronized void divideBy(double value) {
+	public synchronized Vector divideBy(double value) {
 		double a[] = toArray();
 		setMem(a[0] / value, a[1] / value, a[2] / value);
+		return this;
 	}
 
 	/**
@@ -282,6 +283,22 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		return getMem().toArray(getOffset(), 3);
 	}
 
+	/** @return A String representation of this {@link Vector}. */
+	public String describe() {
+		StringBuffer value = new StringBuffer();
+
+		value.append("[");
+		value.append(Defaults.displayFormat.format(getX()));
+		value.append(", ");
+		value.append(Defaults.displayFormat.format(getY()));
+		value.append(", ");
+		value.append(Defaults.displayFormat.format(getZ()));
+		value.append("]");
+
+
+		return value.toString();
+	}
+
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
@@ -300,7 +317,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 */
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof Vector == false)
+		if (!(obj instanceof Vector))
 			return false;
 
 		Vector vector = (Vector) obj;
@@ -318,6 +335,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	/**
+	 * @see #setTo(Vector)
 	 * @see java.lang.Object#clone()
 	 */
 	@Override
@@ -327,22 +345,13 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		return v;
 	}
 
-	/** @return A String representation of this {@link Vector}. */
+	/**
+	 * @see  #describe()
+	 *
+	 * @return A String representation of this {@link Vector}.
+	 */
 	@Override
-	public String toString() {
-		StringBuffer value = new StringBuffer();
-
-		value.append("[");
-		value.append(Defaults.displayFormat.format(getX()));
-		value.append(", ");
-		value.append(Defaults.displayFormat.format(getY()));
-		value.append(", ");
-		value.append(Defaults.displayFormat.format(getZ()));
-		value.append("]");
-
-
-		return value.toString();
-	}
+	public String toString() { return describe(); }
 
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(3);
@@ -395,17 +404,18 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 												int[] indices,
 												boolean ccw) {
 		if ((indices.length % 3) != 0) {
-			System.err.println("NormalCalc.computeFacetedNormals: numIndices wasn't " +
-					"divisible by 3, so it can't possibly " +
-					"represent a set of triangles");
+			Console.root().features(Vector.class)
+					.warn("computeFacetedNormals - numIndices wasn't " +
+						"divisible by 3, so it can't possibly " +
+						"represent a set of triangles");
 			return null;
 		}
 
 		Vector[] outputNormals = new Vector[indices.length / 3];
 		int[] outputNormalIndices = new int[indices.length];
 
-		Vector d1 = new Vector();
-		Vector d2 = new Vector();
+		Vector d1;
+		Vector d2;
 		int curNormalIndex = 0;
 		for (int i = 0; i < indices.length; i += 3) {
 			int i0 = indices[i];
@@ -414,7 +424,8 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 			if ((i0 < 0) || (i0 >= indices.length) ||
 					(i1 < 0) || (i1 >= indices.length) ||
 					(i2 < 0) || (i2 >= indices.length)) {
-				System.err.println("NormalCalc.computeFacetedNormals: ERROR: " +
+				Console.root().features(Vector.class)
+						.warn("computeFacetedNormals - " +
 						"vertex index out of bounds or no end of triangle " +
 						"index found");
 				return null;

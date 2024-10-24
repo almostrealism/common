@@ -47,7 +47,9 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleFunction;
 import java.util.function.DoubleSupplier;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
@@ -142,12 +144,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	@Override
 	public int getMemLength() {
-		return shape.getTotalSize();
+		return shape.getTotalInputSize();
 	}
 
 	@Override
 	public int getAtomicMemLength() {
-		return shape.getSize();
+		return shape.getInputSize();
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -211,6 +213,13 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return this;
 	}
 
+	public PackedCollection<?> replace(DoubleUnaryOperator f) {
+		double in[] = toArray(0, getMemLength());
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
+		setMem(0, data);
+		return this;
+	}
+
 	public PackedCollection<?> identityFill() {
 		return fill(pos -> {
 			for (int i = 0; i < pos.length; i++) {
@@ -246,8 +255,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		int required = shape.getOrder() == null ? shape.getTotalSize() :
-				shape.getOrder().getLength().orElse(shape.getTotalSize());
+		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
+				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
 
 		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -376,6 +385,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
+	@Override
+	public String describe() {
+		if (getShape().getTotalSize() == 1) {
+			return getShape() + " " + toDouble(0);
+		} else {
+			return getShape().toStringDetail();
+		}
+	}
+
 	public PackedCollection<T> clone() {
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
@@ -383,7 +401,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public static PackedCollection<?> of(double... values) {
-		PackedCollection<?> collection = new PackedCollection<>(values.length);
+		PackedCollection<?> collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}

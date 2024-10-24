@@ -33,7 +33,7 @@ import io.almostrealism.relation.Factor;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatures, HardwareFeatures {
+public class WaveCell extends CollectionTemporalCellAdapter {
 	private final WaveCellData data;
 	private final Producer<PackedCollection<?>> wave;
 

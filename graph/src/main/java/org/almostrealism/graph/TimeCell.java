@@ -118,7 +118,13 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	}
 
 	@Override
-	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
+	public void setReceptor(Receptor<Scalar> r) {
+		if (cellWarnings && this.r != null) {
+			warn("Replacing receptor");
+		}
+
+		this.r = r;
+	}
 
 	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
 

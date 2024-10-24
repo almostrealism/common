@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
@@ -28,7 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 
 import java.util.function.Supplier;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
+public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
 	public static boolean enableAbsoluteValueAt = false;
 
 	private TraversalPolicy shape;
@@ -54,6 +54,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public CollectionVariable<T> reshape(TraversalPolicy shape) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CollectionVariable<T> traverse(int axis) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public Expression<Integer> length() {
@@ -163,6 +173,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		}
 
 		return new CollectionVariable<>(shape, this, pos);
+	}
+
+	@Override
+	public String describe() {
+		return getName() + " " + getShape().toStringDetail();
 	}
 
 	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {

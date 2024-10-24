@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.compute;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.io.SystemUtils;
 
 public enum ComputeRequirement {

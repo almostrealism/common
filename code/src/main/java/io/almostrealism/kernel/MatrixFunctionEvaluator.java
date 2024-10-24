@@ -54,7 +54,7 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 			setupRowDuplicates(false);
 
 			long len = isMultiRow() ? index.getLimit().orElse(-1) : input.getColumnCount();
-			return e.sequence(index, len, Integer.MAX_VALUE);
+			return e.sequence(index, len, ExpressionMatrix.MAX_SEQUENCE_LENGTH);
 		}
 
 		// Otherwise, the result is dependent on more information

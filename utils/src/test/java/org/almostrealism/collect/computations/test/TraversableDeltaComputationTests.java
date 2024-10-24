@@ -639,9 +639,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					for (int i = 0; i < c; i++) {
 						double expected = dLdXGroup.valueAt(i) / stdG;
 						double actual = output.valueAt(i);
-						log(expected + " vs " + actual);
 
-						Assert.assertEquals(expected, actual, 1e-5);
+						log(expected + " vs " + actual);
+						assertSimilar(expected, actual);
 					}
 				});
 	}
@@ -687,7 +687,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					for (int i = 0; i < c; i++) {
 						double expected = dLdXGroup.valueAt(i) / stdG;
 						double actual = output.valueAt(i);
-						log(expected + " vs " + actual);
+						// log(expected + " vs " + actual);
 
 						Assert.assertEquals(expected, actual, 1e-5);
 					}
@@ -732,7 +732,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					for (int i = 0; i < c; i++) {
 						double expected = result.valueAt(i);
 						double actual = output.valueAt(i);
-						log(expected + " vs " + actual);
+						// log(expected + " vs " + actual);
 
 						assertSimilar(expected, actual);
 					}
@@ -1086,28 +1086,43 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test
-	public void multiplyTwice() {
-		int dim = 5;
+	public void multiplyTwiceSmall() {
+		multiplyTwice(2, false);
+	}
 
+	@Test
+	public void multiplyTwiceLarge() {
+		multiplyTwice(5, false);
+	}
+
+	public void multiplyTwice(int dim, boolean optimize) {
 		PackedCollection<?> input = new PackedCollection<>(shape(dim));
 		CollectionProducer<PackedCollection<?>> c = cp(input)
 				.multiply(3)
 				.multiply(2);
 
-		CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
-//		PackedCollection<?> dout = Process.optimized(dy).get().evaluate();
-		PackedCollection<?> dout = dy.get().evaluate();
-		dout.traverse().print();
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> dy = c.delta(cp(input));
+			PackedCollection<?> dout;
 
-		for (int i = 0; i < dim; i++) {
-			for (int j = 0; j < dim; j++) {
-				if (i == j) {
-					assertEquals(6.0, dout.toDouble(i * dim + j));
-				} else {
-					assertEquals(0.0, dout.toDouble(i * dim + j));
+			if (optimize) {
+				dout = Process.optimized(dy).get().evaluate();
+			} else {
+				dout = dy.get().evaluate();
+			}
+
+			dout.traverse().print();
+
+			for (int i = 0; i < dim; i++) {
+				for (int j = 0; j < dim; j++) {
+					if (i == j) {
+						assertEquals(6.0, dout.toDouble(i * dim + j));
+					} else {
+						assertEquals(0.0, dout.toDouble(i * dim + j));
+					}
 				}
 			}
-		}
+		});
 	}
 
 	@Test
@@ -1330,7 +1345,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 						.reduce(v -> v.sum());
 
 		PackedCollection<?> result = c.delta(p(filters)).evaluate();
-		print(50, 8, result);
+		// print(50, 8, result);
 		// TODO  assertions
 	}
 
@@ -1369,7 +1384,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		PackedCollection<?> sparse = new PackedCollection<>(shape(outSize, filterCount));
 
 		c.delta(p(filters)).into(sparse.traverse()).evaluate();
-		print(h, filterCount, sparse);
+		// print(h, filterCount, sparse);
 
 		c.delta(p(filters))
 				.reshape(outSize, filterCount)
@@ -1377,7 +1392,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.multiply(c(g).reshape(outSize).traverse(1).expand(filterCount))
 				.enumerate(1, 1)
 				.into(sparse.each()).evaluate();
-		print(h, filterCount, sparse);
+		// print(h, filterCount, sparse);
 
 		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		cda.get().run();

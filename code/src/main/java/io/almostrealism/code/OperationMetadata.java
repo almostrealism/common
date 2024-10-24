@@ -17,11 +17,14 @@
 package io.almostrealism.code;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.scope.Scope;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class OperationMetadata {
+	private static long opIndex = 0;
+
+	private long id;
 	private String displayName, shortDescription, longDescription;
 	private TraversalPolicy shape;
 	private String contextName;
@@ -34,6 +37,7 @@ public class OperationMetadata {
 		this();
 
 		if (from != null) {
+			setId(from.getId());
 			setDisplayName(from.getDisplayName());
 			setShortDescription(from.getShortDescription());
 			setLongDescription(from.getLongDescription());
@@ -53,19 +57,32 @@ public class OperationMetadata {
 	}
 
 	public OperationMetadata(String displayName, String shortDescription, String longDescription) {
+		this(++opIndex, displayName, shortDescription, longDescription);
+	}
+
+	protected OperationMetadata(long id, String displayName, String shortDescription, String longDescription) {
 		this();
+		setId(id);
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
 		setLongDescription(longDescription);
 
-		if (displayName == null) {
+		if (id < opIndex || displayName == null) {
 			throw new IllegalArgumentException();
 		}
 	}
 
+	public long getId() { return id; }
+	public void setId(long id) { this.id = id; }
+
 	public String getDisplayName() { return displayName; }
 	public void setDisplayName(String displayName) {
 		this.displayName = displayName;
+
+		if (displayName != null && displayName.contains(" ")) {
+			Scope.console.features(OperationMetadata.class)
+					.warn("Display name contains whitespace");
+		}
 	}
 
 	public String getShortDescription() { return shortDescription; }

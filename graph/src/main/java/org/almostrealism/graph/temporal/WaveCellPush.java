@@ -59,6 +59,6 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 		Expression<Double> value = getAmplitude().valueAt(0).multiply(
 				getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())));
 		Expression<?> conditional = conditional(condition, value, e(0.0));
-		addVariable(getOutput().ref(0).assign(conditional));
+		addVariable(getOutput().referenceRelative(0).assign(conditional));
 	}
 }

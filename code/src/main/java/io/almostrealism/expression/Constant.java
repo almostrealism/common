@@ -50,7 +50,7 @@ public abstract class Constant<T> extends Expression<T> {
 
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
-	public Constant<T> generate(List<Expression<?>> children) {
+	public Constant<T> recreate(List<Expression<?>> children) {
 		if (children.size() > 0) {
 			throw new UnsupportedOperationException();
 		}
@@ -64,13 +64,19 @@ public abstract class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof Constant)) {
+	public boolean compare(Expression e) {
+		if (!(e instanceof Constant)) {
 			return false;
 		}
 
-		return Objects.equals(((Constant<?>) obj).getType(), getType()) &&
-				Objects.equals(((Constant<?>) obj).getValue(), getValue());
+		if (getValue() == null || ((Constant<?>) e).getValue() == null) {
+			throw new UnsupportedOperationException(
+					"It is not possible to compare Constant implementation(s)" +
+					" which do not use the value field");
+		}
+
+		return Objects.equals(((Constant<?>) e).getType(), getType()) &&
+				Objects.equals(((Constant<?>) e).getValue(), getValue());
 	}
 
 	@Override

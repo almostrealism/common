@@ -16,11 +16,12 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -34,7 +35,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T> {
+public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Process<?, ?>>
+					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T> {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
@@ -157,5 +159,39 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 		scope.getVariables().addAll(getVariables());
 		return scope;
+	}
+
+	/**
+	 * Extends {@link ComputableParallelProcess#optimize(ProcessContext)} to ensure that
+	 * the {@link ComputeRequirement}s are preserved.
+	 *
+	 * @see  ComputationBase#getComputeRequirements()
+	 */
+	@Override
+	public ComputationBase<I, O, T> optimize(ProcessContext ctx) {
+		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
+				ComputableParallelProcess.super.optimize(ctx);
+		replacement.setComputeRequirements(getComputeRequirements());
+		return replacement;
+	}
+
+	/**
+	 * Extends to {@link ComputableParallelProcess#generateReplacement(List)} to ensure
+	 * that the {@link ComputeRequirement}s are preserved.
+	 *
+	 * @see  ComputationBase#getComputeRequirements()
+	 */
+	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
+		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
+				ComputableParallelProcess.super.generateReplacement(inputs);
+		replacement.setComputeRequirements(getComputeRequirements());
+		return replacement;
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed)" : " (variable)");
 	}
 }

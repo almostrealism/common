@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Optional;
@@ -33,7 +34,14 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	public String getName() { return this.name; }
 
 	@Override
-	public void setReceptor(Receptor<T> r) { this.r = r; }
+	public void setReceptor(Receptor<T> r) {
+		if (cellWarnings && this.r != null) {
+			CollectionFeatures.console.features(CellAdapter.class)
+					.warn("Replacing receptor");
+		}
+
+		this.r = r;
+	}
 	
 	public Receptor<T> getReceptor() { return this.r; }
 	

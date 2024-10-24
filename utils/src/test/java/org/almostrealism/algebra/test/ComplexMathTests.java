@@ -23,9 +23,66 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.function.Supplier;
+
 public class ComplexMathTests implements TestFeatures {
+	@Test
+	public void complexFromPartsBatches1() {
+		PackedCollection<?> values = new PackedCollection<>(10, 2, 1024).randFill();
+
+		Producer<Pair<?>> c = cp(values).transpose(2);
+		PackedCollection<?> out = c.evaluate();
+
+		Assert.assertEquals(10, out.getShape().length(0));
+		Assert.assertEquals(1024, out.getShape().length(1));
+		Assert.assertEquals(2, out.getShape().length(2));
+
+		out = out.reshape(10, 1024, 2);
+
+		for (int i = 0; i < 10; i++) {
+			for (int j = 0; j < 1024; j++) {
+				for (int k = 0; k < 2; k++) {
+					double expected = values.valueAt(i, k, j);
+					double actual = out.valueAt(i, j, k);
+					assertEquals(expected, actual);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void complexFromPartsBatches2() {
+		if (skipKnownIssues) return;
+
+		PackedCollection<?> values = new PackedCollection<>(10, 2, 1024).fill(Math::random);
+
+		Producer<Pair<?>> c = complexFromParts(
+				subset(shape(10, 1, 1024), cp(values), 0, 0, 0),
+				subset(shape(10, 1, 1024), cp(values), 0, 1, 0));
+		PackedCollection<?> out = c.evaluate();
+
+		Assert.assertEquals(10, out.getShape().length(0));
+		Assert.assertEquals(1, out.getShape().length(1));
+		Assert.assertEquals(1024, out.getShape().length(2));
+		Assert.assertEquals(2, out.getShape().length(3));
+
+		out = out.reshape(10, 1024, 2);
+
+		for (int i = 0; i < 10; i++) {
+			for (int j = 0; j < 1024; j++) {
+				for (int k = 0; k < 2; k++) {
+					double expected = values.valueAt(i, k, j);
+					double actual = out.valueAt(i, j, k);
+					log("ComplexMathTests[" + i + "][" + j + "][" + k + "] " + expected + " vs " + actual);
+					assertEquals(expected, actual);
+				}
+			}
+		}
+	}
+
 	@Test
 	public void complexFromPartsMagnitude() {
 		Evaluable<PackedCollection<?>> m =

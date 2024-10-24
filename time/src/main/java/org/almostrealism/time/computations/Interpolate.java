@@ -85,7 +85,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
-		String res = getArgument(0).ref(0).getSimpleExpression(getLanguage());
+		String res = getArgument(0).referenceRelative(0).getSimpleExpression(getLanguage());
 		String start = "0";
 		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getArgument(3).valueAt(0);
@@ -99,7 +99,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		Consumer<String> code = scope.code();
 
 		if (enableFunctionalPosition) {
-			Expression<Double> time = getArgument(2).ref(0).multiply(rate);
+			Expression<Double> time = getArgument(2).referenceRelative(0).multiply(rate);
 			Expression index = indexForTime.apply(time);
 
 //			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : (" + banki + " == " + cursor + " ? " + idx + " : -1);\n");

@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;

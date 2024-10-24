@@ -135,7 +135,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 			for (int i = 0; i < getMemLength(); i++) {
-				scope.getVariables().add(output.ref(i).assign(expressions.get(i)));
+				scope.getVariables().add(output.referenceRelative(i).assign(expressions.get(i)));
 			}
 
 			return scope;

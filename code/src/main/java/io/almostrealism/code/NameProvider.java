@@ -16,12 +16,13 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
+// TODO  These capabilities should just become part of LanguageOperations
 public interface NameProvider {
 
 	String getFunctionName();
@@ -62,9 +63,4 @@ public interface NameProvider {
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);
-
-	@Deprecated
-	default Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex) {
-		throw new UnsupportedOperationException();
-	}
 }

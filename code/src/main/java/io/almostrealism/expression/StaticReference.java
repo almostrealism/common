@@ -85,9 +85,22 @@ public class StaticReference<T> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() > 0) throw new UnsupportedOperationException();
 		return this;
+	}
+
+	@Override
+	public boolean compare(Expression expression) {
+		if (expression instanceof StaticReference) {
+			if (((StaticReference) expression).expression == null || this.expression == null) {
+				return Objects.equals(expression.getExpression(lang), getExpression(lang));
+			}
+
+			return Objects.equals(((StaticReference) expression).expression, this.expression);
+		}
+
+		return false;
 	}
 
 	@Override

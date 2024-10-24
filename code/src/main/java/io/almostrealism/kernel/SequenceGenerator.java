@@ -25,6 +25,10 @@ public interface SequenceGenerator {
 		return OptionalLong.of(upperBound.getAsLong() + 1);
 	}
 
+	default OptionalLong upperBound() {
+		return upperBound(null);
+	}
+
 	OptionalLong upperBound(KernelStructureContext context);
 
 	Number value(IndexValues indexValues);

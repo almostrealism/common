@@ -39,7 +39,7 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> generate(List<Expression<?>> children) {
+	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		return new Conjunction(children.toArray(new Expression[0]));
 	}
 
@@ -64,5 +64,17 @@ public class Conjunction extends NAryExpression<Boolean> {
 		if (children.isEmpty()) return new BooleanConstant(true);
 		if (children.size() == 1) return (Expression) children.get(0);
 		return new Conjunction(children);
+	}
+
+	public static Expression<Boolean> of(Expression<Boolean>... values) {
+		return of(List.of(values));
+	}
+
+	public static Expression<Boolean> of(List<Expression<?>> values) {
+		if (values.size() == 0)
+			throw new IllegalArgumentException();
+
+		if (values.size() == 1) return (Expression<Boolean>) values.get(0);
+		return new Conjunction(values);
 	}
 }

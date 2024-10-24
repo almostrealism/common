@@ -32,6 +32,7 @@ import java.util.stream.IntStream;
 public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
 	private static long seed;
 
+	private OperationMetadata metadata;
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
@@ -43,16 +44,15 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	}
 
 	public Random(TraversalPolicy shape, boolean normal) {
+		this.metadata = new OperationMetadata("Random", "Generate random values",
+				"Generate random values " + shape.toStringDetail());
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {
-		return new OperationMetadata("Random", "Generate random values",
-				"Generate random values " + shape.toStringDetail());
-	}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	protected void initValues() {
 		if (values == null) {

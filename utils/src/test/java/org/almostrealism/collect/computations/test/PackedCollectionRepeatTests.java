@@ -244,4 +244,25 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 			}
 		}
 	}
+
+	@Test
+	public void upsample() {
+		PackedCollection<?> input = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);
+
+		PackedCollection<?> out = cp(input)
+				.repeat(4, 2)
+				.repeat(3, 2)
+				.evaluate()
+				.reshape(1, 1, 4, 4);
+		out.traverse(3).print();
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				double expected = input.valueAt(0, 0, i / 2, j / 2);
+				double actual = out.valueAt(0, 0, i, j);
+				System.out.println("CollectionRepeatTests[" + i + "][" + j + "] " + expected + " vs " + actual);
+				assertEquals(expected, actual);
+			}
+		}
+	}
 }

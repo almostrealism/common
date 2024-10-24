@@ -264,6 +264,101 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void concat() {
+		int n = 2;
+		int dim = 6;
+		int hd = dim / 2;
+
+		PackedCollection<?> va = new PackedCollection<>(n, hd).fill(pos -> 1.0 + pos[1] + 10 * pos[0]);
+		PackedCollection<?> vb = new PackedCollection<>(n, hd).fill(pos -> -(1.0 + pos[1] + 10 * pos[0]));
+
+		CollectionProducer<PackedCollection<?>> a = pad(shape(n, dim), cp(va), 0, 0);
+		CollectionProducer<PackedCollection<?>> b = pad(shape(n, dim), cp(vb), 0, hd);
+		CollectionProducer<PackedCollection<?>> concat = add(a, b);
+		PackedCollection<?> output = concat.get().evaluate();
+		output.traverse(1).print();
+
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < dim; j++) {
+				double expected = j < hd ?
+						va.valueAt(i, j) :
+						vb.valueAt(i, j - hd);
+				assertEquals(expected, output.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void concatProduct() {
+		int n = 2;
+		int dim = 6;
+		int hd = dim / 2;
+
+		PackedCollection<?> va = new PackedCollection<>(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection<?> alt = pack(-1.0, 1.0).reshape(n, 1);
+
+		CollectionProducer<PackedCollection<?>> product =
+				multiply(
+						cp(alt).repeat(1, hd).reshape(n, hd),
+						cp(va).repeat(n).reshape(n, hd));
+
+		CollectionProducer<PackedCollection<?>> a = pad(shape(n, dim),
+				product.multiply(c(10)), 0, 0);
+		CollectionProducer<PackedCollection<?>> b = pad(shape(n, dim),
+				product.multiply(c(100)), 0, hd);
+
+		CollectionProducer<PackedCollection<?>> concat = add(a, b);
+		PackedCollection<?> output = concat.get().evaluate();
+		output.traverse(1).print();
+
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < dim; j++) {
+				double expected = j < hd ? 10 * (1 + j) : 100 * (1 + j - hd);
+				expected *= alt.toDouble(i);
+				assertEquals(expected, output.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
+	public void concatSinCos() {
+		int n = 2;
+		int dim = 6;
+		int hd = dim / 2;
+
+		PackedCollection<?> va = new PackedCollection<>(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection<?> alt = pack(-1.0, 1.0).reshape(n, 1);
+
+		CollectionProducer<PackedCollection<?>> product =
+				multiply(
+						cp(alt).repeat(1, hd).reshape(n, hd),
+						cp(va).repeat(n).reshape(n, hd));
+
+		CollectionProducer<PackedCollection<?>> concat = concat(shape(n, dim), sin(product), cos(product));
+		PackedCollection<?> output = concat.get().evaluate();
+		output.traverse(1).print();
+
+		for (int i = 0; i < n; i++) {
+			double altVal = alt.valueAt(i, 0);
+			for (int j = 0; j < dim; j++) {
+				double expected;
+
+				if (j < hd) {
+					double vaVal = va.valueAt(j);
+					double p = altVal * vaVal;
+					expected = Math.sin(p);
+				} else {
+					double vaVal = va.valueAt(j - hd);
+					double p = altVal * vaVal;
+					expected = Math.cos(p);
+				}
+
+				assertEquals(expected, output.valueAt(i, j));
+			}
+		}
+	}
+
+	@Test
 	public void expressionComputation() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				Sum.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));

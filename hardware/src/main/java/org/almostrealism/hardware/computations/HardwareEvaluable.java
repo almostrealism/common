@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -24,7 +26,8 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
-import java.util.function.IntFunction;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -41,7 +44,7 @@ import java.util.function.UnaryOperator;
  *
  * @author  Michael Murray
  */
-public class HardwareEvaluable<T> implements Evaluable<T>,
+public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T>,
 		KernelizedEvaluable<T> // TODO  Remove this
 {
 	private Supplier<Evaluable<T>> ev;
@@ -129,5 +132,16 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 	@Override
 	public int getArgsCount() {
 		return ((KernelizedEvaluable) getKernel().getValue()).getArgsCount();
+	}
+
+	@Override
+	public Collection<Argument<? extends T>> getChildren() {
+		Evaluable ev = getKernel().getValue();
+
+		if (ev instanceof ArgumentList) {
+			return ((ArgumentList) ev).getChildren();
+		}
+
+		return Collections.emptyList();
 	}
 }

@@ -18,13 +18,13 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-public interface MatrixFeatures extends CollectionFeatures {
+public interface MatrixFeatures extends AlgebraFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
 		return identity(shape(size, size));
 	}
@@ -34,10 +34,9 @@ public interface MatrixFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new TraversableExpressionComputation<>("identity", shape.traverseEach(),
+		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
 				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
 	}
-
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
@@ -48,50 +47,66 @@ public interface MatrixFeatures extends CollectionFeatures {
 		CollectionProducer<PackedCollection<?>> a;
 		CollectionProducer<PackedCollection<?>> b;
 
-		int n = shape.length(0);
+		int m = shape.length(0);
+		int n = shape.length(1);
 
 		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
-			// System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+			if (WeightedSumExpression.enableCollectionExpression) {
+				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
+				int p = weightShape.length(1);
 
-			int m = shape.length(1);
+				return weightedSum("matmul",
+						shape(m, p).withRate(1, n, p),
+						shape(1, p),
+						shape(1, n), shape(n, 1),
+						matrix, reshape(weightShape, vector));
+			}
+
+			// warn("Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+
 			int p = vshape.length(1);
 
 			a = c(matrix).repeat(p);
 			b = c(vector).enumerate(1, 1)
-					.reshape(p, m)
+					.reshape(p, n)
 					.traverse(1)
-					.repeat(n)
-					.reshape(p, n, m)
+					.repeat(m)
+					.reshape(p, m, n)
 					.traverse(1);
 			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
 			return (CollectionProducer) product
-					.reshape(p, n, m).sum(2)
+					.reshape(p, m, n).sum(2)
 					.traverse(0)
 					.enumerate(1, 1)
-					.reshape(n, p);
+					.reshape(m, p);
 		} else {
 			a = c(matrix);
-			b = repeat(n, vector);
+			b = repeat(m, vector);
 		}
 
 		return multiply(traverseEach(a), traverseEach(b)).traverse(1).sum();
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducer<T> mproduct(Producer<T> a, Producer<T> b) {
-		int n = shape(a).length(0);
-		int m = shape(a).length(1);
+		if (WeightedSumExpression.enableCollectionExpression) {
+			return matmul(traverse(0, a), traverse(0, b));
+		}
+		
+		int m = shape(a).length(0);
+		int n = shape(a).length(1);
 		int p = shape(b).length(1);
 
 		return (CollectionProducer) c(b).enumerate(1, 1)
-				.reshape(p, m)
+				.reshape(p, n)
 				.traverse(1)
-				.repeat(n)
-				.reshape(p, n, m)
+				.repeat(m)
+				.reshape(p, m, n)
 				.traverse(1)
 				.multiply(c(a).repeat(p))
-				.reshape(p, n, m).sum(2)
+				.reshape(p, m, n).sum(2)
 				.enumerate(1, 1)
-				.reshape(n, p);
+				.reshape(m, p);
 	}
 
 	static MatrixFeatures getInstance() {

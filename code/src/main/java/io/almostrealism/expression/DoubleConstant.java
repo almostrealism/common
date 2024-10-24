@@ -77,4 +77,13 @@ public class DoubleConstant extends Constant<Double> {
 
 		return super.minus();
 	}
+
+	@Override
+	public boolean compare(Expression e) {
+		if (!(e instanceof DoubleConstant)) {
+			return false;
+		}
+
+		return Double.compare(((DoubleConstant) e).value, value) == 0;
+	}
 }

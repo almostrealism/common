@@ -16,6 +16,12 @@
 
 package io.almostrealism.relation;
 
+/**
+ * A type is considered {@link Computable} if it represents an activity
+ * requiring the use of computing resources. This stands in contrast to,
+ * for example, types which are simply operated on (or generated) by
+ * computation.
+ */
 public interface Computable {
 	default boolean isConstant() {
 		return false;

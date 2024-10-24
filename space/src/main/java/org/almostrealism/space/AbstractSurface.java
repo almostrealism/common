@@ -44,7 +44,7 @@ import org.almostrealism.geometry.TransformMatrix;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous, HardwareFeatures {
+public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;

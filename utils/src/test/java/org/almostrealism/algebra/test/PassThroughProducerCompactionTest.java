@@ -25,7 +25,7 @@ import org.almostrealism.hardware.Input;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PassThroughProducerCompactionTest implements HardwareFeatures, CodeFeatures {
+public class PassThroughProducerCompactionTest implements CodeFeatures {
 	protected ExpressionComputation<Scalar> sum() {
 		return scalarAdd(
 				Input.value(Scalar.shape(), 0),

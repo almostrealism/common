@@ -18,24 +18,16 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.code.ExpressionList;
-import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Quotient;
-import io.almostrealism.expression.Sum;
+import org.almostrealism.io.Describable;
 
-import java.util.List;
 import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.function.LongFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-// TODO  Shouldn't this implement Shape?
-public interface CollectionExpression extends TraversableExpression<Double> {
+public interface CollectionExpression<T> extends TraversableExpression<Double>, Shape<T>, Describable {
 	boolean enableArrayTraversal = false;
-
-	TraversalPolicy getShape();
 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
@@ -67,11 +59,29 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * If this {@link CollectionExpression} represents a subset of a larger set of values,
+	 * this method can be used to provide the {@link TraversalPolicy} for the larger
+	 * collection which may be useful in choosing the optimal behavior for the
+	 * {@link CollectionExpression}.
+	 */
+	default void setTotalShape(TraversalPolicy shape) { }
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return Shape.super.containsIndex(index);
+	}
+
+	@Override
+	default String describe() {
+		return getShape().toStringDetail();
+	}
+
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
 	}
 
-	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {
+	static TraversableExpression traverse(Object o, LongFunction<Expression<?>> offset) {
 		TraversableExpression exp = TraversableExpression.traverse(o);
 		if (exp == null) {
 			if (enableArrayTraversal && o instanceof Array) {

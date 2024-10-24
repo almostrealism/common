@@ -17,11 +17,18 @@
 package io.almostrealism.lang;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
+import io.almostrealism.expression.Cast;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
 
+import java.util.function.Function;
+
 public interface LanguageOperations {
+
+	Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
+
 	Precision getPrecision();
 
 	String pi();

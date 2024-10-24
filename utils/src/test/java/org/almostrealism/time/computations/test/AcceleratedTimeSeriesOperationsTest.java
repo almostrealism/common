@@ -33,7 +33,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, HardwareFeatures {
+public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
 	private Scalar value;
@@ -57,8 +57,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 	@Test
 	public void purgeTest() {
-		Hardware.enableVerbose = true;
-
 //		dc(() -> {
 			for (int i = 0; i < 2; i++) {
 //				cc(() -> {

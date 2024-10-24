@@ -88,8 +88,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 
 	@Override
 	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
-		Expression<?> flat = super.simplify(context, depth);
-		if (!Objects.equals(flat.getClass(), getClass())) return (Expression<Boolean>) flat;
+		Expression<Boolean> flat = super.simplify(context, depth);
+		if (!Objects.equals(flat.getClass(), getClass())) return flat;
 
 		Expression<?> left = flat.getChildren().get(0);
 		Expression<?> right = flat.getChildren().get(1);
@@ -108,6 +108,6 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 			return context.getSeriesProvider().getSeries(flat);
 		}
 
-		return (Expression<Boolean>) flat;
+		return flat;
 	}
 }

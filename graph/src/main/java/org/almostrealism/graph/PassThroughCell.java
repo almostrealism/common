@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
@@ -31,5 +32,12 @@ public class PassThroughCell<T> implements Cell<T> {
 	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
 
 	@Override
-	public void setReceptor(Receptor<T> r) { this.r = r; }
+	public void setReceptor(Receptor<T> r) {
+		if (cellWarnings && this.r != null) {
+			CollectionFeatures.console.features(PassThroughCell.class)
+					.warn("Replacing receptor");
+		}
+
+		this.r = r;
+	}
 }

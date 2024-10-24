@@ -99,7 +99,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression<Double> value = getValueAt(index);
 
 			if (value == null && mapped instanceof OperationAdapter) {
-				OperationAdapter<?> op = (OperationAdapter) mapped;
+				OperationAdapter<?, ?> op = (OperationAdapter) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
 				value = v.referenceRelative(e(i));
@@ -107,7 +107,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			scope.getVariables().add(output.ref(i).assign(value));
+			scope.getVariables().add(output.referenceRelative(i).assign(value));
 		}
 
 		return scope;
@@ -234,7 +234,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.Hardware;

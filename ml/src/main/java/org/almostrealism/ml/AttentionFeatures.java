@@ -16,7 +16,7 @@
 
 package org.almostrealism.ml;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -28,7 +28,6 @@ import org.almostrealism.model.SequentialBlock;
 public interface AttentionFeatures extends RotationFeatures {
 
 	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
-										Producer<PackedCollection<?>> position,
 										ComputeRequirement... requirements) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
 
@@ -55,7 +54,6 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values,
-										  Producer<PackedCollection<?>> position,
 										  ComputeRequirement... requirements) {
 		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
 
@@ -125,9 +123,9 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(reshape(shape(dim), headShapeComplex));
 		attention.add(ropeRotation(headShapeComplex, freqCis, position));
 		attention.add(reshape(headShapeComplex, headShape));
-		attention.add(attentionKeys(headShape, p(keyCache), position));
-		attention.add(softmax2d(attentionShape, true));
-		attention.add(attentionValues(attentionShape, p(valueCache), position));
+		attention.add(attentionKeys(headShape, p(keyCache)));
+		attention.add(softmax(attentionShape, true));
+		attention.add(attentionValues(attentionShape, p(valueCache)));
 		attention.add(dense(wo));
 		/* ---- **/
 

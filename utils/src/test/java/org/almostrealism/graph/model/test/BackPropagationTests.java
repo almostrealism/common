@@ -21,17 +21,20 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.IntStream;
 
-public class PropagationTests implements TestFeatures {
+public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void denseBackwards() {
@@ -44,8 +47,8 @@ public class PropagationTests implements TestFeatures {
 		Model model = new Model(shape(size), 1e-1);
 		CellularLayer dense = dense(size, nodes);
 		CellularLayer softmax = softmax(nodes);
-		model.addLayer(dense);
-		model.addLayer(softmax);
+		model.add(dense);
+		model.add(softmax);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 
@@ -124,7 +127,7 @@ public class PropagationTests implements TestFeatures {
 
 		Model model = new Model(inputShape, 1e-1);
 		CellularLayer pool = pool2d(inputShape, size);
-		model.addLayer(pool);
+		model.add(pool);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape);
 		input.fill(pos -> (double) (int) (100 * Math.random()));
@@ -171,9 +174,9 @@ public class PropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize);
+		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
 
-		model.addLayer(conv);
+		model.add(conv);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -185,7 +188,7 @@ public class PropagationTests implements TestFeatures {
 		PackedCollection<?> originalFilter = new PackedCollection<>(filterShape);
 		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
 
-		TraversalPolicy gradientShape = model.getShape();
+		TraversalPolicy gradientShape = model.getOutputShape();
 		PackedCollection<?> gradient = new PackedCollection<>(gradientShape);
 		gradient.fill(pos -> Math.random());
 		runner.backward(gradient);
@@ -212,6 +215,173 @@ public class PropagationTests implements TestFeatures {
 					Assert.assertEquals(expected, actual, 1e-6);
 				}
 			}
+		}
+	}
+
+	@Test
+	public void compositionBackwards() {
+		SequentialBlock block = new SequentialBlock(shape(3));
+
+		SequentialBlock alt = block.branch();
+		alt.add(layer("scale x2", in -> multiply(in, c(2))));
+
+		block.add(layer("scale x3", in -> multiply(in, c(3))));
+		block.add(compose("multiply", shape(3), alt, this::multiply));
+
+		PackedCollection<?> input = pack(2, 3, 4);
+		PackedCollection<?> gradient = pack(5, 4, 1);
+
+		CompiledModel model = new Model(shape(3), 1e-1)
+								.add(block)
+								.compile(true, true);
+		model.forward(input);
+		gradient = model.backward(gradient);
+		gradient.print();
+		assertEquals(120.0, gradient.toDouble(0));
+		assertEquals(144.0, gradient.toDouble(1));
+		assertEquals(48.0, gradient.toDouble(2));
+	}
+
+	@Test
+	public void splitBackwardsRepeat() {
+		SequentialBlock block = new SequentialBlock(shape(3, 2));
+
+		List<Block> branches =  block.split(shape(1, 2));
+		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
+		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+
+		block.add(compose("replace", b, (x, y) ->
+				repeat(3, y).reshape(3, 2)));
+
+		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+										.reshape(3, 2);
+		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
+										.reshape(3, 2);
+
+		CompiledModel model = new Model(shape(3, 2))
+				.add(block)
+				.compile(true, true);
+		model.forward(input).print();
+
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			if (i == 2) {
+				double total = gradient.toDouble(0) +
+						gradient.toDouble(2) +
+						gradient.toDouble(4);
+				assertEquals(3 * total, result.toDouble(i));
+			} else if (i == 3) {
+				double total = gradient.toDouble(1) +
+						gradient.toDouble(3) +
+						gradient.toDouble(5);
+				assertEquals(3 * total, result.toDouble(i));
+			} else {
+				assertEquals(0.0, result.toDouble(i));
+			}
+		}
+	}
+
+	@Test
+	public void splitBackwardsAdd() {
+		SequentialBlock block = new SequentialBlock(shape(3, 2));
+
+		List<Block> branches =  block.split(shape(1, 2));
+		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
+		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+
+		block.add(compose("add", b, (x, y) -> add(x, y)));
+
+		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+				.reshape(3, 2);
+		PackedCollection<?> gradient = pack(5, 4, 1.5, 3, 2, -4)
+				.reshape(3, 2);
+
+		CompiledModel model = new Model(shape(3, 2))
+				.add(block)
+				.compile(true, true);
+		model.forward(input).print();
+
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			double direct = gradient.toDouble(i);
+
+			if (i == 2) {
+				double total = gradient.toDouble(0) +
+						gradient.toDouble(2) +
+						gradient.toDouble(4);
+				assertEquals(direct + 3 * total, result.toDouble(i));
+			} else if (i == 3) {
+				double total = gradient.toDouble(1) +
+						gradient.toDouble(3) +
+						gradient.toDouble(5);
+				assertEquals(direct + 3 * total, result.toDouble(i));
+			} else {
+				assertEquals(direct, result.toDouble(i));
+			}
+		}
+	}
+
+	@Test
+	public void splitBackwardsChildIndex() {
+		SequentialBlock block = new SequentialBlock(shape(3, 2));
+
+		List<Block> branches =  block.split(shape(1, 2), 0);
+		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
+		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+
+		block.add(compose("add", b, (x, y) -> add(x, y)));
+
+		PackedCollection<?> input = pack(2, 3, 4, 5, 6, 7)
+				.reshape(3, 2);
+		PackedCollection<?> gradient = pack(5, -4)
+				.reshape(1, 2);
+
+		CompiledModel model = new Model(shape(3, 2))
+				.add(block)
+				.compile(true, true);
+		PackedCollection<?> out = model.forward(input);
+		out.print();
+
+		for (int i = 0; i < 2; i++) {
+			double total = 0.0;
+
+			for (int j = 0; j < 6; j++) {
+				double factor = j % 2 == i ? 1.0 : 0.0;
+
+				if (j == 0 || j == 1) {
+					factor *= 2.0;
+				} else if (j == 2 || j == 3) {
+					factor *= 3.0;
+				} else {
+					factor = 0.0;
+				}
+
+				total += factor * input.toDouble(j);
+			}
+
+			assertEquals(total, out.toDouble(i));
+		}
+
+		PackedCollection<?> result = model.backward(gradient);
+		result.print();
+
+		for (int i = 0; i < result.getMemLength(); i++) {
+			double factor = 0.0;
+
+			if (i == 0 || i == 1) {
+				factor = 2.0;
+			} else if (i == 2 || i == 3) {
+				factor = 3.0;
+			}
+
+			assertEquals(factor * gradient.toDouble(i % 2), result.toDouble(i));
 		}
 	}
 }

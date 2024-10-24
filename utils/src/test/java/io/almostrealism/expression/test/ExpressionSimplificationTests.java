@@ -17,8 +17,10 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
@@ -40,6 +42,19 @@ import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
 	private LanguageOperations lang = new LanguageOperationsStub();
+
+	@Test
+	public void notEqual() {
+		Assert.assertFalse(new BooleanConstant(true).equals(new BooleanConstant(false)));
+	}
+
+	@Test
+	public void modLimit() {
+		Assert.assertEquals(25, new IntegerConstant(25).upperBound(null).orElse(-1));
+		Assert.assertEquals(100, kernel().withLimit(100).getLimit().orElse(-1));
+		Assert.assertEquals(50, kernel().withLimit(100).imod(50).getLimit().orElse(-1));
+		Assert.assertEquals(10, kernel().withLimit(100).divide(10).getLimit().orElse(-1));
+	}
 
 	@Test
 	public void productToInt() {
@@ -172,6 +187,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelModQuotient1() {
+		KernelIndex kernel = kernel().withLimit(2100);
+
+		// (((((kernel0 / 210) * 10) % 100) / 10) * 10) + 7
+		Expression e = kernel
+				.divide(210).multiply(10)
+				.imod(100).divide(10)
+				.multiply(10).add(7);
+		Assert.assertEquals("((kernel0 / 210) * 10) + 7", e.getSimpleExpression(lang));
+	}
+
+	@Test
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
@@ -189,6 +216,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		e = e.getSimplified();
 		log(e.getExpression(lang));
 		Assert.assertEquals("kernel0 % 16", e.getExpression(lang));
+	}
+
+	@Test
+	public void kernelModProduct3() {
+		// (((kernel0 * 64) + _52_i) % 64) * 72
+
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+		Expression e = kernel.multiply(64).add(child).imod(64).multiply(72);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
 	}
 
 	@Test
@@ -379,6 +418,17 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelMultiSum1() {
+		Expression kernel = kernel().withLimit(2100);
+
+		// kernel0 + ((kernel0 / 210) * -210) + ((kernel0 / 210) * 210)
+		Expression e = Sum.of(kernel,
+				kernel.divide(210).multiply(-210),
+				kernel.divide(210).multiply(210));
+		Assert.assertEquals("kernel0", e.getExpression(lang));
+	}
+
+	@Test
 	public void kernelConditional1() {
 		// ((0 == (kernel0 / 3)) ? 1 : 0)
 		Expression e = e(0).eq(kernel().divide(3)).conditional(e(1), e(0));
@@ -442,6 +492,50 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelSumMod5() {
+		// (((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((kernel0 * 64) + _52_i) % 64) * 72)) % 4608
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+
+		Expression e = kernel.multiply(64).add(child).divide(64).multiply(4608)
+				.add(kernel.multiply(64).add(child).imod(64).multiply(72)).imod(4608);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
+	}
+
+	@Test
+	public void kernelSumMod6() {
+		//((((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((((kernel0 * 64) + _52_i) / 64) * 4608) +
+		// ((((kernel0 * 64) + _52_i) % 64) * 72)) % 4608)) % 4608) * 4609
+
+		KernelIndex kernel = kernel().withLimit(288);
+		DefaultIndex child = new DefaultIndex("_52_i", 64);
+		Expression e = kernel.multiply(64).add(child).divide(64).multiply(4608)
+				.add(kernel.multiply(64).add(child).divide(64).multiply(4608)
+						.add(kernel.multiply(64).add(child).imod(64)
+								.multiply(72)).imod(4608)).imod(4608).multiply(4609);
+
+		log(e.getExpression(lang));
+		Assert.assertFalse(e.isPossiblyNegative());
+	}
+
+	@Test
+	public void kernelSumMod7() {
+		KernelIndex kernel = kernel().withLimit(441000);
+
+		// ((((kernel0 % 2100) * 2100) % 4410000) / 2100) * -2100
+		Expression e =
+				kernel.imod(2100).multiply(2100)
+						.imod(4410000).divide(2100)
+						.multiply(-2100);
+
+		Assert.assertEquals("(kernel0 % 2100) * -2100", e.getSimpleExpression(lang));
+	}
+
+	@Test
 	public void kernelConditionalSum1() {
 //		int a = ((0 == (kernel0 / 3)) ? 1 : 0);
 //		int b = ((1 == (kernel0 / 3)) ? 1 : 0);
@@ -486,7 +580,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 						.divide(5).multiply(5)
 						.imod(20);
 		System.out.println(e.getExpression(lang));
-		Assert.assertEquals("(((kernel0 % 20) / 5) * 5) % 20", e.getExpression(lang));
+		// Assert.assertEquals("(((kernel0 % 20) / 5) * 5) % 20", e.getExpression(lang));
+		Assert.assertEquals("((kernel0 % 20) / 5) * 5", e.getExpression(lang));
 	}
 
 	protected void compareSimplifiedSequence(Expression e) {
@@ -501,7 +596,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		IndexSequence s = b.sequence();
 		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
-		if (seqA.length < 1000) {
+		if (seqA.length < 100) {
 			System.out.println(Arrays.toString(seqA));
 			System.out.println(Arrays.toString(seqB));
 		}

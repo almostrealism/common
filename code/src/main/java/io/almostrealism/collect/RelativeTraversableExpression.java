@@ -21,18 +21,24 @@ import io.almostrealism.kernel.Index;
 
 import java.util.Set;
 import java.util.function.IntFunction;
+import java.util.function.LongFunction;
+import java.util.function.Supplier;
 
 public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
 	private final TraversalPolicy shape;
 	private final TraversableExpression<T> expression;
-	private final Expression<?> offset;
+	private final Supplier<Expression<?>> offset;
 
 	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression,
-										 IntFunction<Expression> offset) {
-		this(shape, expression, offset.apply(shape.getSize()));
+										 LongFunction<Expression<?>> offset) {
+		this(shape, expression, () -> offset.apply(shape.getSizeLong()));
 	}
 
 	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression, Expression offset) {
+		this(shape, expression, () -> offset);
+	}
+
+	protected RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression, Supplier<Expression<?>> offset) {
 		this.shape = shape;
 		this.expression = expression;
 		this.offset = offset;
@@ -51,6 +57,11 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 	@Override
 	public T traverse(int axis) {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return Shape.super.containsIndex(index);
 	}
 
 	public TraversableExpression<T> getExpression() {
@@ -72,7 +83,7 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 		if (expression.isRelative()) {
 			return expression.getValueRelative(index);
 		} else {
-			return expression.getValueAt(offset.add(index));
+			return expression.getValueAt(offset.get().add(index));
 		}
 	}
 
@@ -86,7 +97,7 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 		if (expression.isRelative()) {
 			return expression.uniqueNonZeroIndexRelative(localIndex, targetIndex);
 		} else {
-			Set<Index> indices = offset.getIndices();
+			Set<Index> indices = offset.get().getIndices();
 
 			if (indices.isEmpty()) {
 				return null;
@@ -94,7 +105,7 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 				throw new UnsupportedOperationException();
 			}
 
-			return expression.uniqueNonZeroIndex(indices.iterator().next(), localIndex, offset.add(targetIndex));
+			return expression.uniqueNonZeroIndex(indices.iterator().next(), localIndex, offset.get().add(targetIndex));
 		}
 	}
 

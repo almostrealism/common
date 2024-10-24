@@ -22,6 +22,7 @@ import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
@@ -33,20 +34,50 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
+public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
+	double ROOT_2_BY_PI = Math.sqrt(2 / PI);
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
 		return compute("sin",
 				shape -> args -> sin(shape, args[1]),
 				null, (Producer) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
 		return compute("cos",
 				shape -> args -> cos(shape, args[1]),
 				null, (Producer) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		// TODO  Add shortcircuit
+		return compute("tan",
+				shape -> args -> tan(shape, args[1]),
+				null, (Producer) input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		return compute("tanh",
+				shape -> args -> tanh(shape, args[1]),
+				null, (Producer) input);
+	}
+
+
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+														 Producer<PackedCollection<?>> wavelength,
+														 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
+	}
+
+	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
+														 Producer<PackedCollection<?>> wavelength,
+														 Producer<PackedCollection<?>> phase,
+														 Producer<PackedCollection<?>> amp) {
+		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
 	@Deprecated
@@ -63,16 +94,16 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-														 Producer<PackedCollection<?>> wavelength,
-														 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection<?>> relativeSinw(Producer<PackedCollection<?>> input,
+																 Producer<PackedCollection<?>> wavelength,
+																 Producer<PackedCollection<?>> amp) {
 		return relativeSin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
-	default CollectionProducer<PackedCollection<?>> sinw(Producer<PackedCollection<?>> input,
-																							 Producer<PackedCollection<?>> wavelength,
-																							 Producer<PackedCollection<?>> phase,
-																							 Producer<PackedCollection<?>> amp) {
+	default CollectionProducer<PackedCollection<?>> relativeSinw(Producer<PackedCollection<?>> input,
+																 Producer<PackedCollection<?>> wavelength,
+																 Producer<PackedCollection<?>> phase,
+																 Producer<PackedCollection<?>> amp) {
 		return relativeSin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 

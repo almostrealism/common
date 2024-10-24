@@ -16,9 +16,19 @@
 
 package io.almostrealism.collect;
 
-public abstract class CollectionExpressionBase implements CollectionExpression {
+public abstract class CollectionExpressionBase implements CollectionExpression<CollectionExpressionBase> {
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		return new DeltaCollectionExpression(this, target);
+	}
+
+	@Override
+	public CollectionExpressionBase reshape(TraversalPolicy shape) {
+		return new UniformCollectionExpression(shape, e -> e[0], this);
+	}
+
+	@Override
+	public CollectionExpressionBase traverse(int axis) {
+		return new UniformCollectionExpression(getShape().traverse(axis), e -> e[0], this);
 	}
 }

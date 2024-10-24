@@ -42,11 +42,15 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		super(a.getType(), a, b);
 		this.fp = fp;
 
+		if (fp && !a.isFP() && !b.isFP()) {
+			throw new UnsupportedOperationException();
+		}
+
 		if (!fp && (a.isFP() || b.isFP()))
 			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
-			System.out.println("WARN: Module zero encountered while creating expression");
+			warn("Module zero encountered while creating expression");
 		}
 	}
 
@@ -107,6 +111,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
+		if (!isFP()) {
+			OptionalLong u = getChildren().get(1).longValue();
+
+			if (u.isPresent()) {
+				return OptionalLong.of(u.getAsLong() - 1);
+			}
+		}
+
 		return getChildren().get(1).upperBound(context);
 	}
 
@@ -122,7 +134,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}
@@ -226,6 +238,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		} else if (enableDistributiveSum && input instanceof Sum && !input.isFP()) {
 			input = Sum.of(input.getChildren().stream().map(e -> e.imod(m)).toArray(Expression[]::new));
+		}
+
+		OptionalLong u = input.upperBound();
+		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
+			return input;
 		}
 
 		return new Mod(input, mod, fp);

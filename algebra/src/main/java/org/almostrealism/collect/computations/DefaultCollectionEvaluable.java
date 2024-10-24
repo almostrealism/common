@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionEvaluable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -29,7 +30,7 @@ import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
 public class DefaultCollectionEvaluable<T extends PackedCollection>
-		extends AcceleratedComputationEvaluable<T> implements CollectionEvaluable<T> {
+		extends AcceleratedComputationEvaluable<T> implements Evaluable<T> {
 	public static boolean enableDestinationFactory = true;
 
 	private TraversalPolicy shape;
