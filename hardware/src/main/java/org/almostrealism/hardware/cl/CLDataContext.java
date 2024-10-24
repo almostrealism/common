@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;

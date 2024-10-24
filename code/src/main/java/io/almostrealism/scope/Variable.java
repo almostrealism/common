@@ -16,12 +16,11 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;

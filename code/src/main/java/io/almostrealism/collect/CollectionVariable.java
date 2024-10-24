@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;

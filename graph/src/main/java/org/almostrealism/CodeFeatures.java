@@ -18,7 +18,7 @@ package org.almostrealism;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -38,7 +38,6 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
@@ -57,10 +56,8 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.TemporalScalar;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;

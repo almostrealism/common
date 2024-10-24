@@ -20,7 +20,7 @@ import io.almostrealism.code.Array;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;

@@ -19,7 +19,7 @@ package io.almostrealism.scope;
 import io.almostrealism.code.Array;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
@@ -221,6 +221,11 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 	public boolean isEmbedded() { return embedded; }
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
+
+	public boolean includesComputeRequirement(ComputeRequirement requirement) {
+		if (requirements == null) return false;
+		return requirements.contains(requirement);
+	}
 
 	@Override
 	public Collection<Scope<T>> neighbors(Scope<T> node) {
@@ -443,7 +448,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 						return Collections.singletonList(arg);
 					}
 
-					Scope s = computation.getScope(context);
+					Scope<?> s = computation.getScope(context);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);
 					}
@@ -457,6 +462,14 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					// If the Scope contains this Scope, it should not be
 					// recursively made into a requirement of itself
 					if (s.contains(this)) {
+						return Collections.singletonList(arg);
+					}
+
+					// If the Scope has ComputeRequirements that are not
+					// included in this Scope, it should not be included
+					// as it may need to target a different computing device
+					if (s.getComputeRequirements() != null &&
+							s.getComputeRequirements().stream().anyMatch(r -> !includesComputeRequirement(r))) {
 						return Collections.singletonList(arg);
 					}
 
@@ -515,7 +528,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @return  True if the {@link Scope} was inlined, false otherwise.
 	 */
-	public boolean tryAbsorb(Scope<T> s) {
+	public boolean tryAbsorb(Scope<?> s) {
 		if (!enableInlining) return false;
 
 		if (!s.isInlineable()) return false;

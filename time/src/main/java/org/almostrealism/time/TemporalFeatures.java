@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;

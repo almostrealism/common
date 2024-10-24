@@ -19,7 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;

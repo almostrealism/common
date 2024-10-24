@@ -16,7 +16,7 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -24,10 +24,8 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;

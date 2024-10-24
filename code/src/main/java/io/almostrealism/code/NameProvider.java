@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.ArrayVariable;

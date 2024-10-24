@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.compute;
 
 public enum PhysicalScope {
 	GLOBAL, LOCAL;

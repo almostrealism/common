@@ -19,7 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;

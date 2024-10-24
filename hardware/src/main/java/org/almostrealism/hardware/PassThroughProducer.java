@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
@@ -32,7 +31,6 @@ import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 

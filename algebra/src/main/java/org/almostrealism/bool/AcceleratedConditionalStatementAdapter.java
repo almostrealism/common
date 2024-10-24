@@ -20,7 +20,7 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;

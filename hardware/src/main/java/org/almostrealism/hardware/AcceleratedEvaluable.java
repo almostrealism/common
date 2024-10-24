@@ -16,14 +16,13 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLInstructionsManager;

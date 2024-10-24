@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Process;
 import org.almostrealism.io.Describable;
 

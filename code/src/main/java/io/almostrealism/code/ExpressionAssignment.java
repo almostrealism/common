@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;

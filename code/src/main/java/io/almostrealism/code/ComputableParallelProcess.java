@@ -16,16 +16,47 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputableProcessContext;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.ParallelProcessContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import org.almostrealism.io.Console;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends ParallelProcess<P, T>, OperationInfo {
+public interface ComputableParallelProcess<P extends Process<?, ?>, T> extends ParallelProcess<P, T>, OperationInfo {
 	boolean enableOptimizationLog = false;
+
+	@Override
+	default boolean isIsolationTarget(ProcessContext context) {
+		if (getComputeRequirements() == null || getComputeRequirements().isEmpty())
+			return ParallelProcess.super.isIsolationTarget(context);
+
+		List<ComputeRequirement> requirements = new ArrayList<>();
+
+		if (context instanceof ComputableProcessContext) {
+			ComputableProcessContext ctx = (ComputableProcessContext) context;
+			if (ctx.getRequirements() != null)
+				requirements.addAll(ctx.getRequirements());
+		}
+
+		// If this process has requirements that are not part of the
+		// existing context, then it must be isolated
+		if (getComputeRequirements().stream().anyMatch(r -> !requirements.contains(r))) {
+			return true;
+		}
+
+		return ParallelProcess.super.isIsolationTarget(context);
+	}
+
+	@Override
+	default ParallelProcessContext createContext(ProcessContext ctx) {
+		return ComputableProcessContext.of(ctx, this);
+	}
 
 	@Override
 	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
@@ -40,14 +71,14 @@ public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends Par
 		} : null;
 
 		if (info != null) {
-			Console.root.features(ParallelProcessWithInfo.class)
+			Console.root.features(ComputableParallelProcess.class)
 					.log("start optimize " + info.get());
 		}
 
 		Process<P, T> result = ParallelProcess.super.optimize(ctx, process);
 
 		if (info != null) {
-			Console.root.features(ParallelProcessWithInfo.class)
+			Console.root.features(ComputableParallelProcess.class)
 					.log("end optimize " + info.get());
 		}
 
@@ -76,7 +107,7 @@ public interface ParallelProcessWithInfo<P extends Process<?, ?>, T> extends Par
 	}
 
 	/**
-	 * Delegates to {@link ParallelProcessWithInfo#generate(List)} while also ensuring that
+	 * Delegates to {@link ComputableParallelProcess#generate(List)} while also ensuring that
 	 * the operation {@link OperationMetadata#getId() id} is preserved.
 	 *
 	 * @see  OperationMetadata#getId()

@@ -16,10 +16,10 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.Argument;
@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Process<?, ?>>
-					implements Computation<O>, ParallelProcessWithInfo<Process<?, ?>, T> {
+					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T> {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
@@ -162,7 +162,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	}
 
 	/**
-	 * Extends {@link ParallelProcessWithInfo#optimize(ProcessContext)} to ensure that
+	 * Extends {@link ComputableParallelProcess#optimize(ProcessContext)} to ensure that
 	 * the {@link ComputeRequirement}s are preserved.
 	 *
 	 * @see  ComputationBase#getComputeRequirements()
@@ -170,20 +170,20 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	@Override
 	public ComputationBase<I, O, T> optimize(ProcessContext ctx) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ParallelProcessWithInfo.super.optimize(ctx);
+				ComputableParallelProcess.super.optimize(ctx);
 		replacement.setComputeRequirements(getComputeRequirements());
 		return replacement;
 	}
 
 	/**
-	 * Extends to {@link ParallelProcessWithInfo#generateReplacement(List)} to ensure
+	 * Extends to {@link ComputableParallelProcess#generateReplacement(List)} to ensure
 	 * that the {@link ComputeRequirement}s are preserved.
 	 *
 	 * @see  ComputationBase#getComputeRequirements()
 	 */
 	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ParallelProcessWithInfo.super.generateReplacement(inputs);
+				ComputableParallelProcess.super.generateReplacement(inputs);
 		replacement.setComputeRequirements(getComputeRequirements());
 		return replacement;
 	}

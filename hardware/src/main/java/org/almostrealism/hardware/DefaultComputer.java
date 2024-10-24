@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;

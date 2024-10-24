@@ -16,13 +16,12 @@
 
 package org.almostrealism.model;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;

@@ -19,13 +19,12 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.ParallelProcessWithInfo;
+import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -47,7 +46,7 @@ import java.util.List;
 
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
-					ParallelProcessWithInfo<Process<?, ?>, Evaluable<? extends T>>,
+		ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = false;

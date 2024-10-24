@@ -16,7 +16,7 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;

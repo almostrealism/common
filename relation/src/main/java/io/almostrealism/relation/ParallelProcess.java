@@ -74,12 +74,16 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return children.stream();
 	}
 
+	default ParallelProcessContext createContext(ProcessContext ctx) {
+		return ParallelProcessContext.of(ctx, this);
+	}
+
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {
 		Collection<? extends Process> children = getChildren();
 		if (children.isEmpty()) return this;
 
-		ParallelProcessContext context = ParallelProcessContext.of(ctx, this);
+		ParallelProcessContext context = createContext(ctx);
 		children = children.stream().map(process -> optimize(context, process)).collect(Collectors.toList());
 
 		if (!isolationFlags.isEmpty()) {

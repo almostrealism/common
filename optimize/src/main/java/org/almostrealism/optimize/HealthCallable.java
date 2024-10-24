@@ -16,7 +16,7 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;

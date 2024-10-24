@@ -16,7 +16,7 @@
 
 package org.almostrealism.time.computations.test;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;

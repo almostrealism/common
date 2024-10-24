@@ -16,7 +16,7 @@
 
 package org.almostrealism.model;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Named;

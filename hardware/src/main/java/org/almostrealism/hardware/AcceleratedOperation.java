@@ -29,7 +29,7 @@ import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -52,7 +52,6 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
