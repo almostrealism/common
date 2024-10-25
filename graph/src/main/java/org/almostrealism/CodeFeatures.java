@@ -169,7 +169,7 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
-	default <T> Switch choice(CollectionProducer<PackedCollection<?>> decision, Computation<T>... choices) {
+	default <T> Switch choice(Producer<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
