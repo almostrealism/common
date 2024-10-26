@@ -74,6 +74,8 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			}
 
 			Expression<?> out = args[1].getValueAt(inputShape.index(innerPos));
+			if (conditions.isEmpty()) return out;
+
 			return conditional(Conjunction.of(conditions), out, e(0.0));
 		});
 	}

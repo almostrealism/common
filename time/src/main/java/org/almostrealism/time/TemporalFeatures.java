@@ -118,6 +118,11 @@ public interface TemporalFeatures extends GeometryFeatures {
 		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 
+	default MultiOrderFilter aggregate(Producer<PackedCollection<?>> series,
+									   Producer<PackedCollection<?>> coefficients) {
+		return MultiOrderFilter.create(series, coefficients);
+	}
+
 	default FourierTransform fft(int bins, Producer<PackedCollection<?>> input,
 								 ComputeRequirement... requirements) {
 		return fft(bins, false, input, requirements);
