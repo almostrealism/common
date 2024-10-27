@@ -291,9 +291,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, int depth, Producer<PackedCollection<?>>... producers) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
-				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
-				.collect(Collectors.toList());
+//		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
+//				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
+//				.collect(Collectors.toList());
+
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = new ArrayList<>();
 
 		for (int i = 0; i < producers.length; i++) {
 			for (int j = 0; j < depth; j++) {
