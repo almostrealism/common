@@ -14,8 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.time.computations.test;
+package org.almostrealism.time.test;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -131,6 +133,46 @@ public class TemporalFeaturesTest implements TestFeatures {
 				log(coefficients[i] + " vs " + resultCoefficients[i]);
 				assertEquals(coefficients[i], resultCoefficients[i]);
 			}
+		}
+	}
+
+	@Test
+	public void chooseCoefficients() {
+		chooseCoefficients(0.1);
+		chooseCoefficients(0.9);
+	}
+
+	public void chooseCoefficients(double c) {
+		int sampleRate = 44100;
+		int filterOrder = 20;
+
+		Producer<PackedCollection<?>> decision = cp(pack(c));
+		Producer<PackedCollection<?>> cutoff = c(8000);
+
+		CollectionProducer<PackedCollection<?>> hpCoefficients =
+				highPassCoefficients(cutoff, sampleRate, filterOrder)
+						.reshape(1, filterOrder + 1);
+		CollectionProducer<PackedCollection<?>> lpCoefficients =
+				lowPassCoefficients(cutoff, sampleRate, filterOrder)
+						.reshape(1, filterOrder + 1);
+
+		Producer<PackedCollection<?>> coefficients = choice(2,
+				shape(filterOrder + 1),
+				decision,
+				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients));
+
+		PackedCollection<?> result = coefficients.evaluate();
+
+		PackedCollection<?> expected;
+
+		if (c < 0.5) {
+			expected = highPassCoefficients(cutoff, sampleRate, filterOrder).evaluate();
+		} else {
+			expected = lowPassCoefficients(cutoff, sampleRate, filterOrder).evaluate();
+		}
+
+		for (int i = 0; i < filterOrder + 1; i++) {
+			assertEquals(expected.valueAt(i), result.valueAt(i));
 		}
 	}
 }

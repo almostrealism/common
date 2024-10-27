@@ -40,7 +40,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	private int filterOrder;
 
 	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
-		super(null, shape, new Producer[] { series, coefficients });
+		super("multiOrderFilter", shape, new Producer[] { series, coefficients });
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
 		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);

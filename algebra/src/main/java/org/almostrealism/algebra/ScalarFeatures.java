@@ -27,6 +27,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
@@ -42,7 +43,6 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
@@ -205,7 +205,13 @@ public interface ScalarFeatures extends CollectionFeatures {
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarChoice choice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
+	default Choice choice(int choiceCount, TraversalPolicy resultShape,
+						  Producer<PackedCollection<?>> decision,
+						  Producer<PackedCollection<?>> choices) {
+		return new Choice(resultShape.getTotalSize(), choiceCount, decision, choices);
+	}
+
+	default ScalarChoice scalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		return new ScalarChoice(choiceCount, decision, choices);
 	}
 
