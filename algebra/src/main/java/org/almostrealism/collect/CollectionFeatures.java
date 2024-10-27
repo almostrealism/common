@@ -195,6 +195,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	@Override
 	default <T> Producer<?> delegate(Producer<T> producer) {
+		if (producer == null) return null;
+
 		return new DelegatedCollectionProducer<>(c(producer));
 	}
 

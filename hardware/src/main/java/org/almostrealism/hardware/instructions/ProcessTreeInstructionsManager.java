@@ -45,7 +45,7 @@ public class ProcessTreeInstructionsManager implements
 
 	@Override
 	public Execution getOperator(ProcessTreePositionKey key) {
-		log("Retrieving Execution for " + key.describe());
+		// log("Retrieving Execution for " + key.describe());
 		return instructions.get(key).getOperator();
 	}
 
@@ -64,7 +64,7 @@ public class ProcessTreeInstructionsManager implements
 		AcceleratedOperation<?> operation = extract(compiled);
 
 		if (operation instanceof AcceleratedComputationOperation<?> op) {
-			log("Replacing instructions for " + Describable.describe(op.getComputation()));
+			// log("Replacing instructions for " + Describable.describe(op.getComputation()));
 			op.compile(this, key);
 		}
 
