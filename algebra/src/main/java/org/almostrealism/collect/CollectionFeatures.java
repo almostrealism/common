@@ -771,7 +771,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {
-		return pow(value, c(0.5));
+		T half = (T) new PackedCollection<>(1);
+		half.setMem(0.5);
+		return pow(value, c(half));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {

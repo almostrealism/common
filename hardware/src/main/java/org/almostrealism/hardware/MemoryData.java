@@ -212,7 +212,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException(i + " is out of bounds for MemoryData of length " + getMemLength());
 		}
 
-		if (getMem().getProvider().getNumberSize() == 8) {
+		if (getMem() == null) {
+			throw new UnsupportedOperationException();
+		} else if (getMem().getProvider().getNumberSize() == 8) {
 			double out[] = new double[1];
 			getMem(i, out, 0, 1);
 			return new DoubleConstant(out[0]);
