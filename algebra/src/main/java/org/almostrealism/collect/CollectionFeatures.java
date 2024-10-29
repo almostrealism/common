@@ -47,6 +47,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
+import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
@@ -194,10 +195,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	@Override
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		if (producer == null) return null;
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		if (actual == null) return null;
 
-		return new DelegatedCollectionProducer<>(c(producer));
+		if (!(actual instanceof CollectionProducer) && original instanceof Shape) {
+			actual = new DynamicCollectionProducer(((Shape) original).getShape(), actual.get()::evaluate, false);
+		}
+
+		return new DelegatedCollectionProducer<>(c(actual), false);
+	}
+
+	@Override
+	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
+		return new CollectionProducerSubstitution(original, replacement);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
@@ -360,6 +370,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			return (CollectionProducer<T>) producer;
 		} else if (producer instanceof Shape) {
 			return new ReshapeProducer(((Shape) producer).getShape().getTraversalAxis(), producer);
+		} else if (producer != null) {
+			throw new UnsupportedOperationException(producer.getClass() + " cannot be converted to a CollectionProducer");
 		} else {
 			throw new UnsupportedOperationException();
 		}

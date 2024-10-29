@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
 import org.almostrealism.hardware.computations.DelegatedProducer;
@@ -55,19 +54,13 @@ public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, 
 		Producer delegates[] = Arrays.stream(args)
 				.map(arg -> delegate(arg))
 				.toArray(Producer[]::new);
-		Producer<T> producer = func.apply(delegates);
-
-		if (!(producer instanceof Process)) {
-			return producer;
-		}
-
 		return (Producer) Hardware.getLocalHardware().getComputer()
-				.applyInstructionsManager(key, (Process) producer);
+					.createContainer(key, func, this::substitute, this::delegate, delegates);
 	}
 
 	@Override
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return new DelegatedProducer<>(producer);
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return new DelegatedProducer<>(actual);
 	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {

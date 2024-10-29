@@ -42,7 +42,7 @@ public class CollectionProviderProducer<T extends Shape>
 	private Shape value;
 
 	public CollectionProviderProducer(Shape value) {
-		this.metadata = new OperationMetadata(OperationInfo.name(value), "Provided collection",
+		this.metadata = new OperationMetadata("collection", OperationInfo.name(value),
 				"Provide a collection " + value.getShape().toStringDetail());
 		this.value = value;
 	}

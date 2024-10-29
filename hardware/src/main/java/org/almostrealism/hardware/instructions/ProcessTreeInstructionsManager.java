@@ -22,7 +22,9 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Console;
@@ -32,11 +34,14 @@ import org.almostrealism.io.Describable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class ProcessTreeInstructionsManager implements
 		ComputableInstructionSetManager<ProcessTreePositionKey>, ConsoleFeatures {
+	public static boolean verboseLogs = false;
+
 	private Map<ProcessTreePositionKey, ProcessInstructions> instructions;
 
 	public ProcessTreeInstructionsManager() {
@@ -45,7 +50,8 @@ public class ProcessTreeInstructionsManager implements
 
 	@Override
 	public Execution getOperator(ProcessTreePositionKey key) {
-		// log("Retrieving Execution for " + key.describe());
+		if (verboseLogs)
+			log("Retrieving Execution for " + key.describe());
 		return instructions.get(key).getOperator();
 	}
 
@@ -64,24 +70,19 @@ public class ProcessTreeInstructionsManager implements
 		AcceleratedOperation<?> operation = extract(compiled);
 
 		if (operation instanceof AcceleratedComputationOperation<?> op) {
-			// log("Replacing instructions for " + Describable.describe(op.getComputation()));
+			if (verboseLogs)
+				log("Replacing instructions for " + Describable.describe(op.getComputation()));
 			op.compile(this, key);
 		}
 
 		return compiled instanceof AcceleratedOperation<?> ? (AcceleratedOperation<?>) compiled : null;
 	}
 
-	public AcceleratedOperation<?> replaceAll(ProcessTreePositionKey key, ArgumentList<?> compiled) {
-		List<ArgumentList<?>> children = children(compiled);
-		IntStream.range(0, children.size()).forEach(i -> replaceAll(key.append(i), children.get(i)));
-		return replaceInstructions(key, compiled);
-	}
-
 	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T> replaceAll(V process) {
 		T compiled = process.get();
 
 		if (compiled instanceof ArgumentList<?>) {
-			replaceAll(new ProcessTreePositionKey(), (ArgumentList<?>) compiled);
+			traverseAll((ArgumentList<?>) compiled, this::replaceInstructions);
 		}
 
 		return process;
@@ -113,29 +114,57 @@ public class ProcessTreeInstructionsManager implements
 				new ProcessInstructions(operation.getExecutionKey(),
 							(ComputableInstructionSetManager) mgr));
 		if (operation instanceof AcceleratedComputationOperation<?> op) {
-			log("Extracted instructions from " + Describable.describe(op.getComputation()));
+			if (verboseLogs)
+				log("Extracted instructions from " + Describable.describe(op.getComputation()));
 			op.compile(this, key);
 		} else {
-			log("Extracted instructions from " + Describable.describe(operation));
+			if (verboseLogs)
+				log("Extracted instructions from " + Describable.describe(operation));
 		}
 
 		return operation;
-	}
-
-	public AcceleratedOperation<?> extractAll(ProcessTreePositionKey key, ArgumentList<?> compiled) {
-		List<ArgumentList<?>> children = children(compiled);
-		IntStream.range(0, children.size()).forEach(i -> extractAll(key.append(i), children.get(i)));
-		return extractCompiled(key, compiled);
 	}
 
 	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T> extractAll(V process) {
 		T compiled = process.get();
 
 		if (compiled instanceof ArgumentList<?>) {
-			extractAll(new ProcessTreePositionKey(), (ArgumentList<?>) compiled);
+			traverseAll((ArgumentList<?>) compiled, this::extractCompiled);
 		}
 
 		return process;
+	}
+
+	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>
+			AcceleratedOperationContainer<M> applyContainer(V process) {
+		AcceleratedOperation<M> compiled = (AcceleratedOperation) extract(process.get());
+
+		if (compiled == null) {
+			warn("Cannot create container for " + Describable.describe(process));
+			return null;
+		}
+
+		AcceleratedOperationContainer<M> container = new AcceleratedOperationContainer<>(compiled);
+
+		traverseAll(compiled, (key, op) -> {
+			if (op instanceof AcceleratedOperation<?> o) {
+				o.setEvaluator(container);
+			}
+		});
+
+		return container;
+	}
+
+	public void traverseAll(ArgumentList<?> compiled,
+							BiConsumer<ProcessTreePositionKey, ArgumentList<?>> consumer) {
+		traverseAll(new ProcessTreePositionKey(), compiled, consumer);
+	}
+
+	public void traverseAll(ProcessTreePositionKey key, ArgumentList<?> compiled,
+							BiConsumer<ProcessTreePositionKey, ArgumentList<?>> consumer) {
+		List<ArgumentList<?>> children = children(compiled);
+		IntStream.range(0, children.size()).forEach(i -> traverseAll(key.append(i), children.get(i), consumer));
+		consumer.accept(key, compiled);
 	}
 
 	@Override

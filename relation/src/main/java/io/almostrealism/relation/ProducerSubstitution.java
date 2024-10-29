@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,14 +16,22 @@
 
 package io.almostrealism.relation;
 
-public interface ProducerFeatures {
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return delegate(null, producer);
+import java.util.function.Supplier;
+
+public class ProducerSubstitution<T> {
+	private Producer<T> original;
+	private Producer<T> replacement;
+
+	public ProducerSubstitution(Producer<T> original, Producer<T> replacement) {
+		this.original = original;
+		this.replacement = replacement;
 	}
 
-	<T> Producer<?> delegate(Producer<T> original, Producer<T> actual);
+	public Producer<T> getOriginal() { return original; }
 
-	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
-		return new ProducerSubstitution<>(original, replacement);
+	public Producer<T> getReplacement() { return replacement; }
+
+	public <V> boolean match(Supplier<Evaluable<? extends V>> producer) {
+		return producer == (Supplier) original;
 	}
 }

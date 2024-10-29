@@ -69,8 +69,8 @@ public interface CodeFeatures extends LayerFeatures,
 	boolean enableFixedCollections = true;
 
 	@Override
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return LayerFeatures.super.delegate(producer);
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return LayerFeatures.super.delegate(original, actual);
 	}
 
 	default <T> Producer<T> v(T v) {

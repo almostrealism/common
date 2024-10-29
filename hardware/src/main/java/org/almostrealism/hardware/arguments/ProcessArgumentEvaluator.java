@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,16 +14,12 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.relation;
+package org.almostrealism.hardware.arguments;
 
-public interface ProducerFeatures {
-	default <T> Producer<?> delegate(Producer<T> producer) {
-		return delegate(null, producer);
-	}
+import io.almostrealism.relation.Evaluable;
 
-	<T> Producer<?> delegate(Producer<T> original, Producer<T> actual);
+import java.util.function.Supplier;
 
-	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
-		return new ProducerSubstitution<>(original, replacement);
-	}
+public interface ProcessArgumentEvaluator {
+	<T> Evaluable<? extends T> getEvaluable(Supplier<Evaluable<? extends T>> producer);
 }

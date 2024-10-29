@@ -156,7 +156,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	}
 
 	@Override
-	public <T> Producer<?> delegate(Producer<T> producer) {
-		return CollectionProducerComputation.super.delegate(producer);
+	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 }

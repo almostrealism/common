@@ -37,6 +37,7 @@ import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -83,6 +84,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	private ComputeContext<MemoryData> context;
 	private Class cls;
 
+	private ProcessArgumentEvaluator evaluator;
 	private ProcessDetailsFactory detailsFactory;
 	protected List<ArgumentMap> argumentMaps;
 	private OperationList preOp;
@@ -239,12 +241,28 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		}
 	}
 
-	protected ProcessDetailsFactory getDetailsFactory() {
+	public ProcessArgumentEvaluator getEvaluator() {
+		return evaluator;
+	}
+
+	public void setEvaluator(ProcessArgumentEvaluator evaluator) {
+		this.evaluator = evaluator;
+
+		if (detailsFactory != null) {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
 			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
 					getArgumentVariables(), getOutputArgumentIndex(), created,
 					getComputeContext().getDataContext().getKernelMemoryProvider(),
 					this::createAggregatedInput);
+
+			if (evaluator != null) {
+				detailsFactory.setEvaluator(evaluator);
+			}
 		}
 
 		return detailsFactory;

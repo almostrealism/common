@@ -51,8 +51,13 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> destination) {
 		super(function);
 		this.destination = destination;
-		this.metadata = OperationInfo.metadataForProcess(this,
-				new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+
+		if (getFunction() == null) {
+			this.metadata = OperationInfo.metadataForProcess(this, new OperationMetadata("dynamic", "dynamic"));
+		} else {
+			this.metadata = OperationInfo.metadataForProcess(this,
+					new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+		}
 	}
 
 	@Override

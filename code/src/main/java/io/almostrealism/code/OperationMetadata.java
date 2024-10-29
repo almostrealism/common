@@ -79,9 +79,14 @@ public class OperationMetadata {
 	public void setDisplayName(String displayName) {
 		this.displayName = displayName;
 
-		if (displayName != null && displayName.contains(" ")) {
-			Scope.console.features(OperationMetadata.class)
-					.warn("Display name contains whitespace");
+		if (displayName != null) {
+			if (displayName.contains(" ")) {
+				Scope.console.features(OperationMetadata.class)
+						.warn("Display name contains whitespace");
+			} else if (displayName.equalsIgnoreCase("null")) {
+				Scope.console.features(OperationMetadata.class)
+						.warn("Display name is \"" + displayName + "\"");
+			}
 		}
 	}
 

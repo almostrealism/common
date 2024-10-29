@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Heap;
@@ -33,9 +34,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -49,6 +48,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private boolean fixedCount;
 	private int count;
 
+	private ProcessArgumentEvaluator evaluator;
 	private List<ArrayVariable<? extends T>> arguments;
 	private int outputArgIndex;
 
@@ -80,6 +80,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.fixedCount = fixedCount;
 		this.count = count;
 
+		this.evaluator = ProducerCache::getEvaluableForSupplier;
+
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
 
@@ -91,6 +93,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public boolean isKernel() { return kernel; }
 	public boolean isFixedCount() { return fixedCount; }
 	public long getCountLong() { return count; }
+
+	public ProcessArgumentEvaluator getEvaluator() { return evaluator; }
+	public void setEvaluator(ProcessArgumentEvaluator evaluator) { this.evaluator = evaluator; }
 
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
 		if (kernelArgEvaluables == null || output != this.output || !Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
@@ -154,7 +159,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			i: for (int i = 0; i < arguments.size(); i++) {
 				if (kernelArgs[i] != null) continue i;
 
-				kernelArgEvaluables[i] = ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+				kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i).getProducer());
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
 				} else if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
@@ -182,6 +187,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		return this;
+	}
+	
+	public void reset() {
+		this.kernelArgEvaluables = null;
 	}
 
 	public AcceleratedProcessDetails construct() {

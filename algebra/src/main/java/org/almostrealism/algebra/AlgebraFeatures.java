@@ -16,17 +16,32 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 public interface AlgebraFeatures extends CollectionFeatures {
+	boolean enableIsolationWarnings = false;
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,
 																			  TraversalPolicy weightPositions,
@@ -65,5 +80,84 @@ public interface AlgebraFeatures extends CollectionFeatures {
 						inShape, weightShape,
 						inputGroupShape, weightGroupShape,
 						args[1], args[2]), (Supplier) input, (Supplier) weights);
+	}
+
+	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
+		if (!(producer instanceof ComputationBase)) return Collections.emptyList();
+
+		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
+		List<Producer<T>> matched = new ArrayList<>();
+
+		for (int i = 1; i < inputs.size(); i++) {
+			Supplier<Evaluable<? extends T>> input = inputs.get(i);
+			if (deepMatch(input, target)) {
+				matched.add((Producer<T>) input);
+			}
+		}
+
+		return matched;
+	}
+
+	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
+		List<Producer<T>> matched = matchingInputs(producer, target);
+
+		if (matched.size() == 1) {
+			return matched.get(0);
+		}
+
+		return null;
+	}
+
+	static boolean cannotMatch(Supplier<?> p, Supplier<?> target) {
+		if (p instanceof CollectionProviderProducer && target instanceof CollectionProviderProducer) {
+			return !match(p, target);
+		}
+
+		return false;
+	}
+
+	static boolean deepMatch(Supplier<?> p, Supplier<?> target) {
+		if (match(p, target)) {
+			return true;
+		} if (p instanceof Parent) {
+			for (Supplier<?> child : ((Parent<Supplier>) p).getChildren()) {
+				if (deepMatch(child, target)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	static boolean match(Supplier<?> p, Supplier<?> q) {
+		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
+			if (p instanceof ReshapeProducer) {
+				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+			} else {
+				p = (Producer<?>) ((MemoryDataDestinationProducer) p).getDelegate();
+			}
+		}
+
+		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestinationProducer) {
+			if (q instanceof ReshapeProducer) {
+				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
+			} else {
+				q = (Producer<?>) ((MemoryDataDestinationProducer) q).getDelegate();
+			}
+		}
+
+		if (Objects.equals(p, q)) {
+			return true;
+		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
+			return ((PassThroughProducer) p).getReferencedArgumentIndex() == ((PassThroughProducer) q).getReferencedArgumentIndex();
+		} else if (enableIsolationWarnings &&
+				(p instanceof CollectionProducerComputation.IsolatedProcess ||
+						q instanceof CollectionProducerComputation.IsolatedProcess)) {
+			Computation.console.features(DeltaFeatures.class)
+					.warn("Isolated producer cannot be matched");
+		}
+
+		return false;
 	}
 }
