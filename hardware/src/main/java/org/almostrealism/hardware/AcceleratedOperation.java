@@ -22,6 +22,7 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -63,7 +64,7 @@ import java.util.stream.Stream;
 public abstract class AcceleratedOperation<T extends MemoryData>
 									extends OperationAdapter<T, Argument<? extends T>>
 									implements Runnable, ArgumentList<T>, ScopeLifecycle,
-										KernelizedOperation, ComputerFeatures {
+											Countable, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static Console console = Computation.console.child();
 
@@ -320,15 +321,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		}
 
 		return process;
-	}
-
-	@Override
-	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		if (isKernel()) {
-			apply(output, args);
-		} else {
-			throw new HardwareException("Kernel not supported");
-		}
 	}
 
 	private double sec(long nanos) {

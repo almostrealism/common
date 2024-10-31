@@ -20,7 +20,6 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
@@ -76,7 +75,7 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
 		return new MemoryDataDestination<>(size -> {

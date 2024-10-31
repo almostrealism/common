@@ -19,4 +19,8 @@ package io.almostrealism.scope;
 import io.almostrealism.relation.Parent;
 
 public interface ArgumentList<T> extends Parent<Argument<? extends T>> {
+
+	default int getArgsCount() {
+		throw new UnsupportedOperationException();
+	}
 }

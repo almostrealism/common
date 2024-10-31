@@ -16,15 +16,15 @@
 
 package org.almostrealism.hardware.arguments;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerSubstitution;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements KernelizedEvaluable<T> {
+public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements Evaluable<T> {
 	private AcceleratedOperationContainer<T> container;
 	protected List<ProducerSubstitution<?>> substitutions;
 

@@ -32,11 +32,10 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -421,9 +420,9 @@ public class CollectionComputationTests implements TestFeatures {
 			assertEquals(8.0, out.toArray(0, 1)[0]);
 
 			if (a.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) {
-				Assert.assertEquals(3, ((KernelizedEvaluable) ev).getArgsCount());
+				Assert.assertEquals(3, ((HardwareEvaluable) ev).getArgsCount());
 			} else {
-				Assert.assertEquals(2, ((KernelizedEvaluable) ev).getArgsCount());
+				Assert.assertEquals(2, ((HardwareEvaluable) ev).getArgsCount());
 			}
 		});
 	}

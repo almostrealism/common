@@ -33,7 +33,7 @@ import java.util.function.Supplier;
 @Deprecated
 public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
 		extends AcceleratedOperation<MemoryData>
-		implements KernelizedEvaluable<O> {
+		implements Evaluable<O> {
 
 	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context,
 									   Supplier<O> destination,

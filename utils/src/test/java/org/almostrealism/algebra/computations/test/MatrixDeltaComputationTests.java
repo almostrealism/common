@@ -250,6 +250,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulMedium2() throws IOException {
+		if (testDepth < 1) return;
+
 		matmal("matmulMedium2", 210, 10, true);
 	}
 
@@ -260,6 +262,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmulLarge2() throws IOException {
+		if (testDepth < 3) return;
+
 		matmal("matmulLarge2", 392, 10, true);
 	}
 

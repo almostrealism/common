@@ -21,12 +21,11 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
@@ -47,7 +46,6 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.DoubleFunction;
 import java.util.function.DoubleSupplier;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
@@ -57,13 +55,13 @@ import java.util.stream.Stream;
 
 public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
-	private static ContextSpecific<KernelizedOperation> clear;
+	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
 
 	static {
 		clear = new DefaultContextSpecific<>(() ->
-				(KernelizedOperation)
-						new Assignment<>(1, new PassThroughProducer(1, 0),
-						new PassThroughProducer<>(1, 1)).getKernel());
+				CollectionFeatures.getInstance().multiply(
+						new PassThroughProducer<>(1, 0),
+						CollectionFeatures.getInstance().c(1)).get());
 	}
 
 	private final TraversalPolicy shape;
@@ -100,6 +98,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
+		if (shape.getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException("Collection must have a non-zero size");
+		}
+
 		this.shape = shape.traverse(order).traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
@@ -247,7 +249,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public void clear() {
-		clear.getValue().kernelOperate(this.traverseEach(), new PackedCollection(1));
+		clear.getValue().into(this.traverseEach()).evaluate(new PackedCollection<>(1));
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape) {

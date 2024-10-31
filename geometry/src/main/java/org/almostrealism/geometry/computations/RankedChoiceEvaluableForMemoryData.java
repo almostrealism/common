@@ -16,15 +16,15 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
+public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> extends RankedChoiceEvaluable<T> implements Evaluable<T> {
 	public RankedChoiceEvaluableForMemoryData(double e) {
 		super(e);
 	}

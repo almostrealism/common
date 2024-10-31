@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware.arguments;
 
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerSubstitution;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedOperation;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.instructions.ExecutionKey;
@@ -31,7 +29,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class AcceleratedOperationContainer<T extends MemoryData>
-		implements KernelizedOperation, KernelizedEvaluable<T>, ProcessArgumentEvaluator {
+		implements Countable, Evaluable<T>, ProcessArgumentEvaluator {
 	private AcceleratedOperation<T> operation;
 	private ThreadLocal<List<ProducerSubstitution<?>>> substitutions;
 
@@ -51,11 +49,6 @@ public class AcceleratedOperationContainer<T extends MemoryData>
 
 	public <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager() {
 		return operation.getInstructionSetManager();
-	}
-
-	@Override
-	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		operation.kernelOperate(output, args);
 	}
 
 	@Override

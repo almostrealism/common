@@ -36,8 +36,8 @@ public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, 
 		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 
-	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
-		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputer().compileProducer(c);
+	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
+		return Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {

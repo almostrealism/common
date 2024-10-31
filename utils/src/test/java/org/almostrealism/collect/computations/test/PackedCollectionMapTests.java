@@ -24,7 +24,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -645,7 +644,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());
 
-			KernelizedEvaluable<PackedCollection<?>> ev = (KernelizedEvaluable<PackedCollection<?>>) conv.get();
+			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
 			System.out.println(output.getShape());
 			output = output.reshape(shape(r - pad, c - pad, n));
@@ -721,7 +720,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());
 
-			KernelizedEvaluable<PackedCollection<?>> ev = (KernelizedEvaluable<PackedCollection<?>>) conv.get();
+			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
 			System.out.println(output.getShape());
 			output = output.reshape(shape(8, 8, 4));
@@ -797,7 +796,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());
 
-			KernelizedEvaluable<PackedCollection<?>> ev = (KernelizedEvaluable<PackedCollection<?>>) conv.get();
+			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
 			System.out.println(output.getShape());
 			output = output.reshape(shape(8, 8, 4));

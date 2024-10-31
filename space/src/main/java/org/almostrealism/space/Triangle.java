@@ -26,7 +26,6 @@ import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
 import io.almostrealism.code.Constant;
 import io.almostrealism.relation.Producer;
@@ -37,9 +36,6 @@ import org.almostrealism.geometry.ContinuousField;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**

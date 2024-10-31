@@ -35,7 +35,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 @Deprecated
-public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements Evaluable<O> {
 	private InstructionSetManager<DefaultExecutionKey> instructions;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private IntFunction<MemoryBank<O>> kernelDestination;

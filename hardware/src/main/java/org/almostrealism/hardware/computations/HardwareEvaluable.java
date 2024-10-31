@@ -21,7 +21,6 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
@@ -44,9 +43,7 @@ import java.util.function.UnaryOperator;
  *
  * @author  Michael Murray
  */
-public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T>,
-		KernelizedEvaluable<T> // TODO  Remove this
-{
+public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T> {
 	private Supplier<Evaluable<T>> ev;
 	private Evaluable<T> destination;
 	private Evaluable<T> shortCircuit;
@@ -131,7 +128,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T>,
 
 	@Override
 	public int getArgsCount() {
-		return ((KernelizedEvaluable) getKernel().getValue()).getArgsCount();
+		return ((ArgumentList) getKernel().getValue()).getArgsCount();
 	}
 
 	@Override

@@ -203,9 +203,28 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			if (!(kernelArgEvaluables[i] instanceof KernelizedEvaluable) ||
-					(kernelArgEvaluables[i] instanceof HardwareEvaluable &&
-							!((HardwareEvaluable) kernelArgEvaluables[i]).isKernel())) {
+			boolean evaluateAhead;
+
+			// Determine if the argument can be evaluated immediately,
+			// or if its evaluation may actually depend on the kernel
+			// size and hence it needs to be evaluated later using
+			// Evaluable::into to target a destination of the correct size
+			if (kernelArgEvaluables[i] instanceof HardwareEvaluable) {
+				// There is no need to attempt kernel evaluation if
+				// HardwareEvaluable will not support it
+				evaluateAhead = !((HardwareEvaluable) kernelArgEvaluables[i]).isKernel();
+			} else if (kernelArgEvaluables[i] instanceof MemoryDataDestination) {
+				// Kernel evaluation is not necessary, but it is preferable to
+				// leverage MemoryDataDestination::createDestination anyway
+				evaluateAhead = false;
+			} else {
+				// Kernel evaluation will not be necessary and Evaluable::evaluate
+				// can be directly invoked without creating a correctly sized
+				// destination
+				evaluateAhead = true;
+			}
+
+			if (evaluateAhead) {
 				long s = System.nanoTime();
 				Object o = kernelArgEvaluables[i].evaluate(args);
 				if (!(o instanceof MemoryData))
@@ -228,7 +247,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			if (enableKernelDestination && kernelArgEvaluables[i] instanceof KernelizedEvaluable) {
+			if (enableKernelDestination) {
 				kernelArgs[i] = kernelArgDestinations[i] == null ?
 						(MemoryData) kernelArgEvaluables[i].createDestination(size) :
 						(MemoryData) kernelArgDestinations[i].createDestination(size);

@@ -84,7 +84,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
-		return new KernelizedEvaluable<T>() {
+		return new Evaluable<T>() {
 			@Override
 			public Multiple<T> createDestination(int size) {
 				if (destination == null) {
@@ -95,8 +95,8 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank destination) {
-				return new DestinationEvaluable(e, destination);
+			public Evaluable<T> into(Object destination) {
+				return new DestinationEvaluable(e, (MemoryBank) destination);
 			}
 
 			@Override
