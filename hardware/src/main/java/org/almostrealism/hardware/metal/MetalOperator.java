@@ -114,7 +114,7 @@ public class MetalOperator extends HardwareOperator {
 		long id = totalInvocations++;
 
 		if (enableVerboseLog) {
-			System.out.println("MTL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
+			log(prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
 		if (dependsOn != null) dependsOn.waitFor();

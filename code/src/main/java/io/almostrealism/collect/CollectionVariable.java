@@ -21,6 +21,7 @@ import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -124,10 +125,15 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 		if (result != null) return result;
 
-		if (getShape().getTotalSize() == 1) {
+		boolean fixedCount = Countable.isFixedCount(getProducer());
+
+		if (getShape().getTotalSize() == 1 && fixedCount) {
 			return (Expression) reference(e(0), false);
 		} else {
-			index = index.toInt().mod(e(getShape().getTotalSize()), false);
+			if (getShape().getSize() != 1 || fixedCount) {
+				index = index.toInt().imod(getShape().getTotalSize());
+			}
+
 			if (getShape().getOrder() != null) {
 				index = getShape().getOrder().indexOf(index);
 			}

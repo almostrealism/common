@@ -31,6 +31,8 @@ import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
@@ -38,8 +40,9 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable {
+public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
 	public static boolean enableArgumentKernelSize = true;
+	public static boolean enableOutputCount = true;
 	public static boolean enableKernelDestination = true;
 	public static boolean enableConstantCache = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
@@ -110,7 +113,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			} else if (!enableArgumentKernelSize && isFixedCount()) {
 				kernelSize = getCount();
 			} else if (output != null) {
-				kernelSize = Math.max(output.getCountLong(), getCountLong());
+				kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());
+
+				if (enableKernelSizeWarnings && getCountLong() > 1 && kernelSize != getCountLong()) {
+					warn("Operation count was reduced from " + getCountLong() +
+							" to " + kernelSize + " to match the output count");
+				}
 			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
 				kernelSize = ((MemoryBank) args[0]).getCountLong();
 			} else if (isFixedCount()) {
@@ -134,17 +142,17 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			 */
 			i:
 			for (int i = 0; i < arguments.size(); i++) {
-				if (arguments.get(i) == null) continue i;
-
-				if (i == outputArgIndex && output != null) {
+				if (arguments.get(i) == null) {
+					continue i;
+				} else if (i == outputArgIndex && output != null) {
 					kernelArgs[i] = output;
 					continue i;
-				} else {
-					int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+				}
 
-					if (refIndex >= 0) {
-						kernelArgs[i] = (MemoryData) args[refIndex];
-					}
+				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+
+				if (refIndex >= 0) {
+					kernelArgs[i] = (MemoryData) args[refIndex];
 				}
 
 				if (kernelSize > 0) continue i;
@@ -162,7 +170,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i).getProducer());
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
-				} else if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
+				}
+
+				if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
 					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
 				}
 			}
@@ -174,15 +184,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				if (p instanceof ProducerComputationBase<?,?>) {
 					kernelArgDestinations[i] = ((ProducerComputationBase<?,?>) p).getDestination();
 				}
-			}
-
-			/*
-			 * If the kernel size is still not known, the kernel size will be 1.
-			 */
-			if (kernelSize < 0) {
-				if (enableKernelSizeWarnings)
-					System.out.println("WARN: Could not infer kernel size, it will be set to " + getCount());
-				kernelSize = getCount();
 			}
 		}
 
@@ -213,8 +214,23 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				kernelArgs[i] = (MemoryData) o;
 
+				long c = Countable.countLong(kernelArgs[i]);
+
+				if (kernelSize <= 0 && c > 1) {
+					kernelSize = c;
+				}
+
 				AcceleratedOperation.nonKernelEvalMetric.addEntry(arguments.get(i).getProducer(), System.nanoTime() - s);
 			}
+		}
+
+		/*
+		 * If the kernel size is still not known, the kernel size will be the count.
+		 */
+		if (kernelSize < 0) {
+			if (enableKernelSizeWarnings)
+				warn("Could not infer kernel size, it will be set to " + getCount());
+			kernelSize = getCount();
 		}
 
 		long start = System.nanoTime();
@@ -290,4 +306,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		return -1;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

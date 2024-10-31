@@ -198,11 +198,23 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
 		if (actual == null) return null;
 
-		if (!(actual instanceof CollectionProducer) && original instanceof Shape) {
-			actual = new DynamicCollectionProducer(((Shape) original).getShape(), actual.get()::evaluate, false);
+		TraversalPolicy shape = null;
+		boolean fixedCount = Countable.isFixedCount(actual);
+
+		if (actual instanceof Shape && ((Shape) actual).getShape().getSize() == 1) {
+			shape = new TraversalPolicy(1);
+			fixedCount = false;
+		} else if (!(actual instanceof CollectionProducer) && original instanceof Shape) {
+			shape = ((Shape) original).getShape();
+			fixedCount = Countable.isFixedCount(original);
 		}
 
-		return new DelegatedCollectionProducer<>(c(actual), false);
+		if (shape != null) {
+			actual = new DynamicCollectionProducer(new TraversalPolicy(1),
+					actual.get()::evaluate, false, fixedCount);
+		}
+
+		return new DelegatedCollectionProducer<>(c(actual), false, false);
 	}
 
 	@Override
