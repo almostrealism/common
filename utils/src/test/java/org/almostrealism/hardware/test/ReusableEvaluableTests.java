@@ -64,7 +64,7 @@ public class ReusableEvaluableTests implements TestFeatures {
 	}
 
 	@Test
-	public void multiply() {
+	public void multiply1() {
 		HardwareOperator.enableInstructionSetMonitoring = true;
 
 		try {
@@ -92,6 +92,46 @@ public class ReusableEvaluableTests implements TestFeatures {
 
 			for (int i = 0; i < n; i++) {
 				assertEquals((alt.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
+			}
+		} finally {
+			HardwareOperator.enableInstructionSetMonitoring = false;
+		}
+	}
+
+	@Test
+	public void multiply2() {
+		HardwareOperator.enableInstructionSetMonitoring = true;
+
+		try {
+			int n = 6;
+			int m = 10;
+
+			PackedCollection<?> a = new PackedCollection<>(shape(n))
+					.randFill().traverseEach();
+			PackedCollection<?> b = new PackedCollection<>(shape(n))
+					.randFill().traverseEach();
+			PackedCollection<?> c = new PackedCollection<>(shape(n))
+					.randFill().traverseEach();
+
+			Producer<PackedCollection<?>> product = createProduct(cp(a), cp(b), cp(c));
+			PackedCollection<?> out = product.get().evaluate();
+
+			for (int i = 0; i < n; i++) {
+				assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
+			}
+
+			a = new PackedCollection<>(shape(m))
+					.randFill().traverseEach();
+			b = new PackedCollection<>(shape(m))
+					.randFill().traverseEach();
+			c = new PackedCollection<>(shape(m))
+					.randFill().traverseEach();
+
+			product = createProduct(cp(a), cp(b), cp(c));
+			out = product.get().evaluate();
+
+			for (int i = 0; i < m; i++) {
+				assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
 			}
 		} finally {
 			HardwareOperator.enableInstructionSetMonitoring = false;

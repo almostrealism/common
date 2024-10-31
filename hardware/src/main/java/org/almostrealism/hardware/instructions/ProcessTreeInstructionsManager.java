@@ -140,7 +140,8 @@ public class ProcessTreeInstructionsManager implements
 		AcceleratedOperation<M> compiled = (AcceleratedOperation) extract(process.get());
 
 		if (compiled == null) {
-			warn("Cannot create container for " + Describable.describe(process));
+			if (verboseLogs)
+				warn("Cannot create container for " + Describable.describe(process));
 			return null;
 		}
 

@@ -24,13 +24,17 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
 public class DelegatedCollectionProducer<T extends PackedCollection<?>>
 						extends DelegatedProducer<T>
 						implements CollectionProducerBase<T, Producer<T>> {
+	private boolean fixedCount;
 
 	public DelegatedCollectionProducer(CollectionProducer<T> op) {
-		super(op);
+		this(op, true);
 	}
-
 	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate) {
+		this(op, directDelegate, true);
+	}
+	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate, boolean fixedCount) {
 		super(op, directDelegate);
+		this.fixedCount = fixedCount;
 	}
 
 	@Override
@@ -54,10 +58,7 @@ public class DelegatedCollectionProducer<T extends PackedCollection<?>>
 
 	@Override
 	public boolean isFixedCount() {
-		// TODO  This was returning the default implementation (which just returns true)
-		// TODO  before, but this was almost certainly wrong
-		// return true;
-		return super.isFixedCount();
+		return fixedCount ? super.isFixedCount() : false;
 	}
 
 	@Override
