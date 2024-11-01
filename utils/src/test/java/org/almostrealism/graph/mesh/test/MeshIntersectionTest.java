@@ -19,6 +19,7 @@ package org.almostrealism.graph.mesh.test;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
@@ -146,7 +147,7 @@ public class MeshIntersectionTest implements TestFeatures {
 				scalarLessThan(u, scalar(1.0), true),
 				scalarGreaterThan(v, scalar(0.0), true),
 				scalarLessThan(add(u, v), scalar(1.0), true));
-		HardwareEvaluable<Scalar> evs = (HardwareEvaluable) acs.get();
+		ArgumentList<Scalar> evs = (ArgumentList) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 

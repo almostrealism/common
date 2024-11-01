@@ -98,6 +98,11 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
+	public Evaluable<O> into(Object destination) {
+		return new DestinationEvaluable(this, (MemoryBank) destination);
+	}
+
+	@Override
 	public O evaluate(Object... args) {
 		AcceleratedProcessDetails process = apply(null, args);
 		waitFor(process.getSemaphore());

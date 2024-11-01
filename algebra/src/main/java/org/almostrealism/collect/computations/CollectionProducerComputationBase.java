@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
@@ -92,6 +93,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return name == null ? super.getName() : name;
 	}
 
+	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return super.prepareMetadata(metadata).withShape(getShape());
+	}
+
 	protected List<ArrayVariable<Double>> getInputArguments() {
 		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
 	}
@@ -155,13 +161,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (isFixedCount()) {
 			shape = getShape();
 		} else {
-			int count = len / getShape().getCount();
+			int targetCount = getCount();
+
+			int count = len / targetCount;
 
 			// When kernel length is less than, or identical to the output count, an
 			// assumption is made that the intended shape is the original shape.
 			// This is a bit of a hack, but it's by far the simplest solution
 			// available
-			if (count == 0 || len == getShape().getCount()) {
+			if (count == 0 || len == targetCount) {
 				// It is not necessary to prepend a (usually) unnecessary dimension
 				shape = getShape();
 			} else {
@@ -302,15 +310,17 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				if (destination instanceof Shape) {
 					Shape out = (Shape) destination;
 
+					int targetSize = getMemLength();
+
 					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
 						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
-							if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
+							if (out.getShape().traverse(axis).getSize() == targetSize) {
 								return (O) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
 							}
 						}
 					}
 
-					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+					if (targetSize > 1 && ((Shape) destination).getShape().getSize() != targetSize) {
 						throw new IllegalArgumentException();
 					}
 				}
