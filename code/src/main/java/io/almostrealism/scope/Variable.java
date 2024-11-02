@@ -50,7 +50,7 @@ public class Variable<T, V extends Variable<T, ?>>
 	private PhysicalScope physicalScope;
 	private int sortHint;
 
-	private Expression<T> expression;
+	private Expression<?> expression;
 
 	private Supplier<Evaluable<? extends T>> originalProducer;
 	private Supplier<Evaluable<? extends T>> producer;
@@ -61,7 +61,9 @@ public class Variable<T, V extends Variable<T, ?>>
 		this(name, null, null, null);
 	}
 
-	public Variable(String name, PhysicalScope scope, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
+	public Variable(String name, PhysicalScope scope,
+					Expression<?> expression,
+					Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
 		setPhysicalScope(scope);
 		setExpression(expression);
@@ -99,10 +101,10 @@ public class Variable<T, V extends Variable<T, ?>>
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
 	@Deprecated
-	public void setExpression(Expression<T> value) { this.expression = value; }
+	public void setExpression(Expression<?> value) { this.expression = value; }
 
 	@Deprecated
-	public Expression<T> getExpression() { return expression; }
+	public Expression<?> getExpression() { return expression; }
 
 	@Deprecated
 	public void setSortHint(int hint) { this.sortHint = hint; }
@@ -155,7 +157,7 @@ public class Variable<T, V extends Variable<T, ?>>
 		return producer;
 	}
 
-	public Class<T> getType() {
+	public Class<?> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();
 		return getExpression() == null ? null : getExpression().getType();
 	}

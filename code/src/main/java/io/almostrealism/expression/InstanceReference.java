@@ -48,13 +48,13 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	private Expression<?> index;
 
 	public InstanceReference(Variable<T, ?> referent) {
-		super(referent.getType());
+		super((Class) referent.getType());
 		this.var = referent;
 		init();
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
-		super(referent.getType(), false, pos);
+		super((Class) referent.getType(), false, pos);
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;

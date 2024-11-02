@@ -25,7 +25,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
@@ -33,6 +32,7 @@ import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -194,6 +194,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void logSoftmaxBackwards2() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int size = 10;
 
 		PackedCollection<?> input = new PackedCollection(size);

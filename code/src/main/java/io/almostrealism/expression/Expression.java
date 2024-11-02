@@ -104,13 +104,16 @@ public abstract class Expression<T> implements
 	protected void init() {
 		ScopeSettings.reviewChildren(getChildren());
 
+		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
+
 		long c = getChildren().stream().mapToLong(e -> e.nodeCount).sum();
+
 		if (c >= Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
+			throw new ExpressionException("Expression too large", depth, c);
+		} else {
+			this.nodeCount = Math.toIntExact(c + 1);
 		}
 
-		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
-		this.nodeCount = Math.toIntExact(c + 1);
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
@@ -122,12 +125,19 @@ public abstract class Expression<T> implements
 		}
 
 		if (depth > ScopeSettings.maxDepth) {
-			throw new UnsupportedOperationException();
+			throw new ExpressionException("Expression too deep", depth, nodeCount);
 		}
 	}
 
 	@Deprecated
-	public void setType(Class<T> t) { this.type = t; }
+	public void setType(Class<T> t) {
+		if (!t.equals(this.type)) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.type = t;
+	}
+
 	public Class<T> getType() { return this.type; }
 
 	@Override

@@ -33,6 +33,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+// TODO  This should actually extend Variable<Multiple<T>, ArrayVariable<T>>
+// TODO  because ArrayVariable type T is the type of the member of the array
+// TODO  not the type of the entire array
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
@@ -188,14 +191,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	@Override
-	public void setExpression(Expression<T> value) {
+	public void setExpression(Expression<?> value) {
 		if (getDelegate() != null)
 			throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
 		super.setExpression(value);
 	}
 
 	@Override
-	public Expression<T> getExpression() {
+	public Expression<?> getExpression() {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == null) return super.getExpression();

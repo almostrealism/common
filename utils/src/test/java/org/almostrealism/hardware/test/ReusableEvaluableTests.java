@@ -138,10 +138,10 @@ public class ReusableEvaluableTests implements TestFeatures {
 		}
 	}
 
-	protected CollectionProducer<PackedCollection<?>> createSum(Producer<PackedCollection<?>> a,
+	protected Producer<PackedCollection<?>> createSum(Producer<PackedCollection<?>> a,
 																Producer<PackedCollection<?>> b,
 																Producer<PackedCollection<?>> c) {
-		return (CollectionProducer) instruct("ReusableEvaluableTests.sum",
+		return instruct("ReusableEvaluableTests.sum",
 						args -> add(args[0], args[1]).add(args[2]), a, b, c);
 	}
 
