@@ -135,7 +135,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 
 		List<Expression> explicit = parameters.stream()
 				.filter(exp -> !(exp instanceof InstanceReference) ||
-						!(((InstanceReference<?>) exp).getReferent() instanceof ArrayVariable<?>))
+						!(((InstanceReference<?, ?>) exp).getReferent() instanceof ArrayVariable<?>))
 				.collect(Collectors.toList());
 
 		if (!explicit.isEmpty()) {

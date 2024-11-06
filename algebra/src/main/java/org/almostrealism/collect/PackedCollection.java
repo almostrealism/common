@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
@@ -54,7 +55,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
-		implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
+		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
 
 	static {

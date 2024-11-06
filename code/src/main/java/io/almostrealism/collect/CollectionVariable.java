@@ -26,10 +26,12 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
+public class CollectionVariable<T extends Collection<Double, ? extends Collection<?, ?>>>
+		extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
 	public static boolean enableAbsoluteValueAt = false;
 
 	private TraversalPolicy shape;
@@ -37,12 +39,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	private CollectionVariable<T> parent;
 	private Expression pos[];
 
-	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, shape, np == null ? null : np.getDefaultPhysicalScope(), (Class) Double.class, producer);
+	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
+							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(np, name, shape,
+				np == null ? null : np.getDefaultPhysicalScope(),
+				Double.class, producer);
 	}
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
-							  PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+							  PhysicalScope scope, Class<?> type,
+							  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(np, name, scope, type, p);
 		this.shape = shape;
 	}
@@ -186,7 +192,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return getName() + " " + getShape().toStringDetail();
 	}
 
-	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
+	public static <T> ArrayVariable<T> create(NameProvider np, String name,
+											  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {

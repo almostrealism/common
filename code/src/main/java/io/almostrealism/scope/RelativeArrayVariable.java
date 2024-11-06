@@ -37,7 +37,7 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 	}
 
 	@Override
-	public InstanceReference<?> ref() {
+	public InstanceReference<?, ?> ref() {
 		return ref.ref();
 	}
 

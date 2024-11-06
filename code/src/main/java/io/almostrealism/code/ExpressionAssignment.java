@@ -20,6 +20,7 @@ import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -66,7 +67,10 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 		if (getDestination() == null) return null;
 
 		return getDestination().getDependencies()
-				.stream().map(Variable::getArraySize).filter(Objects::nonNull)
+				.stream().map(v -> v instanceof ArrayVariable ? (ArrayVariable) v : null)
+				.filter(Objects::nonNull)
+				.map(ArrayVariable::getArraySize)
+				.filter(Objects::nonNull)
 				.findFirst().orElse(null);
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,27 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.collect;
 
-import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.uml.Multiple;
 
-public class ArraySize<T> extends Expression<T> {
-	private int size;
-
-	public ArraySize(int size) {
-		super(null);
-		this.size = size;
-		init();
-	}
-
-	@Override
-	public String getExpression(LanguageOperations lang) { return null; }
-
-	@Override
-	public int getArraySize() { return size; }
-
-	@Override
-	public boolean compare(Expression e) {
-		return e instanceof ArraySize && ((ArraySize) e).size == size;
-	}
+public interface Collection<T, S> extends Shape<S>, Multiple<T> {
 }

@@ -223,7 +223,7 @@ public abstract class OperationAdapter<T, C> implements
 		// Check for argument variables for which the original producer is
 		// the specified input
 		Set<ArrayVariable> var = vars.stream()
-				.filter(arg -> arg != null && input.equals(arg.getOriginalProducer()))
+				.filter(arg -> arg != null && input.equals(arg.getProducer()))
 				.collect(Collectors.toSet());
 		if (var.size() == 1) return var.iterator().next();
 		if (var.size() > 1) {
@@ -234,8 +234,8 @@ public abstract class OperationAdapter<T, C> implements
 		// delegates to the specified input
 		var = vars.stream()
 				.filter(Objects::nonNull)
-				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
-				.filter(arg -> input.equals(((Delegated) arg.getOriginalProducer()).getDelegate()))
+				.filter(arg -> arg.getProducer() instanceof Delegated)
+				.filter(arg -> input.equals(((Delegated) arg.getProducer()).getDelegate()))
 				.collect(Collectors.toSet());
 		if (var.size() == 1) return var.iterator().next();
 		if (var.size() > 1) {

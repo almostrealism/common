@@ -351,7 +351,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					.map(Method::getArguments)
 					.flatMap(List::stream)
 					.filter(v -> v instanceof InstanceReference)
-					.map(v -> ((InstanceReference<?>) v).getReferent())
+					.map(v -> ((InstanceReference<?, ?>) v).getReferent())
 					.forEach(v -> args.add(new Argument((Variable) v, Expectation.EVALUATE_AHEAD)));
 
 			metrics.stream()
@@ -802,13 +802,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			if (!args.contains(arg)) args.add(arg);
 
 			// When the variable itself is an InstanceReference, the referent is a dependency
-			if (!(var instanceof Array) && var.getExpression() instanceof InstanceReference) {
-				arg = new Argument((Variable) ((InstanceReference) var.getExpression()).getReferent(),
-												Expectation.EVALUATE_AHEAD);
-				if (!args.contains(arg)) {
-					args.add(arg);
-				}
-			}
+//			if (!(var instanceof Array) && var.getExpression() instanceof InstanceReference) {
+//				arg = new Argument((Variable) ((InstanceReference) var.getExpression()).getReferent(),
+//												Expectation.EVALUATE_AHEAD);
+//				if (!args.contains(arg)) {
+//					args.add(arg);
+//				}
+//			}
 
 			// Recursive dependencies are computed
 			extractArgumentDependencies(var.getDependencies(), false).stream()

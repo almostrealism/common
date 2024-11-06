@@ -38,7 +38,7 @@ public interface AcceleratedConditionalStatement<T extends MemoryData> extends P
 	List<Argument<? extends MemoryData>> getArguments();
 	List<ExpressionAssignment<?>> getVariables();
 
-	List<ArrayVariable<Scalar>> getOperands();
+	List<ArrayVariable<Double>> getOperands();
 
 	IntFunction<Expression<Double>> getTrueValueExpression();
 	IntFunction<Expression<Double>> getFalseValueExpression();

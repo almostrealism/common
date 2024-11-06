@@ -38,7 +38,7 @@ import java.util.function.BiFunction;
  * encode the data as a {@link String}, but unlike a normal {@link String}
  * {@link Variable} the text does not appear in quotes.
  */
-public class InstanceReference<T> extends Expression<T> implements ExpressionFeatures, ConsoleFeatures {
+public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableMask = false;
 
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
@@ -118,7 +118,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	@Override
-	public ExpressionAssignment<T> assign(Expression exp) {
+	public ExpressionAssignment<V> assign(Expression exp) {
 		return new ExpressionAssignment<>(this, exp);
 	}
 
@@ -129,7 +129,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				target, e(1), e(0));
 	}
 
-	public InstanceReference<T> recreate(List<Expression<?>> children) {
+	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
 		if (children.size() == 0) {
 			return new InstanceReference<>(var);
 		} else if (children.size() == 1) {
@@ -144,7 +144,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		if (this == e) return true;
 		if (!(e instanceof InstanceReference)) return false;
 
-		InstanceReference<?> alt = (InstanceReference<?>) e;
+		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) e;
 		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
 	}
 

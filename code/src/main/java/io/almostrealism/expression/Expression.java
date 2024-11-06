@@ -108,7 +108,9 @@ public abstract class Expression<T> implements
 
 		long c = getChildren().stream().mapToLong(e -> e.nodeCount).sum();
 
-		if (c >= Integer.MAX_VALUE) {
+		if (type == null) {
+			throw new ExpressionException("Expression requires a type", depth, c);
+		} else if (c >= Integer.MAX_VALUE) {
 			throw new ExpressionException("Expression too large", depth, c);
 		} else {
 			this.nodeCount = Math.toIntExact(c + 1);
@@ -127,15 +129,6 @@ public abstract class Expression<T> implements
 		if (depth > ScopeSettings.maxDepth) {
 			throw new ExpressionException("Expression too deep", depth, nodeCount);
 		}
-	}
-
-	@Deprecated
-	public void setType(Class<T> t) {
-		if (!t.equals(this.type)) {
-			throw new UnsupportedOperationException();
-		}
-
-		this.type = t;
 	}
 
 	public Class<T> getType() { return this.type; }
@@ -419,8 +412,6 @@ public abstract class Expression<T> implements
 	public List<Variable<?, ?>> getDependencies() {
 		return new ArrayList<>(dependencies(getChildren().toArray(new Expression[0])));
 	}
-
-	public int getArraySize() { return -1; }
 
 	public T getValue() {
 		OptionalInt i = intValue();

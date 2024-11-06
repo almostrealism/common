@@ -17,7 +17,6 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.PhysicalScope;
@@ -28,15 +27,15 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 // TODO  This should actually extend Variable<Multiple<T>, ArrayVariable<T>>
 // TODO  because ArrayVariable type T is the type of the member of the array
 // TODO  not the type of the entire array
-public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
@@ -46,18 +45,25 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	private boolean destroyed;
 
 	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
-		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
+		this(np, np == null ? null : np.getDefaultPhysicalScope(), type, name, arraySize, null);
+	}
+
+	public ArrayVariable(NameProvider np, PhysicalScope scope,
+						 Class<T> type, String name,
+						 Expression<Integer> arraySize,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
+		super(name, scope, type, p);
 		this.names = np;
 		setArraySize(arraySize);
-		if (type != null) setExpression(Constant.forType(type));
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(np, name, np.getDefaultPhysicalScope(), Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, scope, Constant.forType(type), p);
+	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<?> type,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
+		super(name, scope, type, p);
 		this.names = np;
 	}
 
@@ -70,11 +76,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
-	@Override
 	public Expression<Integer> getArraySize() {
 		if (destroyed) throw new UnsupportedOperationException();
-		if (arraySize != null) return arraySize;
-		return super.getArraySize();
+
+		return arraySize;
 	}
 
 	@Override
@@ -126,11 +131,11 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return referenceRelative(exp);
 	}
 
-	public InstanceReference<T> ref(int pos) {
+	public InstanceReference<Multiple<T>, T> ref(int pos) {
 		return ref(new IntegerConstant(pos));
 	}
 
-	public InstanceReference<T> ref(Expression<Integer> offset) {
+	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
 	}
@@ -191,25 +196,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	@Override
-	public void setExpression(Expression<?> value) {
-		if (getDelegate() != null)
-			throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
-		super.setExpression(value);
-	}
-
-	@Override
-	public Expression<?> getExpression() {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		if (getDelegate() == null) return super.getExpression();
-		throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
-	}
-
-	@Override
-	protected List<Variable<?, ?>> getExpressionDependencies() {
-		if (destroyed) throw new UnsupportedOperationException();
-		if (getDelegate() == null) return super.getExpressionDependencies();
-		return Collections.emptyList();
+	public boolean equals(Object obj) {
+		if (!(obj instanceof ArrayVariable)) return false;
+		if (!super.equals(obj)) return false;
+		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
 	@Deprecated
