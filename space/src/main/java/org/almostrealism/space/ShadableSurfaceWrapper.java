@@ -19,8 +19,8 @@ package org.almostrealism.space;
 /**
  * A {@link ShadableSurfaceWrapper} implementation stores/wraps a Surface.
  * 
- * @author Mike Murray
+ * @author Michael Murray
  */
 public interface ShadableSurfaceWrapper {
-	public ShadableSurface getSurface();
+	ShadableSurface getSurface();
 }
