@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.65</version>
+    <version>0.66</version>
 
 	<properties>
 		<jacoco.version>0.8.11</jacoco.version>
@@ -60,7 +60,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>3.5.0</version>
+				<version>3.2.1</version>
 			</plugin>
 			<plugin>
 				<groupId>org.jacoco</groupId>
