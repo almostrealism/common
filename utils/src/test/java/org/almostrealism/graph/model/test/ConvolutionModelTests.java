@@ -101,6 +101,32 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		validateConv(input, filter, output, convSize);
 	}
 
+	@Test
+	public void convBackwardsMedium() {
+		if (skipKnownIssues) return;
+
+		convBackwards(1, 28, 28, 28, 1, 28,0, true);
+	}
+
+	public void convBackwards(int n, int c, int h, int w, int convSize, int filterCount, int padding, boolean bias) {
+		TraversalPolicy inputShape = shape(n, c, h, w);
+		Model model = new Model(inputShape);
+
+		CellularLayer conv = convolution2d(c, filterCount, convSize, padding, bias).apply(inputShape);
+		model.add(conv);
+
+		PackedCollection<?> gradient = new PackedCollection<>(model.getInputShape()).randFill();
+
+		model.compile().backward(gradient);
+
+		PackedCollection<?> filter = conv.getWeights().get(0);
+		TraversalPolicy filterShape = filter.getShape();
+		Assert.assertEquals(filterCount, filterShape.length(0));
+		Assert.assertEquals(c, filterShape.length(1));
+		Assert.assertEquals(convSize, filterShape.length(2));
+		Assert.assertEquals(convSize, filterShape.length(3));
+	}
+
 	protected void validateConv(PackedCollection<?> input, PackedCollection<?> filter, PackedCollection<?> output, int convSize) {
 		int batches = input.getShape().length(0);
 		int channels = input.getShape().length(1);
