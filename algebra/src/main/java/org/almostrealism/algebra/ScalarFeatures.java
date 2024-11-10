@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
@@ -26,6 +27,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
@@ -40,19 +42,17 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
+public interface ScalarFeatures extends CollectionFeatures {
 
 	static ExpressionComputation<Scalar> minusOne() { return of(-1.0); }
 
@@ -119,7 +119,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default CollectionProducer<Scalar> value(Scalar value) {
 		if (ExpressionComputation.enableTraversableFixed) {
-			return (CollectionProducer) TraversableExpressionComputation.fixed(value, Scalar.postprocessor());
+			return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 		} else {
 			Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
 			IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
@@ -143,9 +143,10 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(null, shape,
-				(args, i) ->
-						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<Scalar>("scalar", shape,
+				args -> CollectionExpression.create(shape, i ->
+						conditional(i.toInt().eq(e(0)),
+								args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0))),
 				collection, (Supplier) index);
 		c.setPostprocessor(Scalar.postprocessor());
 		return c;
@@ -204,7 +205,13 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarChoice choice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
+	default Choice choice(int choiceCount, TraversalPolicy resultShape,
+						  Producer<PackedCollection<?>> decision,
+						  Producer<PackedCollection<?>> choices) {
+		return new Choice(resultShape.getTotalSize(), choiceCount, decision, choices);
+	}
+
+	default ScalarChoice scalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		return new ScalarChoice(choiceCount, decision, choices);
 	}
 

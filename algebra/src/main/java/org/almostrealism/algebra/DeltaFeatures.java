@@ -31,6 +31,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -45,7 +46,6 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 public interface DeltaFeatures extends MatrixFeatures {
-	boolean enableIsolationWarnings = false;
 	boolean enableTotalIsolation = false;
 
 	default boolean isChainRuleSupported() {
@@ -85,7 +85,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 		TraversalPolicy shape = producer.getShape();
 		TraversalPolicy targetShape = shape(target);
 
-		if (DeltaFeatures.match(producer, target)) {
+		if (AlgebraFeatures.match(producer, target)) {
 			return (CollectionProducer)
 					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
 						.reshape(shape.append(targetShape));
@@ -99,7 +99,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			}
 
 			Producer<T> in = matchInput(producer, target);
-			if (match(in, target)) return null;
+			if (AlgebraFeatures.match(in, target)) return null;
 			if (!(in instanceof CollectionProducer)) return null;
 
 			Producer f = generateIsolatedDelta((ComputationBase) producer, in);
@@ -141,32 +141,6 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		return (ComputationBase<T, T, Evaluable<T>>) producer.generate(newInputs);
-	}
-
-	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
-		if (!(producer instanceof ComputationBase)) return Collections.emptyList();
-
-		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
-		List<Producer<T>> matched = new ArrayList<>();
-
-		for (int i = 1; i < inputs.size(); i++) {
-			Supplier<Evaluable<? extends T>> input = inputs.get(i);
-			if (deepMatch(input, target)) {
-				matched.add((Producer<T>) input);
-			}
-		}
-
-		return matched;
-	}
-
-	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
-		List<Producer<T>> matched = matchingInputs(producer, target);
-
-		if (matched.size() == 1) {
-			return matched.get(0);
-		}
-
-		return null;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> inputStub(TraversalPolicy shape, boolean fixedCount) {
@@ -216,50 +190,5 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 		};
-	}
-
-	static boolean deepMatch(Supplier<?> p, Supplier<?> target) {
-		if (match(p, target)) {
-			return true;
-		} if (p instanceof Parent) {
-			for (Supplier<?> child : ((Parent<Supplier>) p).getChildren()) {
-				if (deepMatch(child, target)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	static boolean match(Supplier<?> p, Supplier<?> q) {
-		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
-			if (p instanceof ReshapeProducer) {
-				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
-			} else {
-				p = (Producer<?>) ((MemoryDataDestinationProducer) p).getDelegate();
-			}
-		}
-
-		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestinationProducer) {
-			if (q instanceof ReshapeProducer) {
-				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
-			} else {
-				q = (Producer<?>) ((MemoryDataDestinationProducer) q).getDelegate();
-			}
-		}
-
-		if (Objects.equals(p, q)) {
-			return true;
-		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
-			return ((PassThroughProducer) p).getReferencedArgumentIndex() == ((PassThroughProducer) q).getReferencedArgumentIndex();
-		} else if (enableIsolationWarnings &&
-				(p instanceof CollectionProducerComputation.IsolatedProcess ||
-				q instanceof CollectionProducerComputation.IsolatedProcess)) {
-			Computation.console.features(DeltaFeatures.class)
-					.warn("Isolated producer cannot be matched");
-		}
-
-		return false;
 	}
 }

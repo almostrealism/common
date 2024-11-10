@@ -17,13 +17,14 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -36,10 +37,13 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
 	Console console = Console.root.child();
@@ -105,12 +109,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void assertSimilar(double a, double b, double r) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
 		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
-		if (gap < eps)
-			gap = eps;
+		double comp = Math.max(eps, r * gap);
 
 		double c = Math.abs(a - b);
 
-		if (c >= r * gap) {
+		if (c >= comp) {
 			double s = c / gap;
 			warn(b + " != " + a + " (" + s + " > " + r + ")");
 			throw new AssertionError();
@@ -216,7 +219,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +
 				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries | "
 				+ (KernelSeriesCache.enableCache ? "on" : "off"));
-		log("Expression kernelSeq cache is " + (Expression.enableKernelSeqCache ? "on" : "off"));
+		log("Expression kernelSeq cache is " + (ScopeSettings.enableKernelSeqCache ? "on" : "off"));
 		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}
 
@@ -226,6 +229,16 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		} else {
 			r.run();
 		}
+	}
+
+	default Predicate<Process> operationFilter(long... operationIds) {
+		return operationFilter(LongStream.of(operationIds)
+				.mapToObj(Long::valueOf).collect(Collectors.toSet()));
+	}
+
+	default Predicate<Process> operationFilter(Set<Long> operationIds) {
+		return p -> p instanceof OperationInfo &&
+				operationIds.contains(((OperationInfo) p).getMetadata().getId());
 	}
 
 	default Predicate<Process> operationFilter(String classSubstringOrFunctionName) {

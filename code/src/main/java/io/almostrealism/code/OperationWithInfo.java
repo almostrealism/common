@@ -57,6 +57,11 @@ public class OperationWithInfo implements Operation, OperationInfo {
 		return this;
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
+	}
+
 	public static OperationWithInfo of(OperationMetadata metadata, Operation operation) {
 		return new OperationWithInfo(metadata, operation);
 	}
@@ -79,6 +84,11 @@ public class OperationWithInfo implements Operation, OperationInfo {
 
 		@Override
 		public void run() { runnable.run(); }
+
+		@Override
+		public String describe() {
+			return getMetadata().getShortDescription();
+		}
 
 		public static RunnableWithInfo of(OperationMetadata metadata, Runnable runnable) {
 			return new RunnableWithInfo(metadata, runnable);

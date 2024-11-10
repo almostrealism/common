@@ -125,7 +125,7 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List children) {
+	public Expression<T> recreate(List children) {
 		if (children.size() != 1) throw new UnsupportedOperationException();
 		return new Cast<>(getType(), typeName, (Expression) children.get(0));
 	}

@@ -93,7 +93,7 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() != 1)  throw new UnsupportedOperationException();
 		return (Expression) Minus.of(children.get(0));
 	}

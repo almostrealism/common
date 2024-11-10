@@ -30,7 +30,7 @@ public interface Index extends SequenceGenerator, Named {
 		IndexChild result;
 
 		if (parent instanceof KernelIndex) {
-			result = new KernelIndexChild(((KernelIndex) parent).getContext(), child);
+			result = new KernelIndexChild(((KernelIndex) parent).getStructureContext(), child);
 		} else {
 			result = new IndexChild(parent, child);
 		}

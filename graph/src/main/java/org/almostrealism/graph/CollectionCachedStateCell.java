@@ -17,13 +17,12 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.function.Supplier;
 
-public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CollectionFeatures {
+public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CodeFeatures {
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());
 	}

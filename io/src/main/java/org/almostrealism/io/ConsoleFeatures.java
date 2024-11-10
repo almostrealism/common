@@ -43,6 +43,15 @@ public interface ConsoleFeatures {
 		console().warn(formatMessage(message), ex);
 	}
 
+	default void alert(String message) {
+		console().alert(Alert.Severity.INFO, message);
+	}
+
+	default void alert(String message, Throwable ex) {
+		console().alert(message, ex);
+		warn(message, ex);
+	}
+
 	default Console console() {
 		return Console.root();
 	}

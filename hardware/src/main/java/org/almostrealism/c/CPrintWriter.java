@@ -19,7 +19,7 @@ package org.almostrealism.c;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;

@@ -42,7 +42,7 @@ public class Negation extends UnaryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> generate(List<Expression<?>> children) {
+	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		return new Negation((Expression<Boolean>) children.get(0));
 	}
 

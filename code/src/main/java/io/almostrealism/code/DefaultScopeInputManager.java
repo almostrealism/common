@@ -56,7 +56,6 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 
 		if (delegate == null) {
 			arg.setPhysicalScope(p.getDefaultPhysicalScope());
-			arg.getExpression().setType(Double.class);
 		}
 
 		return arg;

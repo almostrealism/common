@@ -16,12 +16,9 @@
 
 package org.almostrealism.layers.test;
 
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Model;
@@ -139,7 +136,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 		int steps = 100;
 
 		Model model = new Model(shape(size));
-		model.addLayer(dense(nodes));
+		model.add(dense(nodes));
 
 		initKernelMetrics();
 		OperationProfile profile = new OperationProfile("Model");

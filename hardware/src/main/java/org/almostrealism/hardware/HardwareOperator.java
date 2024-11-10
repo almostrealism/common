@@ -21,19 +21,21 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.stream.IntStream;
 
-public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named {
+public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableKernelLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
@@ -199,6 +201,14 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			}
 		}
 	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getDisplayName() + " (" + getGlobalWorkSize() + "x)";
+	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 
 	public static void recordCompilation(boolean gpu) {
 		if (gpu) {

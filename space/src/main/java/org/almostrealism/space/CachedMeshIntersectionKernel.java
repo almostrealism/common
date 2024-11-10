@@ -23,7 +23,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
@@ -33,7 +32,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.stream.Stream;
 
-public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
+public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, DimensionAware {
 	private MeshData data;
 	private Evaluable<Ray> ray;
 	private Evaluable<Vector> closestNormal;
@@ -59,12 +58,12 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
 
 	@Override
-	public Evaluable withDestination(MemoryBank destination) {
+	public Evaluable into(Object destination) {
 		return args -> {
-			cache = Pair.bank(destination.getCount());
+			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) destination.get(i)).setMem(cache.get(i).getA(), 1.0);
+				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.get(i).getA(), 1.0);
 			}
 
 			return destination;

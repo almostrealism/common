@@ -16,13 +16,13 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.expression.ArraySize;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
@@ -43,7 +43,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
+public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
+		extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware, ExpressionFeatures {
 	public static final boolean enableCompaction = true;
 
 	private int memLength;
@@ -86,9 +87,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable(), PhysicalScope.LOCAL, new ArraySize(2), () -> this));
-		addVariable(new Variable(getHighestRankInputVariable(), PhysicalScope.LOCAL, new ArraySize(2 * valueCount), () -> this));
-		addVariable(new Variable(getHighestRankConfVariable(), PhysicalScope.LOCAL, new ArraySize(2), () -> this));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
 	}
 
 	@Override

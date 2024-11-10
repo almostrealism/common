@@ -19,7 +19,6 @@ package org.almostrealism.color;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
@@ -64,7 +63,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 			PackedCollection<RGB> output = RGB.bank(size);
 
 			if (source != null) {
-				((KernelizedEvaluable) source.get()).into(output).evaluate(input);
+				source.get().into(output).evaluate(input);
 			} else if (func != null) {
 				RGB result[] = input.stream().map(func).toArray(RGB[]::new);
 				for (int i = 0; i < result.length; i++) output.set(i, result[i]);

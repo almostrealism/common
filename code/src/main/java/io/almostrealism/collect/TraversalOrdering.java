@@ -21,8 +21,13 @@ import io.almostrealism.expression.IntegerConstant;
 
 import java.util.OptionalInt;
 
-public interface TraversalOrdering {
+public interface TraversalOrdering extends IndexSet {
 	Expression<Integer> indexOf(Expression<Integer> idx);
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return indexOf(index).greaterThanOrEqual(0);
+	}
 
 	default int indexOf(int idx) {
 		return indexOf(new IntegerConstant(idx)).intValue().orElseThrow();

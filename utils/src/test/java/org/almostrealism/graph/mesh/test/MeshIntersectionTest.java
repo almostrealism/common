@@ -19,6 +19,7 @@ package org.almostrealism.graph.mesh.test;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
@@ -26,11 +27,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
@@ -128,16 +129,16 @@ public class MeshIntersectionTest implements TestFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		KernelizedEvaluable<Vector> ho = (KernelizedEvaluable) h.get();
+		HardwareEvaluable<Vector> ho = (HardwareEvaluable) h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
-		KernelizedEvaluable<Scalar> fo = (KernelizedEvaluable) f.get();
+		HardwareEvaluable<Scalar> fo = (HardwareEvaluable) f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
-		KernelizedEvaluable<Scalar> uo = (KernelizedEvaluable<Scalar>) u.get();
+		HardwareEvaluable<Scalar> uo = (HardwareEvaluable<Scalar>) u.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
 
-		KernelizedEvaluable<Scalar> vo = (KernelizedEvaluable<Scalar>) v.get();
+		HardwareEvaluable<Scalar> vo = (HardwareEvaluable<Scalar>) v.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
@@ -146,7 +147,7 @@ public class MeshIntersectionTest implements TestFeatures {
 				scalarLessThan(u, scalar(1.0), true),
 				scalarGreaterThan(v, scalar(0.0), true),
 				scalarLessThan(add(u, v), scalar(1.0), true));
-		KernelizedEvaluable<Scalar> evs = (KernelizedEvaluable) acs.get();
+		ArgumentList<Scalar> evs = (ArgumentList) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 

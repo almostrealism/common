@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-/*
- * Copyright (C) 2007  Mike Murray
- *
- *  All rights reserved.
- *  This document may not be reused without
- *  express written permission from Mike Murray.
- *
- */
-
 package org.almostrealism.util;
 
 /**
- * @author  Mike Murray
+ * @author  Michael Murray
  */
 public interface Help {
 	String getHelpInfo();

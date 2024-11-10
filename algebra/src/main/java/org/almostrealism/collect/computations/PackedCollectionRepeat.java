@@ -167,17 +167,18 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		boolean computable = in instanceof Computation;
 
 		if (!enableIsolation && !computable) {
-			return generate(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
-//			return generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
+			PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+					generateReplacement(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
+			return isolated;
 		}
 
 		if (!enableInputIsolation || !computable)
 			return super.isolate();
 
-		Process<Process<?, ?>, Evaluable<? extends T>> isolated =
-				generate(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
+		PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
 
-		return enableIsolation ? isolated.isolate() : isolated;
+		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

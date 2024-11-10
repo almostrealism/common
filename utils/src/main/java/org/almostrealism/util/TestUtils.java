@@ -22,6 +22,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.io.SystemUtils;
 
+import java.io.File;
 import java.util.Objects;
 
 public class TestUtils implements TestSettings {
@@ -32,6 +33,11 @@ public class TestUtils implements TestSettings {
 			CLMemoryProvider.enableWarnings = !skipLongTests;
 		if (MetalMemoryProvider.enableWarnings)
 			MetalMemoryProvider.enableWarnings = !skipLongTests;
+
+		File results = new File("results");
+		if (!results.exists()) {
+			results.mkdir();
+		}
 
 		Console.root().addListener(OutputFeatures.fileOutput("results/logs/test.out"));
 	}

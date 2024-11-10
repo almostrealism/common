@@ -51,9 +51,8 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 				getArgument(2).getValueRelative(0));
 	}
 
-	// TODO  Change to List<ArrayVariable<Double>>
 	@Override
-	public List<ArrayVariable<Scalar>> getOperands() {
+	public List<ArrayVariable<Double>> getOperands() {
 		return Arrays.asList(getArgument(1), getArgument(2));
 	}
 

@@ -16,7 +16,9 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.util.FrequencyCache;
 
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 
 public class ExpressionCache {
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
+	private static ThreadLocal<OperationMetadata> currentMetadata = new ThreadLocal<>();
 
 	private Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
 
@@ -40,15 +43,26 @@ public class ExpressionCache {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
 
-		FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
+		Supplier<Expression<T>> lookup = () -> {
+			FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
 
-		Expression e = cache.get(expression);
-		if (e == null) {
-			cache.put(expression, expression);
-			e = expression;
+			Expression e = cache.get(expression);
+			if (e == null) {
+				cache.put(expression, expression);
+				e = expression;
+			}
+
+			return e;
+		};
+
+		if (Expression.timing == null) {
+			return lookup.get();
+		} else {
+			String title = "expressionCacheMatch_" + expression.treeDepth() +
+					"_" + expression.countNodes() +
+					"_" + expression.getClass().getSimpleName();
+			return Expression.timing.recordDuration(currentMetadata.get(), title, lookup);
 		}
-
-		return e;
 	}
 
 	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
@@ -75,26 +89,34 @@ public class ExpressionCache {
 		return caches.values().stream().allMatch(FrequencyCache::isEmpty);
 	}
 
-	public ExpressionCache use(Runnable r) {
-		ExpressionCache old = current.get();
-		current.set(this);
 
-		try {
+	public ExpressionCache use(Runnable r) {
+		return use(null, r);
+	}
+
+	public ExpressionCache use(OperationMetadata metadata, Runnable r) {
+		use(metadata, () -> {
 			r.run();
-		} finally {
-			current.set(old);
-		}
+			return null;
+		});
 
 		return this;
 	}
 
 	public <T> T use(Supplier<T> r) {
+		return use(null, r);
+	}
+
+	public <T> T use(OperationMetadata metadata, Supplier<T> r) {
+		OperationMetadata oldMetadata = currentMetadata.get();
 		ExpressionCache old = current.get();
+		currentMetadata.set(metadata);
 		current.set(this);
 
 		try {
 			return r.get();
 		} finally {
+			currentMetadata.set(oldMetadata);
 			current.set(old);
 		}
 	}
@@ -102,6 +124,7 @@ public class ExpressionCache {
 	public static <T> Expression<T> match(Expression<T> expression) {
 		ExpressionCache cache = getCurrent();
 		if (cache == null) return expression;
+
 		return cache.get(expression);
 	}
 

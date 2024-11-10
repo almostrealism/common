@@ -84,7 +84,9 @@ public interface RayFeatures extends VectorFeatures {
 	default CollectionProducer<Scalar> oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
 
 	default CollectionProducer<Ray> transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
-		return ray(TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)), TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));
+		return ray(
+				TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)),
+				TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));
 	}
 
 	static RayFeatures getInstance() {

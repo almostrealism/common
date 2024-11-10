@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,14 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public abstract class OperationComputationAdapter<T> extends ComputationBase<T, Void, Runnable> implements OperationComputation<Void>, ComputerFeatures {
+public abstract class OperationComputationAdapter<T>
+		extends ComputationBase<T, Void, Runnable>
+		implements OperationComputation<Void>, ComputerFeatures {
 	@SafeVarargs
 	public OperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this.setInputs(inputArgs);

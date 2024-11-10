@@ -49,5 +49,10 @@ public interface OperationComputation<T> extends Computation<T>, Operation {
 		public long getOutputSize() {
 			return op.getOutputSize();
 		}
+
+		@Override
+		public String describe() {
+			return getMetadata().getShortDescription();
+		}
 	}
 }

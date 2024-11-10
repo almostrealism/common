@@ -42,7 +42,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 	@Override
 	public T evaluate(Object... args) {
 		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
-			((AcceleratedOperation) operation).kernelOperate(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			((AcceleratedOperation) operation).apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
 			if (HardwareOperator.enableKernelLog) log("Evaluating " + name + " kernel...");

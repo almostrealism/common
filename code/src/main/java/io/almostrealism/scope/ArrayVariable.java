@@ -17,10 +17,9 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -28,43 +27,59 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
-public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+// TODO  This should actually extend Variable<Multiple<T>, ArrayVariable<T>>
+// TODO  because ArrayVariable type T is the type of the member of the array
+// TODO  not the type of the entire array
+public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
-	private int delegateOffset;
+	private Expression<Integer> delegateOffset;
 	private Expression<Integer> arraySize;
 	private boolean disableOffset;
 	private boolean destroyed;
 
 	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
-		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
+		this(np, np == null ? null : np.getDefaultPhysicalScope(), type, name, arraySize, null);
+	}
+
+	public ArrayVariable(NameProvider np, PhysicalScope scope,
+						 Class<T> type, String name,
+						 Expression<Integer> arraySize,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
+		super(name, scope, type, p);
 		this.names = np;
 		setArraySize(arraySize);
-		if (type != null) setExpression(Constant.forType(type));
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(np, name, np.getDefaultPhysicalScope(), Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, scope, Constant.forType(type), p);
+	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<?> type,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
+		super(name, scope, type, p);
 		this.names = np;
+	}
+
+	public ArrayVariable(ArrayVariable<T> delegate, Expression<Integer> delegateOffset) {
+		super(null, delegate.getPhysicalScope(), null, null);
+		this.names = delegate.names;
+		setDelegate(delegate);
+		setDelegateOffset(delegateOffset);
 	}
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
-	@Override
 	public Expression<Integer> getArraySize() {
 		if (destroyed) throw new UnsupportedOperationException();
-		if (arraySize != null) return arraySize;
-		return super.getArraySize();
+
+		return arraySize;
 	}
 
 	@Override
@@ -72,13 +87,13 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		super.setDelegate(delegate);
 	}
 
-	public int getDelegateOffset() { return delegateOffset; }
-	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+	public Expression<Integer> getDelegateOffset() { return delegateOffset; }
+	public void setDelegateOffset(Expression<Integer> delegateOffset) { this.delegateOffset = delegateOffset; }
+	public void setDelegateOffset(int delegateOffset) { setDelegateOffset(new IntegerConstant(delegateOffset)); }
 
 	public boolean isDisableOffset() {
 		return disableOffset;
 	}
-
 	public void setDisableOffset(boolean disableOffset) {
 		this.disableOffset = disableOffset;
 	}
@@ -89,7 +104,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (getDelegate() == null) {
 			return 0;
 		} else {
-			return getDelegate().getOffset() + getDelegateOffset();
+			return getDelegate().getOffset() + getDelegateOffset().intValue().getAsInt();
 		}
 	}
 
@@ -104,7 +119,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 
 		if (getDelegate() != null) {
-			return getDelegate().getValueRelative(index + getDelegateOffset());
+			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
 		}
 
 		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
@@ -116,7 +131,16 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return referenceRelative(exp);
 	}
 
-	public Expression<T> ref(int pos) {
+	public InstanceReference<Multiple<T>, T> ref(int pos) {
+		return ref(new IntegerConstant(pos));
+	}
+
+	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
+		if (destroyed) throw new UnsupportedOperationException();
+		return new InstanceReference<>(new ArrayVariable<>(this, offset));
+	}
+
+	public Expression<T> referenceRelative(int pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}
@@ -172,25 +196,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	@Override
-	public void setExpression(Expression<T> value) {
-		if (getDelegate() != null)
-			throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
-		super.setExpression(value);
-	}
-
-	@Override
-	public Expression<T> getExpression() {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		if (getDelegate() == null) return super.getExpression();
-		throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
-	}
-
-	@Override
-	protected List<Variable<?, ?>> getExpressionDependencies() {
-		if (destroyed) throw new UnsupportedOperationException();
-		if (getDelegate() == null) return super.getExpressionDependencies();
-		return Collections.emptyList();
+	public boolean equals(Object obj) {
+		if (!(obj instanceof ArrayVariable)) return false;
+		if (!super.equals(obj)) return false;
+		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
 	@Deprecated

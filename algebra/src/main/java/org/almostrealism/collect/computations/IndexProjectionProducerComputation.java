@@ -17,15 +17,18 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -36,7 +39,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<PackedCollection<?>, T> {
+		extends TraversableExpressionComputation<T> {
 	public static boolean enableDelegatedIsolate = true;
 	public static boolean enableConstantDelegatedIsolate = true;
 	public static boolean enableInputIsolate = false;
@@ -68,26 +71,25 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public boolean isConstant() {
-		if (getInputs().get(1) instanceof Computable) {
-			return ((Computable) getInputs().get(1)).isConstant();
-		}
-
-		return false;
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return new IndexProjectionExpression(getShape(),
+				idx -> projectIndex(args[1], idx), args[1]);
 	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		if (relative) {
-			TraversableExpression var = getTraversableArguments(index)[1];
+			TraversableExpression<Double> var = getTraversableArguments(index)[1];
 			if (var == null) return null;
 
 			return var.getValueRelative(projectIndex(var, index));
 		} else {
-			TraversableExpression var = getCollectionArgumentVariable(1);
-			if (var == null) return null;
+//			TraversableExpression<Double> var = getCollectionArgumentVariable(1);
+//			if (var == null) return null;
+//
+//			return var.getValueAt(projectIndex(var, index));
 
-			return var.getValueAt(projectIndex(var, index));
+			return super.getValueAt(index);
 		}
 	}
 
@@ -99,10 +101,12 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 		} else {
-			TraversableExpression var = getCollectionArgumentVariable(1);
-			if (var == null) return null;
+//			TraversableExpression var = getCollectionArgumentVariable(1);
+//			if (var == null) return null;
+//
+//			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
 
-			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
 	}
 
@@ -118,16 +122,17 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		int outSize = getShape().getTotalSize();
 		int inSize = shape(getInputs().get(1)).getTotalSize();
 		TraversalPolicy shape = shape(outSize, inSize);
-		return compute(shape.traverse(),
-					idx -> {
+
+		// TODO  This should use DiagonalCollectionExpression
+		return compute(CollectionExpression.create(shape.traverse(), idx -> {
 						Expression pos[] = shape.position(idx);
 						return conditional(pos[0].eq(projectIndex(pos[1])), e(1), e(0));
-					})
+					}))
 				.addDependentLifecycle(this);
 	}
 
 	private Process<Process<?, ?>, Evaluable<? extends T>> isolateForce() {
-		return super.isolate();
+		return Process.isolationPermitted(this) ? super.isolate() : this;
 	}
 
 	private Process<Process<?, ?>, Evaluable<? extends T>> isolateInput() {
@@ -137,7 +142,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
 		} else {
 			c = (IndexProjectionProducerComputation)
-					generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+					generateReplacement((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 		}
 
 		return c;
@@ -145,6 +150,8 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		if (Process.isExplicitIsolation()) return super.isolate();
+
 		if (enableDelegatedIsolate || (enableConstantDelegatedIsolate && isConstant())) {
 			IndexProjectionProducerComputation c;
 
@@ -152,7 +159,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 				c = (IndexProjectionProducerComputation) ((IndexProjectionProducerComputation) getInputs().get(1)).isolateInput();
 			} else {
 				c = (IndexProjectionProducerComputation)
-						generate((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
+						generateReplacement((List) getInputs().stream().map(Process::isolated).collect(Collectors.toList()));
 			}
 
 			return c.isolateForce();
@@ -170,7 +177,28 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (getInputs().get(1) instanceof CollectionProducer) {
+		Supplier in = getInputs().get(1);
+
+		if (AlgebraFeatures.cannotMatch(in, target)) {
+			TraversalPolicy shape = getShape();
+			TraversalPolicy targetShape = shape(target);
+			return (CollectionProducer)
+					compute(zeros(shape(shape.getTotalSize(), targetShape.getTotalSize())))
+						.reshape(shape.append(targetShape));
+		}
+
+		CollectionProducer<PackedCollection<?>> delta = null;
+
+		if (in instanceof CollectionProducer) {
+			delta = ((CollectionProducer) in).delta(target);
+		} else if (AlgebraFeatures.match(in, target)) {
+			TraversalPolicy shape = shape(in);
+			TraversalPolicy targetShape = shape(target);
+			delta = identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+							.reshape(shape.append(targetShape));
+		}
+
+		if (delta != null) {
 			TraversalPolicy outShape = getShape();
 			TraversalPolicy inShape = shape(getInputs().get(1));
 			TraversalPolicy targetShape = shape(target);
@@ -181,8 +209,6 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 			TraversalPolicy deltaShape = shape(inSize, targetSize);
 			TraversalPolicy overallShape = shape(outSize, targetSize);
-
-			CollectionProducer<PackedCollection<?>> delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 
 			TraversalPolicy shape = outShape.append(targetShape);
 			int traversalAxis = shape.getTraversalAxis();

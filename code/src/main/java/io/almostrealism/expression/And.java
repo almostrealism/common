@@ -57,7 +57,7 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public Expression<Integer> generate(List<Expression<?>> children) {
+	public Expression<Integer> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}

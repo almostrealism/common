@@ -17,13 +17,14 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -31,8 +32,8 @@ import java.util.function.Supplier;
 
 @Deprecated
 public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
-		extends DynamicAcceleratedOperation<MemoryData>
-		implements KernelizedEvaluable<O> {
+		extends AcceleratedOperation<MemoryData>
+		implements Evaluable<O> {
 
 	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context,
 									   Supplier<O> destination,
@@ -50,6 +51,16 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 		setInputs(AcceleratedEvaluable.includeResult(
 				new DynamicProducerForMemoryData(args -> destination.get(), kernelDestination), inputArgs));
 		init();
+	}
+
+	@Override
+	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public DefaultExecutionKey getExecutionKey() {
+		return new DefaultExecutionKey(getFunctionName(), getArgsCount());
 	}
 
 	@Override

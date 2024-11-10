@@ -18,13 +18,11 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;
 
-public class MemoryDataDestination<T extends MemoryData> implements KernelizedEvaluable<T> {
+public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T> {
 	private final IntFunction<Multiple<T>> provider;
 
 	public MemoryDataDestination(IntFunction<Multiple<T>> provider) {
@@ -37,7 +35,7 @@ public class MemoryDataDestination<T extends MemoryData> implements KernelizedEv
 	}
 
 	@Override
-	public Evaluable<T> withDestination(MemoryBank destination) {
+	public Evaluable<T> into(Object destination) {
 		return args -> (T) destination;
 	}
 
