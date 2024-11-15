@@ -21,14 +21,16 @@ import io.almostrealism.kernel.DefaultIndex;
 public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
 	protected static long idxCount;
 
+	private final String name;
 	private final TraversalPolicy shape;
 	private TraversalPolicy totalShape;
 
-	public CollectionExpressionAdapter(TraversalPolicy shape) {
+	public CollectionExpressionAdapter(String name, TraversalPolicy shape) {
 		if (shape == null) {
 			throw new IllegalArgumentException("Shape is required");
 		}
 
+		this.name = name;
 		this.shape = shape;
 	}
 

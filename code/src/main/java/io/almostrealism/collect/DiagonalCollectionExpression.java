@@ -28,7 +28,7 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 	private TraversalPolicy positionShape;
 
 	public DiagonalCollectionExpression(TraversalPolicy shape, TraversableExpression<Double> values) {
-		super(shape);
+		super(null, shape);
 		this.values = values;
 	}
 

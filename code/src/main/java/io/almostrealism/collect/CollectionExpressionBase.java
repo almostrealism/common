@@ -24,11 +24,11 @@ public abstract class CollectionExpressionBase implements CollectionExpression<C
 
 	@Override
 	public CollectionExpressionBase reshape(TraversalPolicy shape) {
-		return new UniformCollectionExpression(shape, e -> e[0], this);
+		return new UniformCollectionExpression("reshape", shape, e -> e[0], this);
 	}
 
 	@Override
 	public CollectionExpressionBase traverse(int axis) {
-		return new UniformCollectionExpression(getShape().traverse(axis), e -> e[0], this);
+		return new UniformCollectionExpression("traverse", getShape().traverse(axis), e -> e[0], this);
 	}
 }

@@ -30,10 +30,10 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 	private Function<Expression[], Expression<?>> operation;
 	private NonZeroIndexPolicy indexPolicy;
 
-	public UniformCollectionExpression(TraversalPolicy shape,
+	public UniformCollectionExpression(String name, TraversalPolicy shape,
 									   Function<Expression[], Expression<?>> operation,
 									   TraversableExpression... operands) {
-		super(shape, operands);
+		super(name, shape, operands);
 		this.operation = operation;
 	}
 

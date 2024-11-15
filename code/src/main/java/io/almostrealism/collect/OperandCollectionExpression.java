@@ -21,8 +21,9 @@ import java.util.List;
 public abstract class OperandCollectionExpression extends CollectionExpressionAdapter {
 	protected TraversableExpression[] operands;
 
-	public OperandCollectionExpression(TraversalPolicy shape, TraversableExpression... operands) {
-		super(shape);
+	public OperandCollectionExpression(String name, TraversalPolicy shape,
+									   TraversableExpression... operands) {
+		super(name, shape);
 		this.operands = operands;
 	}
 

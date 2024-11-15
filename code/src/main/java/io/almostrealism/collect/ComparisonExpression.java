@@ -22,11 +22,11 @@ import io.almostrealism.expression.Expression;
 import java.util.function.BiFunction;
 
 public class ComparisonExpression extends UniformConditionalExpression {
-	public ComparisonExpression(TraversalPolicy shape,
+	public ComparisonExpression(String name, TraversalPolicy shape,
 								BiFunction<Expression<?>, Expression<?>, Expression<Boolean>> comparison,
 								TraversableExpression a, TraversableExpression b,
 								TraversableExpression positive, TraversableExpression negative) {
-		super(shape,
+		super(name, shape,
 					args -> Conditional.of(comparison.apply(args[0], args[1]), args[2], args[3]),
 				a, b, positive, negative);
 	}

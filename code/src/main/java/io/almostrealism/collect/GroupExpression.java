@@ -53,7 +53,7 @@ public class GroupExpression extends OperandCollectionExpression {
 						   MemberIndexGenerator memberIndexGenerator,
 						   Function<List<Expression[]>, Expression> combiner,
 						   TraversableExpression... operands) {
-		super(shape, operands);
+		super(null, shape, operands);
 		this.memberCount = memberCount;
 		this.memberGenerator = memberIndexGenerator;
 		this.combiner = combiner;

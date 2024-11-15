@@ -813,7 +813,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
 				"exp", shape,
-				args -> new UniformCollectionExpression(shape, in -> Exp.of(in[0]), args[1]),
+				args -> new UniformCollectionExpression("exp", shape, in -> Exp.of(in[0]), args[1]),
 				(Supplier) value);
 	}
 
@@ -824,7 +824,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DefaultTraversableExpressionComputation<>(
 				"expIgnoreZero", shape,
 				args ->
-						new ConditionalFilterExpression(shape,
+						new ConditionalFilterExpression("expIgnoreZero", shape,
 								Expression::eqZero, Exp::of,
 								false, args[1]),
 				(Supplier) value);
@@ -835,7 +835,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
 				"log", shape,
-				args -> new UniformCollectionExpression(shape, in -> Logarithm.of(in[0]), args[1]),
+				args -> new UniformCollectionExpression("log", shape, in -> Logarithm.of(in[0]), args[1]),
 				(Supplier) value);
 	}
 
@@ -848,7 +848,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
 				"floor", shape,
-				args -> new UniformCollectionExpression(shape, in -> Floor.of(in[0]), args[1]),
+				args -> new UniformCollectionExpression("floor", shape, in -> Floor.of(in[0]), args[1]),
 				(Supplier) value);
 	}
 
@@ -862,7 +862,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		return new DefaultTraversableExpressionComputation<>("min", shape,
-				args -> new UniformCollectionExpression(shape,
+				args -> new UniformCollectionExpression("min", shape,
 								in -> Min.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
@@ -877,7 +877,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		return new DefaultTraversableExpressionComputation<>("max", shape,
-				args -> new UniformCollectionExpression(shape,
+				args -> new UniformCollectionExpression("max", shape,
 								in -> Max.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
@@ -903,7 +903,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			}
 
 			return new DefaultTraversableExpressionComputation<>("mod", shape,
-					args -> new UniformCollectionExpression(shape,
+					args -> new UniformCollectionExpression("mod", shape,
 								in -> Mod.of(in[0], in[1]), args[1], args[2]),
 					(Supplier) a, (Supplier)  b);
 		}
@@ -924,7 +924,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
 				"abs", shape,
-				args -> new UniformCollectionExpression(shape, in -> new Absolute(in[0]), args[1]),
+				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
 				(Supplier) value);
 	}
 
@@ -1043,7 +1043,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		return new DefaultTraversableExpressionComputation<>("greaterThan", shape,
-				args -> new ComparisonExpression(shape,
+				args -> new ComparisonExpression("greaterThan", shape,
 						(l, r) -> greater(l, r, includeEqual),
 						args[1], args[2], args[3], args[4]),
 				(Supplier) a, (Supplier) b,

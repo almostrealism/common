@@ -42,7 +42,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 												  CollectionExpression compareTo,
 												  CollectionExpression positive,
 												  CollectionExpression negative) {
-		super(reference.getShape());
+		super(null, reference.getShape());
 		this.reference = reference;
 		this.compareTo = compareTo;
 		this.positive = positive;

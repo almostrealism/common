@@ -41,6 +41,7 @@ public class Console {
 	private boolean resetLastLine;
 
 	private Map<String, MetricBase> metrics = Collections.synchronizedMap(new HashMap<>());
+	private Map<String, List<?>> samples = Collections.synchronizedMap(new HashMap<>());
 
 	protected Console() { this(null); }
 
@@ -145,6 +146,17 @@ public class Console {
 	public Console addAlertDeliveryProvider(AlertDeliveryProvider provider) {
 		alertDeliveryProviders.add(provider);
 		return this;
+	}
+
+	public <T> List<T> getSamples(String key) {
+		return (List<T>) getSamples(key, true);
+	}
+
+	protected List<?> getSamples(String key, boolean create) {
+		List<?> p = parent == null ? null : parent.getSamples(key, false);
+		if (p != null) return p;
+
+		return create ? samples.computeIfAbsent(key, k -> new ArrayList<>()) : samples.get(key);
 	}
 
 	public void warn(String message) { warn(message, null); }

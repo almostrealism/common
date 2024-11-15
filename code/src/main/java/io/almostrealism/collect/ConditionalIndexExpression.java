@@ -28,7 +28,7 @@ import java.util.OptionalInt;
 // TODO  (it is a uniform translation of the input expression)
 public class ConditionalIndexExpression extends OperandCollectionExpression {
 	public ConditionalIndexExpression(TraversalPolicy shape, TraversableExpression in) {
-		super(shape, in);
+		super(null, shape, in);
 	}
 
 	@Override

@@ -27,7 +27,7 @@ public class ConditionalExpressionBase extends OperandCollectionExpression {
 	public ConditionalExpressionBase(TraversalPolicy shape,
 									 TraversableExpression choice,
 									 TraversableExpression... choices) {
-		super(shape, choices);
+		super(null, shape, choices);
 		this.choice = choice;
 	}
 
