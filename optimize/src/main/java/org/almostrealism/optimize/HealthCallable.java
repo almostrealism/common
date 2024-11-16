@@ -37,12 +37,15 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	private HealthComputation<T, S> health;
 	private Supplier<T> target;
 	private Consumer<S> healthListener;
+	private Consumer<Exception> errorListener;
 	private HealthScoring scoring;
 	private Runnable cleanup;
 
 	private Heap heap;
 
-	public HealthCallable(Supplier<T> target, HealthComputation health, HealthScoring scoring, Consumer<S> healthListener, Runnable cleanup) {
+	public HealthCallable(Supplier<T> target, HealthComputation<T, S> health,
+						  HealthScoring scoring, Consumer<S> healthListener,
+						  Runnable cleanup) {
 		this.health = health;
 		this.target = target;
 		this.scoring = scoring;
@@ -51,8 +54,12 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	}
 
 	public Heap getHeap() { return heap; }
-
 	public void setHeap(Heap heap) { this.heap = heap; }
+
+	public Consumer<Exception> getErrorListener() { return errorListener; }
+	public void setErrorListener(Consumer<Exception> errorListener) {
+		this.errorListener = errorListener;
+	}
 
 	@Override
 	public S call() throws Exception {
@@ -70,7 +77,12 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 					healthListener.accept(healthResult);
 				}
 			} catch (Exception e) {
-				e.printStackTrace();
+				if (getErrorListener() == null) {
+					e.printStackTrace();
+				} else {
+					getErrorListener().accept(e);
+				}
+
 				throw e;
 			} finally {
 				this.health.reset();
