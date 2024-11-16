@@ -73,7 +73,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {
-		CollectionProducer<O> delta = attemptDelta(this, target);
+		CollectionProducer<O> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(getShape(), shape(target),

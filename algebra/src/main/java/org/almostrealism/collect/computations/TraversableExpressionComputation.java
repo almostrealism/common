@@ -36,10 +36,20 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 		implements ComputerFeatures {
 	public static boolean enableChainRule = true;
 
+	private final MultiTermDeltaStrategy deltaStrategy;
+
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		this(name, shape, MultiTermDeltaStrategy.NONE, args);
+	}
+
+	@SafeVarargs
+	public TraversableExpressionComputation(String name, TraversalPolicy shape,
+											MultiTermDeltaStrategy deltaStrategy,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(name, shape, validateArgs(args));
+		this.deltaStrategy = deltaStrategy;
 	}
 
 	protected abstract CollectionExpression getExpression(TraversableExpression... args);
@@ -57,8 +67,11 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	}
 
 	@Override
+	public MultiTermDeltaStrategy getDeltaStrategy() { return deltaStrategy; }
+
+	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(this, target);
+		CollectionProducer<T> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(

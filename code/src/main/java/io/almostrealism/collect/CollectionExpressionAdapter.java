@@ -46,6 +46,11 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 		return totalShape;
 	}
 
+	@Override
+	public String describe() {
+		return name + " " + super.describe();
+	}
+
 	public static DefaultIndex generateTemporaryIndex() {
 		return new DefaultIndex("ci_" + idxCount++);
 	}

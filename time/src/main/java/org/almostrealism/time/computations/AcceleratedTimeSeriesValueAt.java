@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.time.computations;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
@@ -52,7 +51,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends Scalar>> generate(List<Process<?, ?>> children) {
+	public AcceleratedTimeSeriesValueAt generate(List<Process<?, ?>> children) {
 		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
 	}
 

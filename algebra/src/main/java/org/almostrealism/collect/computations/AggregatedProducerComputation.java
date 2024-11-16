@@ -186,7 +186,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<?> delta = attemptDelta(this, target);
+		CollectionProducer<?> delta = attemptDelta(target);
 		if (delta != null) return (CollectionProducer) delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {

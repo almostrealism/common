@@ -64,7 +64,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+	public DynamicIndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return (DynamicIndexProjectionProducerComputation)
 				new DynamicIndexProjectionProducerComputation<>(getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),

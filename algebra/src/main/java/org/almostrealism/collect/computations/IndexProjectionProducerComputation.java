@@ -169,7 +169,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+	public IndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
 				(Producer<?>) children.get(1),
 				children.stream().skip(2).toArray(Producer[]::new));

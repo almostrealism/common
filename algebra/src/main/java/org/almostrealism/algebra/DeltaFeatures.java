@@ -23,18 +23,13 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProviderProducer;
-import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,8 +37,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableTotalIsolation = false;
@@ -58,7 +54,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 		List toReplace = enableTotalIsolation ? producer.getInputs() : Collections.singletonList(input);
 
 		CollectionProducer isolated = (CollectionProducer) replaceInput(producer, toReplace, replacements);
-		ComputationBase delta = (ComputationBase) isolated.delta(replacements.get(input));
+		CollectionProducer delta = isolated.delta(replacements.get(input));
 
 		if (enableTotalIsolation) {
 			List restore = new ArrayList();
@@ -70,7 +66,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 				}
 			});
 
-			delta = replaceInput(delta, restore, originals);
+			delta = (CollectionProducer) replaceInput((ComputationBase) delta, restore, originals);
 		}
 
 		return (CollectionProducer) delta;
@@ -99,7 +95,10 @@ public interface DeltaFeatures extends MatrixFeatures {
 			}
 
 			Producer<T> in = matchInput(producer, target);
-			if (AlgebraFeatures.match(in, target)) return null;
+			if (AlgebraFeatures.match(in, target)) {
+				return applyDeltaStrategy(producer, target);
+			}
+
 			if (!(in instanceof CollectionProducer)) return null;
 
 			Producer f = generateIsolatedDelta((ComputationBase) producer, in);
@@ -117,6 +116,45 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		return null;
+	}
+
+	default <T extends Shape<?>> CollectionProducer<T> applyDeltaStrategy(CollectionProducer<T> producer,
+																		  Producer<?> target) {
+		return null;
+	}
+
+	default <T extends Shape<?>> Function<Collection<Producer<?>>, CollectionProducer<T>>
+			deltaStrategyProcessor(MultiTermDeltaStrategy strategy,
+					  Function<List<Producer<?>>, CollectionProducer<T>> producerFactory,
+					  TraversalPolicy producerShape, Producer<?> target) {
+		return terms -> {
+			if (strategy == MultiTermDeltaStrategy.NONE) {
+				return null;
+			}
+
+			long matches = terms.stream()
+					.filter(t -> AlgebraFeatures.match(t, target))
+					.count();
+
+			if (matches == 0) {
+				return (CollectionProducer) CollectionFeatures.getInstance().c(0);
+			} else if (matches > 1) {
+				return null;
+			}
+
+			switch (strategy) {
+				case IGNORE:
+					return (CollectionProducer)
+							MatrixFeatures.getInstance().identity(shape(producerShape.getTotalSize(), shape(target).getTotalSize()))
+									.reshape(producerShape.append(shape(target)));
+				case COMBINE:
+					return producerFactory.apply(terms.stream()
+							.filter(t -> !AlgebraFeatures.match(t, target))
+							.collect(Collectors.toList()));
+				default:
+					throw new IllegalArgumentException();
+			}
+		};
 	}
 
 	default <T extends Shape<?>> ComputationBase<T, T, Evaluable<T>> replaceInput(
@@ -181,7 +219,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			}
 
 			@Override
-			public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+			public CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
 				return this;
 			}
 
@@ -190,5 +228,9 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 		};
+	}
+
+	enum MultiTermDeltaStrategy {
+		NONE, IGNORE, COMBINE;
 	}
 }

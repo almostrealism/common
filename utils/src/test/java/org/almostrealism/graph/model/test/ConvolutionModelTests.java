@@ -17,7 +17,9 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.layers.CellularLayer;
@@ -102,6 +104,13 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	}
 
 	@Test
+	public void convBackwardsSmall() {
+		if (skipKnownIssues) return;
+
+		convBackwards(1, 3, 4, 4, 1, 3,0, true);
+	}
+
+	@Test
 	public void convBackwardsMedium() {
 		if (skipKnownIssues) return;
 
@@ -117,7 +126,14 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 		PackedCollection<?> gradient = new PackedCollection<>(model.getInputShape()).randFill();
 
-		model.compile().backward(gradient);
+		model.compile()
+				.backward(gradient)
+		;
+
+//		Producer<PackedCollection<?>> p = (Producer<PackedCollection<?>>)
+//						CollectionFeatures.console.getSamples("matmul_matrices").get(0);
+//
+//		p.evaluate();
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

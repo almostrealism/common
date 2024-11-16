@@ -28,7 +28,6 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducerBase<T, CollectionProducer<T>>,
@@ -105,7 +104,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return expand(repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}
 
@@ -118,7 +117,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	}
 
 	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducerComputationBase<V, V> relativeAdd(Producer<V> value) {
 		return relativeAdd((Producer) this, value);
 	}
 
@@ -143,11 +142,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return multiply((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mul(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> mul(Producer<V> value) {
 		return multiply(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> multiply(Producer<V> value) {
 		return multiply((Producer) this, value);
 	}
 
@@ -156,11 +155,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return relativeMultiply((Supplier) this, (Supplier) value, null);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> div(double value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> div(double value) {
 		return divide(value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> divide(double value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> divide(double value) {
 		return divide((Producer) this, c(value));
 	}
 
@@ -265,19 +264,19 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return sigmoid((Producer) this);
 	}
 
+	default CollectionProducer<T> attemptDelta(Producer<?> target) {
+		return attemptDelta(this, target);
+	}
+
 	default CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(this, target);
+		CollectionProducer<T> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		throw new UnsupportedOperationException();
 	}
 
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {
-		return _greaterThan(operand, false);
-	}
-
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand, boolean includeEqual) {
-		return _greaterThan(operand, null, null, includeEqual);
+	default MultiTermDeltaStrategy getDeltaStrategy() {
+		return MultiTermDeltaStrategy.NONE;
 	}
 
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,

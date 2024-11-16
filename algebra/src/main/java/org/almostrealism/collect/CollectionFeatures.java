@@ -50,6 +50,7 @@ import io.almostrealism.relation.ProducerFeatures;
 import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
@@ -643,10 +644,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Evaluable<T> shortCircuit, Producer<T>... arguments) {
+		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, shortCircuit, arguments);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> compute(
+			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
+			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
+			Evaluable<T> shortCircuit, Producer<T>... arguments) {
 		CollectionProducerComputationBase<T, T> c =
 				(CollectionProducerComputationBase) alignTraversalAxes(List.of(arguments),
 				(shape, args) -> new DefaultTraversableExpressionComputation(
-						name, largestTotalSize(args), expression.apply(shape),
+						name, largestTotalSize(args), deltaStrategy, expression.apply(shape),
 							args.toArray(Supplier[]::new))
 						.setShortCircuit(shortCircuit));
 		long count = highestCount(List.of(arguments));
@@ -686,7 +694,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException();
 		}
 
-		return compute("add", shape -> args ->
+		return compute("add", DeltaFeatures.MultiTermDeltaStrategy.IGNORE,
+				shape -> args ->
 						sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				null, a, b);
 	}

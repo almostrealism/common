@@ -25,7 +25,9 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -36,7 +38,9 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
@@ -49,6 +53,30 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	 */
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
+
+	@Override
+	default <V extends Shape<?>> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
+																		  Producer<?> target) {
+		Collection<Producer<?>> terms;
+
+		if (producer instanceof Parent) {
+			terms = (Collection) ((Parent<?>) producer).getChildren().stream()
+					.map(t -> (Producer) t)
+					.collect(Collectors.toList());
+		} else {
+			return CollectionProducer.super.applyDeltaStrategy(producer, target);
+		}
+
+		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
+				args -> generate((List) args.stream()
+						.map(t -> (Process) t).collect(Collectors.toList())),
+				shape(producer), target).apply(terms);
+	}
+
+	@Override
+	default CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
