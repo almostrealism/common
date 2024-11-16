@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -71,6 +72,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	private Supplier<GenomeBreeder<G>> breeder;
 
 	private BiConsumer<String, S> healthListener;
+	private Consumer<Exception> errorListener;
 	private HealthScoring scoring;
 
 	public PopulationOptimizer(Supplier<HealthComputation<O, S>> h,
@@ -110,6 +112,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 	public void setHealthListener(BiConsumer<String, S> healthListener) { this.healthListener = healthListener; }
 
+	public Consumer<Exception> getErrorListener() { return errorListener; }
+	public void setErrorListener(Consumer<Exception> errorListener) { this.errorListener = errorListener; }
+	
 	public void resetGenerator() {
 		generator = null;
 	}
@@ -249,6 +254,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 					}
 				}, pop::disableGenome);
 				call.setHeap(Heap.getDefault());
+				call.setErrorListener(errorListener);
 
 				executor.submit(call);
 			}
