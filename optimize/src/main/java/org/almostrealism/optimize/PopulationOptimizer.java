@@ -221,7 +221,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		if (THREADS > 1) throw new UnsupportedOperationException();
 
 		ExecutorService s = Executors.newFixedThreadPool(THREADS);
-		ExecutorCompletionService<S> executor = new ExecutorCompletionService<S>(s);
+		ExecutorCompletionService<S> executor = new ExecutorCompletionService<>(s);
 
 		try {
 			final HashMap<Genome, Double> healthTable = new HashMap<>();
