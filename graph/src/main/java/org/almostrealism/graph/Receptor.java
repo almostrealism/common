@@ -26,6 +26,10 @@ public interface Receptor<T> {
 	Supplier<Runnable> push(Producer<T> protein);
 
 	static <T> Receptor<T> to(Receptor<T>... downstream) {
-		return protein -> Stream.of(downstream).map(r -> r.push(protein)).collect(OperationList.collector());
+		return to(Stream.of(downstream));
+	}
+
+	static <T> Receptor<T> to(Stream<Receptor<T>> downstream) {
+		return protein -> downstream.map(r -> r.push(protein)).collect(OperationList.collector());
 	}
 }
