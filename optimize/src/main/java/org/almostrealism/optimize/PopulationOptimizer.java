@@ -33,6 +33,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Generated;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.mem.Heap;
@@ -96,6 +97,10 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	public Population<G, O> getPopulation() { return this.population; }
 
 	public void resetHealth() {
+		if (health instanceof Destroyable) {
+			((Destroyable) health).destroy();
+		}
+
 		health = null;
 	}
 

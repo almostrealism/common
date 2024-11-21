@@ -21,8 +21,14 @@ import java.util.stream.Stream;
 
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
 
+	// TODO   Rename "all", with children() instead defaulting to includeThis = false
 	default Stream<T> children() {
-		return Stream.concat(Stream.of((T) this), getChildren().stream().flatMap(Tree::children));
+		return children(true);
+	}
+
+	default Stream<T> children(boolean includeThis) {
+		Stream<T> c = getChildren().stream().flatMap(Tree::children);
+		return includeThis ? Stream.concat(Stream.of((T) this), c) : c;
 	}
 
 	default TreeRef<T> ref() {

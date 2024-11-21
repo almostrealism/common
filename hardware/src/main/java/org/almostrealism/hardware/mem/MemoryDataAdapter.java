@@ -24,6 +24,7 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -71,6 +72,28 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public TraversalOrdering getDelegateOrdering() { return delegateOrder; }
 
 	@Override
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
+		this.delegateOrder = order;
+
+		if (m != null) {
+			if (m == this) {
+				throw new IllegalArgumentException("Circular delegate reference");
+			} else if (m.getDelegateDepth() > 25) {
+				throw new IllegalStateException("Delegation depth exceeded");
+			} else if (offset >= m.getMemLength()) {
+				throw new HardwareException("Delegate offset is out of bounds");
+			} else if (offset + getDelegatedLength() > m.getMemLength()) {
+				throw new HardwareException("MemoryData extends beyond the length of the delegate");
+			}
+		}
+
+		this.delegateMem = m;
+		this.delegateMemOffset = offset;
+	}
+
+	public Heap getDefaultDelegate() { return null; }
+
+	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return MemoryData.super.containsIndex(index);
 	}
@@ -107,43 +130,32 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	}
 
 	@Override
-	public void destroy() {
-		if (mem == null) return;
-		if (delegateMem != null) {
-			warn("MemoryData has a delegate, but also directly reserved memory");
-		}
-
-		mem.getProvider().deallocate(getMemLength(), mem);
-		mem = null;
+	public boolean isDestroyed() {
+		return mem == null && delegateMem == null;
 	}
 
 	@Override
-	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
-		this.delegateOrder = order;
-
-		if (m != null) {
-			if (m == this) {
-				throw new IllegalArgumentException("Circular delegate reference");
-			} else if (m.getDelegateDepth() > 25) {
-				throw new IllegalStateException("Delegation depth exceeded");
-			} else if (offset >= m.getMemLength()) {
-				throw new HardwareException("Delegate offset is out of bounds");
-			} else if (offset + getDelegatedLength() > m.getMemLength()) {
-				throw new HardwareException("MemoryData extends beyond the length of the delegate");
+	public void destroy() {
+		if (delegateMem != null && !delegateMem.isDestroyed()) {
+			if (mem == null) {
+				if (RAM.enableWarnings) warn("Attempting to destroy memory alias");
+			} else {
+				warn("MemoryData has a delegate, but also directly reserved memory");
 			}
 		}
 
-		this.delegateMem = m;
-		this.delegateMemOffset = offset;
+		if (mem != null) {
+			mem.getProvider().deallocate(getMemLength(), mem);
+			mem = null;
+		}
 	}
-
-	public Heap getDefaultDelegate() { return null; }
-
-	@Override
-	public Console console() { return Hardware.console; }
 
 	@Override
 	public void finalize() {
-		destroy();
+		if (mem != null) destroy();
 	}
+
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

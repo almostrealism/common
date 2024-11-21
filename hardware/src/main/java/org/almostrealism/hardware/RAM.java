@@ -17,8 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import org.almostrealism.io.SystemUtils;
 
 public abstract class RAM implements Memory {
+	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
 	public long getContainerPointer() {
 		return getContentPointer();
 	}

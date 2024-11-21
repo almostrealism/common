@@ -46,7 +46,6 @@ import java.util.stream.IntStream;
 public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableDirectReallocation = true;
 	public static boolean enableLargeAllocationLogging = false;
-	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("clAllocationSizes", 1024 * 1024);
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("clDeallocationSizes", 1024 * 1024);
@@ -169,7 +168,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			CL.clReleaseMemObject(mem.getMem());
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
-			if (!allocated.remove(mem) && enableWarnings) {
+			if (!allocated.remove(mem) && RAM.enableWarnings) {
 				System.out.println("WARN: Deallocated untracked memory");
 			}
 		} finally {
