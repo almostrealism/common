@@ -19,22 +19,35 @@ package org.almostrealism.lifecycle;
 import io.almostrealism.lifecycle.Destroyable;
 
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class SuppliedValue<T> implements Destroyable {
 	protected Supplier<T> supplier;
-	private T value;
+	protected T value;
+
+	protected Predicate<T> valid;
+	private Consumer<T> clear;
+
+	protected SuppliedValue() { }
 
 	public SuppliedValue(Supplier<T> supplier) {
 		this.supplier = supplier;
 	}
 
+	protected T createValue() {
+		return supplier.get();
+	}
+
 	public T getValue() {
-		if (value == null) value = supplier.get();
+		if (!isAvailable()) value = createValue();
 		return value;
 	}
 
-	public boolean isAvailable() { return value != null; }
+	public void setValid(Predicate<T> valid) { this.valid = valid; }
+	public void setClear(Consumer<T> clear) { this.clear = clear; }
+
+	public boolean isAvailable() { return value != null && (valid == null || valid.test(value)); }
 
 	public void applyAll(Consumer<T> consumer) {
 		if (consumer == null || !isAvailable()) return;
@@ -42,12 +55,28 @@ public class SuppliedValue<T> implements Destroyable {
 		consumer.accept(getValue());
 	}
 
+	public void clear() {
+		if (value == null) return;
+
+		if (clear != null) {
+			clear.accept(value);
+		} else if (value instanceof Destroyable) {
+			((Destroyable) value).destroy();
+			return;
+		}
+
+		// Do not allow any other destroy steps
+		// if the clear operation was handled
+		// by a custom consumer
+		value = null;
+	}
+
 	@Override
 	public void destroy() {
+		clear();
+
 		if (value instanceof Destroyable) {
 			((Destroyable) value).destroy();
 		}
-
-		value = null;
 	}
 }

@@ -130,11 +130,6 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	}
 
 	@Override
-	public boolean isDestroyed() {
-		return mem == null && delegateMem == null;
-	}
-
-	@Override
 	public void destroy() {
 		if (delegateMem != null && !delegateMem.isDestroyed()) {
 			if (mem == null) {

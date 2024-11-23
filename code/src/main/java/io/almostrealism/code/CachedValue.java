@@ -18,14 +18,13 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.lifecycle.SuppliedValue;
 
 import java.util.function.Consumer;
 
-public class CachedValue<T> implements Evaluable<T> {
+public class CachedValue<T> extends SuppliedValue<T> implements Evaluable<T> {
 	private Producer<T> source;
 	private Evaluable<T> eval;
-	private Consumer<T> clear;
-	private T value;
 
 	public CachedValue(Producer<T> source) {
 		this.source = source;
@@ -36,25 +35,27 @@ public class CachedValue<T> implements Evaluable<T> {
 	}
 
 	public CachedValue(Evaluable<T> source, Consumer<T> clear) {
-		this.eval = source;
-		this.clear = clear;
+		setEvaluable(source);
+		setClear(clear);
+	}
+
+	@Override
+	protected T createValue() {
+		return createValue(new Object[0]);
+	}
+
+	protected T createValue(Object args[]) {
+		if (eval == null) eval = source.get();
+		return eval.evaluate(args);
 	}
 
 	protected void setEvaluable(Evaluable<T> eval) {
 		this.eval = eval;
 	}
 
-	public boolean isCached() { return value != null; }
-
+	@Override
 	public T evaluate(Object... args) {
-		if (value != null) return value;
-		if (eval == null) eval = source.get();
-		value = eval.evaluate(args);
-		return value;
-	}
-
-	public void clear() {
-		if (clear != null && value != null) clear.accept(value);
-		value = null;
+		if (!isAvailable()) value = createValue(args);
+		return getValue();
 	}
 }
