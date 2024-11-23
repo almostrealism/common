@@ -18,6 +18,8 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.DataContext;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.lifecycle.SuppliedValue;
 import org.almostrealism.hardware.Hardware;
 
@@ -25,7 +27,7 @@ import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public abstract class ContextSpecific<T> implements ContextListener, Destroyable {
+public abstract class ContextSpecific<T> implements ContextListener, Destroyable, ConsoleFeatures {
 	private Stack<SuppliedValue<T>> val;
 	private Supplier<T> supply;
 	private Consumer<T> disposal;
@@ -51,7 +53,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		T v = val.peek().getValue();
 
 		if (val.size() > 3) {
-			System.out.println("WARN: " + val.size() + " context layers for " + v.getClass().getSimpleName());
+			warn(val.size() + " context layers for " + v.getClass().getSimpleName());
 		}
 
 		return v;
@@ -79,4 +81,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 
 		Hardware.getLocalHardware().removeContextListener(this);
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

@@ -31,11 +31,19 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 	private int lastSize;
 
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
-		this((v, i) -> supplier.apply(i));
+		this((v, i) -> {
+			if (v != null) v.destroy();
+			return i != null && i > 0 ? supplier.apply(i) : null;
+		});
 	}
 
 	public MemoryBankProvider(BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier) {
 		this.supplier = supplier;
+	}
+
+	protected void updateLast(int size) {
+		last = supplier.apply(last, size);
+		lastSize = size;
 	}
 
 	public MemoryBank<T> apply(int size) {
@@ -46,14 +54,12 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		if (Hardware.enableVerbose)
 			log("Creating a new MemoryBank with size " + size);
 
-		last = supplier.apply(last, size);
-		lastSize = size;
+		updateLast(size);
 		return last;
 	}
 
 	public void destroy() {
-		if (last != null) last.destroy();
-		lastSize = 0;
+		updateLast(0);
 	}
 
 	@Override

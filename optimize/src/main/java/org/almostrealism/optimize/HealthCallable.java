@@ -64,7 +64,7 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	@Override
 	public S call() throws Exception {
 		Callable<S> call = () -> {
-			S healthResult = null;
+			S healthResult;
 
 			try {
 				this.health.setTarget(target.get());

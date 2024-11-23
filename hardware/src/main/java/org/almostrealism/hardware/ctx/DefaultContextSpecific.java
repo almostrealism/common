@@ -19,9 +19,12 @@ package org.almostrealism.hardware.ctx;
 import org.almostrealism.lifecycle.SuppliedValue;
 
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class DefaultContextSpecific<T> extends ContextSpecific<T> {
+	private Predicate<T> valid;
+
 	public DefaultContextSpecific(Supplier<T> supply) {
 		super(supply);
 	}
@@ -30,8 +33,14 @@ public class DefaultContextSpecific<T> extends ContextSpecific<T> {
 		super(supply, disposal);
 	}
 
+	public void setValid(Predicate<T> valid) {
+		this.valid = valid;
+	}
+
 	@Override
 	public SuppliedValue createValue(Supplier supply) {
-		return new SuppliedValue(supply);
+		SuppliedValue v = new SuppliedValue(supply);
+		v.setValid(valid);
+		return v;
 	}
 }

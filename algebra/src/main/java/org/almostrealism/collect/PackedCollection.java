@@ -389,6 +389,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
+	public void destroy() {
+		if (getDelegate() != null && getDelegate().getMemLength() == getMemLength()) {
+			// When attempting to destroy a collection which extends over the entire
+			// space of its delegate, it is almost certainly expected that the delegate
+			// will also be destroyed
+			getDelegate().destroy();
+			setDelegate(null, 0);
+		}
+
+		super.destroy();
+	}
+
+	@Override
 	public String describe() {
 		if (getShape().getTotalSize() == 1) {
 			return getShape() + " " + toDouble(0);

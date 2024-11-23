@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
@@ -32,7 +33,7 @@ import org.almostrealism.time.Temporal;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
+public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatures {
 	public static boolean enableConditional = true;
 
 	private Receptor r;
@@ -132,5 +133,14 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 
 	public Producer<PackedCollection<?>> time(double sampleRate) {
 		return divide(frame(), c(sampleRate));
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+		if (time != null) time.destroy();
+		if (resets != null) resets.destroy();
+		time = null;
+		resets = null;
 	}
 }

@@ -55,8 +55,6 @@ import org.almostrealism.io.TimingMetric;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -78,7 +76,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
-	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
 	private boolean argumentMapping;
@@ -257,7 +254,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
 			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputArgumentIndex(), created,
+					getArgumentVariables(), getOutputArgumentIndex(),
 					getComputeContext().getDataContext().getKernelMemoryProvider(),
 					this::createAggregatedInput);
 
@@ -353,34 +350,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		if (s != null) {
 			s.waitFor();
 			semaphores.set(null);
-		}
-	}
-
-	@Deprecated
-	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
-		CreatedMemoryData last = created.get();
-
-		try {
-			created.set(data);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			created.set(last);
-		}
-	}
-
-	@Deprecated
-	public static <I, O> O apply(Supplier<I> input, Function<I, O> process) {
-		CreatedMemoryData data = new CreatedMemoryData();
-
-		try {
-			I in = record(data, () -> input.get());
-			return process.apply(in);
-		} finally {
-			data.destroy();
 		}
 	}
 

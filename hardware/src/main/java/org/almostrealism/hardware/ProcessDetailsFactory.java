@@ -55,7 +55,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private List<ArrayVariable<? extends T>> arguments;
 	private int outputArgIndex;
 
-	private ThreadLocal<CreatedMemoryData> created;
 	private MemoryProvider target;
 	private AcceleratedProcessDetails.TempMemoryFactory tempFactory;
 
@@ -72,7 +71,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
-								 ThreadLocal<CreatedMemoryData> created,
 								 MemoryProvider target,
 								 AcceleratedProcessDetails.TempMemoryFactory tempFactory) {
 		if (arguments == null) {
@@ -88,7 +86,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
 
-		this.created = created;
 		this.target = target;
 		this.tempFactory = tempFactory;
 	}
@@ -270,12 +267,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				long time = System.nanoTime() - start; start = System.nanoTime();
 				AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
-
-				if (created.get() != null) {
-					created.get().add(kernelArgs[i]);
-				} else {
-					Heap.addCreatedMemory(kernelArgs[i]);
-				}
+				Heap.addCreatedMemory(kernelArgs[i]);
 
 				kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
 

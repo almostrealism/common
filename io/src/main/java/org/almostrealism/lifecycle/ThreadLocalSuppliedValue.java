@@ -44,7 +44,10 @@ public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 	}
 
 	@Override
-	public boolean isAvailable() { return values != null && values.get(Thread.currentThread()) != null; }
+	public boolean isAvailable() {
+		return values != null && values.get(Thread.currentThread()) != null
+				&& (valid == null || valid.test(values.get(Thread.currentThread())));
+	}
 
 	@Override
 	public void applyAll(Consumer<T> consumer) {

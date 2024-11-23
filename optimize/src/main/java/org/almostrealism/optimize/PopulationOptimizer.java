@@ -33,6 +33,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Generated;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.mem.Heap;
@@ -96,6 +97,10 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	public Population<G, O> getPopulation() { return this.population; }
 
 	public void resetHealth() {
+		if (health instanceof Destroyable) {
+			((Destroyable) health).destroy();
+		}
+
 		health = null;
 	}
 
@@ -221,7 +226,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		if (THREADS > 1) throw new UnsupportedOperationException();
 
 		ExecutorService s = Executors.newFixedThreadPool(THREADS);
-		ExecutorCompletionService<S> executor = new ExecutorCompletionService<S>(s);
+		ExecutorCompletionService<S> executor = new ExecutorCompletionService<>(s);
 
 		try {
 			final HashMap<Genome, Double> healthTable = new HashMap<>();

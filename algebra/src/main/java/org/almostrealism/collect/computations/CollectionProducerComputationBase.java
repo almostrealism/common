@@ -188,13 +188,16 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
 			throw new IllegalArgumentException();
+		} else if (len <= 0) {
+			existing.getRootDelegate().destroy();
+			return null;
 		}
 
 		TraversalPolicy shape = shapeForLength(len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
-			if (existing != null) existing.destroy();
+			if (existing != null) existing.getRootDelegate().destroy();
 			return new PackedCollection<>(shape);
 		}
 
