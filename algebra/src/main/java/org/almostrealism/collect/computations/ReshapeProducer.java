@@ -22,6 +22,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -257,6 +258,15 @@ public class ReshapeProducer<T extends Shape<T>>
 		return producer instanceof TraversableExpression ?
 				((TraversableExpression) producer).uniqueNonZeroIndexRelative(localIndex, targetIndex) :
 				TraversableExpression.super.uniqueNonZeroIndexRelative(localIndex, targetIndex);
+	}
+
+	@Override
+	public boolean isIdentity(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isIdentity(width);
+		}
+
+		return TraversableExpression.super.isIdentity(width);
 	}
 
 	@Override

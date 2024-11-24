@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
@@ -35,7 +36,12 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
-				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
+				(args) -> new IdentityCollectionExpression(shape.traverse(1))) {
+			@Override
+			public boolean isIdentity(int width) {
+				return width == shape.length(0) && width == shape.length(1);
+			}
+		};
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
@@ -54,6 +60,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			if (WeightedSumExpression.enableCollectionExpression) {
 				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
 				int p = weightShape.length(1);
+
+				if (Algebraic.isIdentity(vshape.length(0), matrix)) {
+					return c(vector);
+				}
 
 				return weightedSum("matmul",
 						shape(m, p).withRate(1, n, p),
