@@ -82,6 +82,7 @@ public class MTL {
 	}
 	public static native long createBuffer16(long device, float[] data, long len);
 	public static native long createBuffer32(long device, float[] data, long len);
+	public static native long createSharedBuffer32(long device, float[] data, long len);
 
 	public static native long getContentPointer(long buffer);
 	public static native void setBufferContents16(long buffer, FloatBuffer in, int offset, int length);
