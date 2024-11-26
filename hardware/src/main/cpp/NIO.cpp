@@ -87,8 +87,6 @@ JNIEXPORT void JNICALL Java_org_almostrealism_nio_NIO_syncSharedMemory(JNIEnv* e
 
     if (msync(sharedMemory, length, MS_SYNC) == -1) {
         fprintf(stderr, "msync failed: %s\n", strerror(errno));
-    } else {
-        fprintf(stderr, "msync succeeded.\n");
     }
 }
 
