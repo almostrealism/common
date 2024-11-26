@@ -54,21 +54,21 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 			tick = ((OperationList) tick).flatten();
 		}
 
-		if (enableOptimization) {
-			tick = Process.optimized(tick);
-		}
-
 		if (enableIsolation) {
 			tick = Process.isolated(tick);
 		}
 
 		this.run = loop(tick, iter);
 
+		if (enableOptimization) {
+			run = Process.optimized(run);
+		}
+
 		if (enableFlatten && setup instanceof OperationList) {
 			setup = ((OperationList) setup).flatten();
 		}
 
-		this.setup = setup;
+		this.setup = enableOptimization ? Process.optimized(setup) : setup;
 	}
 
 	public OperationProfile getProfile() {
