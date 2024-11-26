@@ -21,6 +21,7 @@ import io.almostrealism.uml.Named;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.IntFunction;
 
 public interface DataContext<MEM> extends Named {
 	Precision getPrecision();
@@ -40,6 +41,10 @@ public interface DataContext<MEM> extends Named {
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
 
 	<T> T deviceMemory(Callable<T> exec);
+
+	default <T> T sharedMemory(IntFunction<String> name, Callable<T> exec) {
+		throw new UnsupportedOperationException();
+	}
 
 	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 

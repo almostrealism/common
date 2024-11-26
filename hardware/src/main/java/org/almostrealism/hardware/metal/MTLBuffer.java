@@ -28,7 +28,8 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 public class MTLBuffer extends MTLObject {
-	private Precision precision;
+	private final Precision precision;
+	private final boolean shared;
 
 	public static TimingMetric ioTime = Hardware.console.timing("metalIO");
 
@@ -36,9 +37,10 @@ public class MTLBuffer extends MTLObject {
 		ioTime.setThreshold(20.0);
 	}
 
-	public MTLBuffer(Precision precision, long nativePointer) {
+	public MTLBuffer(Precision precision, long nativePointer, boolean shared) {
 		super(nativePointer);
 		this.precision = precision;
+		this.shared = shared;
 	}
 
 	public long getContentPointer() {
@@ -79,9 +81,13 @@ public class MTLBuffer extends MTLObject {
 
 		try {
 			if (precision == Precision.FP16) {
+				if (shared) {
+					throw new UnsupportedOperationException("Shared buffers do not support FP16");
+				}
+
 				MTL.setBufferContents16(getNativePointer(), buf, offset, length);
 			} else {
-				MTL.setBufferContents32(getNativePointer(), buf, offset, length);
+				MTL.setBufferContents32(getNativePointer(), buf, offset, length, shared);
 			}
 		} finally {
 			ioTime.addEntry("setContents", System.nanoTime() - start);

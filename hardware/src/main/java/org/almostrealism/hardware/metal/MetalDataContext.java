@@ -45,10 +45,12 @@ public class MetalDataContext implements DataContext<MemoryData> {
 	private MetalDeviceInfo mainDeviceInfo;
 
 	private MemoryProvider<RAM> mainRam;
+	private MemoryProvider<? extends RAM> sharedRam;
 	private MemoryProvider<Memory> altRam;
 
 	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
+	private ThreadLocal<IntFunction<String>> memoryName;
 
 	private Runnable start;
 
@@ -58,6 +60,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		this.offHeapSize = offHeapSize;
 		this.computeContext = new ThreadLocal<>();
 		this.memoryProvider = new ThreadLocal<>();
+		this.memoryName = new ThreadLocal<>();
 	}
 
 	@Override
@@ -77,7 +80,8 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		if (mainDeviceInfo != null) return;
 
 		identifyDevices();
-		mainRam = new MetalMemoryProvider(this, getPrecision().bytes(), maxReservation * getPrecision().bytes());
+		mainRam = new MetalMemoryProvider(this, getPrecision().bytes(),
+				maxReservation * getPrecision().bytes());
 		start = null;
 	}
 
@@ -138,6 +142,10 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		}
 	}
 
+	public IntFunction<String> getMemoryName() {
+		return memoryName.get();
+	}
+
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContext.get() == null) {
@@ -187,6 +195,34 @@ public class MetalDataContext implements DataContext<MemoryData> {
 			throw new RuntimeException(e);
 		} finally {
 			memoryProvider.set(current);
+		}
+	}
+
+	@Override
+	public <T> T sharedMemory(IntFunction<String> name, Callable<T> exec) {
+		if (sharedRam == null) {
+			sharedRam = Optional.ofNullable(
+					(MemoryProvider<RAM>) Hardware.getLocalHardware().getNativeBufferMemoryProvider())
+							.orElseGet(() -> new MetalMemoryProvider(this, getPrecision().bytes(),
+									maxReservation * getPrecision().bytes(), true));
+		}
+
+		IntFunction<MemoryProvider<?>> currentProvider = memoryProvider.get();
+		IntFunction<MemoryProvider<?>> nextProvider = s -> sharedRam;
+		IntFunction<String> currentName = memoryName.get();
+		IntFunction<String> nextName = name;
+
+		try {
+			memoryProvider.set(nextProvider);
+			memoryName.set(nextName);
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			memoryProvider.set(currentProvider);
+			memoryName.set(currentName);
 		}
 	}
 

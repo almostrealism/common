@@ -82,11 +82,23 @@ public class MTL {
 	}
 	public static native long createBuffer16(long device, float[] data, long len);
 	public static native long createBuffer32(long device, float[] data, long len);
-	public static native long createSharedBuffer32(long device, float[] data, long len);
+
+	public static long createSharedBuffer32(long device, String filePath, float[] data) {
+		return createSharedBuffer32(device, filePath, data, data.length);
+	}
+	public static long createSharedBuffer32(long device, String filePath, int len) {
+		return createSharedBuffer32(device, filePath, null, len);
+	}
+	public static native long createSharedBuffer32(long device, String filePath, float[] data, int len);
 
 	public static native long getContentPointer(long buffer);
 	public static native void setBufferContents16(long buffer, FloatBuffer in, int offset, int length);
-	public static native void setBufferContents32(long buffer, FloatBuffer in, int offset, int length);
+
+	public static void setBufferContents32(long buffer, FloatBuffer in, int offset, int length) {
+		setBufferContents32(buffer, in, offset, length, false);
+	}
+	public static native void setBufferContents32(long buffer, FloatBuffer in, int offset, int length, boolean sync);
+
 	public static native void setIntBufferContents32(long buffer, IntBuffer in, int offset, int length);
 	public static native void getBufferContents16(long buffer, FloatBuffer out, int offset, int length);
 	public static native void getBufferContents32(long buffer, FloatBuffer out, int offset, int length);

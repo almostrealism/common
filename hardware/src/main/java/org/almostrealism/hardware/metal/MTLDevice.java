@@ -51,7 +51,7 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), len));
+			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), len), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newIntBuffer32", System.nanoTime() - start);
 		}
@@ -61,7 +61,7 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), values));
+			return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), values), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newIntBuffer32", System.nanoTime() - start);
 		}
@@ -71,7 +71,7 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), len));
+			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), len), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newBuffer16", System.nanoTime() - start);
 		}
@@ -81,7 +81,7 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), data));
+			return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), data), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newBuffer16", System.nanoTime() - start);
 		}
@@ -91,9 +91,31 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), len));
+			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), len), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newBuffer32", System.nanoTime() - start);
+		}
+	}
+
+	public MTLBuffer newSharedBuffer32(String fileName, long len) {
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32,
+					MTL.createSharedBuffer32(getNativePointer(), fileName, Math.toIntExact(len)), true);
+		} finally {
+			MTLBuffer.ioTime.addEntry("newSharedBuffer32", System.nanoTime() - start);
+		}
+	}
+
+	public MTLBuffer newSharedBuffer32(String fileName, float data[]) {
+		long start = System.nanoTime();
+
+		try {
+			return new MTLBuffer(Precision.FP32,
+					MTL.createSharedBuffer32(getNativePointer(), fileName, data), true);
+		} finally {
+			MTLBuffer.ioTime.addEntry("newSharedBuffer32", System.nanoTime() - start);
 		}
 	}
 
@@ -101,7 +123,7 @@ public class MTLDevice extends MTLObject {
 		long start = System.nanoTime();
 
 		try {
-			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), data));
+			return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), data), false);
 		} finally {
 			MTLBuffer.ioTime.addEntry("newBuffer32", System.nanoTime() - start);
 		}

@@ -17,23 +17,36 @@
 package org.almostrealism.nio;
 
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.c.NativeMemory;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 
 import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class NativeBuffer extends RAM {
-	private NativeBufferMemoryProvider provider;
-	private Buffer buffer;
+public class NativeBuffer extends RAM implements Destroyable {
+	private final NativeBufferMemoryProvider provider;
+	private final ByteBuffer rootBuffer;
+	private final Buffer buffer;
+	private final boolean shared;
 	private List<Consumer<NativeBuffer>> deallocationListeners;
 
-	protected NativeBuffer(NativeBufferMemoryProvider provider, Buffer buffer) {
-		if (!buffer.isDirect())
+	protected NativeBuffer(NativeBufferMemoryProvider provider,
+						   ByteBuffer rootBuffer, Buffer buffer,
+						   boolean shared) {
+		if (!rootBuffer.isDirect() || !buffer.isDirect())
 			throw new UnsupportedOperationException();
 		this.provider = provider;
+		this.rootBuffer = rootBuffer;
 		this.buffer = buffer;
+		this.shared = shared;
 		this.deallocationListeners = new ArrayList<>();
 	}
 
@@ -44,6 +57,19 @@ public class NativeBuffer extends RAM {
 	public long getContentPointer() { return NIO.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
+
+	public void sync() {
+		if (shared) {
+			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());
+		}
+	}
+
+	@Override
+	public void destroy() {
+		if (shared) {
+			NIO.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
+		}
+	}
 
 	@Override
 	public long getSize() {
@@ -56,5 +82,29 @@ public class NativeBuffer extends RAM {
 
 	public List<Consumer<NativeBuffer>> getDeallocationListeners() {
 		return deallocationListeners;
+	}
+
+	protected static ByteBuffer buffer(int bytes, boolean shared) {
+		if (shared) {
+			return NIO.mapSharedMemory("/tmp/test_shm", bytes)
+					.order(ByteOrder.nativeOrder());
+		} else {
+			return ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+		}
+	}
+
+	public static NativeBuffer create(NativeBufferMemoryProvider provider, int len, boolean shared) {
+		if (provider.getPrecision() == Precision.FP16) {
+			ByteBuffer bufferByte = buffer(len * 2, shared);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asShortBuffer(), shared);
+		} else if (provider.getPrecision() == Precision.FP32) {
+			ByteBuffer bufferByte = buffer(len * 4, shared);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asFloatBuffer(), shared);
+		} else if (provider.getPrecision() == Precision.FP64) {
+			ByteBuffer bufferByte = buffer(len * 8, shared);
+			return new NativeBuffer(provider, bufferByte, bufferByte.asDoubleBuffer(), shared);
+		} else {
+			throw new HardwareException("Unsupported precision");
+		}
 	}
 }
