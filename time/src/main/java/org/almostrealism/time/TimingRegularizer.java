@@ -46,15 +46,11 @@ public class TimingRegularizer {
 		recentDurations.add(measuredDuration);
 	}
 
-	/**
-	 * Calculates the difference between the standard duration and the average
-	 * of the 3 most recent measured durations.
-	 *
-	 * @return the difference in nanoseconds
-	 */
-	public long getTimingDifference() {
+	public long getAverageDuration() {
 		if (recentDurations.isEmpty()) {
-			return standardDuration; // No measurements yet, return the standard duration
+			// No measurements yet, assume the midpoint
+			// between zero and the standard
+			return standardDuration / 2;
 		}
 
 		// Calculate the average of recent durations
@@ -62,8 +58,17 @@ public class TimingRegularizer {
 		for (long duration : recentDurations) {
 			sum += duration;
 		}
-		long average = sum / recentDurations.size();
 
-		return standardDuration - average;
+		return sum / recentDurations.size();
+	}
+
+	/**
+	 * Calculates the difference between the standard duration and the average
+	 * of the 3 most recent measured durations.
+	 *
+	 * @return the difference in nanoseconds
+	 */
+	public long getTimingDifference() {
+		return standardDuration - getAverageDuration();
 	}
 }
