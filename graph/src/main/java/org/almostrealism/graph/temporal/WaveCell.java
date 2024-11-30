@@ -137,6 +137,8 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 
 	public WaveCellData getData() { return data; }
 
+	public TimeCell getClock() { return clock; }
+
 	public Producer<Scalar> getFrame() { return frame; }
 
 	@Override

@@ -34,8 +34,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatures {
-	public static boolean enableConditional = true;
-
 	private Receptor r;
 	private Pair<?> time;
 	private Producer<Scalar> initial, loopDuration;
@@ -92,7 +90,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		if (loopDuration == null) {
 			tick.add(new Assignment<>(2, p(time),
 					add(p(time), PairFeatures.of(1.0, 1.0))));
-		} else if (enableConditional) {
+		} else {
 			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
 			Producer<PackedCollection<?>> left = c(p(time), 0);
 			left = add(left, c(1.0));
@@ -102,16 +100,6 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 			right = add(right, c(1.0));
 
 			tick.add(a(2, p(time), concat(left, right)));
-		} else {
-			Producer<Scalar> left = l(p(time));
-			left = scalarGreaterThan(loopDuration, scalar(0.0),
-					scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
-					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
-
-			Producer<Scalar> right = r(p(time));
-			right = scalarAdd(right, ScalarFeatures.of(1.0));
-
-			tick.add(new Assignment<>(2, p(time), pair(left, right)));
 		}
 
 		tick.add(new TimeCellReset(p(time), resets));
@@ -125,6 +113,15 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		}
 
 		this.r = r;
+	}
+
+	public void setFrame(double frame) {
+		double f = Math.floor(frame);
+		time.setMem(f, f);
+	}
+
+	public double getFrame() {
+		return time.toDouble(0);
 	}
 
 	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
