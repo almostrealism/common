@@ -1,9 +1,132 @@
-## Documentation
-
-Almost Realism Scientific Computing and Machine Learning Libraries
 Tools for high-performance scientific computing, generative art, and machine learning in Java
 with pluggable native acceleration.
-Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
+
+### What does this do?
+It provides data structures for operations in algebra, geometry, and other mathematics along
+with datatypes for both video and audio that are useful in both scientific computations and
+the automated production of artwork. These libraries provide abstractions that can be used
+at runtime with a whole range of different acceleration strategies, so you do not have to make
+a commitment to a particular strategy for production use of your model code ahead of time.
+
+There is a complete implementation of n-dimensional arrays, but unlike other acceleration
+frameworks where specific operations are accelerated, this library provides a mechanism for
+compiling an entire accelerator program from a hierarchy of mathematical operations. This
+makes it potentially faster than systems which are designed to perform certain common operations
+quickly, but are not capable of generating custom accelerator code.
+
+Machine learning capabilities will be expanded substantially over the remainder of 2023, but
+an early example of a neural network is provided at the end of this document.
+
+Using this library correctly allows you to take complex operations, written in Java, and end
+up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
+
+#### Support Accelerators
+    1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
+    2. OpenCL on CPU (x86/Aarch64)
+    3. OpenCL on GPU (x86/Aarch64)
+    4. Metal (JNI with dylib) on GPU (Aarch64)
+    5. External Native Operations via a generated executable (x86/Aarch64)
+
+*For more information about the Java bindings for OpenCL used here, visit jocl.org*
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Why would you want this?
+When choosing Java as your target language, you are normally making a trade-off related to
+leveraging native instruction sets. The assumption is normally that applications can benefit
+from the JVM in a way that makes it worth sacrificing access to native instruction sets like
+AVX2 or native frameworks like CL and Metal. The Almost Realism Libraries eliminate this trade
+off, allowing you to create Java applications that make use of acceleration without breaking
+the design patterns that are normally used in Java development.
+
+This also means you can, for example, define ML workflows and other HPC processes in Scala,
+Kotlin or Groovy. If you've ever been frustrated trying to take a Python project to production,
+this library should be able to make it unnecessary. You also can run your programs on any
+machine with an OpenCL compatible device and a JVM, without compiling on the target system.
+This means no more of the headache of "numpy failed to build on this Amazon Graviton machine",
+etc.
+
+### What does it depend on?
+The dependency footprint is unbelievably small. The only dependency that is brought with
+this library results from your choice of accelerator. To use JOCL you will need the native
+bindings for CL. They are available from jocl.org.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### To use the libraries
+
+Add Maven Repository:
+
+        <repositories>
+                <repository>
+                        <id>almostrealism</id>
+                        <name>Almost Realism/name>
+                        <url>https://maven.pkg.github.com/almostrealism/common</url>
+                        <releases><enabled>true</enabled></releases>
+                        <snapshots><enabled>true</enabled></snapshots>
+                </repository>
+        </repositories>
+
+Add utils:
+
+        <dependency>
+            <groupId>org.almostrealism</groupId>
+            <artifactId>ar-utils</artifactId>
+            <version>0.65</version>
+        </dependency>
+
+### Enabling Your Application
+
+All of the library functionality is provided as default methods of an interface called
+**CodeFeatures**
+
+```Java
+    public class MyNativeEnabledApplication implements CodeFeatures {
+	    public static void main(String args[]) {
+			new MyNativeEnabledApplication().performMath();
+		}
+		
+		public void performMath() {
+			// .. include native operations here
+		}
+    }
+```
+
+Simple mathematical operations on constant values are compact to express, using
+the c() method to create a constant value, and the multiply() method to create a
+multiplication operation. The get() method is used to compile the operation, and
+the evaluate() method is used to execute it. The result is a PackedCollection, a
+generic datastructure for storing numbers in a fixed arrangement in memory.
+(When you are not using a fixed arrangement, you can use the Tensor class discussed
+below instead).
+
+```Java
+public class MyNativeEnabledApplication implements CodeFeatures {
+	// ....
+
+	public void performMath() {
+		// Compose the expression
+		Producer<PackedCollection<?>> constantOperation = c(3.0).multiply(c(2.0));
+
+		// Compile the expression
+		Evaluable<PackedCollection<?>> compiledOperation = constantOperation.get();
+
+		// Evaluate the expression
+		StringBuffer displayResult = new StringBuffer();
+		displayResult.append("3 * 2 = ");
+		compiledOperation.evaluate().print(displayResult::append);
+
+		// Display the result
+		System.out.println(displayResult);
+	}
+}
+```
+
+When the expression is compiled it will be converted to the target accelerator. This might
+be an OpenCL kernel program, an entirely separate native process or library, or something else.
+You can write your entire application this way without having to decide which backend to use,
+or you can use different backends in different places - leveraging Metal on MacOS, while
+using a native lib on windows and an external native process in the cloud - all with the same
+language for defining your expressions.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Tutorial
 
@@ -297,9 +420,9 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 						.reshape(2, 4);
 		PackedCollection<?> r = c(a).enumerate(1, 2, 2).evaluate();
 		System.out.println(r.getShape().toStringDetail());
-		// Shape = (2, 2, 2)[axis=1|1x8]
+        // Shape = (2, 2, 2)[axis=1|1x8]
 
-		r.traverse(2).print();
+        r.traverse(2).print();
 		// [2.0, 3.0]
 		// [6.0, 7.0]
 		// [4.0, 5.0]
@@ -408,7 +531,7 @@ For this case, special methods are available.
 
 ```Java
 public class MyNativeEnabledApplication implements CodeFeatures {
-    // ....
+	// ....
 
 	public void complexMath() {
 		ComplexNumber a = new ComplexNumber(1, 2);
@@ -438,7 +561,7 @@ output shape - resulting in a derivative for each combination of input and outpu
 
 ```Java
 public class MyNativeEnabledApplication implements CodeFeatures {
-    // ....
+	// ....
 
 	@Test
 	public void polynomialDelta() {
@@ -486,4 +609,6 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 ############################################################################################################
 
-Now that you have read this documentation, I want you to try and answer the following question:
+Provided above is documentation of the Almost Realism HPC library. Now that you have read this documentation,
+I want you to try and answer the following question:
+
