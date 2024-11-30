@@ -135,10 +135,6 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 	}
 
-	public IntFunction<String> getMemoryName() {
-		return memoryName.get();
-	}
-
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContext.get() == null) {

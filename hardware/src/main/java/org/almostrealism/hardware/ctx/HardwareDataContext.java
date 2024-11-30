@@ -21,6 +21,7 @@ import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -34,11 +35,9 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 	private MemoryProvider<? extends RAM> sharedRam;
 
 	protected static ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
-	protected static ThreadLocal<IntFunction<String>> memoryName;
 
 	static {
 		memoryProvider = new ThreadLocal<>();
-		memoryName = new ThreadLocal<>();
 	}
 
 	public HardwareDataContext(String name, long maxReservation) {
@@ -71,20 +70,16 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 
 		IntFunction<MemoryProvider<?>> currentProvider = memoryProvider.get();
 		IntFunction<MemoryProvider<?>> nextProvider = s -> sharedRam;
-		IntFunction<String> currentName = memoryName.get();
-		IntFunction<String> nextName = name;
 
 		try {
 			memoryProvider.set(nextProvider);
-			memoryName.set(nextName);
-			return exec.call();
+			return ((HardwareMemoryProvider<?>) sharedRam).sharedMemory(name, exec);
 		} catch (RuntimeException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
 			memoryProvider.set(currentProvider);
-			memoryName.set(currentName);
 		}
 	}
 

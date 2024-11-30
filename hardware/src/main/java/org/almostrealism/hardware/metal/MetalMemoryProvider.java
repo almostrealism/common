@@ -17,13 +17,12 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 
 import java.nio.ByteBuffer;
@@ -33,7 +32,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public static boolean enableLargeAllocationLogging = false;
 	public static int largeAllocationSize = 20 * 1024 * 1024 + 2;
 
@@ -124,7 +123,7 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 				throw new HardwareException("Shared memory must be " + Precision.FP32.name());
 			}
 
-			mem = getContext().getDevice().newSharedBuffer32(getContext().getMemoryName().apply(len), len);
+			mem = getContext().getDevice().newSharedBuffer32(getMemoryName().apply(len), len);
 		} else {
 			mem = getContext().getPrecision() == Precision.FP16 ?
 					getContext().getDevice().newBuffer16(len) :

@@ -17,13 +17,10 @@
 package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
@@ -32,7 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> {
+public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
 	private static Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
 	private static Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
@@ -69,7 +66,8 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 			throw new HardwareException("Memory max reached");
 		} else {
 			memoryUsed += (long) getNumberSize() * size;
-			NativeBuffer mem = NativeBuffer.create(this, size, shared);
+			NativeBuffer mem = NativeBuffer.create(this, size,
+					shared ? getMemoryName().apply(size) : null);
 			allocated.add(mem);
 			return mem;
 		}
