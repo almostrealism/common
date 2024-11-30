@@ -20,6 +20,7 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
@@ -37,7 +38,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements NameProvider, Destroyable, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T, C> implements
+											NameProvider, Parent<C>,
+											Destroyable, OperationInfo,
+											NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -146,7 +150,7 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 	 * simply execute code). There seems to be no reason to deal with this now,
 	 * as there will eventually be no need for accelerated operations which
 	 * are not Computation based, so when that process is over one of the two
-	 * roles this methods plays won't exist, and it will be clear what it is for.
+	 * roles this method plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
 
@@ -208,13 +212,18 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		resetArguments();
 	}
 
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
+	}
+
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
 		if (input == null) return null;
 
 		// Check for argument variables for which the original producer is
 		// the specified input
 		Set<ArrayVariable> var = vars.stream()
-				.filter(arg -> arg != null && input.equals(arg.getOriginalProducer()))
+				.filter(arg -> arg != null && input.equals(arg.getProducer()))
 				.collect(Collectors.toSet());
 		if (var.size() == 1) return var.iterator().next();
 		if (var.size() > 1) {
@@ -225,8 +234,8 @@ public abstract class OperationAdapter<T> implements NameProvider, Destroyable, 
 		// delegates to the specified input
 		var = vars.stream()
 				.filter(Objects::nonNull)
-				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
-				.filter(arg -> input.equals(((Delegated) arg.getOriginalProducer()).getDelegate()))
+				.filter(arg -> arg.getProducer() instanceof Delegated)
+				.filter(arg -> input.equals(((Delegated) arg.getProducer()).getDelegate()))
 				.collect(Collectors.toSet());
 		if (var.size() == 1) return var.iterator().next();
 		if (var.size() > 1) {

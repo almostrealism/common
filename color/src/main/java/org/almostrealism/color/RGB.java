@@ -111,6 +111,7 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	}
 
 	private RGB(int model, double r, double g, double b, boolean init) {
+		super(RGB.shape());
 		this.initColorModule(model);
 		if (init) this.data.setMem(new double[] { r, g, b });
 	}
@@ -159,6 +160,7 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	}
 
 	public RGB(MemoryData delegate, int delegateOffset) {
+		super(RGB.shape());
 		initColorModule(192, delegate, delegateOffset);
 	}
 

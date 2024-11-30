@@ -18,7 +18,7 @@ package org.almostrealism.graph.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.CollectionCachedStateCell;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.graph.CellPair;
 import org.almostrealism.util.TestFeatures;
@@ -34,25 +34,25 @@ public class CellPairTest implements TestFeatures {
 		pair.init();
 
 		// A = 6
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) cellA.push(c(6.0)).get();
+		AcceleratedOperation op = (AcceleratedOperation) cellA.push(c(6.0)).get();
 		op.run();
 
 		// B = 9
-		op = (DynamicAcceleratedOperation) cellB.push(c(9.0)).get();
+		op = (AcceleratedOperation) cellB.push(c(9.0)).get();
 		op.run();
 
 		assertEquals(6.0, cellA.getCachedValue().toDouble(0));
 		assertEquals(9.0, cellB.getCachedValue().toDouble(0));
 
 		// A(6) -> Pair(*2) -> B = 12
-		op = (DynamicAcceleratedOperation) cellA.tick().get();
+		op = (AcceleratedOperation) cellA.tick().get();
 		op.run();
 
 		assertEquals(12.0, cellB.getCachedValue().toDouble(0));
 		assertEquals(0.0, cellA.getCachedValue().toDouble(0));
 
 		// B(6) -> Pair(3.0) -> A = 3.0
-		op = (DynamicAcceleratedOperation) cellB.tick().get();
+		op = (AcceleratedOperation) cellB.tick().get();
 		op.run();
 
 		assertEquals(3.0, cellA.getCachedValue().toDouble(0));
@@ -73,7 +73,7 @@ public class CellPairTest implements TestFeatures {
 		ops.add(cellA.tick());             // A(6) -> Pair(*2) -> B = 12
 		// ops.add(cellB.tick());             // B(6) -> Pair(3.0) -> A = 3.0
 
-		DynamicAcceleratedOperation dao = (DynamicAcceleratedOperation) ops.get();
+		AcceleratedOperation dao = (AcceleratedOperation) ops.get();
 		dao.run();
 
 		assertEquals(12.0, cellB.getCachedValue().toDouble(0));

@@ -28,10 +28,12 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Generated;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.mem.Heap;
@@ -71,6 +73,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	private Supplier<GenomeBreeder<G>> breeder;
 
 	private BiConsumer<String, S> healthListener;
+	private Consumer<Exception> errorListener;
 	private HealthScoring scoring;
 
 	public PopulationOptimizer(Supplier<HealthComputation<O, S>> h,
@@ -94,6 +97,10 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	public Population<G, O> getPopulation() { return this.population; }
 
 	public void resetHealth() {
+		if (health instanceof Destroyable) {
+			((Destroyable) health).destroy();
+		}
+
 		health = null;
 	}
 
@@ -110,6 +117,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 	public void setHealthListener(BiConsumer<String, S> healthListener) { this.healthListener = healthListener; }
 
+	public Consumer<Exception> getErrorListener() { return errorListener; }
+	public void setErrorListener(Consumer<Exception> errorListener) { this.errorListener = errorListener; }
+	
 	public void resetGenerator() {
 		generator = null;
 	}
@@ -216,7 +226,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		if (THREADS > 1) throw new UnsupportedOperationException();
 
 		ExecutorService s = Executors.newFixedThreadPool(THREADS);
-		ExecutorCompletionService<S> executor = new ExecutorCompletionService<S>(s);
+		ExecutorCompletionService<S> executor = new ExecutorCompletionService<>(s);
 
 		try {
 			final HashMap<Genome, Double> healthTable = new HashMap<>();
@@ -249,6 +259,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 					}
 				}, pop::disableGenome);
 				call.setHeap(Heap.getDefault());
+				call.setErrorListener(errorListener);
 
 				executor.submit(call);
 			}

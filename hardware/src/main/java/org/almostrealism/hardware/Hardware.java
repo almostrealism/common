@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
@@ -321,6 +322,7 @@ public final class Hardware {
 			AcceleratedComputationOperation.timing = profile.getScopeListener(true);
 			Scope.timing = profile.getScopeListener(true);
 			ScopeSettings.timing = profile.getScopeListener(false);
+			Expression.timing = profile.getScopeListener(false);
 		}
 	}
 
@@ -330,6 +332,7 @@ public final class Hardware {
 		AcceleratedComputationOperation.timing = null;
 		Scope.timing = null;
 		ScopeSettings.timing = null;
+		Expression.timing = null;
 	}
 
 	public synchronized void addContextListener(ContextListener l) {

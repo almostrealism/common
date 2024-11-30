@@ -38,7 +38,7 @@ import java.util.function.BiFunction;
  * encode the data as a {@link String}, but unlike a normal {@link String}
  * {@link Variable} the text does not appear in quotes.
  */
-public class InstanceReference<T> extends Expression<T> implements ExpressionFeatures, ConsoleFeatures {
+public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableMask = false;
 
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
@@ -48,17 +48,27 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	private Expression<?> index;
 
 	public InstanceReference(Variable<T, ?> referent) {
-		super(referent.getType());
+		super((Class) referent.getType());
 		this.var = referent;
 		init();
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
-		super(referent.getType(), pos);
+		super((Class) referent.getType(), false, pos);
 		this.var = referent;
 		this.pos = pos;
 		this.index = index;
 		init();
+	}
+
+	@Override
+	protected void init() {
+		if (getReferent() == null ||
+				(getReferent().getDelegate() == null && getReferent().getName() == null)) {
+			throw new UnsupportedOperationException();
+		}
+
+		super.init();
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
@@ -108,7 +118,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	}
 
 	@Override
-	public ExpressionAssignment<T> assign(Expression exp) {
+	public ExpressionAssignment<V> assign(Expression exp) {
 		return new ExpressionAssignment<>(this, exp);
 	}
 
@@ -119,7 +129,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 				target, e(1), e(0));
 	}
 
-	public InstanceReference<T> generate(List<Expression<?>> children) {
+	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
 		if (children.size() == 0) {
 			return new InstanceReference<>(var);
 		} else if (children.size() == 1) {
@@ -127,6 +137,15 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		if (this == e) return true;
+		if (!(e instanceof InstanceReference)) return false;
+
+		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) e;
+		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
 	}
 
 	public static <T> Expression<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {

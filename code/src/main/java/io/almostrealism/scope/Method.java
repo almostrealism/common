@@ -113,12 +113,20 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		Method m = new Method<>(getType(), getMember(), getName(), children);
 		if (arrayVariableReplacements != null) {
 			arrayVariableReplacements.forEach(m::setArgument);
 		}
 		return m;
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		return e instanceof Method &&
+				((Method) e).getName().equals(getName()) &&
+				((Method) e).getMember().equals(getMember()) &&
+				((Method) e).getArguments().equals(getArguments());
 	}
 
 	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {

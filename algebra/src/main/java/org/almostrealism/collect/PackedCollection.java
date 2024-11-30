@@ -16,17 +16,17 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
@@ -48,20 +48,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
-		implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
-	private static ContextSpecific<KernelizedOperation> clear;
+		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
+	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
 
 	static {
 		clear = new DefaultContextSpecific<>(() ->
-				(KernelizedOperation)
-						new Assignment<>(1, new PassThroughProducer(1, 0),
-						new PassThroughProducer<>(1, 1)).getKernel());
+				CollectionFeatures.getInstance().multiply(
+						new PassThroughProducer<>(1, 0),
+						CollectionFeatures.getInstance().c(1)).get());
 	}
 
 	private final TraversalPolicy shape;
@@ -98,6 +99,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
+		if (shape.getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException("Collection must have a non-zero size");
+		}
+
 		this.shape = shape.traverse(order).traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
@@ -142,12 +147,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	@Override
 	public int getMemLength() {
-		return shape.getTotalSize();
+		return shape.getTotalInputSize();
 	}
 
 	@Override
 	public int getAtomicMemLength() {
-		return shape.getSize();
+		return shape.getInputSize();
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -211,6 +216,13 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return this;
 	}
 
+	public PackedCollection<?> replace(DoubleUnaryOperator f) {
+		double in[] = toArray(0, getMemLength());
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
+		setMem(0, data);
+		return this;
+	}
+
 	public PackedCollection<?> identityFill() {
 		return fill(pos -> {
 			for (int i = 0; i < pos.length; i++) {
@@ -238,7 +250,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public void clear() {
-		clear.getValue().kernelOperate(this.traverseEach(), new PackedCollection(1));
+		clear.getValue().into(this.traverseEach()).evaluate(new PackedCollection<>(1));
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape) {
@@ -246,8 +258,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		int required = shape.getOrder() == null ? shape.getTotalSize() :
-				shape.getOrder().getLength().orElse(shape.getTotalSize());
+		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
+				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
 
 		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -376,6 +388,28 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
+	@Override
+	public void destroy() {
+		if (getDelegate() != null && getDelegate().getMemLength() == getMemLength()) {
+			// When attempting to destroy a collection which extends over the entire
+			// space of its delegate, it is almost certainly expected that the delegate
+			// will also be destroyed
+			getDelegate().destroy();
+			setDelegate(null, 0);
+		}
+
+		super.destroy();
+	}
+
+	@Override
+	public String describe() {
+		if (getShape().getTotalSize() == 1) {
+			return getShape() + " " + toDouble(0);
+		} else {
+			return getShape().toStringDetail();
+		}
+	}
+
 	public PackedCollection<T> clone() {
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
@@ -383,7 +417,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public static PackedCollection<?> of(double... values) {
-		PackedCollection<?> collection = new PackedCollection<>(values.length);
+		PackedCollection<?> collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}

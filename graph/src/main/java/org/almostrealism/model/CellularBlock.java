@@ -23,6 +23,7 @@ import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class CellularBlock implements Block {
 	private final TraversalPolicy inputShape;
 	private final TraversalPolicy outputShape;
@@ -55,9 +56,4 @@ public class CellularBlock implements Block {
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() { return backward; }
-
-	@Override
-	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
-		throw new UnsupportedOperationException();
-	}
 }

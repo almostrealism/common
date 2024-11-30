@@ -43,7 +43,7 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		return Integer.MAX_VALUE;
 	}
 
-	default Expression getSeries(Expression exp) {
+	default <T> Expression<T> getSeries(Expression<T> exp) {
 		if (exp instanceof Index || exp.doubleValue().isPresent()) return exp;
 
 		Set<Index> indices = exp.getIndices();
@@ -64,9 +64,9 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 
 		OptionalLong len = index.getLimit();
 
-		if (!len.isPresent()) {
+		if (!len.isPresent() && getMaximumLength().isPresent()) {
 			len = index.upperBound(
-						new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
+							new NoOpKernelStructureContext(getMaximumLength().getAsInt()))
 					.stream().map(i -> i + 1).findFirst();
 		}
 
@@ -107,8 +107,8 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 			if (ScopeSettings.timing != null) {
 				boolean isPos = result != null;
 				ScopeSettings.timing.recordDuration(getMetadata(),
-						"kernelSeries " + exp.treeDepth() +
-								"-" + exp.countNodes() + "-" + isPos,
+						"kernelSeries [" + exp.treeDepth() +
+								"/" + exp.countNodes() + ", " + isPos + "]",
 						System.nanoTime() - start);
 			}
 		}
@@ -119,4 +119,9 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes);
 
 	OptionalInt getMaximumLength();
+
+	@Override
+	default String describe() {
+		return getMetadata().getShortDescription();
+	}
 }

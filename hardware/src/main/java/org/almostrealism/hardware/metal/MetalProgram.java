@@ -102,6 +102,11 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 	}
 
 	@Override
+	public String describe() {
+		return getMetadata().getDisplayName();
+	}
+
+	@Override
 	public Console console() { return Hardware.console; }
 
 	public static MetalProgram create(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {

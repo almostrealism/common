@@ -27,15 +27,21 @@ import java.util.function.Function;
 public class DynamicCollectionProducer<T extends PackedCollection<?>> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
 	private TraversalPolicy shape;
 	private boolean kernel;
+	private boolean fixedCount;
 
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
 		this(shape, function, true);
 	}
 
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
+		this(shape, function, kernel, true);
+	}
+
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel, boolean fixedCount) {
 		super(function, len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
 		this.kernel = kernel;
+		this.fixedCount = fixedCount;
 	}
 
 	@Override
@@ -45,6 +51,9 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 
 	@Override
 	public long getOutputSize() { return getShape().getTotalSize(); }
+
+	@Override
+	public boolean isFixedCount() { return fixedCount; }
 
 	@Override
 	public CollectionProducer<T> traverse(int axis) {

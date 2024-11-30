@@ -17,18 +17,21 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
+public class CollectionVariable<T extends Collection<Double, ? extends Collection<?, ?>>>
+		extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
 	public static boolean enableAbsoluteValueAt = false;
 
 	private TraversalPolicy shape;
@@ -36,12 +39,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	private CollectionVariable<T> parent;
 	private Expression pos[];
 
-	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, shape, np == null ? null : np.getDefaultPhysicalScope(), (Class<T>) Shape.class, producer);
+	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
+							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(np, name, shape,
+				np == null ? null : np.getDefaultPhysicalScope(),
+				Double.class, producer);
 	}
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
-							  PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+							  PhysicalScope scope, Class<?> type,
+							  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(np, name, scope, type, p);
 		this.shape = shape;
 	}
@@ -54,6 +61,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public CollectionVariable<T> reshape(TraversalPolicy shape) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CollectionVariable<T> traverse(int axis) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public Expression<Integer> length() {
@@ -114,10 +131,15 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 		if (result != null) return result;
 
-		if (getShape().getTotalSize() == 1) {
+		boolean fixedCount = Countable.isFixedCount(getProducer());
+
+		if (getShape().getTotalSize() == 1 && fixedCount) {
 			return (Expression) reference(e(0), false);
 		} else {
-			index = index.toInt().mod(e(getShape().getTotalSize()), false);
+			if (getShape().getSize() != 1 || fixedCount) {
+				index = index.toInt().imod(getShape().getTotalSize());
+			}
+
 			if (getShape().getOrder() != null) {
 				index = getShape().getOrder().indexOf(index);
 			}
@@ -165,7 +187,13 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return new CollectionVariable<>(shape, this, pos);
 	}
 
-	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
+	@Override
+	public String describe() {
+		return getName() + " " + getShape().toStringDetail();
+	}
+
+	public static <T> ArrayVariable<T> create(NameProvider np, String name,
+											  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {

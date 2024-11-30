@@ -18,8 +18,9 @@ package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
@@ -114,7 +115,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getTrueValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
@@ -127,7 +128,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getFalseValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
@@ -152,5 +153,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 }

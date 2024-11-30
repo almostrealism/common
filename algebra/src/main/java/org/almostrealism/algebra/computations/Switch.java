@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.scope.Cases;
@@ -34,8 +35,8 @@ import java.util.stream.IntStream;
 public class Switch extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
 	private final List<Computation> choices;
 
-	public Switch(CollectionProducer<PackedCollection<?>> decision, List<Computation> choices) {
-		super(new CollectionProducer[] { decision });
+	public Switch(Producer<PackedCollection<?>> decision, List<Computation> choices) {
+		super(new Producer[] { decision });
 		this.choices = choices;
 	}
 

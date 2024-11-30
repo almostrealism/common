@@ -16,11 +16,14 @@
 
 package io.almostrealism.relation;
 
-public class ParallelProcessContext implements ProcessContext, Countable {
+import java.util.Optional;
+
+public class ParallelProcessContext extends ProcessContextBase implements Countable {
 	private long parallelism;
 	private boolean fixed;
 
-	protected ParallelProcessContext(long parallelism, boolean fixed) {
+	protected ParallelProcessContext(int depth, long parallelism, boolean fixed) {
+		super(depth);
 		this.parallelism = parallelism;
 		this.fixed = fixed;
 	}
@@ -31,15 +34,15 @@ public class ParallelProcessContext implements ProcessContext, Countable {
 	@Override
 	public boolean isFixedCount() { return fixed; }
 
-	public static ParallelProcessContext of(ParallelProcess c) {
-		return new ParallelProcessContext(c.getParallelism(), c.isFixedCount());
+	public static ParallelProcessContext of(int depth, ParallelProcess c) {
+		return new ParallelProcessContext(depth, c.getParallelism(), c.isFixedCount());
 	}
 
 	public static ParallelProcessContext of(ProcessContext ctx, ParallelProcess c) {
 		if (ctx instanceof ParallelProcessContext) {
 			ParallelProcessContext pctx = (ParallelProcessContext) ctx;
 
-			boolean parent = c instanceof Parent && ((Parent) c).getChildren().size() > 1;
+			boolean parent = c != null && c.getChildren().size() > 1;
 			if (!parent) return pctx;
 
 			if (pctx.getCountLong() > c.getCountLong()) {
@@ -47,6 +50,8 @@ public class ParallelProcessContext implements ProcessContext, Countable {
 			}
 		}
 
-		return ParallelProcessContext.of(c);
+		return ParallelProcessContext.of(
+				Optional.ofNullable(ctx)
+						.map(ProcessContext::getDepth).orElse(0) + 1, c);
 	}
 }

@@ -30,7 +30,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.DeltaFeatures;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -99,7 +99,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression<Double> value = getValueAt(index);
 
 			if (value == null && mapped instanceof OperationAdapter) {
-				OperationAdapter<?> op = (OperationAdapter) mapped;
+				OperationAdapter<?, ?> op = (OperationAdapter) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
 				value = v.referenceRelative(e(i));
@@ -107,7 +107,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			scope.getVariables().add(output.ref(i).assign(value));
+			scope.getVariables().add(output.referenceRelative(i).assign(value));
 		}
 
 		return scope;
@@ -172,7 +172,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (!enableChainDelta || !(DeltaFeatures.deepMatch(getInputs().get(1), target))) {
+		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create(getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 					(Supplier) this).addDependentLifecycle(this);
@@ -234,7 +234,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

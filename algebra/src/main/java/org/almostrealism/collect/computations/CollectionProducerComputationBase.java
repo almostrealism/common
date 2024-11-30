@@ -19,18 +19,21 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -55,8 +58,8 @@ import java.util.stream.Stream;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
-												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														ComputerFeatures {
+												implements CollectionProducerComputation<O>, IndexSet,
+														   MemoryDataComputation<O>, ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
 	private String name;
@@ -66,6 +69,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private List<ScopeLifecycle> dependentLifecycles;
 
 	private HardwareEvaluable<O> evaluable;
+	private boolean evaluableOutdated;
 
 	protected CollectionProducerComputationBase() {
 	}
@@ -87,6 +91,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public String getName() {
 		return name == null ? super.getName() : name;
+	}
+
+	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		return super.prepareMetadata(metadata).withShape(getShape());
 	}
 
 	protected List<ArrayVariable<Double>> getInputArguments() {
@@ -138,7 +147,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (dependentLifecycles != null)
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
-		this.evaluable = null;
+		this.evaluableOutdated = true;
+		// this.evaluable = null;
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -151,13 +161,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (isFixedCount()) {
 			shape = getShape();
 		} else {
-			int count = len / getShape().getCount();
+			int targetCount = getCount();
+
+			int count = len / targetCount;
 
 			// When kernel length is less than, or identical to the output count, an
 			// assumption is made that the intended shape is the original shape.
 			// This is a bit of a hack, but it's by far the simplest solution
 			// available
-			if (count == 0 || len == getShape().getCount()) {
+			if (count == 0 || len == targetCount) {
 				// It is not necessary to prepend a (usually) unnecessary dimension
 				shape = getShape();
 			} else {
@@ -176,13 +188,16 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
 			throw new IllegalArgumentException();
+		} else if (len <= 0) {
+			existing.getRootDelegate().destroy();
+			return null;
 		}
 
 		TraversalPolicy shape = shapeForLength(len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
-			if (existing != null) existing.destroy();
+			if (existing != null) existing.getRootDelegate().destroy();
 			return new PackedCollection<>(shape);
 		}
 
@@ -210,6 +225,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public long getCountLong() {
 		return getShape().getCountLong();
+	}
+
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return CollectionProducerComputation.super.containsIndex(index);
 	}
 
 	@Override
@@ -293,15 +313,17 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				if (destination instanceof Shape) {
 					Shape out = (Shape) destination;
 
+					int targetSize = getMemLength();
+
 					if (getCountLong() > 1 || isFixedCount() || (out.getShape().getCountLong() > 1 && getCountLong() == 1)) {
 						for (int axis = out.getShape().getDimensions(); axis >= 0; axis--) {
-							if (out.getShape().traverse(axis).getSize() == getShape().getSize()) {
+							if (out.getShape().traverse(axis).getSize() == targetSize) {
 								return (O) (axis == out.getShape().getTraversalAxis() ? out : out.traverse(axis));
 							}
 						}
 					}
 
-					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+					if (targetSize > 1 && ((Shape) destination).getShape().getSize() != targetSize) {
 						throw new IllegalArgumentException();
 					}
 				}
@@ -327,6 +349,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		super.destroy();
 		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed) " : " (variable) ") +
+				getShape().toString();
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 
 	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

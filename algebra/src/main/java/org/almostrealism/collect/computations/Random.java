@@ -24,7 +24,6 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
@@ -32,6 +31,7 @@ import java.util.stream.IntStream;
 public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
 	private static long seed;
 
+	private OperationMetadata metadata;
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
@@ -43,16 +43,15 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	}
 
 	public Random(TraversalPolicy shape, boolean normal) {
+		this.metadata = new OperationMetadata("Random", "Generate random values",
+				"Generate random values " + shape.toStringDetail());
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {
-		return new OperationMetadata("Random", "Generate random values",
-				"Generate random values " + shape.toStringDetail());
-	}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	protected void initValues() {
 		if (values == null) {
@@ -65,8 +64,8 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	public void refresh() { values = null; }
 
 	@Override
-	public KernelizedEvaluable<PackedCollection<?>> get() {
-		return new KernelizedEvaluable<>() {
+	public Evaluable<PackedCollection<?>> get() {
+		return new Evaluable<>() {
 			@Override
 			public Multiple<PackedCollection<?>> createDestination(int size) {
 				return new PackedCollection<>(getShape().prependDimension(size));
@@ -80,10 +79,10 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank destination) {
+			public Evaluable<PackedCollection<?>> into(Object destination) {
 				return args -> {
 					initValues();
-					destination.setMem(values);
+					((MemoryBank) destination).setMem(values);
 					return (PackedCollection<?>) destination;
 				};
 			}

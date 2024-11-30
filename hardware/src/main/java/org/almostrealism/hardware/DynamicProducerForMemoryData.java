@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.uml.Multiple;
 
@@ -31,9 +31,9 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T>
-		implements ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-		OperationInfo {
+		implements ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 
+	private final OperationMetadata metadata;
 	private final IntFunction<MemoryBank<T>> destination;
 
 	public DynamicProducerForMemoryData(Supplier<T> supplier) {
@@ -51,12 +51,18 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> destination) {
 		super(function);
 		this.destination = destination;
+
+		if (getFunction() == null) {
+			this.metadata = OperationInfo.metadataForProcess(this, new OperationMetadata("dynamic", "dynamic"));
+		} else {
+			this.metadata = OperationInfo.metadataForProcess(this,
+					new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+		}
 	}
 
 	@Override
 	public OperationMetadata getMetadata() {
-		return OperationInfo.metadataForProcess(this,
-				new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+		return metadata;
 	}
 
 	@Override
@@ -78,7 +84,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
-		return new KernelizedEvaluable<T>() {
+		return new Evaluable<T>() {
 			@Override
 			public Multiple<T> createDestination(int size) {
 				if (destination == null) {
@@ -89,8 +95,8 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank destination) {
-				return new DestinationEvaluable(e, destination);
+			public Evaluable<T> into(Object destination) {
+				return new DestinationEvaluable(e, (MemoryBank) destination);
 			}
 
 			@Override
@@ -102,5 +108,10 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
 	}
 }

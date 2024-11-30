@@ -16,21 +16,76 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
+import org.almostrealism.io.SystemUtils;
+import org.almostrealism.layers.LayerFeatures;
 
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
+	boolean cellWarnings = SystemUtils.isEnabled("AR_GRAPH_CELL_WARNINGS").orElse(false);
+
 	default Supplier<Runnable> setup() {
 		return new OperationList();
+	}
+
+	default Cell<T> andThen(Cell<T> next) {
+		setReceptor(next);
+
+		return new Cell<>() {
+			@Override
+			public Supplier<Runnable> setup() {
+				OperationList setup = new OperationList("Cell Setup");
+				setup.add(Cell.this.setup());
+				setup.add(next.setup());
+				return setup;
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return Cell.this.push(protein);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				next.setReceptor(r);
+			}
+		};
+	}
+
+	default Producer<T> apply(Producer<T> input) {
+		return toFactor().getResultant(input);
+	}
+
+	default Factor<T> toFactor() {
+		return input -> () -> {
+			CaptureReceptor<T> capture = new CaptureReceptor<>();
+			setReceptor(capture);
+
+			Runnable r = push(input).get();
+			Evaluable<T> result =
+					Optional.ofNullable(capture.getReceipt())
+					.map(Producer::get).orElse(null);
+
+			return args -> {
+				r.run();
+				return Optional.ofNullable(result)
+							.orElseGet(capture.getReceipt()::get)
+							.evaluate(args);
+			};
+		};
 	}
 
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
@@ -103,6 +158,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (cellWarnings && this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -124,6 +184,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (cellWarnings && this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -145,6 +210,11 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
@@ -166,8 +236,26 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public void setReceptor(Receptor<T> r) {
+				if (cellWarnings && this.r != null) {
+					CollectionFeatures.console.features(Cell.class)
+							.warn("Replacing receptor");
+				}
+
 				this.r = r;
 			}
 		};
+	}
+
+
+	class CaptureReceptor<T> implements Receptor<T> {
+		private Producer<T> receipt;
+
+		public Producer<T> getReceipt() { return receipt; }
+
+		@Override
+		public Supplier<Runnable> push(Producer<T> in) {
+			receipt = in;
+			return new OperationList();
+		}
 	}
 }

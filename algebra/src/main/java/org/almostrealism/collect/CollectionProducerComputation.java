@@ -20,15 +20,12 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -36,14 +33,16 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
+
 	/**
 	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
 	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
@@ -116,61 +115,22 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	class IsolatedProcess<T extends PackedCollection<?>> implements
-			Process<Process<?, ?>, Evaluable<? extends T>>,
-			CollectionProducerBase<T, Producer<T>>,
-			OperationInfo {
-		private CollectionProducer<T> op;
+	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
 
 		public IsolatedProcess(CollectionProducer<T> op) {
-			// Computation.console.features(this).log("Isolating " + OperationInfo.name(op) + " " + op.getShape().toStringDetail());
+			super(op);
 
-			this.op = op;
+			if (isolationLogging)
+				Computation.console.features(this)
+						.log("Isolating " + OperationInfo.nameWithId(op) + " " + op.getShape().toStringDetail());
 
 			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
-				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " + MemoryProvider.MAX_RESERVATION);
+				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " +
+						MemoryProvider.MAX_RESERVATION);
 			}
 		}
 
 		@Override
-		public OperationMetadata getMetadata() {
-			return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
-		}
-
-		@Override
-		public Collection<Process<?, ?>> getChildren() {
-			return op instanceof Process ? ((Process) op).getChildren() : Collections.emptyList();
-		}
-
-		@Override
-		public Evaluable<T> get() {
-			return op.get();
-		}
-
-		@Override
-		public TraversalPolicy getShape() {
-			return op.getShape();
-		}
-
-		@Override
 		public boolean isConstant() { return op.isConstant(); }
-
-		@Override
-		public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
-
-		@Override
-		public Producer<T> reshape(TraversalPolicy shape) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public long getOutputSize() {
-			return op.getShape().getTotalSize();
-		}
-
-		@Override
-		public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-			return this;
-		}
 	}
 }

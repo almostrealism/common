@@ -23,12 +23,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class CacheManager<T> {
 	private HashMap<CachedValue<T>, Long> values;
 	private Runnable access;
 	private Consumer<T> clear;
+	private Predicate<T> valid;
 
 	public CacheManager() {
 		values = new HashMap<>();
@@ -42,15 +44,20 @@ public class CacheManager<T> {
 		this.clear = clear;
 	}
 
+	public void setValid(Predicate<T> valid) {
+		this.valid = valid;
+	}
+
 	public List<CachedValue<T>> getCachedOrdered() {
 		List<CachedValue<T>> values = new ArrayList<>(this.values.keySet().stream()
-				.filter(CachedValue::isCached).collect(Collectors.toList()));
+				.filter(CachedValue::isAvailable).collect(Collectors.toList()));
 		values.sort((a, b) -> (int) (this.values.get(a) - this.values.get(b)));
 		return values;
 	}
 
 	public CachedValue<T> get(Evaluable<T> source) {
 		CachedValue<T> v = new CachedValue<>(null, clear);
+		v.setValid(valid);
 		v.setEvaluable(args -> {
 			values.put(v, System.currentTimeMillis());
 			if (access != null) access.run();

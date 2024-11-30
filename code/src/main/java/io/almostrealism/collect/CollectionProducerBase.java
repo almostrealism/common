@@ -22,4 +22,12 @@ import io.almostrealism.relation.Producer;
 public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P>, Countable {
 	@Override
 	default long getCountLong() { return getShape().getCountLong(); }
+
+	@Override
+	default String describe() {
+		return getClass().getSimpleName() + " " +
+				getCountLong() + "x" +
+				(isFixedCount() ? " (fixed) " : " (variable) ") +
+				getShape().toString();
+	}
 }

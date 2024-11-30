@@ -17,6 +17,8 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Cosine;
@@ -34,17 +36,15 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
+public interface PairFeatures extends CollectionFeatures {
 	boolean enableTraversableComplex = true;
 
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
@@ -106,19 +106,9 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 				}
 			}
 
-			return new TraversableExpressionComputation<>(null, shape,
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
-						Expression<?> pos = index.toInt().divide(2).multiply(2);
-
-						Expression p = args[1].getValueAt(pos);
-						Expression q = args[1].getValueAt(pos.add(1));
-						Expression r = args[2].getValueAt(pos);
-						Expression s = args[2].getValueAt(pos.add(1));
-
-						return conditional(index.mod(e(2), false).eq(e(0)),
-								Sum.of(Product.of(p, r), Minus.of(Product.of(q, s))),
-								Sum.of(Product.of(p, s), Product.of(q, r)));
-					},
+			return new DefaultTraversableExpressionComputation<>("multiplyComplex", shape,
+					(Function<TraversableExpression[], CollectionExpression>)
+							args -> new ComplexProductExpression(shape, args[1], args[2]),
 					(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 		} else {
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -150,11 +140,21 @@ public interface PairFeatures extends HardwareFeatures, CollectionFeatures {
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromParts(Supplier<Evaluable<? extends PackedCollection<?>>> real,
-																 Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+															Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+		long size = shape(real).getTotalSizeLong();
+		if (shape(imag).getTotalSizeLong() != size) {
+			throw new IllegalArgumentException();
+		}
+
+		boolean pair = size == 1;
+
 		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
 		comp[0] = args -> args.get(1).getValueRelative(0);
 		comp[1] = args -> args.get(2).getValueRelative(0);
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(List.of(comp), real, imag).setPostprocessor(Pair.postprocessor());
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(
+//				new TraversalPolicy(size, 2).traverse(1),
+				shape(real).traverseEach().append(shape(2)),
+				List.of(comp), real, imag).setPostprocessor(pair ? Pair.postprocessor() : null);
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {

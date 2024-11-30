@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
@@ -25,7 +26,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+// TODO  Should extend TraversableExpressionComputation
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
@@ -56,7 +57,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
 										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(null, shape, validateArgs(args));
+		super("delta", shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
@@ -88,7 +89,9 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
-		return expression.apply(getTraversableArguments(index)).delta(targetVariable);
+		CollectionExpression exp = expression.apply(getTraversableArguments(index)).delta(targetVariable);
+		if (isFixedCount()) exp.setTotalShape(getShape());
+		return exp;
 	}
 
 	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
@@ -97,7 +100,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx, Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		if (!permitOptimization(process)) return process;
+		if (!permitOptimization(process))
+			return process;
 		return super.optimize(ctx, process);
 	}
 
@@ -113,7 +117,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+	public ComputationBase<T, T, Evaluable<? extends T>> optimize(ProcessContext ctx) {
 		if (!enableOptimization) return this;
 		return super.optimize(ctx);
 	}

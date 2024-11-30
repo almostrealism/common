@@ -17,11 +17,12 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -40,9 +41,11 @@ import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
@@ -51,8 +54,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
-		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, OperationInfo, HardwareFeatures {
+		implements OperationComputation<Void>,
+		ComputableParallelProcess<Process<?, ?>, Runnable>,
+					NamedFunction, HardwareFeatures {
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
 
@@ -287,10 +291,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize(context);
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ComputableParallelProcess.super.optimize(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
-		if (!match) return ParallelProcess.super.optimize(context);
+		if (!match) return ComputableParallelProcess.super.optimize(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
@@ -410,6 +414,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 	}
 
+	@Override
+	public String describe() {
+		return Optional.ofNullable(getMetadata().getShortDescription()).orElse("") +
+				" " + getCount() + "x " +
+				(getComputeRequirements() == null ? "" : Arrays.toString(getComputeRequirements().toArray()));
+	}
+
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {
 		return Collectors.toCollection(OperationList::new);
 	}
@@ -465,6 +476,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					Hardware.getLocalHardware().getComputer().popRequirements();
 				}
 			}
+		}
+
+		@Override
+		public String describe() {
+			return getMetadata().getShortDescription();
 		}
 	}
 }

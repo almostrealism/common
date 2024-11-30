@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -35,7 +36,12 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
-public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
+/**
+ * A {@link Sequence} of {@link Number}s which represent index values.
+ *
+ * @author  Michael Murray
+ */
+public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatures {
 	boolean enableGranularityDetection = true;
 	boolean enableModValidation = false;
 	TimingMetric timing = Scope.console.timing("kernelSeriesMatcher");
@@ -110,6 +116,12 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	}
 
 	IndexSequence subset(long len);
+
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		// TODO
+		throw new UnsupportedOperationException();
+	}
 
 	default boolean congruent(IndexSequence other) {
 		if (equals(other)) return true;
@@ -248,13 +260,14 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 			int end = m;
 			i: for (int i = 2 * granularity; i < m; i += granularity) {
 				double actual = doubleAt(i);
-				double prediction = doubleAt(i - 1) + delta;
+				double prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
 
 				if (end == m && prediction != actual) {
 					end = i;
+					prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
 				}
 
-				if (prediction % end != actual) {
+				if (prediction != actual) {
 					isArithmetic = false;
 					break i;
 				}
@@ -302,6 +315,12 @@ public interface IndexSequence extends Sequence<Number>, ConsoleFeatures {
 	@Override
 	default Console console() {
 		return Scope.console;
+	}
+
+	static double arithmeticSequenceValue(int index, int mod, int granularity,
+										  double initial, double delta) {
+		int position = (index % mod) / granularity;
+		return initial + position * delta;
 	}
 
 	static boolean fractionalValue(Number[] distinct) {

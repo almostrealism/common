@@ -98,7 +98,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			if (len > 1) index = index.multiply(len).add(i);
 
 			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
-			Expression<Double> value = exp == null ? null : exp.getValueAt(index);
+			Expression<Double> value = exp == null ? getArgument(1).valueAt(index) : exp.getValueAt(index);
 			if (value == null) {
 				throw new UnsupportedOperationException();
 			}
@@ -107,7 +107,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			TraversableExpression out = TraversableExpression.traverse(output);
 
 			if (out == null) {
-				v = output.ref(i).assign(value);
+				v = output.referenceRelative(i).assign(value);
 			} else {
 				Expression o = out.getValueAt(index);
 				v = o.assign(value);
@@ -146,5 +146,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return result;
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";
 	}
 }

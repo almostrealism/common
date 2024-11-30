@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,30 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+/**
+ * A {@link Process} supplies some other value which is instrumentally useful in
+ * completing a task, independent of whether the task requires computation to be
+ * useful. A {@link Process} implementation may have dependent {@link Process}es,
+ * forming a {@link Tree} which can be orchestrated to accomplish work of any kind.
+ *
+ * @param <P>  The type of the members of the {@link Process} tree.
+ * @param <T>  The type of the result of the {@link Process}, which may either be
+ *             some kind of directly useful value or instead, a mechanism for
+ *             producing the ultimate result of the work.
+ *
+ * @author  Michael Murray
+ */
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
+	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
 
-	default Process<P, T> optimize() { return optimize(null); }
+	default Process<P, T> optimize() { return optimize(ProcessContext.base()); }
 
 	default Process<P, T> optimize(ProcessContext context) {
 		return this;
@@ -79,10 +96,23 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	static <T, P extends Supplier<T>> Supplier<T> isolated(P process) {
-		if (process instanceof Process) {
-			return ((Process<?, T>) process).isolate();
-		} else {
+		if (!(process instanceof Process)) {
 			return Process.of(process);
 		}
+
+		if (isolationPermitted(process)) {
+			return ((Process<?, T>) process).isolate();
+		}
+
+		return process;
+	}
+
+	static <T, P extends Supplier<T>> boolean isolationPermitted(P process) {
+		return !isExplicitIsolation() ||
+				explicitIsolationTargets.stream().anyMatch(p -> p.test((Process) process));
+	}
+
+	static boolean isExplicitIsolation() {
+		return !explicitIsolationTargets.isEmpty();
 	}
 }

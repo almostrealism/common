@@ -29,10 +29,8 @@ import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
 
 import java.util.List;
 
@@ -40,7 +38,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	private int filterOrder;
 
 	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
-		super(null, shape, new Producer[] { series, coefficients });
+		super("multiOrderFilter", shape, new Producer[] { series, coefficients });
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
 		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);

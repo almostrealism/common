@@ -22,6 +22,8 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
 
@@ -33,7 +35,7 @@ import java.util.Arrays;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
-public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
+public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Destroyable, Node {
 
 	Memory getMem();
 
@@ -42,6 +44,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	void reassign(Memory mem);
+
+	default boolean isDestroyed() {
+		return getMem() == null;
+	}
 
 	default void load(byte b[]) {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
@@ -102,8 +108,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			return getDelegateOrdering().getLength().orElse(getMemLength());
 		}
 	}
-
-	void destroy();
 
 	/**
 	 * If a delegate is set using this method, then the {@link Memory} for the delegate
@@ -211,7 +215,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException(i + " is out of bounds for MemoryData of length " + getMemLength());
 		}
 
-		if (getMem().getProvider().getNumberSize() == 8) {
+		if (getMem() == null) {
+			throw new UnsupportedOperationException();
+		} else if (getMem().getProvider().getNumberSize() == 8) {
 			double out[] = new double[1];
 			getMem(i, out, 0, 1);
 			return new DoubleConstant(out[0]);
@@ -220,6 +226,11 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			getMem(i, out, 0, 1);
 			return new DoubleConstant((double) out[0]);
 		}
+	}
+
+	@Override
+	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		return null;
 	}
 
 	default void setMem(int offset, double... values) {

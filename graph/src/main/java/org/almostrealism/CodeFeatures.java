@@ -18,7 +18,7 @@ package org.almostrealism;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -38,7 +38,6 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
@@ -57,20 +56,22 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.TemporalScalar;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
-								PairFeatures, PairBankFeatures,
-								TriangleFeatures,
-								TransformMatrixFeatures, GeometryFeatures,
+public interface CodeFeatures extends LayerFeatures,
+								ScalarBankFeatures, PairBankFeatures,
+								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, HardwareFeatures {
 	boolean enableFixedCollections = true;
+
+	@Override
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return LayerFeatures.super.delegate(original, actual);
+	}
 
 	default <T> Producer<T> v(T v) {
 		if (v instanceof TraversalPolicy) {
@@ -107,13 +108,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
-	}
-
-	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-		return new ExpressionComputation<>(
-				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
-					(Supplier) time, (Supplier) value)
-				.setPostprocessor(TemporalScalar.postprocessor());
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
@@ -157,16 +151,25 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	@Override
 	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
 									Producer<? extends MemoryData> target, int length) {
+		TraversalPolicy sourceShape = source instanceof Shape ? ((Shape) source).getShape() : null;
+		TraversalPolicy targetShape = target instanceof Shape ? ((Shape) target).getShape() : null;
+
+		if (sourceShape != null && sourceShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
+		} else if (targetShape != null && targetShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
+		}
+
 		if (enableAssignmentCopy) {
-			if (source instanceof Shape) source = new ReshapeProducer(((Shape) source).getShape().traverseEach(), source);
-			if (target instanceof Shape) target = new ReshapeProducer(((Shape) target).getShape().traverseEach(), target);
+			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), source);
+			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), target);
 			return new Assignment(1, target, source);
 		} else {
 			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
 		}
 	}
 
-	default <T> Switch choice(CollectionProducer<PackedCollection<?>> decision, Computation<T>... choices) {
+	default <T> Switch choice(Producer<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 

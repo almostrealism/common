@@ -18,8 +18,12 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 
 public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
+	public static boolean enableIndexSimplification = true;
+
 	private TraversableExpression<Double> values;
 	private TraversalPolicy positionShape;
 
@@ -47,7 +51,18 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 			index = index.toInt();
 		}
 
-		Expression pos[] = getPosition(index.imod(getPositionShape().getTotalSizeLong()));
+		if (enableIndexSimplification) {
+			KernelStructureContext ctx = index.getStructureContext();
+			if (ctx == null) ctx = new NoOpKernelStructureContext();
+			index = index.simplify(ctx);
+		}
+
+		if (getTotalShape() == null || !getTotalShape().isFixedCount() ||
+				getTotalShape().getTotalSizeLong() > getPositionShape().getTotalSizeLong()) {
+			index = index.imod(getPositionShape().getTotalSizeLong());
+		}
+
+		Expression pos[] = getPosition(index);
 		return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
 	}
 

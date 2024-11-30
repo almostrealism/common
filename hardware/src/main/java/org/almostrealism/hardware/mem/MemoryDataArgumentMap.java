@@ -27,7 +27,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
@@ -196,7 +195,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider>, KernelSupport {
+	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider> {
 		private Provider provider;
 
 		public RootDelegateProviderSupplier(MemoryData mem) {

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2024 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.model;
 
 import io.almostrealism.relation.Producer;
@@ -7,8 +23,6 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Supplier;
 
 public class DefaultBlock implements Block {
@@ -23,12 +37,6 @@ public class DefaultBlock implements Block {
 	private Receptor<PackedCollection<?>> push;
 	private Receptor<PackedCollection<?>> downstream;
 
-	private List<Receptor<PackedCollection<?>>> receptors;
-
-	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape) {
-		this(inputShape, outputShape, null, null);
-	}
-
 	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape,
 						Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
 		this(inputShape, outputShape, forward, backward, new OperationList());
@@ -42,11 +50,9 @@ public class DefaultBlock implements Block {
 		this.setup = setup;
 		this.forward = forward;
 		this.backward = backward;
-		this.receptors = new ArrayList<>();
 
 		this.push = in -> {
 			OperationList op = new OperationList();
-			receptors.forEach(r -> op.add(r.push(in)));
 			if (downstream != null) op.add(downstream.push(in));
 			return op;
 		};
@@ -87,6 +93,10 @@ public class DefaultBlock implements Block {
 
 				@Override
 				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					if (cellWarnings && DefaultBlock.this.downstream != null) {
+						warn("Replacing receptor");
+					}
+
 					DefaultBlock.this.downstream = r;
 				}
 			};
@@ -98,11 +108,5 @@ public class DefaultBlock implements Block {
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
 		return backward;
-	}
-
-	@Override
-	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
-		receptors.add(r);
-		return r;
 	}
 }

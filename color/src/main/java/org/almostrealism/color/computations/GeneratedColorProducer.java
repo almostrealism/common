@@ -18,6 +18,7 @@ package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -29,7 +30,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.color.RGB;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -91,7 +91,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
-	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
+	public Evaluable<RGB> get() { return p.get(); }
 
 	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);

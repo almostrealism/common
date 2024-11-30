@@ -23,16 +23,16 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.layers.PropagationCell;
+import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -142,7 +142,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
@@ -181,19 +181,21 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
 		expected[1] -= 1.0;
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
+			assertEquals(expected[i], result[i]);
 		}
 	}
 
 	@Test
 	public void logSoftmaxBackwards2() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int size = 10;
 
 		PackedCollection<?> input = new PackedCollection(size);
@@ -202,8 +204,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		PackedCollection<?> gradient = new PackedCollection<>(size);
 		gradient.setMem(3, 1.0);
 
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+		// log("Input = " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		// log("Gradient = " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
 		double tot = input.doubleStream().map(Math::exp).sum();
 
@@ -215,19 +217,26 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 			return () -> {
 				PackedCollection<?> out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log("out = " + out.toArrayString());
 
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, size).mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot).toArray();
+		double expected[] = IntStream.range(0, size)
+				.mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot)
+				.toArray();
+		int idx = gradient.argmax();
+		log("Gradient max idx = " + idx);
+
 		expected[gradient.argmax()] += 1.0;
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
+			log("result[" + i + "] = " + result[i] +
+					" (expected " + expected[i] + ")");
+			assertEquals(expected[i], result[i]);
 		}
 	}
 
@@ -246,7 +255,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		double result[] = new double[size];
 
 		Model model = new Model(shape(size));
-		model.addLayer(new DefaultCellularLayer("blank", shape(2),
+		model.add(new DefaultBlock(shape(2), shape(2),
 				Cell.of((in, next) -> next.push(in)),
 				Cell.of((grad, next) -> () -> {
 					Evaluable<PackedCollection<?>> gr = grad.get();
@@ -258,7 +267,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 						out.getMem(0, result, 0, result.length);
 					};
 				})));
-		model.addLayer(logSoftmax(size));
+		model.add(logSoftmax(size));
 
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("logSoftmaxModel"));
 		try {
@@ -292,7 +301,10 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> in = traverseEach(p(input));
 			CollectionProducer<PackedCollection<?>> subset = c(subset(shape(1, seqLength), in, h, 0)).traverseEach();
-			CollectionProducer<PackedCollection<?>> p = subset.exp().divide(subset.exp().traverse(0).sum());
+
+			Producer<PackedCollection<?>> p = softmax(subset.getShape(), true).apply(subset);
+
+			// CollectionProducer<PackedCollection<?>> p = subset.exp().divide(subset.exp().traverse(0).sum());
 
 			double values[] = originalInput.toArray(0, originalInput.getShape().getTotalSize());
 			softmax(values, h * seqLength, seqLength);

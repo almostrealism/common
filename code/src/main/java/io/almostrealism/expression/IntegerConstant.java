@@ -79,4 +79,13 @@ public class IntegerConstant extends Constant<Integer> {
 
 		return super.minus();
 	}
+
+	@Override
+	public boolean compare(Expression e) {
+		if (!(e instanceof IntegerConstant)) {
+			return false;
+		}
+
+		return ((IntegerConstant) e).value == value;
+	}
 }

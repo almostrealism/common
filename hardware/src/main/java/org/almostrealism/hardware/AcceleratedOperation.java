@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,21 +22,28 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
+import org.almostrealism.hardware.instructions.ExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeExecution;
+import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -44,19 +51,18 @@ import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
-import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
-														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
+public abstract class AcceleratedOperation<T extends MemoryData>
+									extends OperationAdapter<T, Argument<? extends T>>
+									implements Runnable, ArgumentList<T>, ScopeLifecycle,
+											Countable, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static Console console = Computation.console.child();
 
@@ -70,13 +76,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
-	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
 	private boolean argumentMapping;
 	private ComputeContext<MemoryData> context;
 	private Class cls;
 
+	private ProcessArgumentEvaluator evaluator;
 	private ProcessDetailsFactory detailsFactory;
 	protected List<ArgumentMap> argumentMaps;
 	private OperationList preOp;
@@ -115,7 +121,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
-	public abstract Execution getOperator();
+	public abstract <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager();
+
+	public abstract <K extends ExecutionKey> K getExecutionKey();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
@@ -125,13 +133,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ArrayVariable getArgument(int index, Expression<Integer> size) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
+	
+	@Override
+	public Variable getOutputVariable() { return getArgument(getOutputArgumentIndex()); }
+	
+	/** @return  -1 */
+	protected int getOutputArgumentIndex() { return -1; }
 
-	/**
-	 * @return  GLOBAL
-	 */
+	@Override
+	public List<Argument<? extends T>> getChildren() {
+		return getArguments();
+	}
+
+	/** @return  {@link PhysicalScope#GLOBAL} */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
+	/** @return  -1 */
 	@Override
 	public long getCountLong() { return -1; }
 
@@ -221,12 +239,28 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected ProcessDetailsFactory getDetailsFactory() {
+	public ProcessArgumentEvaluator getEvaluator() {
+		return evaluator;
+	}
+
+	public void setEvaluator(ProcessArgumentEvaluator evaluator) {
+		this.evaluator = evaluator;
+
+		if (detailsFactory != null) {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
 			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputVariable(), created,
+					getArgumentVariables(), getOutputArgumentIndex(),
 					getComputeContext().getDataContext().getKernelMemoryProvider(),
 					this::createAggregatedInput);
+
+			if (evaluator != null) {
+				detailsFactory.setEvaluator(evaluator);
+			}
 		}
 
 		return detailsFactory;
@@ -237,7 +271,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
-		if (getArguments() == null) {
+		if (getArguments() == null && getInstructionSetManager() == null) {
 			warn(getName() + " was not compiled ahead of time");
 			compile();
 		}
@@ -247,7 +281,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 
 		long start = System.nanoTime();
-		Execution operator = getOperator();
+		Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {
@@ -286,15 +320,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return process;
 	}
 
-	@Override
-	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		if (isKernel()) {
-			apply(output, args);
-		} else {
-			throw new HardwareException("Kernel not supported");
-		}
-	}
-
 	private double sec(long nanos) {
 		return nanos / 1e9;
 	}
@@ -325,34 +350,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (s != null) {
 			s.waitFor();
 			semaphores.set(null);
-		}
-	}
-
-	@Deprecated
-	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
-		CreatedMemoryData last = created.get();
-
-		try {
-			created.set(data);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			created.set(last);
-		}
-	}
-
-	@Deprecated
-	public static <I, O> O apply(Supplier<I> input, Function<I, O> process) {
-		CreatedMemoryData data = new CreatedMemoryData();
-
-		try {
-			I in = record(data, () -> input.get());
-			return process.apply(in);
-		} finally {
-			data.destroy();
 		}
 	}
 

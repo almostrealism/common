@@ -25,9 +25,11 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
+	public static long MAX_SEQUENCE_LENGTH = 1 << 24;
+
 	public static boolean enableMaskMatrix = true;
 	public static boolean enableUnsequencedMatrices = false;
-	public static long maxMatrixSize = (long) 10e7;
+	public static long maxMatrixSize = (long) Math.min(MAX_SEQUENCE_LENGTH, 10e7);
 
 	protected final Index row;
 	protected final Index col;
@@ -131,7 +133,7 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 		if (!e.isValue(values))
 			return null;
 
-		return e.sequence(child, child.getLimit().getAsLong(), Integer.MAX_VALUE);
+		return e.sequence(child, child.getLimit().getAsLong(), MAX_SEQUENCE_LENGTH);
 	}
 
 	public static <T> ExpressionMatrix<T> create(Index row, Index col, Expression<T> expression) {

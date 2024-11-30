@@ -16,15 +16,14 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
+import org.almostrealism.io.Describable;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -67,9 +66,6 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	public Countable getDelegate() { return process; }
 
 	@Override
-	public OperationMetadata getMetadata() { return null; }
-
-	@Override
 	public long getCountLong() {
 		if (process != null) {
 			return process.getCountLong();
@@ -79,7 +75,7 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
 		return new MemoryDataDestination<>(size -> {
@@ -95,5 +91,12 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	public void destroy() {
 		super.destroy();
 		if (provider != null) provider.destroy();
+	}
+
+	@Override
+	public String describe() {
+		return getDelegate() instanceof Describable ?
+				((Describable) getDelegate()).describe() :
+				getDelegate().getClass().getSimpleName();
 	}
 }

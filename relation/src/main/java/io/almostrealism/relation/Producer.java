@@ -20,6 +20,14 @@ import io.almostrealism.lifecycle.Destroyable;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link Producer} is a {@link Computable} system that can create an
+ * {@link Evaluable}, which may then be used generate results from computation.
+ *
+ * @param <T>  The type of the ultimate result of computation.
+ *
+ * @author  Michael Murray
+ */
 public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node,  Destroyable {
 	@Override
 	Evaluable<T> get();

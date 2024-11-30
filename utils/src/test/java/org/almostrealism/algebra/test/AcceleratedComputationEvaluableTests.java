@@ -10,7 +10,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.junit.Test;
 
-public class AcceleratedComputationEvaluableTests implements HardwareFeatures, CodeFeatures {
+public class AcceleratedComputationEvaluableTests implements CodeFeatures {
 	@Test
 	public void staticProducer() {
 		Producer<Vector> res = vector(0.0, 1.0, 2.0);
@@ -23,7 +23,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 	@Test
 	public void scalarFromVector() {
-		ExpressionComputation<Scalar> res = y(vector(0.0, 1.0, 2.0));
+		CollectionProducer<Scalar> res = y(vector(0.0, 1.0, 2.0));
 		Evaluable<Scalar> ev = res.get();
 		Scalar s = ev.evaluate();
 		System.out.println(s.getValue());

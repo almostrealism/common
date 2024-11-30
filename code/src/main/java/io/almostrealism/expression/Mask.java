@@ -57,7 +57,7 @@ public class Mask<T extends Number> extends Conditional<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		return Mask.of((Expression<Boolean>) children.get(0), (Expression<T>) children.get(1));
 	}
 

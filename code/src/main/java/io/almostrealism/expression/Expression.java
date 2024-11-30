@@ -33,13 +33,13 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,33 +52,22 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Expression<T> implements
 		KernelTree<Expression<?>>, SequenceGenerator, Signature,
 		ExpressionFeatures, ConsoleFeatures {
-	public static boolean enableKernelSeqCache = false;
-	public static boolean enableBatchEvaluation = false;
-	public static boolean enableArithmeticSequence = true;
-	public static boolean enableSequenceValidation = false;
-	public static int maxCacheItemSize = 16;
-	public static int maxCacheItems = 128;
-	public static int maxDepth = 4096;
 
-	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
-
-	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
-
+	public static ScopeTimingListener timing;
 	protected static LanguageOperations lang;
 	private static FrequencyCache<String, IndexSequence> kernelSeqCache;
 
 	static {
 		lang = new LanguageOperationsStub();
 
-		if (enableKernelSeqCache) {
-			kernelSeqCache = new FrequencyCache<>(maxCacheItems, 0.7);
+		if (ScopeSettings.enableKernelSeqCache) {
+			kernelSeqCache = new FrequencyCache<>(ScopeSettings.maxCacheItems, 0.7);
 		}
 	}
 
@@ -113,8 +102,20 @@ public abstract class Expression<T> implements
 	}
 
 	protected void init() {
+		ScopeSettings.reviewChildren(getChildren());
+
 		this.depth = getChildren().stream().mapToInt(e -> e.depth).max().orElse(-1) + 1;
-		this.nodeCount = getChildren().stream().mapToInt(e -> e.nodeCount).sum() + 1;
+
+		long c = getChildren().stream().mapToLong(e -> e.nodeCount).sum();
+
+		if (type == null) {
+			throw new ExpressionException("Expression requires a type", depth, c);
+		} else if (c >= Integer.MAX_VALUE) {
+			throw new ExpressionException("Expression too large", depth, c);
+		} else {
+			this.nodeCount = Math.toIntExact(c + 1);
+		}
+
 		this.containsLong = (getType() == Long.class ||
 				getChildren().stream().anyMatch(e -> e.containsLong))
 				&& intValue().isEmpty();
@@ -125,13 +126,11 @@ public abstract class Expression<T> implements
 			hash = (short) getChildren().stream().mapToInt(e -> e.hash).reduce(1, (a, b) -> (a % 2713) * (b % 2713));
 		}
 
-		if (depth > maxDepth) {
-			throw new UnsupportedOperationException();
+		if (depth > ScopeSettings.maxDepth) {
+			throw new ExpressionException("Expression too deep", depth, nodeCount);
 		}
 	}
 
-	@Deprecated
-	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
 	@Override
@@ -212,6 +211,13 @@ public abstract class Expression<T> implements
 		return indices;
 	}
 
+	public KernelStructureContext getStructureContext() {
+		return getChildren().stream()
+				.map(Expression::getStructureContext)
+				.filter(Objects::nonNull)
+				.findFirst().orElse(null);
+	}
+
 	public boolean containsLong() { return containsLong; }
 
 	public boolean contains(Expression e) {
@@ -270,7 +276,11 @@ public abstract class Expression<T> implements
 
 	public IndexSequence sequence() {
 		Set<Index> indices = getIndices();
-		if (indices.size() != 1) throw new UnsupportedOperationException();
+		if (indices.size() > 1) throw new UnsupportedOperationException();
+
+		if (indices.isEmpty()) {
+			return sequence(null, 1, Integer.MAX_VALUE);
+		}
 
 		return sequence(indices.iterator().next(),
 				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);
@@ -287,7 +297,7 @@ public abstract class Expression<T> implements
 	public IndexSequence sequence(Index index, long len, long limit) {
 		if (len < 0) throw new IllegalArgumentException();
 
-		if (enableArithmeticSequence && equals(index)) {
+		if (ScopeSettings.enableArithmeticSequence && equals(index)) {
 			return new ArithmeticIndexSequence(1, 1, len);
 		}
 
@@ -296,7 +306,7 @@ public abstract class Expression<T> implements
 		}
 
 		int nodes = countNodes();
-		String exp = nodes <= maxCacheItemSize ? getExpression(lang) : null;
+		String exp = nodes <= ScopeSettings.maxCacheItemSize ? getExpression(lang) : null;
 
 		if (kernelSeqCache != null && exp != null) {
 			IndexSequence cached = kernelSeqCache.get(exp);
@@ -313,7 +323,7 @@ public abstract class Expression<T> implements
 
 		IndexSequence seq;
 
-		if (enableBatchEvaluation) {
+		if (ScopeSettings.enableBatchEvaluation) {
 			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
 					.map(e -> e.sequence(index, len, limit).toArray())
 					.collect(Collectors.toList()), Math.toIntExact(len)));
@@ -336,7 +346,8 @@ public abstract class Expression<T> implements
 		if (isSimple(context)) return this;
 
 		if (getClass() == Expression.class) {
-			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
+			if (ScopeSettings.enableExpressionWarnings)
+				System.out.println("WARN: Unable to retrieve simplified expression");
 			return this;
 		}
 
@@ -402,14 +413,15 @@ public abstract class Expression<T> implements
 		return new ArrayList<>(dependencies(getChildren().toArray(new Expression[0])));
 	}
 
-	public int getArraySize() { return -1; }
-
 	public T getValue() {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return (T) (Integer) i.getAsInt();
 
 		OptionalDouble v = doubleValue();
 		if (v.isPresent()) return (T) (Double) v.getAsDouble();
+
+		Optional<Boolean> b = booleanValue();
+		if (b.isPresent()) return (T) b.get();
 
 		return null;
 	}
@@ -421,8 +433,9 @@ public abstract class Expression<T> implements
 	public Expression minus() { return Minus.of(this); }
 
 	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
-	public Expression<? extends Number> add(Expression<? extends Number> operand) { return Sum.of(this, operand); }
+	public Expression<? extends Number> add(Expression<?> operand) { return Sum.of(this, operand); }
 	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
+	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }
 
 	public Expression<? extends Number> multiply(int operand) {
 		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
@@ -435,7 +448,7 @@ public abstract class Expression<T> implements
 		return operand == 1.0 ? (Expression) this :
 				(Expression) Product.of(this, Constant.of(operand));
 	}
-	public Expression<? extends Number> multiply(Expression<? extends Number> operand) {
+	public Expression<T> multiply(Expression<?> operand) {
 		return (Expression) Product.of(this, operand);
 	}
 
@@ -492,6 +505,7 @@ public abstract class Expression<T> implements
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }
 	public Tangent tan() { return new Tangent((Expression) this); }
+	public Tangent tanh() { return new Tangent((Expression) this, true); }
 
 	public Negation not() {
 		if (getType() != Boolean.class)
@@ -500,6 +514,7 @@ public abstract class Expression<T> implements
 		return new Negation((Expression) this);
 	}
 
+	public Expression eqZero() { return eq(0.0); }
 	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
@@ -507,14 +522,18 @@ public abstract class Expression<T> implements
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
 		return Conditional.of((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
 	}
-	public Greater greaterThan(Expression<?> operand) { return new Greater(this, operand); };
-	public Greater greaterThanOrEqual(Expression<?> operand) { return new Greater(this, operand, true); };
-	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
-	public Less lessThanOrEqual(Expression<?> operand) { return new Less(this, operand, true); };
+
+	public Expression<Boolean> greaterThan(Expression<?> operand) { return Greater.of(this, operand); };
+	public Expression<Boolean> greaterThanOrEqual(Expression<?> operand) { return Greater.of(this, operand, true); };
+	public Expression<Boolean> greaterThanOrEqual(int operand) { return Greater.of(this, new IntegerConstant(operand), true); };
+
+	public Expression<Boolean> lessThan(Expression<?> operand) { return Less.of(this, operand); };
+	public Expression<Boolean> lessThan(int operand) { return Less.of(this, new IntegerConstant(operand)); };
+	public Expression<Boolean> lessThanOrEqual(Expression<?> operand) { return Less.of(this, operand, true); };
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;
-		return toDouble.apply(this);
+		return LanguageOperations.toDouble.apply(this);
 	}
 
 	public Expression<Integer> toInt() {
@@ -527,7 +546,7 @@ public abstract class Expression<T> implements
 		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
 	}
 
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -538,6 +557,14 @@ public abstract class Expression<T> implements
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
+		boolean identical = children.size() == getChildren().size() &&
+				IntStream.range(0, children.size())
+						.map(i -> children.get(i) == getChildren().get(i) ? 1 : 0)
+						.sum() == children.size();
+		return identical ? this : recreate(children);
+	}
+
+	protected Expression<T> recreate(List<Expression<?>> children) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -560,6 +587,12 @@ public abstract class Expression<T> implements
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
+	public Expression<?> simplify(KernelStructureContext context) {
+		return ScopeSettings.reviewSimplification(this,
+				KernelTree.super.simplify(context));
+	}
+
+	@Override
 	public Expression<T> simplify(KernelStructureContext context, int depth) {
 		KernelSeriesProvider provider = context.getSeriesProvider();
 
@@ -567,76 +600,98 @@ public abstract class Expression<T> implements
 			return this;
 		}
 
+		boolean altered = false;
 		Expression<?> simplified[] = new Expression[getChildren().size()];
 
 		i: for (int i = 0; i < simplified.length; i++) {
-			simplified[i] = children.get(i);
-			simplified[i] = simplified[i].simplify(context, depth + 1);
+			try {
+				simplified[i] = children.get(i);
+				simplified[i] = simplified[i].simplify(context, depth + 1);
 
-			if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
-				continue i;
-			}
-
-			if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
-
-			Set<Index> indices = simplified[i].getIndices();
-			Index target = null;
-
-			if (!indices.isEmpty()) {
-				target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
-						.orElse(indices.stream().findFirst().orElse(null));
-			}
-
-			IndexValues v = new IndexValues();
-			if (target != null) v.put(target, 0);
-
-			if (simplified[i].isValue(v)) {
-				if (enableSequenceValidation && target != null && target.getLimit().isPresent() &&
-						target.getLimit().orElse(0) < Integer.MAX_VALUE) {
-					IndexSequence orig = children.get(i).sequence();
-					IndexSequence seq = simplified[i].sequence();
-					if (!orig.congruent(seq)) {
-						throw new UnsupportedOperationException();
-					}
+				if (provider == null || simplified[i].isSeriesSimplificationChild || !simplified[i].isSeriesSimplificationTarget(depth)) {
+					continue i;
 				}
 
-				simplified[i] = provider.getSeries(simplified[i]);
-				if (ScopeSettings.isDeepSimplification())
-					simplified[i] = simplified[i].getSimplified(context);
-				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+				if (simplified[i] instanceof Index || simplified[i] instanceof Constant) continue i;
+
+				Set<Index> indices = simplified[i].getIndices();
+				Index target = null;
+
+				if (!indices.isEmpty()) {
+					target = indices.stream().filter(idx -> idx instanceof KernelIndex).findFirst()
+							.orElse(indices.stream().findFirst().orElse(null));
+				}
+
+				IndexValues v = new IndexValues();
+				if (target != null) v.put(target, 0);
+
+				simplified[i] = ScopeSettings.reviewSimplification(children.get(i), simplified[i]);
+
+				if (simplified[i].isValue(v)) {
+					simplified[i] = ScopeSettings.reviewSimplification(simplified[i],
+								provider.getSeries(simplified[i]));
+
+					if (ScopeSettings.isDeepSimplification())
+						simplified[i] = simplified[i].getSimplified(context);
+
+					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+				}
+			} finally {
+				altered = altered || simplified[i] != children.get(i);
 			}
 		}
 
-		Expression simple = generate(List.of(simplified)).populate(this);
-		simple.seriesProvider = provider;
-		return simple;
+		if (altered) {
+			Expression simple = generate(List.of(simplified)).populate(this);
+			simple.seriesProvider = provider;
+			return simple;
+		} else {
+			return this;
+		}
 	}
 
 	public boolean isSeriesSimplificationTarget(int depth) {
 		return ScopeSettings.isSeriesSimplificationTarget(this, depth);
 	}
 
-	@Override
-	public boolean equals(Object obj) {
-		if (!(obj instanceof Expression)) return false;
-		if (this == obj) return true;
+	public boolean compare(Expression e) {
+		if (this == e) return true;
 
-		Expression v = (Expression) obj;
-		if (type != v.getType()) return false;
-		if (!Objects.equals(getClass(), v.getClass())) return false;
-		if (!Objects.equals(treeDepth(), v.treeDepth())) return false;
-		if (!Objects.equals(countNodes(), v.countNodes())) return false;
-		if (!Objects.equals(hash, v.hash)) return false;
-		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
-		if (!Objects.equals(getDependencies(), v.getDependencies())) return false;
+		if (type != e.getType()) return false;
+		if (!Objects.equals(getClass(), e.getClass())) return false;
+		if (!Objects.equals(treeDepth(), e.treeDepth())) return false;
+		if (!Objects.equals(countNodes(), e.countNodes())) return false;
+		if (!Objects.equals(hash, e.hash)) return false;
+
+		if (getChildren().size() != e.getChildren().size()) return false;
+		if (IntStream.range(0, getChildren().size())
+				.anyMatch(i -> !Objects.equals(getChildren().get(i), e.getChildren().get(i)))) {
+			return false;
+		}
+
 		return true;
 	}
 
 	@Override
-	public String signature() { return getExpression(lang); }
+	public boolean equals(Object obj) {
+		if (!(obj instanceof Expression)) return false;
+
+		return timing == null ? compare((Expression) obj) :
+				timing.recordDuration("expressionEquals", () -> compare((Expression) obj));
+	}
+
+	@Override
+	public String signature() {
+		return timing == null ? getExpression(lang) :
+				timing.recordDuration("expressionSignature", () -> getExpression(lang));
+	}
 
 	@Override
 	public int hashCode() {
+		return timing == null ? hash() : timing.recordDuration("expressionHashCode", this::hash);
+	}
+
+	private int hash() {
 		return Bits.put(0, 16, hash) +
 				Bits.put(16, 10, nodeCount) +
 				Bits.put(26, 4, depth) +

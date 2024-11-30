@@ -40,6 +40,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableProductModSimplify = true;
 	public static boolean enableDenominatorCollapse = true;
 	public static boolean enableRequireNonNegative = true;
+	public static boolean enableBoundedNumeratorReplace = true;
+
+	public static long maxCombinedDenominator = Integer.MAX_VALUE;
 
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
@@ -66,9 +69,22 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			throw new UnsupportedOperationException();
 
 		OptionalLong l = getChildren().get(0).upperBound(context);
-		OptionalLong r = getChildren().get(1).upperBound(context);
-		if (l.isPresent() && r.isPresent()) {
-			return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+
+		if (l.isPresent()) {
+			OptionalLong r = getChildren().get(1).longValue();
+
+			if (r.isPresent()) {
+				if (isFP()) {
+					return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+				} else {
+					return OptionalLong.of(l.getAsLong() / r.getAsLong());
+				}
+			}
+
+			r = getChildren().get(1).upperBound(context);
+			if (r.isPresent()) {
+				return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+			}
 		}
 
 		return OptionalLong.empty();
@@ -122,31 +138,31 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		return (Expression) Quotient.of(children.toArray(new Expression[0]));
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
 		Expression numerator = getChildren().get(0);
 		Expression denominator = getChildren().get(1);
 
-		CollectionExpression numeratorDelta = numerator.delta(target);
-		CollectionExpression denominatorDelta = denominator.delta(target);
+		CollectionExpression<?> numeratorDelta = numerator.delta(target);
+		CollectionExpression<?> denominatorDelta = denominator.delta(target);
 
 		// f'(x)g(x)
-		CollectionExpression term1 = product(target.getShape(),
+		CollectionExpression<?> term1 = product(target.getShape(),
 				List.of(numeratorDelta, new ConstantCollectionExpression(target.getShape(), denominator)));
 		// f(x)g'(x)
-		CollectionExpression term2 = product(target.getShape(),
+		CollectionExpression<?> term2 = product(target.getShape(),
 				List.of(new ConstantCollectionExpression(target.getShape(), numerator), denominatorDelta));
 
-		CollectionExpression derivativeNumerator =
+		CollectionExpression<?> derivativeNumerator =
 				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
-		CollectionExpression derivativeDenominator =
+		CollectionExpression<?> derivativeDenominator =
 				new ConstantCollectionExpression(target.getShape(),
 //						new Product(List.of(denominator, denominator))); // [g(x)]^2
 						Product.of(denominator, denominator)); // [g(x)]^2
@@ -253,16 +269,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
-		if (enableDenominatorCollapse && numerator instanceof Quotient) {
+		OptionalLong d = denominator.longValue();
+
+		if (enableBoundedNumeratorReplace && !numerator.isPossiblyNegative() && d.isPresent() &&
+				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
+			return new IntegerConstant(0);
+		}
+
+		if (enableDenominatorCollapse && numerator instanceof Quotient && d.isPresent()) {
 			if (denominator.longValue().isPresent() && numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
-				if (altDenominator.isPresent()) {
+				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
 					return numerator.getChildren().get(0).divide(
-							altDenominator.getAsLong() * denominator.longValue().getAsLong());
+							altDenominator.getAsLong() * d.getAsLong());
 				}
 			}
 		} else if (numerator instanceof Product) {
-			if (denominator.longValue().isPresent()) {
+			if (d.isPresent()) {
 				// When dividing a product that includes a constant value,
 				// by the same constant value, the result can be simplified
 				// to a product of the remaining values without the constant
@@ -270,7 +293,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 						.mapToLong(e -> e.longValue().orElse(1))
 						.reduce(1, (a, b) -> a * b);
 
-				if (constant == denominator.longValue().getAsLong()) {
+				if (constant == d.getAsLong()) {
 					return Product.of(numerator.getChildren().stream()
 							.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
 				}

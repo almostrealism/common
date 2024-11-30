@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations.test;
 
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -23,16 +24,11 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
-import org.almostrealism.collect.computations.PackedCollectionRepeat;
-import org.almostrealism.collect.computations.TraversableExpressionComputation;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -238,38 +234,44 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void matmulSmall1() {
-		matmal(48, 10, false);
+	public void matmulSmall1() throws IOException {
+		matmal("matmulSmall1", 48, 10, false);
 	}
 
 	@Test
-	public void matmulSmall2() {
-		matmal(48, 10, true);
+	public void matmulSmall2() throws IOException {
+		matmal("matmulSmall2", 48, 10, true);
 	}
 
 	@Test
-	public void matmulMedium1() {
-		matmal(210, 10, false);
+	public void matmulMedium1() throws IOException {
+		matmal("matmulMedium1", 210, 10, false);
 	}
 
 	@Test
-	public void matmulMedium2() {
-		matmal(210, 10, true);
+	public void matmulMedium2() throws IOException {
+		if (testDepth < 1) return;
+
+		matmal("matmulMedium2", 210, 10, true);
 	}
 
 	@Test
-	public void matmulLarge1() {
-		matmal(392, 10, false);
+	public void matmulLarge1() throws IOException {
+		matmal("matmulLarge1", 392, 10, false);
 	}
 
 	@Test
-	public void matmulLarge2() {
-		matmal(392, 10, true);
+	public void matmulLarge2() throws IOException {
+		if (testDepth < 3) return;
+
+		matmal("matmulLarge2", 392, 10, true);
 	}
 
-	public void matmal(int size, int nodes, boolean dIn) {
+	public void matmal(String name, int size, int nodes, boolean dIn) throws IOException {
+		OperationProfileNode profile = new OperationProfileNode(name);
+
 		try {
-			initKernelMetrics();
+			initKernelMetrics(profile);
 
 			PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
 			PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
@@ -279,7 +281,8 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 
 			d.get().evaluate();
 		} finally {
-			logKernelMetrics();
+			logKernelMetrics(profile);
+			profile.save("results/" + name + ".xml");
 		}
 	}
 

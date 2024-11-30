@@ -18,28 +18,42 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
+import org.almostrealism.hardware.arguments.AcceleratedSubstitutionEvaluable;
+import io.almostrealism.relation.ProducerSubstitution;
+import org.almostrealism.hardware.instructions.ProcessTreeInstructionsManager;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Stack;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private Hardware hardware;
 
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
 
+	private Map<String, OperationContainer> operationsCache;
+	private Map<String, ProcessTreeInstructionsManager> instructionsCache;
+
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(Stack::new);
+		this.operationsCache = new HashMap<>();
+		this.instructionsCache = new HashMap<>();
 	}
 
 	@Override
@@ -77,6 +91,53 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	public void popRequirements() {
 		this.requirements.get().pop();
+	}
+
+	public ProcessTreeInstructionsManager getInstructionsManager(String key) {
+		return instructionsCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
+	}
+
+	public <P extends Process<?, ?>, T, V extends io.almostrealism.relation.Process<P, T>, M extends MemoryData>
+			Producer<M> createContainer(String key,
+								Function<Producer[], Producer<M>> func,
+								BiFunction<Producer, Producer, ProducerSubstitution> substitution,
+								BiFunction<Producer, Producer, Producer> delegate,
+								Producer... args) {
+		OperationContainer container;
+
+		if (operationsCache.containsKey(key)) {
+			container = operationsCache.get(key);
+		} else {
+			Producer<M> producer = func.apply(args);
+
+			if (!(producer instanceof Process)) {
+				return producer;
+			}
+
+			Process<?, ?> operation = applyInstructionsManager(key, (Process) producer);
+			AcceleratedOperationContainer c = getInstructionsManager(key).applyContainer(operation);
+			if (c == null) {
+				return producer;
+			}
+
+			container = new OperationContainer(c, args, producer);
+			operationsCache.put(key, container);
+		}
+
+		AcceleratedSubstitutionEvaluable evaluable = new AcceleratedSubstitutionEvaluable<>(container.container);
+		for (int i = 0; i < args.length; i++) {
+			evaluable.addSubstitution(substitution.apply(container.arguments[i], args[i]));
+		}
+		return delegate.apply(container.result, () -> evaluable);
+	}
+
+	public <P extends Process<?, ?>, T, V extends io.almostrealism.relation.Process<P, T>> Process<P, T>
+			applyInstructionsManager(String key, V process) {
+		if (instructionsCache.containsKey(key)) {
+			return getInstructionsManager(key).replaceAll(process);
+		} else {
+			return getInstructionsManager(key).extractAll(process);
+		}
 	}
 
 	@Override
@@ -118,4 +179,16 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	@Override
 	public Console console() { return Hardware.console; }
+
+	class OperationContainer {
+		private AcceleratedOperationContainer container;
+		private Producer arguments[];
+		private Producer result;
+
+		public OperationContainer(AcceleratedOperationContainer container, Producer arguments[], Producer result) {
+			this.container = container;
+			this.arguments = arguments;
+			this.result = result;
+		}
+	}
 }

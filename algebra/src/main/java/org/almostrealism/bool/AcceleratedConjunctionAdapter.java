@@ -47,7 +47,7 @@ import java.util.stream.Stream;
 public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Supplier<Evaluable<?>> trueValue, falseValue;
-	private ArrayVariable<?> trueVar, falseVar;
+	private ArrayVariable<Double> trueVar, falseVar;
 
 	@SafeVarargs
 	public AcceleratedConjunctionAdapter(int memLength,
@@ -81,18 +81,18 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager, context);
 		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager, context);
 
-		List<ArrayVariable<? extends MemoryData>> args = new ArrayList<>();
-		args.add((ArrayVariable<? extends MemoryData>) getOutputVariable());
+		List<ArrayVariable<Double>> args = new ArrayList<>();
+		args.add((ArrayVariable<Double>) getOutputVariable());
 		args.addAll(getOperands());
 
-		this.trueVar = manager.argumentForInput(this).apply(trueValue);
-		args.add((ArrayVariable<? extends MemoryData>) this.trueVar);
+		this.trueVar = (ArrayVariable)  manager.argumentForInput(this).apply(trueValue);
+		args.add(this.trueVar);
 
-		this.falseVar = manager.argumentForInput(this).apply(falseValue);
-		args.add((ArrayVariable<? extends MemoryData>) this.falseVar);
+		this.falseVar = (ArrayVariable) manager.argumentForInput(this).apply(falseValue);
+		args.add(this.falseVar);
 
 		setArguments(args.stream()
-				.map(var -> new Argument<>(var, Expectation.EVALUATE_AHEAD))
+				.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
 				.map(arg -> (Argument<? extends MemoryData>) arg)
 				.collect(Collectors.toList()));
 	}
@@ -105,12 +105,13 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 		return getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
 	}
 
-	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables(boolean includeConjuncts) {
+	public synchronized List<ArrayVariable<Double>> getArgumentVariables(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
 		return getArguments(includeConjuncts).stream()
 				.map(arg -> Optional.ofNullable(arg).map(Argument::getVariable).orElse(null))
-				.map(var -> (ArrayVariable<? extends T>) var)
+				.map(var -> (ArrayVariable) var)
+				.map(var -> (ArrayVariable<Double>) var)
 				.collect(Collectors.toList());
 	}
 
@@ -157,7 +158,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public List<ArrayVariable<Scalar>> getOperands() {
+	public List<ArrayVariable<Double>> getOperands() {
 		return conjuncts.stream().flatMap(c -> c.getOperands().stream()).collect(Collectors.toList());
 	}
 

@@ -36,12 +36,12 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 // TODO  Why can't this be a child of TraversableComputationBase?
-public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 	private int choiceCount;
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super(null, new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
+		super("choice", new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
 		this.choiceCount = choiceCount;
 	}
 
@@ -57,7 +57,7 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.ref(i).getSimpleExpression(getLanguage()) + " = " +
+			code.accept(output.referenceRelative(i).getSimpleExpression(getLanguage()) + " = " +
 					input.referenceRelative(decisionChoice.add(i)).getSimpleExpression(getLanguage()) + ";\n");
 		}
 

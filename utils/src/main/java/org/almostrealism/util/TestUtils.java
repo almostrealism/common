@@ -16,22 +16,27 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.io.SystemUtils;
 
+import java.io.File;
 import java.util.Objects;
 
 public class TestUtils implements TestSettings {
 	public static final String PIPELINE = "pipeline";
 
 	static {
-		if (CLMemoryProvider.enableWarnings)
-			CLMemoryProvider.enableWarnings = !skipLongTests;
-		if (MetalMemoryProvider.enableWarnings)
-			MetalMemoryProvider.enableWarnings = !skipLongTests;
+		if (RAM.enableWarnings)
+			RAM.enableWarnings = !skipLongTests;
+
+		File results = new File("results");
+		if (!results.exists()) {
+			results.mkdir();
+		}
 
 		Console.root().addListener(OutputFeatures.fileOutput("results/logs/test.out"));
 	}

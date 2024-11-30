@@ -33,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -47,6 +48,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableCoefficientExtraction = true;
 	public static int maxOppositeDetectionDepth = 10;
 	public static int maxDistinctDetectionWidth = 8;
+	public static int maxCoefficientExtractionWidth = 8;
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
@@ -115,12 +117,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		return Sum.of(children.toArray(new Expression[0]));
 	}
 
 	@Override
-	public CollectionExpression delta(CollectionExpression target) {
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		CollectionExpression delta = sum(target.getShape(),
 				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
 		return ExpressionMatchingCollectionExpression.create(
@@ -316,16 +318,41 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (enableCoefficientExtraction && operands.size() > 1) {
-			Expression<?> t = operands.get(0).getChildren().isEmpty() ?
-					operands.get(0) : operands.get(0).getChildren().get(0);
-			OptionalDouble d = extractCoefficients(t, operands);
+		if (operands.size() > 1) {
+			if (enableCoefficientExtraction) {
+				// Combine any like terms
+				List<Expression<?>> combinedOperands = new ArrayList<>();
 
-			if (d.isPresent()) {
-				if (fp) {
-					return (Expression) t.multiply(d.getAsDouble());
-				} else {
-					return  (Expression) t.multiply((long) d.getAsDouble());
+				int operandIndex = 0;
+
+				i: for (int i = 0; i < maxCoefficientExtractionWidth && operandIndex < operands.size(); i++) {
+					Expression<?> t = operands.get(operandIndex);
+					Optional<Term> d = extractCoefficients(t, operandIndex, operands, true);
+
+					if (d.isPresent()) {
+						combinedOperands.add(d.get().result(fp));
+					} else {
+						// The target should always at least match itself
+						throw new UnsupportedOperationException();
+					}
+				}
+
+				// Add all the non-zero terms as operands
+				combinedOperands.stream()
+						.filter(e -> e.doubleValue().orElse(1.0) != 0.0)
+						.forEach(operands::add);
+			} else {
+				// Combine terms if all terms are like the first term
+				Expression<?> t = operands.get(0).getChildren().isEmpty() ?
+						operands.get(0) : operands.get(0).getChildren().get(0);
+				Optional<Term> d = extractCoefficients(t, -1, operands, false);
+
+				if (d.isPresent()) {
+					if (fp) {
+						return (Expression) t.multiply(d.get().getCoefficient());
+					} else {
+						return (Expression) t.multiply((long) d.get().getCoefficient());
+					}
 				}
 			}
 		}
@@ -334,26 +361,62 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return operands.size() == 1 ? (Expression) operands.get(0) : (Expression) new Sum(operands);
 	}
 
-	private static OptionalDouble extractCoefficients(Expression target, List<Expression<?>> children) {
+	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {
 		double constant = 0.0;
 
-		for (Expression<?> e : children) {
-			if (Objects.equals(target, e)) {
-				constant += 1.0;
-			} else if (e instanceof Product && e.getChildren().size() == 2 && e.getChildren().contains(target)) {
-				if (Objects.equals(target, e.getChildren().get(0)) && e.getChildren().get(1).doubleValue().isPresent()) {
-					constant += e.getChildren().get(1).doubleValue().getAsDouble();
-				} else if (Objects.equals(target, e.getChildren().get(1)) && e.getChildren().get(0).doubleValue().isPresent()) {
-					constant += e.getChildren().get(0).doubleValue().getAsDouble();
-				} else {
-					return OptionalDouble.empty();
-				}
-			} else {
-				return OptionalDouble.empty();
+		List<Expression<?>> processed = new ArrayList<>();
+
+		// Check if the target has a coefficient of its own
+		if (targetIndex >= 0 && target instanceof Product && target.getChildren().size() == 2) {
+			if (target.getChildren().get(0).doubleValue().isPresent()) {
+				constant += target.getChildren().get(0).doubleValue().getAsDouble();
+				processed.add(target);
+				target = target.getChildren().get(1);
+			} else if (target.getChildren().get(1).doubleValue().isPresent()) {
+				constant += target.getChildren().get(1).doubleValue().getAsDouble();
+				processed.add(target);
+				target = target.getChildren().get(0);
 			}
 		}
 
-		return OptionalDouble.of(constant);
+		// If the target has not been processed already,
+		// then there is no need to skip over it during
+		// the actual extraction process
+		if (processed.isEmpty()) {
+			targetIndex = -1;
+		}
+
+		i: for (int i = 0; i < children.size(); i++) {
+			if (i == targetIndex) {
+				// The target was already processed
+				continue i;
+			}
+
+			Expression<?> e = children.get(i);
+
+			if (Objects.equals(target, e)) {
+				constant += 1.0;
+				processed.add(e);
+			} else if (e instanceof Product && e.getChildren().size() == 2 && e.getChildren().contains(target)) {
+				if (Objects.equals(target, e.getChildren().get(0)) && e.getChildren().get(1).doubleValue().isPresent()) {
+					constant += e.getChildren().get(1).doubleValue().getAsDouble();
+					processed.add(e);
+				} else if (Objects.equals(target, e.getChildren().get(1)) && e.getChildren().get(0).doubleValue().isPresent()) {
+					constant += e.getChildren().get(0).doubleValue().getAsDouble();
+					processed.add(e);
+				} else if (!prune) {
+					return Optional.empty();
+				}
+			} else if (!prune) {
+				return Optional.empty();
+			}
+		}
+
+		if (prune) {
+			children.removeAll(processed);
+		}
+
+		return Optional.of(new Term(constant, target));
 	}
 
 	private static boolean checkOpposite(Expression a, Expression b) {
@@ -368,5 +431,26 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		return false;
+	}
+
+	private static class Term {
+		private double coefficient;
+		private Expression<?> expression;
+
+		public Term(double coefficient, Expression<?> expression) {
+			this.coefficient = coefficient;
+			this.expression = expression;
+		}
+
+		public double getCoefficient() { return coefficient; }
+		public Expression<?> getExpression() { return expression; }
+
+		public Expression<?> result(boolean fp) {
+			if (fp) {
+				return expression.multiply(coefficient);
+			} else {
+				return expression.multiply((long) coefficient);
+			}
+		}
 	}
 }

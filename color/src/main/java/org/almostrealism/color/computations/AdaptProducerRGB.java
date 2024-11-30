@@ -18,7 +18,6 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import io.almostrealism.code.AdaptProducer;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -29,10 +28,10 @@ public class AdaptProducerRGB extends AdaptProducer<RGB> {
 	}
 
 	@Override
-	public KernelizedEvaluable<RGB> get() {
+	public Evaluable<RGB> get() {
 		Evaluable<RGB> e = super.get();
 
-		return new KernelizedEvaluable<>() {
+		return new Evaluable<>() {
 			@Override
 			public MemoryBank<RGB> createDestination(int size) { return RGB.bank(size); }
 

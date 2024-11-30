@@ -16,27 +16,18 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.expression.Constant;
-import io.almostrealism.expression.Expression;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.InstanceReference;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Generated;
 import io.almostrealism.uml.Nameable;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.ProducerWithRank;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.relation.Sortable;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Describable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -44,14 +35,13 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V>, ConsoleFeatures {
+public class Variable<T, V extends Variable<T, ?>>
+		implements Nameable, Sortable, Delegated<V>, Describable, ConsoleFeatures {
 	private String name;
 	private PhysicalScope physicalScope;
 	private int sortHint;
 
-	private Expression<T> expression;
-
-	private Supplier<Evaluable<? extends T>> originalProducer;
+	private Class<?> type;
 	private Supplier<Evaluable<? extends T>> producer;
 
 	private V delegate;
@@ -60,10 +50,12 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this(name, null, null, null);
 	}
 
-	public Variable(String name, PhysicalScope scope, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
+	public Variable(String name, PhysicalScope scope,
+					Class<?> type,
+					Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
 		setPhysicalScope(scope);
-		setExpression(expression);
+		setType(type);
 		setProducer(producer);
 	}
 
@@ -75,7 +67,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		return this.name;
 	}
 
-	public InstanceReference<?> ref() {
+	public InstanceReference<?, ?> ref() {
 		if (getDelegate() == null) {
 			return new InstanceReference<>(this);
 		} else {
@@ -98,70 +90,30 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
 	@Deprecated
-	public void setExpression(Expression<T> value) { this.expression = value; }
-
-	@Deprecated
-	public Expression<T> getExpression() { return expression; }
-
-	@Deprecated
 	public void setSortHint(int hint) { this.sortHint = hint; }
 
 	@Override
 	public int getSortHint() { return sortHint; }
 
-	public Expression<Integer> getArraySize() {
-		if (getExpression() == null) return null;
-		if (getExpression().getArraySize() <= 0) return null;
-		return new IntegerConstant(getExpression().getArraySize());
-	}
-
 	private void setProducer(Supplier<Evaluable<? extends T>> producer) {
-		this.originalProducer = producer;
-
-		w: while (producer instanceof ProducerWithRank || producer instanceof Generated) {
-			if (producer instanceof ProducerWithRank) {
-				if (((ProducerWithRank<T, ?>) producer).getProducer() == producer) {
-					break w;
-				}
-
-				producer = ((ProducerWithRank) producer).getProducer();
-			}
-
-			if (producer instanceof Generated) {
-				producer = (Producer) ((Generated) producer).getGenerated();
-			}
-		}
-
-		if (producer instanceof Provider) {
-			throw new IllegalArgumentException("Provider is Evaluable, it does not supply an Evaluable");
-		}
-
-		if (producer != originalProducer) {
-			warn("Producer for " + getName() + " changed from " + originalProducer + " to " + producer);
-		}
-
 		this.producer = producer;
 	}
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
-	@Deprecated
-	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
+	private void setType(Class<?> type) {
+		this.type = type;
+	}
 
-	public Class<T> getType() {
+	public Class<?> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();
-		return getExpression() == null ? null : getExpression().getType();
+		return type;
 	}
 
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
-		deps.addAll(getExpressionDependencies());
 		return deps;
-	}
-
-	protected List<Variable<?, ?>> getExpressionDependencies() {
-		return Optional.ofNullable(getExpression()).map(Expression::getDependencies).orElse(Collections.emptyList());
 	}
 
 	@Override
@@ -171,7 +123,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		Variable v = (Variable) obj;
 		if (!Objects.equals(name, v.name)) return false;
 		if (!Objects.equals(physicalScope, v.getPhysicalScope())) return false;
-		if (!Objects.equals(expression, v.expression)) return false;
+		if (!Objects.equals(type, v.type)) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
 		if (!Objects.equals(delegate, v.getDelegate())) return false;
 
@@ -179,9 +131,14 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	}
 
 	@Override
-	public int hashCode() { return name.hashCode(); }
+	public int hashCode() { return delegate == null ? name.hashCode() : delegate.hashCode(); }
+
+	@Override
+	public String describe() {
+		return getClass().getSimpleName() + " " + getName();
+	}
 
 	public static Variable<Integer, ?> integer(String name) {
-		return new Variable<>(name, null, Constant.forType(Integer.class), null);
+		return new Variable<>(name, null, Integer.class, null);
 	}
 }

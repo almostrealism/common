@@ -17,4 +17,9 @@
 package io.almostrealism.relation;
 
 public interface ProcessContext {
+	int getDepth();
+
+	static ProcessContext base() {
+		return new ProcessContextBase(0);
+	}
 }

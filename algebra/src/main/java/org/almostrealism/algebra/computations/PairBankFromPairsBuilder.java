@@ -24,6 +24,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -33,7 +34,6 @@ import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.RelativeTraversableProducerComputation;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.Collection;
 import java.util.List;
@@ -93,8 +93,8 @@ public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputa
 	}
 
 	@Override
-	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() {
-		return (KernelizedEvaluable<PackedCollection<Pair<?>>>) construct().get();
+	public Evaluable<PackedCollection<Pair<?>>> get() {
+		return construct().get();
 	}
 
 	@Override

@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 
 import java.util.List;
@@ -31,8 +32,13 @@ public class Conditional<T extends Number> extends Expression<T> {
 	public static boolean enableSimplification = false;
 	public static boolean enableInputBranchWarning = false;
 
-	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+	protected Conditional(Class<T> type, Expression<Boolean> condition,
+						  Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
+
+		if (condition.booleanValue().isPresent()) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -134,14 +140,31 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
+	public Expression<T> recreate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
 		return Conditional.of((Expression<Boolean>) children.get(0),
-				(Expression<Double>) children.get(1),
-				(Expression<Double>) children.get(2));
+				children.get(1), children.get(2));
 	}
 
-	public static Expression of(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
+		return ExpressionCache.match(create(condition, positive, negative));
+	}
+
+	public static Expression create(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
+		Optional<Boolean> cond = condition.booleanValue();
+
+		if (cond.isPresent()) {
+			return cond.get() ? positive : negative;
+		}
+
+		OptionalDouble cd = condition.doubleValue();
+
+		if (cd.isPresent()) {
+			Scope.console.features(Conditional.class)
+					.warn("Conditional created with numeric condition");
+			return cd.getAsDouble() == 0.0 ? negative : positive;
+		}
+
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
 
@@ -162,7 +185,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 
 		if (positive.getType() == negative.getType()) {
-			return new Conditional<>(positive.getType(), condition, positive, negative);
+			return new Conditional(positive.getType(), condition, positive, negative);
 		} else {
 			return new Conditional(Double.class, condition, positive, negative);
 		}

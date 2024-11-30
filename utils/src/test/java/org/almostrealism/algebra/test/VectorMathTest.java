@@ -25,7 +25,7 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.Random;
-import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -71,7 +71,7 @@ public class VectorMathTest implements TestFeatures {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
 		Producer<Scalar> s = y(a).multiply(z(b)).add(scalar(1));
-		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
+		HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
@@ -80,7 +80,7 @@ public class VectorMathTest implements TestFeatures {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
 		Producer<Scalar> s = y(a).multiply(z(b)).subtract(scalar(1));
-		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
+		HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
@@ -91,7 +91,7 @@ public class VectorMathTest implements TestFeatures {
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
 			Producer<Scalar> s = scalar(y(a).multiply(z(b))
 					.subtract(z(a).multiply(y(b))));
-			KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
+			HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());
 		});
@@ -105,7 +105,7 @@ public class VectorMathTest implements TestFeatures {
 	public void crossProduct() {
 		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
-		KernelizedEvaluable<Vector> cpo = (KernelizedEvaluable<Vector>) cp.get();
+		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
 		Assert.assertEquals(1, cpo.getArgsCount());
 
 		Vector v = cp.get().evaluate();

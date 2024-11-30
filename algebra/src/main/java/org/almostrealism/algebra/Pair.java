@@ -115,7 +115,17 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
-	/** @return A String representation of this Vector object. */
+	@Override
+	public String describe() {
+		return getShape() +
+				" [" +
+				Defaults.displayFormat.format(getX()) +
+				", " +
+				Defaults.displayFormat.format(getY()) +
+				"]";
+	}
+
+	/** @return A String representation of this Pair. */
 	@Override
 	public String toString() {
 		return "[" +
