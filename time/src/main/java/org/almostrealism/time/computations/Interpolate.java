@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,78 +16,125 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 
-public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+public class Interpolate extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+	public static boolean enableFunctionalPosition = true;
+	public static boolean enableScanning = false;
+
 	private Function<Expression, Expression> timeForIndex;
+	private Function<Expression, Expression> indexForTime;
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate) {
-		this(series, position, rate, v -> v);
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position, Producer<PackedCollection<?>> rate) {
+		this(series, position, rate, v -> v, v -> v);
 	}
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate, Function<Expression, Expression> timeForIndex) {
-		super(new TraversalPolicy(1), new Producer[] { series, position, rate });
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
+					   Producer<PackedCollection<?>> rate, Function<Expression, Expression> timeForIndex,
+					   Function<Expression, Expression> indexForTime) {
+		super(null, new TraversalPolicy(1), new Producer[] { series, position, rate });
 		this.timeForIndex = timeForIndex;
+		this.indexForTime = indexForTime;
 	}
 
+	// TODO  Probably unnecessary
 	@Override
 	public TraversalPolicy getShape() {
 		return new TraversalPolicy(1);
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope() {
+	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 
-		String left = getVariableName(0);
-		String right = getVariableName(1);
-		String v1 = getVariableName(2);
-		String v2 = getVariableName(3);
-		String t1 = getVariableName(4);
-		String t2 = getVariableName(5);
+		Expression idx = new StaticReference(Integer.class, getVariableName(0));
+		Expression left = new StaticReference(Integer.class, getVariableName(1));
+		Expression right = new StaticReference(Integer.class, getVariableName(2));
+		Expression leftO = new StaticReference(Integer.class, getVariableName(3));
+		Expression rightO = new StaticReference(Integer.class, getVariableName(4));
+		Expression bi = new StaticReference(Double.class, getVariableName(5));
+		String v1 = getVariableName(6);
+		String v2 = getVariableName(7);
+		String t1 = getVariableName(8);
+		String t2 = getVariableName(9);
 
-		scope.getVariables().add(new Variable<>(left, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
+		scope.getVariables().add(new ExpressionAssignment(true, idx, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, left, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, right, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, leftO, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, rightO, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, bi, e(-1.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
-		String res = getArgument(0).valueAt(0).getExpression();
+		String res = getArgument(0).referenceRelative(0).getSimpleExpression(getLanguage());
 		String start = "0";
-		String end = getArgument(1).length().getExpression();
+		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
-		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, "i"))).getExpression();
-		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, left))).getExpression();
-		String bankl_value = getArgument(1).get(left).getExpression();
-		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, right))).getExpression();
-		String bankr_value = getArgument(1).get(right).getExpression();
-		String cursor = getArgument(2).valueAt(0).getExpression();
+		String bankl_time = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
+		String bankl_value = getArgument(1).referenceRelative(left).getSimpleExpression(getLanguage());
+		String bankr_time = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
+		String bankr_value = getArgument(1).referenceRelative(right).getSimpleExpression(getLanguage());
+		String cursor = getArgument(2).referenceRelative(e(0)).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
-		code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
-		code.accept("	if (" + banki + " >= " + cursor + ") {\n");
-		code.accept("		" + left + " = i > " + start + " ? i - 1 : (" + banki + " == " + cursor + " ? i : -1);\n");
-		code.accept("		" + right + " = i;\n");
-		code.accept("		break;\n");
-		code.accept("	}\n");
-		code.accept("}\n");
+
+		if (enableFunctionalPosition) {
+			Expression<Double> time = getArgument(2).referenceRelative(0).multiply(rate);
+			Expression index = indexForTime.apply(time);
+
+//			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : (" + banki + " == " + cursor + " ? " + idx + " : -1);\n");
+
+			code.accept(idx + " = " + index.ceil().toInt().getSimpleExpression(getLanguage()) + " - 1;");
+			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : " + idx + ";\n");
+			code.accept(right + " = " + idx + ";\n");
+
+			code.accept("if ((" + timeForIndex.apply(idx).getSimpleExpression(getLanguage()) + ") != (" + time.getSimpleExpression(getLanguage()) + ")) {\n");
+			code.accept("    " + left + " = " + left + " + 1;\n");
+			code.accept("    " + right + " = " + right + " + 1;\n");
+			code.accept("}\n");
+		}
+
+		if (enableScanning) {
+			Expression i = new StaticReference(Integer.class, "i");
+			String banki = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(i)).getSimpleExpression(getLanguage());
+
+			code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
+			code.accept("	if (" + banki + " >= " + cursor + ") {\n");
+			code.accept("		" + leftO + " = i > " + start + " ? i - 1 : (" + banki + " == " + cursor + " ? i : -1);\n");
+			code.accept("		" + rightO + " = i;\n");
+			code.accept("		" + bi + " = " + banki + ";\n");
+			code.accept("		break;\n");
+			code.accept("	}\n");
+			code.accept("}\n");
+
+			code.accept("if (" + leftO + " == -1.0) {\n");
+			code.accept("    " + left + " = -1.0;\n");
+			code.accept("}\n");
+
+			code.accept("if (" + rightO + " == -1.0) {\n");
+			code.accept("    " + right + " = -1.0;\n");
+			code.accept("}\n");
+		}
 
 		code.accept("if (" + left + " == -1 || " + right + " == -1) {\n");
 		code.accept("	" + res + " = 0;\n");
@@ -96,8 +143,16 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		code.accept("} else {\n");
 		code.accept("	" + v1 + " = " + bankl_value + ";\n");
 		code.accept("	" + v2 + " = " + bankr_value + ";\n");
-		code.accept("	" + t1 + " = " + cursor + " - " + bankl_time + ";\n");
-		code.accept("	" + t2 + " = " + bankr_time + " - " + bankl_time + ";\n");
+		code.accept("	" + t1 + " = (" + cursor + ") - (" + bankl_time + ");\n");
+		code.accept("	" + t2 + " = (" + bankr_time + ") - (" + bankl_time + ");\n");
+
+		if (enableScanning) {
+			code.accept("if (" + leftO + " != " + left + " || " + rightO + " != " + right + ") {\n");
+			code.accept("printf(\"left = %i, leftO = %i, right = %i, rightO = %i, banki = %f, cursor = %f\\n\", "
+					+ left + ", " + leftO + ", " + right + ", " + rightO + ", " + bi + ", " + cursor + ");\n");
+			code.accept("}\n");
+		}
+
 		code.accept("	if (" + t2 + " == 0) {\n");
 		code.accept("		" + res + " = " + v1 + ";\n");
 		code.accept("	} else {\n");

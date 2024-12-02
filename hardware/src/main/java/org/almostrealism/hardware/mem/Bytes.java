@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,19 @@
 
 package org.almostrealism.hardware.mem;
 
-public class Bytes extends MemoryDataAdapter {
+import io.almostrealism.code.Memory;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
+
+public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	private final int atomicLength;
 	private final int memLength;
+
+	private Bytes(Memory mem, int memLength) {
+		this.atomicLength = memLength;
+		this.memLength = memLength;
+		init(mem);
+	}
 
 	public Bytes(int memLength) {
 		this(memLength, memLength);
@@ -38,7 +48,28 @@ public class Bytes extends MemoryDataAdapter {
 		init();
 	}
 
-	public int getCount() { return getMemLength() / getAtomicMemLength(); }
+	public Bytes(int memLength, MemoryData delegate, int delegateOffset) {
+		this(memLength, memLength, delegate, delegateOffset);
+	}
+
+	public Bytes(int memLength, int atomicLength, MemoryData delegate, int delegateOffset) {
+		this.atomicLength = atomicLength;
+		this.memLength = memLength;
+		setDelegate(delegate, delegateOffset);
+	}
+
+	@Override
+	public void set(int index, Bytes value) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Bytes get(int index) {
+		return range(index * getAtomicMemLength(), getAtomicMemLength());
+	}
+
+	@Override
+	public long getCountLong() { return getMemLength() / getAtomicMemLength(); }
 
 	@Override
 	public int getAtomicMemLength() { return atomicLength; }
@@ -46,5 +77,21 @@ public class Bytes extends MemoryDataAdapter {
 	@Override
 	public int getMemLength() {
 		return memLength;
+	}
+
+	public Bytes range(int start, int length) {
+		return range(start, length, length);
+	}
+
+	public Bytes range(int start, int length, int atomicLength) {
+		if (start < 0 || start + length > getMemLength()) {
+			throw new IllegalArgumentException();
+		}
+
+		return new Bytes(length, atomicLength, this, start);
+	}
+
+	public static Bytes of(Memory mem, int memLength) {
+		return new Bytes(mem, memLength);
 	}
 }

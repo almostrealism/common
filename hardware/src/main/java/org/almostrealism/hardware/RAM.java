@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,11 +17,23 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import org.almostrealism.io.SystemUtils;
 
 public abstract class RAM implements Memory {
-	public long getNativePointer() {
+	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
+	public long getContainerPointer() {
+		return getContentPointer();
+	}
+
+	public long getContentPointer() {
 		throw new UnsupportedOperationException();
 	}
 
 	public long getSize() { throw new UnsupportedOperationException(); }
+
+	@Override
+	public String toString() {
+		return String.format("%s[%d]", getClass().getSimpleName(), getSize());
+	}
 }

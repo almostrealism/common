@@ -16,9 +16,12 @@
 
 package org.almostrealism.c;
 
+import org.almostrealism.hardware.jni.NativeCompiler;
+
 public class Malloc extends BaseNative {
 
-	public Malloc() {
+	public Malloc(NativeCompiler compiler) {
+		super(compiler);
 		initNative();
 	}
 

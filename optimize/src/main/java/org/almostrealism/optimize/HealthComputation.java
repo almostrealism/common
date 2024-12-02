@@ -16,7 +16,7 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.time.Temporal;
 
 public interface HealthComputation<T extends Temporal, S extends HealthScore> extends Lifecycle {

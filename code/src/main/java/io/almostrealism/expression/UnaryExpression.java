@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,29 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 public class UnaryExpression<T> extends Expression<T> {
+	private String operator;
+
 	public UnaryExpression(Class<T> type, String operator, Expression<?> value) {
-		super(type, operator + "(" + value.getExpression() + ")", value);
+		super(type, value);
+		this.operator = operator;
+	}
+
+	protected boolean isIncludeSpace() { return true; }
+
+	@Override
+	public String getExpression(LanguageOperations lang) {
+		if (isIncludeSpace()) {
+			return operator + " " + getChildren().get(0).getWrappedExpression(lang);
+		} else {
+			return operator + getChildren().get(0).getWrappedExpression(lang);
+		}
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		return super.compare(e) && ((UnaryExpression) e).operator.equals(operator);
 	}
 }

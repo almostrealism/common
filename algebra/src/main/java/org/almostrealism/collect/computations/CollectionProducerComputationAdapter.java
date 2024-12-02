@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,132 +16,77 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.CollectionUtils;
-import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryDataComputation;
-import org.almostrealism.hardware.ProducerCache;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-												extends ProducerComputationBase<I, O>
-												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														KernelizedProducer<O>, DestinationSupport<O>,
-														ComputerFeatures {
-	public static boolean enableEmbeddedInputs = true;
+		extends CollectionProducerComputationBase<I, O>
+		implements TraversableExpression<Double> {
 
-	private TraversalPolicy shape;
-	private Supplier<? extends PackedCollection> destination;
-	private boolean fixedDestinationShape;
+	public static boolean enableContextualKernelIndex = true;
 
-	protected CollectionProducerComputationAdapter() { }
-
-	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
-		if (outputShape.getTotalSize() <= 0) {
-			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
-		}
-
-		this.shape = outputShape;
-		this.destination = () -> new PackedCollection(shape);
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
-		init();
+	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
+												Supplier<Evaluable<? extends I>>... arguments) {
+		super(name, outputShape, arguments);
 	}
 
-	public boolean isFixedDestinationShape() {
-		return fixedDestinationShape;
-	}
-
-	public void setFixedDestinationShape(boolean fixedDestinationShape) {
-		this.fixedDestinationShape = fixedDestinationShape;
-	}
-
-	protected void setShape(TraversalPolicy shape) {
-		this.shape = shape;
-	}
-
-	protected MemoryBank<?> createKernelDestination(int len) {
-		if (fixedDestinationShape) return new PackedCollection<>(getShape());
-
-		if (len > 1 && len % getShape().getCount() != 0) {
-			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
-		}
-
-		int count = len / getShape().getCount();
-
-		TraversalPolicy shape;
-
-		// When kernel length is 1, or identical to the output count, an
-		// assumption is made that the intended shape is the original shape.
-		// This is a bit of a hack, but it's by far the simplest solution
-		// available
-//		if (count == 0 || (len == getShape().length(0) && count == 1)) {
-		if (count == 0 || len == getShape().getCount()) {
-			// It is not necessary to prepend a (usually) unnecessary dimension
-			shape = getShape();
-		} else {
-			shape = getShape().prependDimension(count);
-		}
-
-//		System.out.println("CollectionProducerComputationAdapter: createKernelDestination(" + len + "): "
-//							+ shape + "[" + shape.getTraversalAxis() + "]");
-		return new PackedCollection<>(shape);
+	protected boolean isOutputRelative() {
+		return true;
 	}
 
 	@Override
-	public TraversalPolicy getShape() {
-		return shape;
-	}
+	public Scope<O> getScope(KernelStructureContext context) {
+		Scope<O> scope = super.getScope(context);
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
-	@Override
-	public int getMemLength() {
-		return getShape().getSize();
-	}
+		for (int i = 0; i < getMemLength(); i++) {
+			KernelIndex kernelIndex = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
+			Expression index = kernelIndex;
+			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-	@Override
-	public void setDestination(Supplier<O> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<O> getDestination() { return (Supplier) destination; }
-
-	/**
-	 * @return  PhysicalScope#GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	@Override
-	public Expression<Double> getInputValue(int index, int pos) {
-		if (enableEmbeddedInputs) {
-			if (getInputs().get(index) instanceof TraversableExpression) {
-				Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(e(pos));
-
-				// if (!(value instanceof InstanceReference)) return value;
-				if (value != null) return value;
+			if (isOutputRelative()) {
+				scope.getStatements().add(output.referenceRelative(e(i), kernelIndex).assign(getValueAt(index)));
+			} else {
+				scope.getStatements().add(output.referenceAbsolute(kernelIndex).assign(getValueAt(index)));
 			}
 		}
 
-		return super.getInputValue(index, pos);
+		return scope;
 	}
 
 	@Override
-	public void destroy() {
-		super.destroy();
-		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
-		}
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public CollectionProducer<O> delta(Producer<?> target) {
+		CollectionProducer<O> delta = attemptDelta(this, target);
+		if (delta != null) return delta;
+
+		delta = TraversableDeltaComputation.create(getShape(), shape(target),
+				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
+				(Supplier) this);
+		return delta;
+	}
+
+	@Override
+	public RepeatedProducerComputationAdapter<O> toRepeated() {
+		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+		result.addDependentLifecycle(this);
+		return result;
 	}
 }

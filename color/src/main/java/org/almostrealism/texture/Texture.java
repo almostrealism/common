@@ -16,10 +16,8 @@
 
 package org.almostrealism.texture;
 
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.color.ColorEvaluable;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
-import org.almostrealism.algebra.TripleFunction;
 import io.almostrealism.relation.Evaluable;
 
 /**
@@ -27,11 +25,13 @@ import io.almostrealism.relation.Evaluable;
  * 
  * @author  Michael Murray
  */
-public interface Texture extends ColorEvaluable, TripleFunction<Triple, RGB> {
+public interface Texture {
 	/**
 	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
 	 * using the specified arguments.
 	 */
 	@Deprecated
 	Evaluable<RGB> getColorAt(Object args[]);
+
+	RGB operate(Vector t);
 }

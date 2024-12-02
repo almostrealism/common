@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,31 +18,54 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.lang.ScopeEncoder;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public class CLNativeComputeContext extends AbstractComputeContext {
-	public static boolean enableVerbose = false;
-	protected static long totalInvocations = 0;
+	private NativeCompiler compiler;
 
-	public CLNativeComputeContext(Hardware hardware) {
-		super(hardware, true, true);
+	public CLNativeComputeContext(CLDataContext dc, NativeCompiler compiler) {
+		super(dc);
+		this.compiler = compiler;
+	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return new CLJNILanguageOperations(getDataContext().getPrecision());
+	}
+
+	public NativeCompiler getNativeCompiler() {
+		return compiler;
 	}
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
+		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
+		target.setComputeContext(this);
+		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
+		target.setParallelism(NativeExecution.PARALLELISM);
+
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet target = getComputer().getNativeCompiler().reserveLibraryTarget();
-		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
-		getComputer().getNativeCompiler().compile(target, buf.toString());
-		return target;
+
+		try {
+			buf.append(new ScopeEncoder(pw ->
+					new CLJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+							getLanguage()), Accessibility.EXTERNAL).apply(scope));
+			getNativeCompiler().compile(target, buf.toString());
+			return target;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override
-	public boolean isKernelSupported() { return false; }
+	public boolean isCPU() { return true; }
 
 	@Override
 	public void destroy() { }

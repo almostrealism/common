@@ -17,15 +17,13 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairPool;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.time.computations.CursorPairIncrement;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class CursorPair extends Pair {
 	public CursorPair() { super(0, 0); }
 
@@ -36,16 +34,13 @@ public class CursorPair extends Pair {
 
 	public void setDelayCursor(double v) {
 		setB(v);
-		// TODO  This is due to a CL "bug" (or something), it should be removed
-		if (Math.abs(getB() - v) > 1) {
-			throw new UnsupportedOperationException();
-		}
 		if (getDelayCursor() <= getCursor()) setDelayCursor(getCursor() + 1);
 	}
 
 	public double getDelayCursor() { return getB(); }
 
 	public Supplier<Runnable> increment(Producer<Scalar> value) {
-		return new CursorPairIncrement(() -> new Provider<>(this), value);
+		Producer<PackedCollection<?>> v = concat(c(value, 0), c(value, 0));
+		return a("CursorPair Increment", p(this), add(p(this), v));
 	}
 }

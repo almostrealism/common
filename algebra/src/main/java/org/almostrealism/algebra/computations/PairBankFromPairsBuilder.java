@@ -19,29 +19,39 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Compactable;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.RelativeTraversableProducerComputation;
 
-import java.util.Objects;
+import java.util.Collection;
+import java.util.List;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
-									implements Factory<KernelizedProducer<PackedCollection<Pair<?>>>>, PairBankFeatures {
+public class PairBankFromPairsBuilder extends RelativeTraversableProducerComputation<Pair<?>, PackedCollection<Pair<?>>>
+									implements Factory<Producer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
 		super(new TraversalPolicy(count, 2).traverse(0), new Producer[0]);
 		producers = new Producer[count];
+	}
+
+	protected PairBankFromPairsBuilder(TraversalPolicy shape, Producer<Pair<?>>[] producers) {
+		super(shape, new Producer[0]);
+		this.producers = producers;
 	}
 
 	public Producer<Pair<?>> get(int index) {
@@ -52,7 +62,23 @@ public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputati
 		producers[index] = value;
 	}
 
-	public int getCount() { return producers.length; }
+	public int getProducerCount() { return producers.length; }
+
+	@Override
+	public boolean isFixedCount() {
+		return getChildren().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+	}
+
+	@Override
+	public long getCountLong() {
+		// TODO  Does this need to be based on the Producer array?
+		return super.getCountLong();
+	}
+
+	@Override
+	public Collection getChildren() {
+		return List.of(producers);
+	}
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -61,27 +87,35 @@ public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputati
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(Stream.of(producers), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(producers), manager, context);
 	}
 
 	@Override
-	public synchronized void compact() {
-		Stream.of(producers).filter(Objects::nonNull).forEach(p -> ((Compactable) p).compact());
+	public Evaluable<PackedCollection<Pair<?>>> get() {
+		return construct().get();
 	}
 
 	@Override
-	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() { return construct().get(); }
+	public Producer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
 
 	@Override
-	public KernelizedProducer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
+	public PairBankFromPairsBuilder generate(List<Process<?, ?>> children) {
+		return new PairBankFromPairsBuilder(getShape(), children.toArray(new Producer[0]));
+	}
 
 	private int arg(int index) { return index / 2; }
 	private int pos(int index) { return index % 2; }
 
+	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
+		return ((TraversableExpression) producers[arg(index)]).getValueAt(new IntegerConstant(pos(index)));
+	}
+
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> getExpression(producers[arg(i)]).get().getValue(pos(i));
+//		return i -> getExpression(producers[arg(i)]).get().getValue(pos(i));
+		return i ->
+			((TraversableExpression) producers[arg(i)]).getValueAt(new IntegerConstant(pos(i)));
 	}
 }

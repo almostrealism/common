@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,11 +33,6 @@ public class DefaultNameProvider implements NameProvider {
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return v.getName() + "[" + pos + "]";
-	}
 
 	@Override
 	public String getVariableDimName(ArrayVariable v, int dim) {

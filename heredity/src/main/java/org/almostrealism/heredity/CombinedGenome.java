@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -31,7 +32,7 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome()).toArray(ConfigurableGenome[]::new));
 	}
 
-	public CombinedGenome(ConfigurableGenome... genomes) {
+	protected CombinedGenome(ConfigurableGenome... genomes) {
 		this.genomes = List.of(genomes);
 	}
 
@@ -91,7 +92,12 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 		if (factor instanceof ScaleFactor) {
 			return ((ScaleFactor) factor).getScaleValue();
 		} else if (factor instanceof AssignableGenome.AssignableFactor) {
-			return ((AssignableGenome.AssignableFactor) factor).getValue().toDouble(0);
+			PackedCollection<?> value = ((AssignableGenome.AssignableFactor) factor).getValue();
+			if (value == null) {
+				throw new UnsupportedOperationException();
+			}
+
+			return value.toDouble(0);
 		} else {
 			return factor.getResultant(c(1.0)).get().evaluate().toDouble(0);
 		}

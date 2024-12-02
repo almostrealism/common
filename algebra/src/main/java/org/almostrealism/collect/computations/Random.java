@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,39 +16,58 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.stream.IntStream;
 
-public class
-Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
+	private static long seed;
+
+	private OperationMetadata metadata;
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
+
+	private double[] values;
 
 	public Random(TraversalPolicy shape) {
 		this(shape, false);
 	}
 
 	public Random(TraversalPolicy shape, boolean normal) {
+		this.metadata = new OperationMetadata("Random", "Generate random values",
+				"Generate random values " + shape.toStringDetail());
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
 	}
 
 	@Override
-	public KernelizedEvaluable<PackedCollection<?>> get() {
-		return new KernelizedEvaluable<>() {
+	public OperationMetadata getMetadata() { return metadata; }
+
+	protected void initValues() {
+		if (values == null) {
+			values = IntStream.range(0, getShape().getTotalSize())
+					.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
+					.toArray();
+		}
+	}
+
+	public void refresh() { values = null; }
+
+	@Override
+	public Evaluable<PackedCollection<?>> get() {
+		return new Evaluable<>() {
 			@Override
-			public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
+			public Multiple<PackedCollection<?>> createDestination(int size) {
 				return new PackedCollection<>(getShape().prependDimension(size));
 			}
 
@@ -60,11 +79,10 @@ Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<Packed
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
+			public Evaluable<PackedCollection<?>> into(Object destination) {
 				return args -> {
-					destination.setMem(IntStream.range(0, getShape().getTotalSize())
-							.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
-							.toArray());
+					initValues();
+					((MemoryBank) destination).setMem(values);
 					return (PackedCollection<?>) destination;
 				};
 			}
@@ -77,7 +95,26 @@ Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<Packed
 	}
 
 	@Override
+	public Producer<PackedCollection<?>> traverse(int axis) {
+		return new ReshapeProducer(axis, this);
+	}
+
+	@Override
 	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
+		return new ReshapeProducer(shape, this);
+	}
+
+	// TODO  There should be an option to use this ring xor algorithm
+	// TODO  (as a genuine Computation) instead of the java.util.Random
+
+	public static int nextInt() {
+		seed ^= seed >> 12;
+		seed ^= seed << 25;
+		seed ^= seed >> 27;
+		return (int) ((seed * 0x2545F4914F6CDD1DL) >> 32);
+	}
+
+	public static float nextFloat() {
+		return (nextInt() >>> 8) / 16777216.0f;
 	}
 }

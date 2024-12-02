@@ -16,9 +16,9 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
@@ -33,7 +33,7 @@ import org.junit.Test;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, HardwareFeatures {
+public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
 	private Scalar value;
@@ -57,11 +57,9 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 	@Test
 	public void purgeTest() {
-		Hardware.enableVerbose = true;
-
-		dc(() -> {
+//		dc(() -> {
 			for (int i = 0; i < 2; i++) {
-				cc(() -> {
+//				cc(() -> {
 					CursorPair cursors = cursors(3.2);
 					AcceleratedTimeSeries series = series();
 					Assert.assertEquals(5, series.getLength());
@@ -73,16 +71,16 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 					Assert.assertEquals(3, series.getLength());
 					valueAtAssertions(series);
-				});
+//				}, ComputeRequirement.CL);
 			}
-		});
+//		});
 	}
 
 	@Test
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
+		Evaluable<Scalar> compiled = valueAt.get();
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
 	}
 
@@ -100,7 +98,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add(temporal(r(p(cursors)), v(30)));
+		return series.add(temporal(r(p(cursors)), scalar(30)));
 	}
 
 	protected Supplier<Runnable> assign() {
@@ -112,7 +110,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected Supplier<Runnable> increment() {
-		return cursors.increment(v(1));
+		return cursors.increment(scalar(1));
 	}
 
 	@Test

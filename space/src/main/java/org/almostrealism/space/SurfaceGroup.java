@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,14 @@ package org.almostrealism.space;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
-import io.almostrealism.relation.Group;
 import io.almostrealism.relation.NodeGroup;
-import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.Gradient;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
@@ -120,6 +118,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		surfaces.forEach(consumer);
 	}
 
+	@Override
+	public Stream<T> children() { return surfaces.stream(); }
+
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
@@ -136,7 +137,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 				color = getParent().shade(p);
 			} else {
 				final Producer<RGB> fc = color;
-				color = () -> new RGBAdd(fc, getParent().shade(p));
+				color = add(fc, getParent().shade(p));
 			}
 		}
 		
@@ -179,7 +180,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	/**
-	 * Returns an {@link Intersection} object that represents the ray-surface intersections
+	 * Returns an {@link ContinuousField} that represents the ray-surface intersections
 	 * for the AbstractSurface object which is intersected closest to the origin of the ray
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
@@ -193,16 +194,12 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	@Override
-	public Operator<Scalar> get() throws InterruptedException, ExecutionException {
-		// TODO  Aggregate the operators for each surface somehow
+	public Operator<Scalar> get() {
+		// TODO  Aggregate the operators for each surface some how?
 		return null;
 	}
 
 	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
-	}
-
 	public Operator<Scalar> expect() {
 		// TODO  This isn't right
 		return new Constant<>(new Scalar(0));

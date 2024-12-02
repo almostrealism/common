@@ -17,7 +17,7 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
@@ -25,7 +25,7 @@ public class GreaterThanCollection extends GreaterThan<PackedCollection<?>> impl
 	public GreaterThanCollection(
 			Supplier leftOperand,
 			Supplier rightOperand) {
-		super(1, () -> new PackedCollection<>(1), PackedCollection.bank(new TraversalPolicy(1)),
+		super(1, PackedCollection.bank(new TraversalPolicy(1)),
 				leftOperand, rightOperand, null, null, false);
 	}
 
@@ -43,7 +43,7 @@ public class GreaterThanCollection extends GreaterThan<PackedCollection<?>> impl
 			Supplier trueValue,
 			Supplier falseValue,
 			boolean includeEqual) {
-		super(1, () -> new PackedCollection<>(1), PackedCollection.bank(new TraversalPolicy(1)),
+		super(1, PackedCollection.bank(new TraversalPolicy(1)),
 				leftOperand, rightOperand,
 				trueValue, falseValue, includeEqual);
 	}

@@ -16,17 +16,14 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.KernelizedOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 
@@ -37,12 +34,12 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	 */
 	public static boolean enablePartialKernel = true;
 
-	private ScalarBank distances;
+	private PackedCollection<Scalar> distances;
 
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		distances = new ScalarBank(getCount());
+		distances = Scalar.scalarBank(getCount());
 	}
 
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
@@ -50,7 +47,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		PackedCollection<Pair<?>> out = Pair.bank(1);
 
 		PackedCollection<Pair<?>> conf = Pair.bank(1);
-		conf.set(0, new Pair(getCount(), Intersection.e));
+		conf.set(0, new Pair(getCountLong(), Intersection.e));
 
 		in.set(0, ray.evaluate(args));
 		Triangle.intersectAt.into(distances).evaluate(in, this);
@@ -58,26 +55,26 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, ScalarBank destination, MemoryData args[]) {
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
-		for (int i = 0; i < result.getCount(); i++) {
-			destination.get(i).setMem(new double[] { result.get(i).getA(), 1.0 });
+		for (int i = 0; i < result.getCountLong(); i++) {
+			destination.get(i).setMem(result.get(i).getA(), 1.0);
 		}
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);
 
-		if (KernelizedOperation.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
+		if (HardwareOperator.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 
 		PackedCollection<Pair<?>> dim = Pair.bank(1);
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
 
 		if (enablePartialKernel) {
-			ScalarBank distances = new ScalarBank(getCount());
+			PackedCollection<Scalar> distances = Scalar.scalarBank(getCount());
 			PackedCollection<Ray> in = Ray.bank(1);
 			PackedCollection<Pair<?>> out = Pair.bank(1);
 
@@ -91,9 +88,9 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 				destination.set(i, out.get(0));
 			}
 
-			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCount() + " intersection kernels evaluated");
+			if (HardwareOperator.enableKernelLog) System.out.println(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
-			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount());
+			PackedCollection<Scalar> distances = Scalar.scalarBank(this.getCount() * rays.getCount());
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);

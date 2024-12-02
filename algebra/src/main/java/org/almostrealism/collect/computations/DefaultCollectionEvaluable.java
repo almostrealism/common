@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,68 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionEvaluable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
 
 import java.util.function.BiFunction;
+import java.util.function.IntFunction;
 
-public class DefaultCollectionEvaluable<T extends PackedCollection> extends AcceleratedComputationEvaluable<T> implements CollectionEvaluable<T> {
+public class DefaultCollectionEvaluable<T extends PackedCollection>
+		extends AcceleratedComputationEvaluable<T> implements Evaluable<T> {
+	public static boolean enableDestinationFactory = true;
+
 	private TraversalPolicy shape;
+	private IntFunction<T> destinationFactory;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public DefaultCollectionEvaluable(TraversalPolicy shape, Computation<T> c, BiFunction<MemoryData, Integer, T> postprocessor) {
-		super(c);
+	public DefaultCollectionEvaluable(ComputeContext<MemoryData> context,
+									  TraversalPolicy shape,
+									  Computation<T> c,
+									  IntFunction<T> destinationFactory,
+									  BiFunction<MemoryData, Integer, T> postprocessor) {
+		super(context, c);
 		this.shape = shape;
+		this.destinationFactory = destinationFactory;
 		this.postprocessor = postprocessor;
+	}
+
+	@Override
+	public T createDestination(int len) {
+		if (enableDestinationFactory) {
+			return destinationFactory.apply(len);
+		}
+
+		// TODO  This duplicates code in CollectionProducerComputationBase::shapeForLength
+		// TODO  It should be removed
+		TraversalPolicy shape;
+
+		if (Countable.isFixedCount(getComputation())) {
+			shape = this.shape;
+		} else {
+			int count = len / this.shape.getCount();
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// The same assumption is made if the kernel length is not a multiple of
+			// the output count.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == this.shape.getCount() || len % this.shape.getCount() != 0) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = this.shape;
+			} else {
+				shape = this.shape.prependDimension(count);
+			}
+		}
+
+		return (T) new PackedCollection<>(shape);
 	}
 
 	@Override
@@ -43,12 +88,4 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 			return postprocessor.apply(output, offset);
 		}
 	}
-
-	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
-		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
-	}
-
-	@Override
-	public boolean isAggregatedInput() { return true; }
 }

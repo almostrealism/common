@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,69 +16,169 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Delegated;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Variable;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryBank;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 
-import java.util.function.Function;
-import java.util.function.IntFunction;
-import java.util.function.Supplier;
-import java.util.stream.IntStream;
+import java.util.List;
+import java.util.OptionalDouble;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends IndexProjectionProducerComputation<T> {
+	public static boolean enableUniqueIndexOptimization = true;
+	public static boolean enableInputIsolation = true;
+	public static boolean enableIsolation = true;
+	public static boolean enableLargeSlice = true;
+	public static boolean enableShortCircuit = false;
+
 	private TraversalPolicy subsetShape;
+	private TraversalPolicy sliceShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
 		this(shape(collection).item(), repeat, collection);
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(shape(collection).replace(shape.prependDimension(repeat)), (Supplier) collection);
-		this.subsetShape = shape;
+		super(shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+				null, collection);
+		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
+		this.sliceShape = subsetShape.prependDimension(repeat);
+
+		if (!enableLargeSlice &&
+				(!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) &&
+				sliceShape.getTotalSizeLong() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
+								   TraversalPolicy sliceShape, Producer<?> collection) {
+		super(shape, null, collection);
+		this.subsetShape = subsetShape;
+		this.sliceShape = sliceShape;
 	}
 
 	@Override
-	public int getMemLength() { return 1; }
+	protected Expression projectIndex(Expression index) {
+		Expression slice;
+		Expression offset;
 
+		if (!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) {
+			// Identify the output slice
+			if (sliceShape.getTotalSizeLong() == 1) {
+				slice = index;
+			} else if (!index.isFP()) {
+				slice = index.divide(e(sliceShape.getTotalSizeLong()));
+			} else {
+				slice = index.divide(e((double) sliceShape.getTotalSizeLong())).floor();
+			}
+
+			// Find the index in the output slice
+			offset = index.toInt().imod(sliceShape.getTotalSizeLong());
+		} else {
+			// There is only one slice
+			slice = e(0);
+			offset = index;
+		}
+
+		// Find the index in the input slice
+		offset = offset.imod(subsetShape.getTotalSizeLong());
+
+		// Position the offset relative to the slice
+		offset = slice.multiply(e(subsetShape.getTotalSizeLong())).add(offset);
+
+		return offset;
+	}
+
+	// TODO  Remove
 	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0)
-				throw new IllegalArgumentException("Invalid position");
+	public Expression<Double> getValueRelative(Expression index) {
+		Expression offset = projectIndex(index);
+		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
+		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 
-			Expression index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
+		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
 	}
 
 	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (!enableUniqueIndexOptimization || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong())
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+
+		if (localIndex.getLimit().isEmpty() || globalIndex.getLimit().isEmpty()) return null;
+		if (subsetShape.getTotalSizeLong() % localIndex.getLimit().getAsLong() != 0) return null;
+
+		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
+
+		Expression idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
+		if (idx == null) return idx;
+		if (!idx.isValue(IndexValues.of(g))) return null;
+
+		// return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
+		return idx.withIndex(g, ((Expression<?>) globalIndex).imod(limit));
 	}
 
-	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
+	@Override
+	public Evaluable<T> get() {
+		if (!enableShortCircuit || sliceShape.getTotalSizeLong() != getShape().getTotalSizeLong()) {
+			return super.get();
+		}
 
-		// Find the index in that slice
-		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
+		Evaluable<T> ev = (Evaluable) getInputs().get(1).get();
 
-		return var.getValueAt(offset);
+		int r = Math.toIntExact(getShape().getTotalSizeLong() / subsetShape.getTotalSizeLong());
+
+		if (ev instanceof Provider) {
+			return p((Provider) ev, v ->
+					(T) ((PackedCollection) v).repeat(r));
+		}
+
+		HardwareEvaluable<T> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
+		hev.setShortCircuit(args -> {
+			T out = hev.getKernel().getValue().evaluate(args);
+			return (T) out.repeat(r);
+		});
+		return hev;
+	}
+
+	@Override
+	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		Producer in = (Producer) getInputs().get(1);
+		if (in instanceof ReshapeProducer) in = ((ReshapeProducer<?>) in).getComputation();
+
+		boolean computable = in instanceof Computation;
+
+		if (!enableIsolation && !computable) {
+			PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+					generateReplacement(List.of((Process) getInputs().get(0), (Process) getInputs().get(1)));
+			return isolated;
+		}
+
+		if (!enableInputIsolation || !computable)
+			return super.isolate();
+
+		PackedCollectionRepeat<T> isolated = (PackedCollectionRepeat<T>)
+				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
+
+		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

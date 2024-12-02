@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,55 +17,69 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
-public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+// TODO  This should actually extend Variable<Multiple<T>, ArrayVariable<T>>
+// TODO  because ArrayVariable type T is the type of the member of the array
+// TODO  not the type of the entire array
+public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
-	private int delegateOffset;
+	private Expression<Integer> delegateOffset;
 	private Expression<Integer> arraySize;
+	private boolean disableOffset;
+	private boolean destroyed;
 
-	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
-		super(name, true, (Expression) null);
+	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
+		this(np, np == null ? null : np.getDefaultPhysicalScope(), type, name, arraySize, null);
+	}
+
+	public ArrayVariable(NameProvider np, PhysicalScope scope,
+						 Class<T> type, String name,
+						 Expression<Integer> arraySize,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
+		super(name, scope, type, p);
 		this.names = np;
 		setArraySize(arraySize);
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(np, name, np.getDefaultPhysicalScope(), Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<?> type,
+						 Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(name, scope, type, p);
 		this.names = np;
 	}
 
-	public NameProvider getNameProvider() { return names; }
+	public ArrayVariable(ArrayVariable<T> delegate, Expression<Integer> delegateOffset) {
+		super(null, delegate.getPhysicalScope(), null, null);
+		this.names = delegate.names;
+		setDelegate(delegate);
+		setDelegateOffset(delegateOffset);
+	}
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
-	@Override
 	public Expression<Integer> getArraySize() {
-		if (arraySize != null) return arraySize;
-		return super.getArraySize();
-	}
+		if (destroyed) throw new UnsupportedOperationException();
 
-	@Override
-	public int getKernelIndex() {
-		if (getOriginalProducer() instanceof KernelIndex) {
-			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
-		}
-
-		return 0;
+		return arraySize;
 	}
 
 	@Override
@@ -73,59 +87,144 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		super.setDelegate(delegate);
 	}
 
-	public int getDelegateOffset() { return delegateOffset; }
-	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+	public Expression<Integer> getDelegateOffset() { return delegateOffset; }
+	public void setDelegateOffset(Expression<Integer> delegateOffset) { this.delegateOffset = delegateOffset; }
+	public void setDelegateOffset(int delegateOffset) { setDelegateOffset(new IntegerConstant(delegateOffset)); }
+
+	public boolean isDisableOffset() {
+		return disableOffset;
+	}
+	public void setDisableOffset(boolean disableOffset) {
+		this.disableOffset = disableOffset;
+	}
 
 	public int getOffset() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		if (getDelegate() == null) {
 			return 0;
 		} else {
-			return getDelegate().getOffset() + getDelegateOffset();
+			return getDelegate().getOffset() + getDelegateOffset().intValue().getAsInt();
 		}
 	}
 
-	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
-		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+	public Expression<Double> getValueRelative(int index) {
+		if (destroyed) throw new UnsupportedOperationException();
+
+		TraversableExpression exp = TraversableExpression.traverse(getProducer());
+
+		if (exp != null) {
+			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
+			if (value != null) return value;
+		}
+
+		if (getDelegate() != null) {
+			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
+		}
+
+		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
 	}
 
-	public InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
+	@Override
+	public Expression<T> valueAt(Expression<?> exp) {
+		if (destroyed) throw new UnsupportedOperationException();
+		return referenceRelative(exp);
+	}
+
+	public InstanceReference<Multiple<T>, T> ref(int pos) {
+		return ref(new IntegerConstant(pos));
+	}
+
+	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
+		if (destroyed) throw new UnsupportedOperationException();
+		return new InstanceReference<>(new ArrayVariable<>(this, offset));
+	}
+
+	public Expression<T> referenceRelative(int pos) {
+		if (destroyed) throw new UnsupportedOperationException();
+		return referenceRelative(new IntegerConstant(pos));
+	}
+
+	public Expression<T> referenceRelative(Expression<?> pos) {
+		return referenceRelative(pos, new KernelIndex(null, 0));
+	}
+
+	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
+		if (getDelegate() != null) {
+			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
+		} else {
+			return reference(getArrayPosition(this, pos, idx), false);
+		}
+	}
+
+	public Expression<T> referenceAbsolute(Expression<?> pos) {
+		return reference(pos, false);
+	}
+
+	public Expression<T> referenceDynamic(Expression<?> pos) {
+		return reference(pos, true);
+	}
+
+	protected Expression<T> reference(Expression<?> pos, boolean dynamic) {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
-					false, new Expression(getType()), this), dependencies);
+			return InstanceReference.create(this, pos, dynamic);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), kernelIndex, dependencies);
-			ref.getReferent().setOriginalProducer(getOriginalProducer());
-			return ref;
+			return getDelegate().reference(pos.add(getDelegateOffset()), false);
 		}
 	}
 
-	@Override
-	public InstanceReference<T> get(String pos, Variable... dependencies) {
-		return get(pos, getKernelIndex(), dependencies);
+	public Expression getOffsetValue() {
+		if (destroyed) throw new UnsupportedOperationException();
+
+		return new StaticReference<>(Integer.class, getName() + "Offset");
+	}
+
+	public Expression getDimValue() {
+		if (destroyed) throw new UnsupportedOperationException();
+
+		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0), this);
 	}
 
 	public Expression<Integer> length() {
-		return new Expression<>(Integer.class, names.getVariableSizeName(this));
+		if (destroyed) throw new UnsupportedOperationException();
+
+		return new StaticReference<>(Integer.class, names.getVariableSizeName(this), this);
 	}
 
 	@Override
-	public void setExpression(Expression<T> value) {
-		if (getDelegate() != null)
-			throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
-		super.setExpression(value);
+	public boolean equals(Object obj) {
+		if (!(obj instanceof ArrayVariable)) return false;
+		if (!super.equals(obj)) return false;
+		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
-	@Override
-	public Expression<T> getExpression() {
-		if (getDelegate() == null) return super.getExpression();
-		throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
+	@Deprecated
+	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+		return getArrayPosition(v, pos, new KernelIndex(null, kernelIndex));
 	}
 
-	@Override
-	protected List<Variable<?, ?>> getExpressionDependencies() {
-		if (getDelegate() == null) return super.getExpressionDependencies();
-		return Collections.emptyList();
+	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
+		if (!enableContextualKernelIndex) {
+			idx = new KernelIndex(null, idx.getKernelAxis());
+		}
+
+		Expression offset = new IntegerConstant(0);
+
+		if (v.getProducer() instanceof Countable) {
+			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, idx.getKernelAxis()));
+
+			Expression kernelOffset = idx.multiply(dim);
+			return kernelOffset.add(offset).add(pos.toInt());
+		} else {
+			return offset.add(pos).toInt();
+		}
+	}
+
+	public void destroy() {
+		this.destroyed = true;
 	}
 }

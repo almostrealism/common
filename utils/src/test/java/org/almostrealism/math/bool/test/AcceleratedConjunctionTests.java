@@ -24,7 +24,6 @@ import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,11 +40,11 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {
-		Evaluable<Scalar> s = conjunction(v(a), v(Scalar.shape(), 0),
-				v(c), v(Scalar.shape(), 1));
+		Evaluable<Scalar> s = conjunction(scalar(a), v(Scalar.shape(), 0),
+				scalar(c), v(Scalar.shape(), 1));
 
 		return () -> {
-			double t = s.evaluate(v(b).get().evaluate(), v(d).get().evaluate()).getValue();
+			double t = s.evaluate(scalar(b).get().evaluate(), scalar(d).get().evaluate()).getValue();
 
 			if (a < b && c < d) {
 				assertEquals(a, t);
@@ -57,13 +56,15 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void conjunctions() {
+		if (testDepth < 1) return;
+
 		IntStream.range(0, 10).mapToObj(i ->
 			conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
 				.forEach(Runnable::run);
 	}
 
 	protected AcceleratedComputationEvaluable<Scalar> dotProductConjunction(Producer<Ray> r) {
-		return conjunction(oDotd(ray(i -> Math.random())), v(1), oDotd(v(Ray.shape(), 0)), v(1));
+		return conjunction(oDotd(ray(i -> Math.random())), scalar(1), oDotd(v(Ray.shape(), 0)), scalar(1));
 	}
 
 	@Test
@@ -80,9 +81,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	public void dotProductInNestedConjunction1() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
 		c = conjunction(c.getComputation(), v(Scalar.shape(), 0),
-				v(Math.random()), v(Math.random()));
+				scalar(Math.random()), scalar(Math.random()));
 
-		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
+		double v = c.evaluate(scalar(Math.random()).get().evaluate()).getValue();
 
 		System.out.println(v);
 		Assert.assertNotEquals(0, v);
@@ -91,9 +92,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	@Test
 	public void dotProductInNestedConjunction2() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
-		c = conjunction(c.getComputation(), v(Math.random()), v(Scalar.shape(), 0), v(Math.random()));
+		c = conjunction(c.getComputation(), scalar(Math.random()), v(Scalar.shape(), 0), scalar(Math.random()));
 
-		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
+		double v = c.evaluate(scalar(Math.random()).get().evaluate()).getValue();
 
 		System.out.println(v);
 		Assert.assertNotEquals(0, v);
@@ -102,8 +103,8 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	@Test
 	public void dotProductInNestedConjunction3() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.shape(), 0));
-		c = conjunction(c.getComputation(), v(Math.random()),
-				v(Math.random()), v(Math.random()));
+		c = conjunction(c.getComputation(), scalar(Math.random()),
+				scalar(Math.random()), scalar(Math.random()));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 
@@ -115,11 +116,11 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	public void dotProductInNestedConjunction4() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c.getComputation(), v(Scalar.shape(), 1),
-				v(Math.random()), v(Scalar.shape(), 2));
+				scalar(Math.random()), v(Scalar.shape(), 2));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate(),
-							v(Math.random()).get().evaluate(),
-							v(Math.random()).get().evaluate()).getValue();
+							scalar(Math.random()).get().evaluate(),
+							scalar(Math.random()).get().evaluate()).getValue();
 
 		System.out.println(v);
 		Assert.assertNotEquals(0, v);

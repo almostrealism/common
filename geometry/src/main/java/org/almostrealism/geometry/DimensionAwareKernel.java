@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.relation.Compactable;
 
-public class DimensionAwareKernel<T extends MemoryData> implements KernelizedProducer<T>, DimensionAware {
-	private KernelizedEvaluable<T> k;
+public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, DimensionAware {
+	private Evaluable<T> k;
 
-	public DimensionAwareKernel(KernelizedEvaluable<T> k) {
+	public DimensionAwareKernel(Evaluable<T> k) {
 		if (k instanceof DimensionAware == false) {
 			throw new IllegalArgumentException(k == null ? null : k.getClass() +
 												" is not DimensionAware");
@@ -34,19 +33,12 @@ public class DimensionAwareKernel<T extends MemoryData> implements KernelizedPro
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public Evaluable<T> get() {
 		return k;
 	}
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		((DimensionAware) k).setDimensions(width, height, ssw, ssh);
-	}
-
-	@Override
-	public void compact() {
-		if (k instanceof Compactable) {
-			((Compactable) k).compact();
-		}
 	}
 }

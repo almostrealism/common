@@ -21,6 +21,8 @@ import io.almostrealism.relation.Evaluable;
 import java.util.Optional;
 
 public interface Computer<B> {
+	ComputeContext<B> getContext(Computation<?> c);
+
 	Runnable compileRunnable(Computation<Void> c);
 
 	@Deprecated

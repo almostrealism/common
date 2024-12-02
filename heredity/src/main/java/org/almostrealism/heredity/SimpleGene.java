@@ -16,12 +16,12 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {
@@ -29,14 +29,29 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 	public static final boolean enableShortCircuit = true;
 
 	private PackedCollection<?> values;
+	private PackedCollection<?> ranges;
 	private UnaryOperator<Producer<PackedCollection<?>>> transform;
+	private UnaryOperator<Producer<PackedCollection<?>>> transforms[];
 
 	public SimpleGene(int length) {
-		this.values = new PackedCollection<>(length);
+		this.values = PackedCollection.factory().apply(length);
+		this.ranges = PackedCollection.factory().apply(length * 2).range(shape(length, 2)).traverse(1);
+		this.transforms = new UnaryOperator[length];
+		initRanges();
+	}
+
+	protected void initRanges() {
+		for (int i = 0; i < values.getMemLength(); i++) {
+			ranges.get(i).setMem(0.0, 1.0);
+		}
 	}
 
 	public void set(int index, double value) {
 		values.setMem(index, value);
+	}
+
+	public void setRange(int index, double min, double max) {
+		ranges.get(index).setMem(min, max);
 	}
 
 	public UnaryOperator<Producer<PackedCollection<?>>> getTransform() {
@@ -47,8 +62,19 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 		this.transform = transform;
 	}
 
+	public UnaryOperator<Producer<PackedCollection<?>>> getTransform(int pos) {
+		return transforms[pos];
+	}
+
+	public void setTransform(int pos, UnaryOperator<Producer<PackedCollection<?>>> transform) {
+		this.transforms[pos] = transform;
+	}
+
 	@Override
 	public PackedCollection<?> getParameters() { return values; }
+
+	@Override
+	public PackedCollection<?> getParameterRanges() { return ranges; }
 
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
@@ -56,7 +82,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return transform(multiply(value, c((Producer) () -> new Provider<>(values), pos), args -> {
+					return transform(pos, multiply(value, c((Producer) () -> new Provider<>(values), pos), args -> {
 						PackedCollection<?> result = new PackedCollection<>(1);
 
 //						if (value instanceof StaticCollectionComputation) {
@@ -78,7 +104,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return transform(multiply(value, c((Producer) () -> new Provider<>(values), pos)));
+					return transform(pos, multiply(value, c((Producer) () -> new Provider<>(values), pos)));
 				}
 
 				@Override
@@ -98,7 +124,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 						result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
 //					}
 
-					return transform(() -> args -> result);
+					return transform(pos, () -> args -> result);
 				}
 
 				@Override
@@ -109,7 +135,8 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 		}
 	}
 
-	protected Producer<PackedCollection<?>> transform(Producer<PackedCollection<?>> value) {
+	protected Producer<PackedCollection<?>> transform(int pos, Producer<PackedCollection<?>> value) {
+		if (transforms[pos] != null) value = transforms[pos].apply(value);
 		return transform == null ? value : transform.apply(value);
 	}
 

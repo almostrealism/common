@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
@@ -155,7 +154,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public VectorProducerBase pointAt(Producer<Scalar> t) {
+	public CollectionProducer<Vector> pointAt(Producer<Scalar> t) {
 		return pointAt(v(this), t);
 	}
 
@@ -210,7 +209,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	@Deprecated
 	public static PackedCollection<Ray> bank(int count, Supplier<Evaluable<? extends Ray>> source) {
 		PackedCollection<Ray> bank = Ray.bank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
+		for (int i = 0; i < bank.getCountLong(); i++) {
 			bank.set(i, source.get().evaluate());
 		}
 

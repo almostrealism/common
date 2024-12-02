@@ -18,16 +18,15 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.Input;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PassThroughProducerCompactionTest implements HardwareFeatures, CodeFeatures {
-	protected ScalarExpressionComputation sum() {
+public class PassThroughProducerCompactionTest implements CodeFeatures {
+	protected ExpressionComputation<Scalar> sum() {
 		return scalarAdd(
 				Input.value(Scalar.shape(), 0),
 				Input.value(Scalar.shape(), 1));
@@ -46,9 +45,9 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applyProduct() {
-		Scalar s = product().evaluate(v(1.0).get().evaluate(),
-									v(2.0).get().evaluate(),
-									v(3.0).get().evaluate());
+		Scalar s = product().evaluate(scalar(1.0).get().evaluate(),
+									scalar(2.0).get().evaluate(),
+									scalar(3.0).get().evaluate());
 		System.out.println(s.getValue());
 		System.out.println(s.getValue());
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));

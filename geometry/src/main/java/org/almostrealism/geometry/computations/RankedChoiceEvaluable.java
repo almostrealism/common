@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,19 +21,17 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Compactable;
 
 import java.util.ArrayList;
 
-public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T>, Compactable {
+public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T> {
 	protected double e;
 	protected boolean tolerateNull;
 
-	public static final KernelizedEvaluable<Pair<?>> highestRank;
+	public static final Evaluable<Pair<?>> highestRank;
 
 	static {
 		highestRank = new AcceleratedEvaluable<>(
@@ -94,7 +92,4 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 
 		return best == null ? null : best.get().evaluate(args);
 	}
-
-	@Override
-	public void compact() { forEach(ProducerWithRank::compact); }
 }

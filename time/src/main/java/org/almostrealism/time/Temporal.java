@@ -16,6 +16,9 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.HardwareFeatures;
+
 import java.util.function.Supplier;
 
 /**
@@ -24,6 +27,7 @@ import java.util.function.Supplier;
  * 
  * @author  Michael Murray
  */
+@FunctionalInterface
 public interface Temporal extends TemporalFeatures {
 	Supplier<Runnable> tick();
 

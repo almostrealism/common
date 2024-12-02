@@ -17,7 +17,7 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
@@ -34,6 +34,6 @@ public class AcceleratedConjunctionCollection extends AcceleratedConjunctionAdap
 	@SafeVarargs
 	public AcceleratedConjunctionCollection(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<PackedCollection<?>>... conjuncts) {
-		super(1, () -> new PackedCollection<>(1), PackedCollection.bank(new TraversalPolicy(1)), trueValue, falseValue, conjuncts);
+		super(1, PackedCollection.bank(new TraversalPolicy(1)), trueValue, falseValue, conjuncts);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,69 +16,59 @@
 
 package org.almostrealism.hardware;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.computations.Assignment;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.ProducerFeatures;
+import org.almostrealism.hardware.computations.DelegatedProducer;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Arrays;
 import java.util.Optional;
-import java.util.function.IntFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface HardwareFeatures {
-	default Runnable compileRunnable(Computation<?> c) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
+public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, ConsoleFeatures {
+
+	default Runnable compileRunnable(Computation<Void> c) {
+		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 
-	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
-		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(c);
+	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
+		return Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
-	default IntFunction<Expression> kernelIndex() {
-		return i -> new Expression(Integer.class, KernelSupport.getKernelIndex(i));
+	default <T extends MemoryData> Producer<T> instruct(String key,
+														Function<Producer[], Producer<T>> func,
+														Producer... args) {
+		Producer delegates[] = Arrays.stream(args)
+				.map(arg -> delegate(arg))
+				.toArray(Producer[]::new);
+		return (Producer) Hardware.getLocalHardware().getComputer()
+					.createContainer(key, func, this::substitute, this::delegate, delegates);
 	}
 
-	default String stringForDouble(double value) {
-		return Hardware.getLocalHardware().stringForDouble(value);
-	}
-
-	default Expression<Double> expressionForDouble(double value) {
-		return new Expression<>(Double.class, stringForDouble(value));
-	}
-
-	default Expression<Double> e(double value) {
-		return expressionForDouble(value);
-	}
-
-	default double doubleForString(String value) {
-		return Hardware.getLocalHardware().doubleForString(value);
-	}
-
-	@JsonIgnore
-	default String getNumberTypeName() {
-		return Hardware.getLocalHardware().getNumberTypeName();
-	}
-
-	@JsonIgnore
-	default boolean isCastEnabled() {
-		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
+	@Override
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return new DelegatedProducer<>(actual);
 	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
-			Runnable r = ((OperationList) c).get();
-			return () -> () -> IntStream.range(0, iterations).forEach(i -> r.run());
+			return () -> {
+				Runnable r = ((OperationList) c).get();
+				return () -> IntStream.range(0, iterations).forEach(i -> r.run());
+			};
 		} else {
 			return new Loop(c, iterations);
 		}
@@ -86,7 +76,7 @@ public interface HardwareFeatures {
 
 	default Supplier<Runnable> lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
 
-	static HardwareFeatures ops() {
+	static HardwareFeatures getInstance() {
 		return new HardwareFeatures() { };
 	}
 }

@@ -16,12 +16,15 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.compute.PhysicalScope;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -29,36 +32,46 @@ import java.util.function.Supplier;
 
 @Deprecated
 public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
-		extends DynamicAcceleratedOperation<MemoryData>
-		implements KernelizedEvaluable<O>, DestinationSupport<O> {
-	private Supplier<O> destination;
+		extends AcceleratedOperation<MemoryData>
+		implements Evaluable<O> {
 
-	public DynamicAcceleratedEvaluable(Supplier<O> destination,
+	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context,
+									   Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier... inputArgs) {
-		this(true, destination, kernelDestination, inputArgs);
+		this(context, true, destination, kernelDestination, inputArgs);
 	}
 
 	@SafeVarargs
-	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
+	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context, boolean kernel,
+									   Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(kernel, new Supplier[0]);
-		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemoryData(args ->
-				(getDestination() == null ? destination : getDestination()).get(), kernelDestination), inputArgs));
+		super(context, kernel, new Supplier[0]);
+		setInputs(AcceleratedEvaluable.includeResult(
+				new DynamicProducerForMemoryData(args -> destination.get(), kernelDestination), inputArgs));
 		init();
 	}
 
 	@Override
-	public O evaluate(Object... args) { return (O) apply(null, args)[0]; }
+	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
+		throw new UnsupportedOperationException();
+	}
 
-	@Deprecated
-	protected void writeVariables(Consumer<String> out) {
-		writeVariables(out, new ArrayList<>());
+	@Override
+	public DefaultExecutionKey getExecutionKey() {
+		return new DefaultExecutionKey(getFunctionName(), getArgsCount());
+	}
+
+	@Override
+	public O evaluate(Object... args) {
+		AcceleratedProcessDetails process = apply(null, args);
+		waitFor(process.getSemaphore());
+		return (O) process.getOriginalArguments()[0];
 	}
 
 	@Deprecated
-	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables) {
+	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
 			if (var.getPhysicalScope() != null) {
@@ -66,14 +79,14 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 				out.accept(" ");
 			}
 
-			out.accept(getNumberTypeName());
+			out.accept(lang.getPrecision().typeName());
 			out.accept(" ");
-			out.accept(var.getName());
+			out.accept(var.getDestination().getSimpleExpression(lang));
 
-			if (var.getExpression().getExpression() == null) {
+			if (var.getExpression().isNull()) {
 				if (var.getArraySize() != null) {
 					out.accept("[");
-					out.accept(var.getArraySize().getExpression());
+					out.accept(var.getArraySize().getSimpleExpression(lang));
 					out.accept("]");
 				}
 			} else {
@@ -81,7 +94,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 					throw new RuntimeException("Not implemented");
 				} else {
 					out.accept(" = ");
-					out.accept(String.valueOf(var.getExpression().getValue()));
+					out.accept(var.getExpression().getSimpleExpression(lang));
 				}
 			}
 
@@ -91,15 +104,4 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	public void setDestination(Supplier<O> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<O> getDestination() { return this.destination; }
-
-	@Override
-	public MemoryBank<O> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
-	}
 }

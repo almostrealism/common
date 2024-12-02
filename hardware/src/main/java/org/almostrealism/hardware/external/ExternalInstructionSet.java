@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.external;
 
+import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
@@ -43,8 +44,10 @@ public class ExternalInstructionSet implements InstructionSet {
 	}
 
 	@Override
-	public Consumer<Object[]> get(String function, int argCount) {
-		return args -> {
+	public Execution get(String function, int argCount) {
+		return (args, dependsOn) -> {
+			if (dependsOn != null) dependsOn.waitFor();
+
 			File dest = dataDirectory.get();
 
 			try {
@@ -69,6 +72,8 @@ public class ExternalInstructionSet implements InstructionSet {
 			} finally {
 				deleteData(dest);
 			}
+
+			return null;
 		};
 	}
 

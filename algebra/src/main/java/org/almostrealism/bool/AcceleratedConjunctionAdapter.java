@@ -16,6 +16,8 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -26,7 +28,6 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NAryExpression;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -46,16 +47,15 @@ import java.util.stream.Stream;
 public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Supplier<Evaluable<?>> trueValue, falseValue;
-	private ArrayVariable<?> trueVar, falseVar;
+	private ArrayVariable<Double> trueVar, falseVar;
 
 	@SafeVarargs
 	public AcceleratedConjunctionAdapter(int memLength,
-										 Supplier<T> blankValue,
 										 IntFunction<MemoryBank<T>> kernelDestination,
 										 Supplier<Evaluable<?>> trueValue,
 										 Supplier<Evaluable<?>> falseValue,
 										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
-		super(memLength, blankValue, kernelDestination);
+		super(memLength, kernelDestination);
 		this.trueValue = trueValue;
 		this.falseValue = falseValue;
 		this.conjuncts = Arrays.asList(conjuncts);
@@ -75,24 +75,24 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(conjuncts.stream(), manager);
-		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager);
-		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		ScopeLifecycle.prepareScope(conjuncts.stream(), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager, context);
 
-		List<ArrayVariable<? extends MemoryData>> args = new ArrayList<>();
-		args.add((ArrayVariable<? extends MemoryData>) getOutputVariable());
+		List<ArrayVariable<Double>> args = new ArrayList<>();
+		args.add((ArrayVariable<Double>) getOutputVariable());
 		args.addAll(getOperands());
 
-		this.trueVar = manager.argumentForInput(this).apply(trueValue);
-		args.add((ArrayVariable<? extends MemoryData>) this.trueVar);
+		this.trueVar = (ArrayVariable)  manager.argumentForInput(this).apply(trueValue);
+		args.add(this.trueVar);
 
-		this.falseVar = manager.argumentForInput(this).apply(falseValue);
-		args.add((ArrayVariable<? extends MemoryData>) this.falseVar);
+		this.falseVar = (ArrayVariable) manager.argumentForInput(this).apply(falseValue);
+		args.add(this.falseVar);
 
 		setArguments(args.stream()
-				.map(var -> new Argument<>(var, Expectation.EVALUATE_AHEAD))
+				.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
 				.map(arg -> (Argument<? extends MemoryData>) arg)
 				.collect(Collectors.toList()));
 	}
@@ -105,12 +105,13 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 		return getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
 	}
 
-	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables(boolean includeConjuncts) {
+	public synchronized List<ArrayVariable<Double>> getArgumentVariables(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
 		return getArguments(includeConjuncts).stream()
 				.map(arg -> Optional.ofNullable(arg).map(Argument::getVariable).orElse(null))
-				.map(var -> (ArrayVariable<? extends T>) var)
+				.map(var -> (ArrayVariable) var)
+				.map(var -> (ArrayVariable<Double>) var)
 				.collect(Collectors.toList());
 	}
 
@@ -138,8 +139,8 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public List<Variable<?, ?>> getVariables() {
-		List<Variable<?, ?>> all = new ArrayList<>();
+	public List<ExpressionAssignment<?>> getVariables() {
+		List<ExpressionAssignment<?>> all = new ArrayList<>();
 		all.addAll(super.getVariables());
 		conjuncts.stream()
 				.map(AcceleratedConditionalStatement::getVariables)
@@ -157,32 +158,17 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public List<ArrayVariable<Scalar>> getOperands() {
+	public List<ArrayVariable<Double>> getOperands() {
 		return conjuncts.stream().flatMap(c -> c.getOperands().stream()).collect(Collectors.toList());
 	}
 
 	@Override
-	public ArrayVariable getTrueValue() { return trueVar; }
-
-	@Override
-	public ArrayVariable getFalseValue() { return falseVar; }
-
-	@Override
 	public IntFunction<Expression<Double>> getTrueValueExpression() {
-		return i -> (Expression) trueVar.valueAt(i);
+		return i -> (Expression) trueVar.getValueRelative(i);
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
-		return i -> (Expression) falseVar.valueAt(i);
-	}
-
-	@Override
-	public void compact() {
-		conjuncts.stream()
-				.map(c -> c instanceof Compactable ? (Compactable) c : null)
-				.filter(Objects::nonNull)
-				.forEach(Compactable::compact);
-		super.compact();
+		return i -> (Expression) falseVar.getValueRelative(i);
 	}
 }

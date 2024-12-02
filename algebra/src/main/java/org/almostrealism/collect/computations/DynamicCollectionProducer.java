@@ -16,22 +16,32 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-// TODO  This needs to take a generic argument for the type of collection to produce (maybe)
-public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
+public class DynamicCollectionProducer<T extends PackedCollection<?>> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
 	private TraversalPolicy shape;
+	private boolean kernel;
+	private boolean fixedCount;
 
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
+		this(shape, function, true);
+	}
+
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
+		this(shape, function, kernel, true);
+	}
+
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel, boolean fixedCount) {
 		super(function, len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
+		this.kernel = kernel;
+		this.fixedCount = fixedCount;
 	}
 
 	@Override
@@ -40,7 +50,27 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
+	public long getOutputSize() { return getShape().getTotalSize(); }
+
+	@Override
+	public boolean isFixedCount() { return fixedCount; }
+
+	@Override
+	public CollectionProducer<T> traverse(int axis) {
+		return new ReshapeProducer(axis, this);
+	}
+
+	@Override
+	public CollectionProducer<T> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
+	}
+
+	@Override
+	public Evaluable<T> get() {
+		if (kernel) {
+			return super.get();
+		} else {
+			return getFunction()::apply;
+		}
 	}
 }

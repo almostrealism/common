@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,39 +16,47 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.collect.CollectionScopeInputManager;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelSupport;
+import io.almostrealism.collect.CollectionScopeInputManager;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
-import org.almostrealism.hardware.ctx.DefaultContextSpecific;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	public static final boolean enableCollectionVariables = true;
 	public static final boolean enableDestinationDetection = true;
-	public static final boolean enableGlobalArgumentMap = false;
+	public static boolean enableWarnings = false;
 
-	public static boolean enableArgumentAggregation = true;
+	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
+	public static boolean enableOffHeapAggregation = SystemUtils.isEnabled("AR_HARDWARE_OFF_HEAP_AGGREGATION").orElse(false);
+	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1 * 1024 * 1024);
 
-	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
-	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
+	public static OperationProfile profile;
+
+	private final ComputeContext<MemoryData> context;
+	private final OperationMetadata metadata;
 
 	private final Map<Memory, ArrayVariable<A>> mems;
 	private final Map<MemoryDataRef, Integer> aggregatePositions;
+	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
 	private final boolean kernel;
 
 	private OperationList prepareData;
@@ -58,16 +66,23 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private int aggregateLength;
 
 	private MemoryData aggregateData;
-	private Supplier<? extends Evaluable<MemoryData>> aggregateSupplier;
+	private Producer<MemoryData> aggregateSupplier;
 	private ArrayVariable<A> aggregateArgument;
 
-	public MemoryDataArgumentMap() { this(null); }
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context,
+								 OperationMetadata metadata) { this(context, metadata, null); }
 
-	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator) { this(aggregateGenerator, true); }
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata,
+								 IntFunction<MemoryData> aggregateGenerator) {
+		this(context, metadata, aggregateGenerator, true); }
 
-	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+		this.context = context;
+		this.metadata = metadata;
+
 		this.mems = new HashMap<>();
 		this.aggregatePositions = new HashMap<>();
+		this.rootDelegateSuppliers = new ArrayList<>();
 		this.kernel = kernel;
 
 		this.aggregateGenerator = aggregateGenerator;
@@ -75,6 +90,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (enableArgumentAggregation) {
 			prepareData = new OperationList();
 			postprocessData = new OperationList();
+			prepareData.setProfile(profile);
+			postprocessData.setProfile(profile);
 		}
 	}
 
@@ -83,66 +100,91 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
-		ArrayVariable<A> arg = super.get(key, p);
-		if (arg != null) return arg;
+		long start = System.nanoTime();
 
-		MemoryData md;
+		try {
+			ArrayVariable<A> arg = super.get(key, p);
+			if (arg != null) return arg;
 
-		boolean generateArg = false;
+			MemoryData md;
 
-		// A MemoryDataDestination carries information about how to produce
-		// the data in that destination, along with the MemoryData itself.
-		// There needs to be a way to return a delegated variable, as we do
-		// below, but not lose the knowledge that we rely on during the
-		// creation of required scopes, ie the knowledge of how that data
-		// is populated. The root delegate will have no logical way to do
-		// this because it may have many children produced in different
-		// ways, so it probably has to be stored with the Delegated variable,
-		// but it cannot be tracked using the delegate field because that
-		// is already used to point at the root delegate MemoryData
-		if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestination) {
-			Object dest = ((MemoryDataDestination) key).get().evaluate();
-			if (dest != null && !(dest instanceof MemoryData)) {
-				throw new RuntimeException();
-			}
+			boolean generateArg = false;
 
-			md = (MemoryData) dest;
-		} else {
-			Object provider = key.get();
-			if (!(provider instanceof Provider)) return null;
-			if (!(((Provider) provider).get() instanceof MemoryData)) return null;
+			// A MemoryDataDestination carries information about how to produce
+			// the data in that destination, along with the MemoryData itself.
+			// There needs to be a way to return a delegated variable, as we do
+			// below, but not lose the knowledge that we rely on during the
+			// creation of required scopes, ie the knowledge of how that data
+			// is populated. The root delegate will have no logical way to do
+			// this because it may have many children produced in different
+			// ways, so it probably has to be stored with the Delegated variable,
+			// but it cannot be tracked using the delegate field because that
+			// is already used to point at the root delegate MemoryData
+			if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestinationProducer) {
+				Object dest = ((MemoryDataDestinationProducer) key).get().evaluate();
+				if (dest != null && !(dest instanceof MemoryData)) {
+					throw new RuntimeException();
+				}
 
-			md = (MemoryData) ((Provider) provider).get();
-
-			// If the provider points to a MemoryData that is stored outside of device memory,
-			// it is a candidate for argument aggregation below
-			generateArg = md.getMem().getProvider() != Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider();
-		}
-
-		if (md == null) return null;
-
-		if (mems.containsKey(md.getMem())) {
-			// If the root delegate already had an argument produced for it,
-			// return that
-			return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
-		} else {
-			ArrayVariable var;
-
-			if (generateArg) {
-				// If aggregation is desired for this MemoryData, try to
-				// generate the aggregate argument for the root delegate
-				var = generateArgument(p, new RootDelegateProviderSupplier(md), md.getRootDelegate());
+				md = (MemoryData) dest;
 			} else {
-				// Otherwise, just obtain the array variable for the root delegate
-				var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(md), null, -1);
+				Object provider = key.get();
+				if (!(provider instanceof Provider)) return null;
+				if (!(((Provider) provider).get() instanceof MemoryData)) return null;
+
+				md = (MemoryData) ((Provider) provider).get();
+
+				// If the provider points to a MemoryData that is stored outside of device memory,
+				// it is a candidate for argument aggregation below
+				generateArg = md.getMem().getProvider() != context.getDataContext().getKernelMemoryProvider();
 			}
 
-			// Record that this MemoryData has var as its root delegate
-			mems.put(md.getMem(), var);
+			if (md == null) return null;
+			if (md.getMem() == null) {
+				throw new IllegalArgumentException();
+			}
 
-			// Return an ArrayVariable that delegates to the correct position of the root delegate
-			return delegateProvider.getArgument(p, key, var, md.getOffset());
+			if (mems.containsKey(md.getMem())) {
+				// If the root delegate already had an argument produced for it,
+				// return that
+				return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
+			} else {
+				ArrayVariable var = null;
+
+				if (generateArg) {
+					// If aggregation is desired for this MemoryData, try to
+					// generate the aggregate argument for the root delegate
+					var = generateArgument(p, new RootDelegateProviderSupplier(md), md.getRootDelegate());
+				}
+
+				if (var == null) {
+					// Otherwise, just obtain the array variable for the root delegate
+					var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(md), null, -1);
+				}
+
+				// Record that this MemoryData has var as its root delegate
+				mems.put(md.getMem(), var);
+
+				// Return an ArrayVariable that delegates to the correct position of the root delegate
+				return delegateProvider.getArgument(p, key, var, md.getOffset());
+			}
+		} finally {
+			if (profile != null) {
+				profile.recordDuration(metadata.appendShortDescription(" get"), System.nanoTime() - start);
+			}
 		}
+	}
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
+		mems.forEach((k, v) -> v.destroy());
+		mems.clear();
+		aggregatePositions.clear();
+		prepareData.destroy();
+		postprocessData.destroy();
+		if (aggregateData != null) aggregateData.destroy();
 	}
 
 	protected MemoryData rootDelegate(MemoryData mw) {
@@ -153,19 +195,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider>, KernelSupport {
-		private final Provider provider;
+	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider> {
+		private Provider provider;
 
 		public RootDelegateProviderSupplier(MemoryData mem) {
 			this.provider = new Provider<>(rootDelegate(mem));
-		}
-
-		@Override
-		public boolean isKernelEnabled() {
-			// TODO  This is not ideal, but until we cleanup kernel functionality further
-			// TODO  allowing this to be treated as KernelSupport is not compatible with
-			// TODO  the scenarios where we need to disable kernel operations
-			return Hardware.enableKernelOps;
+			rootDelegateSuppliers.add(this);
 		}
 
 		@Override
@@ -173,6 +208,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 		@Override
 		public Provider getDelegate() { return provider; }
+
+		public void destroy() { this.provider = null; }
 	}
 
 	protected MemoryData getAggregateData() {
@@ -183,7 +220,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateData;
 	}
 
-	protected Supplier<? extends Evaluable<MemoryData>> getAggregateSupplier() {
+	protected Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = () -> new Provider<>(getAggregateData());
 		}
@@ -201,7 +238,17 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
 		if (!enableArgumentAggregation || aggregateGenerator == null) return null;
-		if (md.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) return null;
+		if (md.getMemLength() > maxAggregateLength) {
+			if (enableWarnings) {
+				log("Unable to aggregate " + md.getMem().getProvider().getName() +
+						" argument (" + md.getMemLength() + " > " + maxAggregateLength + ")");
+			}
+
+			return null;
+		}
+
+		if (!enableOffHeapAggregation && !(md.getMem().getProvider() instanceof JVMMemoryProvider)) return null;
+		if (md.getMem().getProvider() == context.getDataContext().getKernelMemoryProvider()) return null;
 
 		if (aggregatePositions.containsKey(new MemoryDataRef(md))) {
 			// If aggregation has already occurred for this MemoryData,
@@ -224,6 +271,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		// Update the pre/post operations to move the data into and out of the aggregate argument data
 		prepareData.add(new MemoryDataCopy("Agg Prep", () -> md, this::getAggregateData, 0, pos, md.getMemLength()));
 		postprocessData.add(new MemoryDataCopy("Agg Post", this::getAggregateData, () -> md, pos, 0, md.getMemLength()));
+
+		long tot = pos + (long) md.getMemLength();
+		if (tot > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("Argument aggregate is too large");
+		}
 
 		// Expand the required length of the aggregate argument
 		aggregateLength += md.getMemLength();
@@ -248,34 +300,10 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 //		}
 	}
 
-	public static MemoryDataArgumentMap create(boolean kernel) { return create(null, kernel); }
-
-	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
-		if (!enableGlobalArgumentMap) {
-			MemoryDataArgumentMap map = new MemoryDataArgumentMap(aggregateGenerator, kernel);
-			if (enableCollectionVariables) map.setDelegateProvider(CollectionScopeInputManager.getInstance());
-			return map;
-		}
-
-		return kernel ? getGlobalMapsKernel().getValue() : getGlobalMaps().getValue();
-	}
-
-	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
-		if (globalMaps == null) {
-			globalMaps = new DefaultContextSpecific<>(() -> new MemoryDataArgumentMap(null, false), MemoryDataArgumentMap::destroy);
-			globalMaps.init();
-		}
-
-		return globalMaps;
-	}
-
-	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMapsKernel() {
-		if (globalMapsKernel == null) {
-			globalMapsKernel = new DefaultContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
-			globalMapsKernel.init();
-		}
-
-		return globalMapsKernel;
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+		MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
+		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
+		return map;
 	}
 
 	private static class MemoryDataRef {

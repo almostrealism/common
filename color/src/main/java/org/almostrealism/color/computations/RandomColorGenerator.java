@@ -17,19 +17,19 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.color.DynamicRGBProducer;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
 /**
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
+public class RandomColorGenerator implements ProducerComputation<RGB> {
  	private Producer<RGB> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
@@ -48,8 +48,8 @@ public class RandomColorGenerator implements ProducerComputation<RGB>, Kernelize
 	public Producer<RGB> getOffsetRGB() { return this.offsetRGB; }
 
 	@Override
-	public KernelizedEvaluable<RGB> get() {
-		return new DynamicRGBProducer(args -> {
+	public Evaluable<RGB> get() {
+		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
 			RGB base = this.baseRGB.get().evaluate(args);
 			RGB off = this.offsetRGB.get().evaluate(args);
 
@@ -62,17 +62,7 @@ public class RandomColorGenerator implements ProducerComputation<RGB>, Kernelize
 	}
 
 	@Override
-	public Scope<RGB> getScope() {
+	public Scope<RGB> getScope(KernelStructureContext context) {
 		throw new RuntimeException("Not implemented");
-	}
-
-	/**
-	 * Delegates to {@link RGBProducer#compact()}
-	 * on the base color and offset color.
-	 */
-	@Override
-	public void compact() {
-		baseRGB.compact();
-		offsetRGB.compact();
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,9 @@
 
 package org.almostrealism.hardware.mem;
 
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.hardware.cl.InvalidValueException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -63,8 +61,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	/**
 	 * Initialize RAM with room for the indicated number of items,
 	 * each of the indicated size. Units are all in the size
-	 * determined by {@link Hardware#getNumberSize()}. The specified
-	 * {@link Supplier} is used to generated new instances of the
+	 * determined by {@link io.almostrealism.code.MemoryProvider#getNumberSize()}.
+	 * The specified {@link Supplier} is used to generated new instances of the
 	 * target type.
 	 * This uses {@link CacheLevel#ALL}.
 	 */
@@ -75,8 +73,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	/**
 	 * Initialize RAM with room for the indicated number of items,
 	 * each of the indicated size. Units are all in the size
-	 * determined by {@link Hardware#getNumberSize()}. The specified
-	 * {@link Supplier} is used to generated new instances of the
+	 * determined by {@link io.almostrealism.code.MemoryProvider#getNumberSize()}.
+	 * The specified {@link Supplier} is used to generated new instances of the
 	 * target type.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply, CacheLevel cacheLevel) {
@@ -91,8 +89,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	/**
 	 * Initialize RAM with room for the indicated number of items,
 	 * each of the indicated size. Units are all in the size
-	 * determined by {@link Hardware#getNumberSize()}. The specified
-	 * {@link Supplier} is used to generated new instances of the
+	 * determined by {@link io.almostrealism.code.MemoryProvider#getNumberSize()}.
+	 * The specified {@link Supplier} is used to generated new instances of the
 	 * target type.
 	 * This uses {@link CacheLevel#ALL}.
 	 */
@@ -104,8 +102,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	/**
 	 * Initialize RAM with room for the indicated number of items,
 	 * each of the indicated size. Units are all in the size of
-	 * determined by {@link Hardware#getNumberSize()}. The specified
-	 * {@link Supplier} is used to generated new instances of the
+	 * determined by {@link io.almostrealism.code.MemoryProvider#getNumberSize()}.
+	 * The specified {@link Supplier} is used to generated new instances of the
 	 * target type.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
@@ -120,7 +118,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	}
 
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
-								PooledMem pool, CacheLevel cacheLevel) {
+								PooledMem<MemoryData> pool, CacheLevel cacheLevel) {
 		if (count < 0 || memLength < 0) {
 			throw new IllegalArgumentException();
 		}
@@ -156,8 +154,8 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public T get(int index) {
-		if (index >= getCount()) {
-			throw new IllegalArgumentException(index + " is beyond the range of this bank (" + getCount() + ")");
+		if (index >= getCountLong()) {
+			throw new IllegalArgumentException(index + " is beyond the range of this bank (" + getCountLong() + ")");
 		}
 
 		if (cacheLevel == CacheLevel.ALL) {
@@ -176,13 +174,9 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public void set(int index, T value) {
-		try {
-			setMem(index * getAtomicMemLength(),
-					value, 0,
-					getAtomicMemLength());
-		} catch (InvalidValueException e) {
-			throw new InvalidValueException(e, totalMemLength);
-		}
+		setMem(index * getAtomicMemLength(),
+				value, 0,
+				getAtomicMemLength());
 	}
 
 	public void set(int index, double... values) {
@@ -196,7 +190,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	public int getAtomicMemLength() { return memLength; }
 
 	@Override
-	public int getCount() { return count; }
+	public long getCountLong() { return count; }
 
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);

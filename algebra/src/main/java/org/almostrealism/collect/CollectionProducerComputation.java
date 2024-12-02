@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,35 +17,48 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
-import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
+import org.almostrealism.io.SystemUtils;
 
+import java.util.Collection;
 import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T> {
+		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
+
+	/**
+	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
+	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
+	 */
+	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
 
-	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
-	int SCALAR_AXIS = 1;
+	@Override
+	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
+		return children.stream()
+				.filter(f -> !(f instanceof MemoryDataDestinationProducer));
+	}
+
+	default T createDestination(int len) {
+		throw new UnsupportedOperationException();
+	}
 
 	default T postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
@@ -66,67 +79,33 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			if (shape.getTotalSize() != outputShape.getTotalSize()) {
 				throw new IllegalArgumentException("Output is not compatible with expected shape");
 			}
+
+			if (offset == 0 && shape.equals(((Shape) output).getShape())) {
+				return (T) output;
+			}
 		}
 
 		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
 	}
 
 	@Override
-	default KernelizedEvaluable<T> get() {
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<T>(getShape(), this, this::postProcessOutput);
+	default Evaluable<T> get() {
+		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
+		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
+				ctx, getShape(), this,
+				this::createDestination, this::postProcessOutput);
 		ev.compile();
 		return ev;
 	}
 
 	@Override
 	default CollectionProducer<T> traverse(int axis) {
-		return reshape(getShape().traverse(axis));
+		return new ReshapeProducer(axis, this);
 	}
 
 	@Override
 	default CollectionProducer<T> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
-	}
-
-	@Deprecated
-	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
-		Producer<Scalar> p = f.apply(Input.value(Scalar.shape(), 0));
-
-		return new CollectionProducerComputation<>() {
-			@Override
-			public TraversalPolicy getShape() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public CollectionProducerComputation<PackedCollection<?>> traverse(int axis) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public Scope<PackedCollection<?>> getScope() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public KernelizedEvaluable<PackedCollection<?>> get() {
-				return new KernelizedEvaluable<>() {
-					@Override
-					public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
-					public PackedCollection<?> evaluate(Object... args) {
-						PackedCollection<?> c = get().evaluate();
-						KernelizedEvaluable<Scalar> ev = (KernelizedEvaluable<Scalar>) p.get();
-						MemoryBank<Scalar> bank = ev.createKernelDestination(c.getShape().length(SCALAR_AXIS));
-						ev.into(bank).evaluate(c.traverse(SCALAR_AXIS));
-						return new PackedCollection<>(c.getShape(), c.getShape().getDimensions(), bank, 0);
-					}
-				};
-			}
-		};
+		return new ReshapeProducer(shape, this);
 	}
 
 	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
@@ -136,34 +115,22 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return data;
 	}
 
-	default KernelizedEvaluable<PackedCollection<?>> shortCircuit(Evaluable<PackedCollection<?>> ev) {
-		return new KernelizedEvaluable<PackedCollection<?>>() {
-			private KernelizedEvaluable<PackedCollection<?>> kernel;
+	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
 
-			@Override
-			public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
+		public IsolatedProcess(CollectionProducer<T> op) {
+			super(op);
+
+			if (isolationLogging)
+				Computation.console.features(this)
+						.log("Isolating " + OperationInfo.nameWithId(op) + " " + op.getShape().toStringDetail());
+
+			if (op.getShape().getTotalSizeLong() > MemoryProvider.MAX_RESERVATION) {
+				throw new IllegalArgumentException("Cannot isolate a process with a total size greater than " +
+						MemoryProvider.MAX_RESERVATION);
 			}
+		}
 
-			@Override
-			public PackedCollection<?> evaluate(Object... args) {
-				return ev.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
-				return new DestinationEvaluable<>((AcceleratedComputationEvaluable) getKernel(), destination);
-			}
-
-			public KernelizedEvaluable<PackedCollection<?>> getKernel() {
-				if (kernel == null) {
-					AcceleratedComputationEvaluable<PackedCollection<?>> ev = new DefaultCollectionEvaluable<PackedCollection<?>>(getShape(), (Computation) CollectionProducerComputation.this, CollectionProducerComputation.this::postProcessOutput);
-					ev.compile();
-					kernel = ev;
-				}
-
-				return kernel;
-			}
-		};
+		@Override
+		public boolean isConstant() { return op.isConstant(); }
 	}
 }

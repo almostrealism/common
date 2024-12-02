@@ -23,10 +23,11 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
+import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
 
-public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
+public class AdjustableDelayCell extends SummationCell implements TemporalFeatures {
 	public static double defaultPurgeFrequency = 1.0;
 
 	private final int sampleRate;
@@ -41,11 +42,11 @@ public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
 	}
 
 	public AdjustableDelayCell(int sampleRate, Scalar delay) {
-		this(sampleRate, Ops.ops().v(delay), Ops.ops().v(1.0));
+		this(sampleRate, Ops.o().v(delay), Ops.o().scalar(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate, Producer<Scalar> delay) {
-		this(sampleRate, delay, Ops.ops().v(1.0));
+		this(sampleRate, delay, Ops.o().scalar(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate, Producer<Scalar> delay, Producer<Scalar> scale) {
@@ -72,7 +73,7 @@ public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("AdjustableDelayCell Setup");
 		setup.add(super.setup());
-		setup.add(a(2, p(cursors), pair(v(0.0), v(sampleRate).multiply(delay))));
+		setup.add(a(2, p(cursors), pair(scalar(0.0), scalar(sampleRate).multiply(delay))));
 		return setup;
 	}
 

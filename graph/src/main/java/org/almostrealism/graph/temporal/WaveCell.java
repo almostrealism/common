@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
@@ -24,13 +27,15 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Assignment;
+import io.almostrealism.relation.Factor;
 
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatures, HardwareFeatures {
+public class WaveCell extends CollectionTemporalCellAdapter {
 	private final WaveCellData data;
-	private final PackedCollection<?> wave;
+	private final Producer<PackedCollection<?>> wave;
 
 	private final TimeCell clock;
 	private final Producer<Scalar> frameIndex, frameCount;
@@ -44,7 +49,12 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude) {
-		this(wav, sampleRate, amplitude, null, null, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(wav, sampleRate, amplitude, null, null);
+	}
+
+	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
+					Producer<Scalar> offset, Producer<Scalar> repeat) {
+		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -56,6 +66,13 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat,
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
+		this(data, () -> new Provider<>(wav), sampleRate, amplitude,
+				offset, repeat, frameIndex, frameCount);
+	}
+
+	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav, int sampleRate, double amplitude,
+					Producer<Scalar> offset, Producer<Scalar> repeat,
+					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
 		this.wave = validate(wav);
@@ -65,7 +82,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		Producer<Scalar> initial;
 
 		if (offset != null) {
-			initial = scalarsMultiply(offset, v(-sampleRate));
+			initial = scalarsMultiply(offset, scalar(-sampleRate));
 		} else {
 			initial = null;
 		}
@@ -73,13 +90,13 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		Producer<Scalar> duration;
 
 		if (repeat != null) {
-			duration = scalarsMultiply(repeat, v(sampleRate));
+			duration = scalarsMultiply(repeat, scalar(sampleRate));
 		} else {
 			duration = null;
 		}
 
 		this.clock = new TimeCell(initial, duration);
-		this.frame = clock.frame();
+		this.frame = clock.frameScalar();
 
 		this.frameIndex = frameIndex;
 		this.frameCount = frameCount;
@@ -90,10 +107,19 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame);
+	}
+
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
+		this(data, wav, sampleRate, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
+					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
+		this(data, () -> new Provider<>(wav), sampleRate, amplitude, frame, frameIndex, frameCount);
+	}
+
+	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav, int sampleRate, double amplitude,
 					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
@@ -111,22 +137,21 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList setup = new OperationList("WavCell Setup");
+		OperationList setup = new OperationList("WaveCell Setup");
 		if (clock != null) setup.add(clock.setup());
-		setup.add(a(1, data.getWaveLength(), v(waveLength)));
+		setup.add(a(1, data.getWaveLength(), scalar(waveLength)));
 		setup.add(a(1, data.getWaveIndex(), frameIndex));
 		setup.add(a(1, data.getWaveCount(), frameCount));
-		setup.add(a(1, data.getAmplitude(), v(amplitude)));
+		setup.add(a(1, data.getAmplitude(), scalar(amplitude)));
 		setup.add(super.setup());
 		return setup;
 	}
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
-		Scalar value = new Scalar();
 		OperationList push = new OperationList("WavCell Push");
-		push.add(new WaveCellPush(data, wave, frame, value));
-		push.add(super.push(p(value)));
+		push.add(new WaveCellPush(data, wave, frame, data.value()));
+		push.add(super.push(p(data.value())));
 		return push;
 	}
 
@@ -138,10 +163,18 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		return tick;
 	}
 
-	private static PackedCollection<?> validate(PackedCollection<?> wav) {
-		if (wav.getCount() == 0) {
+	public Factor<PackedCollection<?>> toFactor() {
+		return toFactor(() -> new PackedCollection<>(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
+	}
+
+	private static Producer<PackedCollection<?>> validate(Producer<PackedCollection<?>> wav) {
+		if (!(wav instanceof Shape)) return wav;
+
+		TraversalPolicy shape = ((Shape) wav).getShape();
+
+		if (shape.getCountLong() == 0) {
 			throw new IllegalArgumentException("Wave must have at least one sample");
-		} else if (wav.getCount() == 1) {
+		} else if (shape.getCountLong() == 1) {
 			System.out.println("WARN: Wave has only one sample");
 		}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,31 +16,32 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.stream.Stream;
 
-public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
+public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, DimensionAware {
 	private MeshData data;
-	private KernelizedEvaluable<Ray> ray;
+	private Evaluable<Ray> ray;
+	private Evaluable<Vector> closestNormal;
 
 	private PackedCollection<Pair<?>> cache;
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
-	public CachedMeshIntersectionKernel(MeshData data, KernelizedProducer<Ray> ray) {
+	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray) {
 		this.data = data;
 		this.ray = ray.get();
 	}
@@ -54,19 +55,15 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
 
 	@Override
-	public Evaluable withDestination(MemoryBank<Scalar> destination) {
-		if (destination instanceof ScalarBank == false) {
-			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
-		}
-
+	public Evaluable into(Object destination) {
 		return args -> {
-			cache = Pair.bank(destination.getCount());
+			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
-			for (int i = 0; i < cache.getCount(); i++) {
-				destination.get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
+			for (int i = 0; i < cache.getCountLong(); i++) {
+				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.get(i).getA(), 1.0);
 			}
 
 			return destination;
@@ -90,9 +87,8 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	public Evaluable<Vector> getClosestNormal() {
-		return new KernelizedEvaluable<>() {
-			@Override
-			public Vector evaluate(Object[] args) {
+		if (closestNormal == null) {
+			closestNormal = new HardwareEvaluable<>(() -> args -> {
 				if (cache == null) {
 					return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
 				} else {
@@ -103,10 +99,9 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 					if (a < 0) return ZeroVector.getEvaluable().evaluate();
 					return new Vector(data.get(a).get(4), 0);
 				}
-			}
+			}, new MemoryDataDestination<>(Vector::bank), null, true);
+		}
 
-			@Override
-			public MemoryBank<Vector> createKernelDestination(int size) {return Vector.bank(size); }
-		};
+		return closestNormal;
 	}
 }

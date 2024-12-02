@@ -2,7 +2,7 @@ package org.almostrealism.ml
 
 import org.almostrealism.CodeFeatures
 import org.almostrealism.algebra.Tensor
-import org.almostrealism.collect.TraversalPolicy
+import io.almostrealism.collect.TraversalPolicy
 import org.almostrealism.model.Model
 
 fun main() {
@@ -12,11 +12,11 @@ fun main() {
 class ModelDemo : CodeFeatures {
     fun model(inputShape: TraversalPolicy?): Model {
         val model = Model(inputShape)
-        model.addLayer(convolution2d(3, 8))
-        model.addLayer(pool2d(2))
-        model.addBlock(flatten())
-        model.addLayer(dense(10))
-        model.addLayer(softmax())
+        model.add(convolution2d(8, 3))
+        model.add(pool2d(2))
+        model.add(flattened())
+        model.add(dense(10))
+        model.add(softmax())
         return model
     }
 
@@ -25,8 +25,7 @@ class ModelDemo : CodeFeatures {
         val model = model(shape)
         val t = loadImage(shape)
         val input = t.pack()
-        model.setup().get().run()
-        model.forward(input)
+        model.compile().forward(input)
     }
 
     fun loadImage(shape: TraversalPolicy): Tensor<Double> {

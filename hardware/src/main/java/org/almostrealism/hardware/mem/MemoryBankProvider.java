@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,38 +19,49 @@ package org.almostrealism.hardware.mem;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
-public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>> {
-	private IntFunction<MemoryBank<T>> supplier;
+public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>>, ConsoleFeatures {
+	private BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier;
 	private MemoryBank<T> last;
 	private int lastSize;
 
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
-		this.supplier = supplier;
+		this((v, i) -> {
+			if (v != null) v.destroy();
+			return i != null && i > 0 ? supplier.apply(i) : null;
+		});
+	}
 
-		if (GlobalContextDebugFlags.gate) {
-			System.out.println("!");
-		}
+	public MemoryBankProvider(BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier) {
+		this.supplier = supplier;
+	}
+
+	protected void updateLast(int size) {
+		last = supplier.apply(last, size);
+		lastSize = size;
 	}
 
 	public MemoryBank<T> apply(int size) {
-		if (lastSize == size) {
+		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;
 		}
 
 		if (Hardware.enableVerbose)
-			System.out.println("MemoryBankProvider: Creating a new MemoryBank");
+			log("Creating a new MemoryBank with size " + size);
 
-		last = supplier.apply(size);
-		lastSize = size;
+		updateLast(size);
 		return last;
 	}
 
 	public void destroy() {
-		if (last != null) last.destroy();
-		lastSize = 0;
+		updateLast(0);
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

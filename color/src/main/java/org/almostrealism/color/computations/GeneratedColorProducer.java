@@ -17,22 +17,24 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.TripleFunction;
 import io.almostrealism.relation.Generated;
-import org.almostrealism.algebra.Triple;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.color.RGB;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
-public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, ProducerComputation<RGB>,
-													KernelizedProducer<RGB>, TripleFunction<Triple, RGB> {
+import java.util.Collection;
+import java.util.Collections;
+
+public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, CollectionProducerComputation<RGB> {
 	private Producer<RGB> p;
 	private T generator;
 
@@ -54,6 +56,24 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, P
 	public Producer<RGB> getGenerated() { return p; }
 
 	@Override
+	public TraversalPolicy getShape() {
+		return ((Shape) getGenerated()).getShape();
+	}
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return p instanceof Process ? ((Process) p).getChildren() : Collections.emptyList();
+	}
+
+	@Override
+	public long getCountLong() { return getShape().getCountLong(); }
+
+	@Override
+	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {
+		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
+	}
+
+	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (p instanceof Computation) {
 			((Computation) p).prepareArguments(map);
@@ -61,28 +81,17 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, P
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		if (p instanceof Computation) {
-			((Computation) p).prepareScope(manager);
+			((Computation) p).prepareScope(manager, context);
 		}
 	}
 
 	@Override
-	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
+	public Scope<RGB> getScope(KernelStructureContext context) { return ((Computation) p).getScope(context); }
 
 	@Override
-	public void compact() { p.compact(); }
-
-	@Override
-	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
-
-	@Override
-	public RGB operate(Triple in) { return get().evaluate(in); }
-
-	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
-		return new GeneratedColorProducer(generator, new DynamicProducerForMemoryData<>(args ->
-				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
-	}
+	public Evaluable<RGB> get() { return p.get(); }
 
 	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);

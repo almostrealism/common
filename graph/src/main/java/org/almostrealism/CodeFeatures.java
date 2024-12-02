@@ -18,27 +18,26 @@ package org.almostrealism;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
-import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.KernelExpression;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableKernelExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.GeometryFeatures;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
@@ -51,33 +50,35 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.TemporalScalarProducerBase;
-import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
-								PairFeatures, PairBankFeatures,
-								TriangleFeatures, RayFeatures,
-								TransformMatrixFeatures, GeometryFeatures,
+public interface CodeFeatures extends LayerFeatures,
+								ScalarBankFeatures, PairBankFeatures,
+								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, HardwareFeatures {
+	boolean enableFixedCollections = true;
 
-	default Producer<CursorPair> v(CursorPair p) {
-		throw new UnsupportedOperationException();
+	@Override
+	default <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return LayerFeatures.super.delegate(original, actual);
 	}
 
 	default <T> Producer<T> v(T v) {
+		if (v instanceof TraversalPolicy) {
+			warn("TraversalPolicy provided as Producer value");
+			return v((TraversalPolicy) v, 0);
+		}
+
 		return value(v);
 	}
 
@@ -85,37 +86,35 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(memLength, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(int memLength, int argIndex, int kernelDimension) {
-		return value(memLength, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(TraversalPolicy shape, int argIndex, int kernelDimension) {
-		return value(shape, argIndex, kernelDimension);
+	default CollectionProducer<PackedCollection<?>> x(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 0));
+	}
+
+	default CollectionProducer<PackedCollection<?>> y(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 1));
+	}
+
+	default CollectionProducer<PackedCollection<?>> z(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 2));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
+		return c(value(shape, argIndex));
 	}
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
 	}
 
-	default ScalarProducerBase value(double value) { return scalar(value); }
-
-	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-//		return new TemporalScalarFromScalars(time, value);
-
-		return new TemporalScalarExpressionComputation(
-				List.of(args -> args.get(1).getValue(0), args -> args.get(2).getValue(0)),
-					(Supplier) time, (Supplier) value);
-	}
-
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
-	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
+	default Producer<PackedCollection<Scalar>> scalars(PackedCollection<Scalar> s) {
+		return ExpressionComputation.fixed(s, Scalar.scalarBankPostprocessor());
+	}
 
 	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
@@ -124,8 +123,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
 			return (ProducerComputation<T>) ScalarFeatures.of((Scalar) v);
-		} else if (v instanceof ScalarBank) {
-			return (ProducerComputation<T>) ScalarBankFeatures.getInstance().value((ScalarBank) v);
 		} else if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
 		} else if (v instanceof Vector) {
@@ -134,6 +131,8 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 			return (ProducerComputation<T>) RayFeatures.getInstance().value((Ray) v);
 		} else if (v instanceof TransformMatrix) {
 			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
+		} else if (enableFixedCollections && v instanceof PackedCollection) {
+			return (Producer) c((PackedCollection) v);
 		} else if (v == null) {
 			return null;
 		} else {
@@ -145,45 +144,33 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return Input.value(shape, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> value(TraversalPolicy shape, int argIndex, int kernelDimension) {
-		return Input.value(shape, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
-		return Input.value(memLength, argIndex, kernelDimension);
-	}
+	@Override
+	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		TraversalPolicy sourceShape = source instanceof Shape ? ((Shape) source).getShape() : null;
+		TraversalPolicy targetShape = target instanceof Shape ? ((Shape) target).getShape() : null;
 
-	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
-		return new Switch(decision, Arrays.asList(choices));
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
-		if (!(argument instanceof Shape)) {
-			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
+		if (sourceShape != null && sourceShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
+		} else if (targetShape != null && targetShape.getTotalSizeLong() < length) {
+			throw new IllegalArgumentException();
 		}
 
-		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).getValue(p), argument);
+		if (enableAssignmentCopy) {
+			if (sourceShape != null) source = new ReshapeProducer(sourceShape.traverseEach(), source);
+			if (targetShape != null) target = new ReshapeProducer(targetShape.traverseEach(), target);
+			return new Assignment(1, target, source);
+		} else {
+			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+		}
 	}
 
-	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {
-		return new KernelOperation<>(kernel, destination, arguments);
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversableKernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernel.getShape(), kernel, arguments);
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
-																	  KernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernelIndex(), shape, kernel, arguments);
+	default <T> Switch choice(Producer<PackedCollection<?>> decision, Computation<T>... choices) {
+		return new Switch(decision, Arrays.asList(choices));
 	}
 
 	default DataContext dc() {
@@ -203,12 +190,42 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	}
 
 	default void cc(Runnable r, ComputeRequirement... expectations) {
-		cc(() -> { r.run(); return null; }, expectations);
+		cc(() -> { r.run(); return new Void[0]; }, expectations);
 	}
 
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
-		return Hardware.getLocalHardware().getDataContext().computeContext(exec, expectations);
+		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
-	default Ops o() { return Ops.ops(); }
+	default <T extends OperationProfile> T profile(T profile, Runnable r) {
+		try {
+			Hardware.getLocalHardware().assignProfile(profile);
+			r.run();
+			return profile;
+		} finally {
+			Hardware.getLocalHardware().clearProfile();
+		}
+	}
+
+	default OperationProfileNode profile(String name, Supplier<Runnable> op) {
+		return profile(new OperationProfileNode(name), op);
+	}
+
+	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
+		Runnable r;
+
+		if (op instanceof OperationList && profile != null) {
+			r = ((OperationList) op).get(profile);
+		} else {
+			r = op.get();
+		}
+
+		return profile(profile, r);
+	}
+
+	default OperationProfileNode profile(String name, Runnable r) {
+		return profile(name, () -> r);
+	}
+
+	default Ops ops() { return Ops.o(); }
 }

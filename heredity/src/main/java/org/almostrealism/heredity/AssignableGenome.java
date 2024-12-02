@@ -17,8 +17,8 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Tensor;
@@ -32,7 +32,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 
-public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures, CollectionFeatures {
+public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures {
 	private final Tensor<PackedCollection<?>> delegate;
 	private final int count;
 
@@ -96,6 +96,12 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 	public int length(int... loc) {
 		if (delegate != null) return delegate.length(loc);
 		return super.length(loc);
+	}
+
+	@Override
+	public int getTotalSize() {
+		if (delegate != null) return delegate.getTotalSize();
+		return super.getTotalSize();
 	}
 
 	@Override

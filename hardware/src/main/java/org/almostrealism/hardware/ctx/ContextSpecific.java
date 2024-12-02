@@ -17,14 +17,17 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.DataContext;
-import io.almostrealism.uml.SuppliedValue;
+import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.lifecycle.SuppliedValue;
 import org.almostrealism.hardware.Hardware;
 
 import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public abstract class ContextSpecific<T> implements ContextListener {
+public abstract class ContextSpecific<T> implements ContextListener, Destroyable, ConsoleFeatures {
 	private Stack<SuppliedValue<T>> val;
 	private Supplier<T> supply;
 	private Consumer<T> disposal;
@@ -40,17 +43,17 @@ public abstract class ContextSpecific<T> implements ContextListener {
 	}
 
 	public void init() {
-		if (val.isEmpty()) val.push(new SuppliedValue(supply));
+		if (val.isEmpty()) val.push(createValue(supply));
 		Hardware.getLocalHardware().addContextListener(this);
 	}
 
 	public T getValue() {
-		if (val.isEmpty()) val.push(new SuppliedValue(supply));
+		if (val.isEmpty()) val.push(createValue(supply));
 
 		T v = val.peek().getValue();
 
 		if (val.size() > 3) {
-			System.out.println("WARN: " + val.size() + " context layers for " + v.getClass().getSimpleName());
+			warn(val.size() + " context layers for " + v.getClass().getSimpleName());
 		}
 
 		return v;
@@ -60,15 +63,25 @@ public abstract class ContextSpecific<T> implements ContextListener {
 
 	@Override
 	public void contextStarted(DataContext ctx) {
-		val.push(new SuppliedValue(supply));
+		val.push(createValue(supply));
 	}
 
 	@Override
 	public void contextDestroyed(DataContext ctx) {
 		if (val.isEmpty()) return;
 
-		SuppliedValue<T> v = val.pop();
-		// TODO  This is disposing only the value on the current thread, not for *all* threads
-		if (disposal != null && v.isAvailable()) disposal.accept(v.getValue());
+		val.pop().applyAll(disposal);
 	}
+
+	@Override
+	public void destroy() {
+		while (!val.isEmpty()) {
+			val.pop().applyAll(disposal);
+		}
+
+		Hardware.getLocalHardware().removeContextListener(this);
+	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

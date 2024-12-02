@@ -18,7 +18,6 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Max;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 
@@ -26,9 +25,9 @@ import java.util.ArrayList;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-public class ExpressionList<T> extends ArrayList<Expression<T>> implements MultiExpression<T> {
+public class ExpressionList<T> extends ArrayList<Expression<T>> {
 
-	@Override
+	// @Override
 	public Expression<T> getValue(int pos) {
 		return get(pos);
 	}
@@ -45,14 +44,14 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> implements Multi
 		ExpressionList result = new ExpressionList<>();
 
 		for (int i = 0; i < operands.size(); i++) {
-			result.add(new Product((Expression) get(i), (Expression) operands.get(i)));
+			result.add(Product.of((Expression) get(i), (Expression) operands.get(i)));
 		}
 
 		return result;
 	}
 
 	public Expression<T> sum() {
-		return (Expression<T>) new Sum(toArray(Expression[]::new));
+		return Sum.of(toArray(Expression[]::new));
 	}
 
 	public Expression<T> max() {
@@ -62,7 +61,7 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> implements Multi
 
 		Expression max = get(0);
 		for (int i = 1; i < size(); i++) {
-			max = new Max(max, (Expression) get(i));
+			max = Max.of(max, (Expression) get(i));
 		}
 
 		return max;

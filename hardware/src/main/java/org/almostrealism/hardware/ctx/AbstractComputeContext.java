@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,25 +17,27 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.Computer;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
+import io.almostrealism.code.DataContext;
+import io.almostrealism.profile.CompilationTimingListener;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.jni.NativeCompiler;
 
-public abstract class AbstractComputeContext implements ComputeContext<MemoryData> {
-	private final Hardware hardware;
-	private final DefaultComputer computer;
+import java.util.function.Supplier;
 
-	protected AbstractComputeContext(Hardware hardware) { this(hardware, true, false); }
+public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> implements ComputeContext<MemoryData> {
+	public static CompilationTimingListener compilationTimingListener;
 
-	protected AbstractComputeContext(Hardware hardware, boolean isCl, boolean isNative) {
-		this.hardware = hardware;
-		this.computer = isNative ? new DefaultComputer(NativeCompiler.factory(hardware, isCl).construct()) : new DefaultComputer();
+	private final T dc;
+
+	protected AbstractComputeContext(T dc) {
+		this.dc = dc;
 	}
 
-	@Override
-	public DefaultComputer getComputer() { return computer; }
+	public T getDataContext() { return dc; }
 
-	public String getName() { return hardware.getName(); }
+	protected void recordCompilation(Scope<?> scope, Supplier<String> source, long nanos) {
+		if (compilationTimingListener != null) {
+			compilationTimingListener.recordCompilation(scope.getMetadata(), source.get(), nanos);
+		}
+	}
 }

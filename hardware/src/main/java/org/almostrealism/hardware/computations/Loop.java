@@ -18,17 +18,19 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.HybridScope;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
-import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated
-public class Loop extends DynamicOperationComputationAdapter<Void> {
-	public static final boolean enableCompaction = true;
+public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
+	public static boolean enableRepeated = true;
 
 	private final Computation atom;
 	private final int iterations;
@@ -36,6 +38,12 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 	public Loop(Computation<Void> atom, int iterations) {
 		this.atom = atom;
 		this.iterations = iterations;
+		init();
+	}
+
+	@Override
+	public String getName() {
+		return "Loop x" + iterations;
 	}
 
 	@Override
@@ -45,33 +53,51 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		atom.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		atom.prepareScope(manager, context);
 	}
 
 	@Override
-	public Scope<Void> getScope() {
-		Scope<Void> atomScope = atom.getScope();
-		atomScope.convertArgumentsToRequiredScopes();
-
-		HybridScope<Void> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Loop x" + iterations));
-		scope.getRequiredScopes().add(atomScope);
-
-		String i = getVariablePrefix() + "_i";
-		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		// TODO  This is CL specific and should be general
-		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
-		scope.code().accept("}\n");
-		return scope;
+	public long getCountLong() {
+		return atom instanceof Countable ? ((Countable) atom).getCountLong() : 1;
 	}
 
 	@Override
-	public synchronized void compact() {
-		super.compact();
-		if (enableCompaction && atom instanceof Compactable) {
-			((Compactable) atom).compact();
+	public Scope<Void> getScope(KernelStructureContext context) {
+		if (enableRepeated) {
+			Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
+			Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
+			scope.setInterval(e(1));
+			scope.setIndex(i);
+			scope.setCondition(i.ref().lessThan(e(iterations)));
+			scope.add(atom.getScope(context));
+			return scope;
+		} else {
+			Scope<Void> atomScope = atom.getScope(context);
+			atomScope.convertArgumentsToRequiredScopes(context);
+
+			HybridScope<Void> scope = new HybridScope<>(this);
+			scope.setMetadata(getMetadata());
+			scope.getRequiredScopes().add(atomScope);
+
+			String i = getVariablePrefix() + "_i";
+
+			scope.setSource((s, lang) -> {
+				StringBuilder code = new StringBuilder();
+				code.append("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+				code.append("    " + lang.renderMethod(s.getRequiredScopes().get(0).call()) + "\n");
+				code.append("}\n");
+				return code.toString();
+			});
+
+			scope.getExplicit().setWriter(w -> {
+				w.println("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+				atomScope.write(w);
+				w.println("}\n");
+			});
+
+			return scope;
 		}
 	}
 }

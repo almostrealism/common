@@ -16,18 +16,35 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OutputVariablePreservationArgumentMap;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
-public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> {
+public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> implements ConsoleFeatures {
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		ArrayVariable<A> arg = super.get(key, p);
 		if (arg != null) return arg;
+
+		if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
+			PassThroughProducer param = (PassThroughProducer) ((Delegated) key).getDelegate();
+
+			Optional<ArrayVariable<A>> passThrough = get(v -> {
+				if (!(v instanceof Delegated<?>)) return false;
+				if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
+				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
+			}, p);
+
+			if (passThrough.isPresent())
+				return passThrough.get();
+		}
 
 		Object provider = key.get();
 		if (!(provider instanceof Provider)) return null;
@@ -40,4 +57,7 @@ public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationAr
 			return ((Provider) v).get() == value;
 		}, p).orElse(null);
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

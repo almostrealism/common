@@ -16,8 +16,38 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+
+import java.util.List;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
-		super(Double.class, "cos(" + input.getExpression() + ")", input);
+		super(Double.class, input);
+	}
+
+	public String getExpression(LanguageOperations lang) {
+		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
+	}
+
+	@Override
+	public OptionalLong upperBound(KernelStructureContext context) {
+		return OptionalLong.of(1);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.cos(children[0].doubleValue());
+	}
+
+	@Override
+	public Expression<Double> recreate(List<Expression<?>> children) {
+		if (children.size() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Cosine((Expression<Double>) children.get(0));
 	}
 }

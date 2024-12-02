@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,31 +18,44 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.lifecycle.SuppliedValue;
 
-public class CachedValue<T> implements Producer<T> {
+import java.util.function.Consumer;
+
+public class CachedValue<T> extends SuppliedValue<T> implements Evaluable<T> {
 	private Producer<T> source;
 	private Evaluable<T> eval;
-	private T value;
 
 	public CachedValue(Producer<T> source) {
 		this.source = source;
 	}
 
 	public CachedValue(Evaluable<T> source) {
-		this.eval = source;
+		this(source, null);
+	}
+
+	public CachedValue(Evaluable<T> source, Consumer<T> clear) {
+		setEvaluable(source);
+		setClear(clear);
 	}
 
 	@Override
-	public Evaluable<T> get() {
-		return args -> {
-			evaluate(args);
-			return value;
-		};
+	protected T createValue() {
+		return createValue(new Object[0]);
 	}
 
-	protected void evaluate(Object... args) {
-		if (value != null) return;
+	protected T createValue(Object args[]) {
 		if (eval == null) eval = source.get();
-		value = eval.evaluate(args);
+		return eval.evaluate(args);
+	}
+
+	protected void setEvaluable(Evaluable<T> eval) {
+		this.eval = eval;
+	}
+
+	@Override
+	public T evaluate(Object... args) {
+		if (!isAvailable()) value = createValue(args);
+		return getValue();
 	}
 }

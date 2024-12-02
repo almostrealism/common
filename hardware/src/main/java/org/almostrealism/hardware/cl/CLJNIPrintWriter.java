@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,82 +16,92 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
-import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.c.CPrintWriter;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.CJNIPrintWriter;
+import org.almostrealism.hardware.jni.DefaultJNIMemoryAccessor;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
 import java.util.List;
-import java.util.Stack;
-import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CLJNIPrintWriter extends CJNIPrintWriter {
-	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
-		super(p, topLevelMethodName);
-		enableWarnOnExplictParams = false;
+	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism, LanguageOperations lang) {
+		super(p, topLevelMethodName, parallelism, lang, new DefaultJNIMemoryAccessor());
 	}
 
 	@Override
-	protected String nameForType(Class<?> type) {
-		if (type == Integer.class || type == int[].class) {
-			return "jint";
-		} else if (type == Long.class || type == long[].class) {
-			return "jlong";
-		} else {
-			return super.nameForType(type);
-		}
-	}
-
-	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
-		} else {
-			super.renderArguments(arguments, out, access);
-		}
-	}
-
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		println(new Variable<>("*argArr", long[].class, "(*env)->GetLongArrayElements(env, arg, 0)"));
-		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
-		println(new Variable<>("*sizeArr", int[].class, "(*env)->GetIntArrayElements(env, size, 0)"));
+		println(new ExpressionAssignment<long[]>(true,
+				new StaticReference(long[].class, "*argArr"),
+				new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*offsetArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*sizeArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*dim0Arr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
-		String numberType = Hardware.getLocalHardware().getNumberTypeName();
-		int numberSize = Hardware.getLocalHardware().getNumberSize();
+		String numberType = getLanguage().getPrecision().typeName();
+		int numberSize = getLanguage().getPrecision().bytes();
 
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
-						new Expression<>(Double.class, "(" + numberType + "*) malloc("
+				.mapToObj(i ->
+						new ExpressionAssignment(
+								new StaticReference<>(Double.class, "*" + arguments.get(i).getName()),
+								new StaticReference<>(Double.class, "(" + numberType + "*) malloc("
 											+ numberSize + " * sizeArr[" + i + "])")))
 				.forEach(this::println);
-		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",
-				Integer.class, "0"))
+		arguments.stream().map(argument ->
+						new ExpressionAssignment(
+								new StaticReference<>(Integer.class, argument.getName() + "Offset"),
+								new StaticReference<>(Integer.class, "0")))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-						Integer.class, "sizeArr[" + i + "]"))
+				.mapToObj(i ->
+						new ExpressionAssignment(
+								new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
+								new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
 				.forEach(this::println);
-		println(new Variable("*nativeEventWaitList", cl_event.class, "NULL"));
-		println(new Variable("*nativeEventPointer", cl_event.class, "NULL"));
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new ExpressionAssignment(
+						new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
+						new StaticReference<>(Integer.class, "dim0Arr[" + i + "]")))
+				.forEach(this::println);
+
+//		for (int i = 0; i < arguments.size(); i++) {
+//			printf(arguments.get(i).getName() + "Dim0 = %i", arguments.get(i).getName() + "Dim0");
+//		}
+
+		println(new ExpressionAssignment(
+				new StaticReference(cl_event.class, "*nativeEventWaitList"),
+				new StaticReference<>(cl_event.class, "NULL")));
+		println(new ExpressionAssignment(
+				new StaticReference(cl_event.class, "*nativeEventPointer"),
+				new StaticReference<>(cl_event.class, "NULL")));
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), false))
 				.forEach(super::println);
 	}
 
+	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))
-				.forEach(super::println);
+				.forEach(this::println);
+
 		arguments.forEach(arg -> println("free(" + arg.getName() + ");"));
 		super.renderArgumentWrites(arguments);
 	}
@@ -101,22 +111,22 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 	}
 
 	protected Method<Void> clEnqueueBuffer(int index, ArrayVariable<?> variable, boolean write) {
-		int size = Hardware.getLocalHardware().getNumberSize();
+		int size = getLanguage().getPrecision().bytes();
 
 		Expression<cl_command_queue> nativeCommandQueue =
-				new Expression<>(cl_command_queue.class, "(cl_command_queue) commandQueue");
+				new StaticReference<>(cl_command_queue.class, "(cl_command_queue) commandQueue");
 		Expression<cl_mem> nativeBuffer =
-				new Expression<>(cl_mem.class, "(cl_mem) argArr[" + index + "]");
+				new StaticReference<>(cl_mem.class, "(cl_mem) argArr[" + index + "]");
 		Expression<Boolean> nativeBlocking =
-				new Expression<>(Boolean.class, "(cl_bool) CL_TRUE");
+				new StaticReference<>(Boolean.class, "(cl_bool) CL_TRUE");
 		Expression<Integer> nativeOffset =
-				new Expression<>(Integer.class, size + " * (size_t) offsetArr[" + index + "]");
+				new StaticReference<>(Integer.class, size + " * (size_t) offsetArr[" + index + "]");
 		Expression<Integer> nativeCb =
-				new Expression<>(Integer.class, size + " * (size_t) sizeArr[" + index + "]");
+				new StaticReference<>(Integer.class, size + " * (size_t) sizeArr[" + index + "]");
 		Expression<Integer> nativeNumEvents =
-				new Expression<>(Integer.class, "(cl_uint) 0");
-		Expression<cl_event> nativeEventWaitList = new Expression<>(cl_event.class, "nativeEventWaitList");
-		Expression<cl_event> nativeEventPointer = new Expression<>(cl_event.class, "nativeEventPointer");
+				new StaticReference<>(Integer.class, "(cl_uint) 0");
+		Expression<cl_event> nativeEventWaitList = new StaticReference<>(cl_event.class, "nativeEventWaitList");
+		Expression<cl_event> nativeEventPointer = new StaticReference<>(cl_event.class, "nativeEventPointer");
 
 		String method = write ? "clEnqueueWriteBuffer" : "clEnqueueReadBuffer";
 		return new Method<>(Void.class, method, nativeCommandQueue,

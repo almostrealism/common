@@ -16,13 +16,11 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.function.Supplier;
 
 public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, ScalarFeatures, CollectionFeatures {
 	private PackedCollection<?> choices;
@@ -41,12 +39,23 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	public PackedCollection<?> getParameters() { return values; }
 
 	@Override
+	public PackedCollection<?> getParameterRanges() {
+		PackedCollection<?> ranges = new PackedCollection<>(shape(values.getMemLength(), 2), 1);
+
+		for (int i = 0; i < values.getMemLength(); i++) {
+			ranges.get(i).setMem(0.0, 1.0);
+		}
+
+		return ranges;
+	}
+
+	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
 		return new Factor<>() {
 			@Override
 			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-				value = c(shape(1), p(values), scalar(pos));
-				return c(shape(1), p(choices), (Supplier) multiply(value, c(choices.getMemLength())));
+				value = c(shape(1), p(values), c(pos));
+				return c(shape(1), p(choices), multiply(value, c(choices.getMemLength())));
 			}
 
 			@Override

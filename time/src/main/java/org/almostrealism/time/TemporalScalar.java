@@ -22,6 +22,8 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 import io.almostrealism.relation.Producer;
 
+import java.util.function.BiFunction;
+
 public class TemporalScalar extends Pair<TemporalScalar> {
 	public TemporalScalar() { }
 
@@ -42,12 +44,7 @@ public class TemporalScalar extends Pair<TemporalScalar> {
 
 	public void setValue(double value) { setB(value); }
 
-	@Override
-	public PooledMem getDefaultDelegate() {
-		return TemporalScalarPool.getLocal();
-	}
-
-	public static Producer<TemporalScalar> blank() {
-		return new DynamicProducerForMemoryData<>(TemporalScalar::new, TemporalScalarBank::new);
+	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
+		return (delegate, offset) -> new TemporalScalar(delegate, offset);
 	}
 }

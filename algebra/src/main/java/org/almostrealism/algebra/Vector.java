@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,12 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.io.Console;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -33,22 +32,12 @@ import java.util.function.Supplier;
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer that is contiguous in memory.
+ *
+ * @author  Michael Murray
  */
-public class Vector extends PackedCollection<Vector> implements Triple, VectorFeatures, Cloneable {
+public class Vector extends PackedCollection<Vector> implements VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
-
-	public static final Vector X_AXIS = new Vector(1, 0, 0);
-	public static final Vector Y_AXIS = new Vector(0, 1, 0);
-	public static final Vector Z_AXIS = new Vector(0, 0, 1);
-	public static final Vector NEG_X_AXIS = new Vector(-1, 0, 0);
-	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
-	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
-
-	private static ThreadLocal<HardwareOperator<Vector>> addOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> subtractOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> multiplyOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> divideOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
@@ -77,13 +66,13 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		this();
 
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			setMem(new double[] { x, y, z });
+			setMem(x, y, z);
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			setMem(new double[] { x * Math.sin(y) * Math.cos(z),
-								x * Math.sin(y) * Math.sin(z),
-								x * Math.cos(y) });
+			setMem(x * Math.sin(y) * Math.cos(z),
+					x * Math.sin(y) * Math.sin(z),
+					x * Math.cos(y));
 		} else {
-			throw new IllegalArgumentException("Illegal coordinate system type code: " + coordSys);
+			throw new IllegalArgumentException(coordSys + " is not a valid coordinate system type code");
 		}
 	}
 
@@ -148,42 +137,6 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return toArray()[2];
 	}
 
-	@Override
-	@Deprecated
-	public double getA() {
-		return getX();
-	}
-
-	@Override
-	@Deprecated
-	public double getB() {
-		return getY();
-	}
-
-	@Override
-	@Deprecated
-	public double getC() {
-		return getZ();
-	}
-
-	@Override
-	@Deprecated
-	public void setA(double a) {
-		setX(a);
-	}
-
-	@Override
-	@Deprecated
-	public void setB(double b) {
-		setY(b);
-	}
-
-	@Override
-	@Deprecated
-	public void setC(double c) {
-		setZ(c);
-	}
-
 	/** Sets the ith component, 0 <= i < 3 */
 	@Deprecated
 	public Vector set(int i, double v) {
@@ -225,13 +178,13 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		return minus(v(this)).get().evaluate();
+		double a[] = toArray();
+		return new Vector(-a[0], -a[1], -a[2]);
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
 	public synchronized Vector add(Vector vector) {
-		// TODO  Use VectorAdd
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.addTo(vector);
 		return v;
 	}
@@ -242,11 +195,9 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @param vector The Vector object to add.
 	 */
 	public void addTo(Vector vector) {
-		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo", 2));
-		}
-
-		addOperator.get().accept(new Object[] { this, vector });
+		double a[] = toArray();
+		double b[] = vector.toArray();
+		setMem(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
 	}
 
 	/**
@@ -254,8 +205,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
-		// TODO  Use VectorSubtract
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.subtractFrom(vector);
 		return v;
 	}
@@ -266,19 +216,16 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @param vector The Vector object to be subtracted.
 	 */
 	public synchronized void subtractFrom(Vector vector) {
-		if (subtractOperator.get() == null) {
-			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom", 2));
-		}
-
-		subtractOperator.get().accept(new Object[] { this, vector });
+		double a[] = toArray();
+		double b[] = vector.toArray();
+		setMem(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 	}
 
 	/**
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
-		// TODO  Use VectorMultiply
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.multiplyBy(value);
 		return v;
 	}
@@ -288,17 +235,14 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 *
 	 * @param value The factor to multiply by.
 	 */
-	@Deprecated
 	public synchronized void multiplyBy(double value) {
-		setTo(vector(v(this).multiply(vector(value, value, value))).get().evaluate());
+		double a[] = toArray();
+		setMem(a[0] * value, a[1] * value, a[2] * value);
 	}
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
 	public Vector divide(double value) {
-		// TODO  Use VectorDivide
-		Vector v = (Vector) clone();
-		v.divideBy(value);
-		return v;
+		return clone().divideBy(value);
 	}
 
 	/**
@@ -306,12 +250,10 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 *
 	 * @param value The value to divide by.
 	 */
-	public synchronized void divideBy(double value) {
-		if (divideOperator.get() == null) {
-			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy", 2));
-		}
-
-		divideOperator.get().accept(new Object[] { this, new Vector(value, value, value) });
+	public synchronized Vector divideBy(double value) {
+		double a[] = toArray();
+		setMem(a[0] / value, a[1] / value, a[2] / value);
+		return this;
 	}
 
 	/**
@@ -341,6 +283,22 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return getMem().toArray(getOffset(), 3);
 	}
 
+	/** @return A String representation of this {@link Vector}. */
+	public String describe() {
+		StringBuffer value = new StringBuffer();
+
+		value.append("[");
+		value.append(Defaults.displayFormat.format(getX()));
+		value.append(", ");
+		value.append(Defaults.displayFormat.format(getY()));
+		value.append(", ");
+		value.append(Defaults.displayFormat.format(getZ()));
+		value.append("]");
+
+
+		return value.toString();
+	}
+
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
@@ -359,7 +317,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 */
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof Vector == false)
+		if (!(obj instanceof Vector))
 			return false;
 
 		Vector vector = (Vector) obj;
@@ -374,9 +332,10 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	public int getMemLength() { return 3; }
 
 	@Override
-	public VectorPool getDefaultDelegate() { return VectorPool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	/**
+	 * @see #setTo(Vector)
 	 * @see java.lang.Object#clone()
 	 */
 	@Override
@@ -386,22 +345,13 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return v;
 	}
 
-	/** @return A String representation of this {@link Vector}. */
+	/**
+	 * @see  #describe()
+	 *
+	 * @return A String representation of this {@link Vector}.
+	 */
 	@Override
-	public String toString() {
-		StringBuffer value = new StringBuffer();
-
-		value.append("[");
-		value.append(Defaults.displayFormat.format(getX()));
-		value.append(", ");
-		value.append(Defaults.displayFormat.format(getY()));
-		value.append(", ");
-		value.append(Defaults.displayFormat.format(getZ()));
-		value.append("]");
-
-
-		return value.toString();
-	}
+	public String toString() { return describe(); }
 
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(3);
@@ -454,17 +404,18 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 												int[] indices,
 												boolean ccw) {
 		if ((indices.length % 3) != 0) {
-			System.err.println("NormalCalc.computeFacetedNormals: numIndices wasn't " +
-					"divisible by 3, so it can't possibly " +
-					"represent a set of triangles");
+			Console.root().features(Vector.class)
+					.warn("computeFacetedNormals - numIndices wasn't " +
+						"divisible by 3, so it can't possibly " +
+						"represent a set of triangles");
 			return null;
 		}
 
 		Vector[] outputNormals = new Vector[indices.length / 3];
 		int[] outputNormalIndices = new int[indices.length];
 
-		Vector d1 = new Vector();
-		Vector d2 = new Vector();
+		Vector d1;
+		Vector d2;
 		int curNormalIndex = 0;
 		for (int i = 0; i < indices.length; i += 3) {
 			int i0 = indices[i];
@@ -473,7 +424,8 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 			if ((i0 < 0) || (i0 >= indices.length) ||
 					(i1 < 0) || (i1 >= indices.length) ||
 					(i2 < 0) || (i2 >= indices.length)) {
-				System.err.println("NormalCalc.computeFacetedNormals: ERROR: " +
+				Console.root().features(Vector.class)
+						.warn("computeFacetedNormals - " +
 						"vertex index out of bounds or no end of triangle " +
 						"index found");
 				return null;
@@ -584,4 +536,11 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		dest.setX(x);
 		dest.setY(y);
 	}
+
+	public static Vector xAxis() { return new Vector(1, 0, 0); }
+	public static Vector yAxis() { return new Vector(0, 1, 0); }
+	public static Vector zAxis() { return new Vector(0, 0, 1); }
+	public static Vector negXAxis() { return new Vector(-1, 0, 0); }
+	public static Vector negYAxis() { return new Vector(0, -1, 0); }
+	public static Vector negZAxis() { return new Vector(0, 0, -1); }
 }

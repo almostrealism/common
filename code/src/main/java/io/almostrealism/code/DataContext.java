@@ -16,14 +16,30 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.uml.Named;
+
+import java.util.List;
 import java.util.concurrent.Callable;
 
-public interface DataContext {
-	ComputeContext getComputeContext();
+public interface DataContext<MEM> extends Named {
+	Precision getPrecision();
+
+	void init();
+
+	default ComputeContext<MEM> getComputeContext() {
+		return getComputeContexts().get(0);
+	}
+
+	List<ComputeContext<MEM>> getComputeContexts();
+
+	List<MemoryProvider<? extends Memory>> getMemoryProviders();
 
 	MemoryProvider<? extends Memory> getMemoryProvider(int size);
 
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
+
+	<T> T deviceMemory(Callable<T> exec);
 
 	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 

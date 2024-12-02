@@ -24,6 +24,6 @@ import io.almostrealism.relation.Producer;
  * 
  * @author  Michael Murray
  */
-public interface Camera { // TODO  Move to geometry package
+public interface Camera {
 	Producer<Ray> rayAt(Producer<Pair<?>> screenPosition, Producer<Pair<?>> screenDimensions);
 }

@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.kernel.KernelStructureContext;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -58,9 +59,9 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(Stream.of(getProducer()), manager);
-		ScopeLifecycle.prepareScope(Stream.of(getRank()), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(Stream.of(getProducer()), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(getRank()), manager, context);
 	}
 
 	@Override
@@ -70,11 +71,11 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	}
 
 	@Override
-	public void compact() {
-		getProducer().compact();
-		getRank().compact();
+	public Evaluable<T> get() {
+		if (getProducer() == this) {
+			throw new UnsupportedOperationException();
+		} else {
+			return getProducer() == null ? null : p.get();
+		}
 	}
-
-	@Override
-	public Evaluable<T> get() { return p == null ? null : p.get(); }
 }

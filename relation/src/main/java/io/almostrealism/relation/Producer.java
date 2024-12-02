@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,27 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.lifecycle.Destroyable;
+
 import java.util.function.Supplier;
 
-public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Node, Compactable {
+/**
+ * A {@link Producer} is a {@link Computable} system that can create an
+ * {@link Evaluable}, which may then be used generate results from computation.
+ *
+ * @param <T>  The type of the ultimate result of computation.
+ *
+ * @author  Michael Murray
+ */
+public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node,  Destroyable {
 	@Override
 	Evaluable<T> get();
 
-	@Override
-	default void compact() { }
+	default Evaluable<T> into(Object destination) {
+		return get().into(destination);
+	}
 
-	default void destroy() { }
+	default T evaluate(Object... args) {
+		return get().evaluate(args);
+	}
 }

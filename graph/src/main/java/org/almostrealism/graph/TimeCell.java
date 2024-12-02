@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
@@ -32,7 +33,9 @@ import org.almostrealism.time.Temporal;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
+public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatures {
+	public static boolean enableConditional = true;
+
 	private Receptor r;
 	private Pair<?> time;
 	private Producer<Scalar> initial, loopDuration;
@@ -79,7 +82,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return r == null ? new OperationList("TimeCell Push") : r.push(frame());
+		return r == null ? new OperationList("TimeCell Push") : r.push(frameScalar());
 	}
 
 	@Override
@@ -87,27 +90,57 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 		OperationList tick = new OperationList("TimeCell Tick");
 
 		if (loopDuration == null) {
-			tick.add(new Assignment<>(2, () -> new Provider<>(time),
-					pairAdd(() -> new Provider<>(time),
-							PairFeatures.of(1.0, 1.0))));
+			tick.add(new Assignment<>(2, p(time),
+					add(p(time), PairFeatures.of(1.0, 1.0))));
+		} else if (enableConditional) {
+			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
+			Producer<PackedCollection<?>> left = c(p(time), 0);
+			left = add(left, c(1.0));
+			left = greaterThanConditional(ld, c(0.0), relativeMod(left, ld), left, false);
+
+			Producer<PackedCollection<?>> right = c(p(time), 1);
+			right = add(right, c(1.0));
+
+			tick.add(a(2, p(time), concat(left, right)));
 		} else {
-			Producer<Scalar> left = l(() -> new Provider<>(time));
-			left = greaterThan(loopDuration, v(0.0),
-					mod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
+			Producer<Scalar> left = l(p(time));
+			left = scalarGreaterThan(loopDuration, scalar(0.0),
+					scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
-			Producer<Scalar> right = r(() -> new Provider<>(time));
+			Producer<Scalar> right = r(p(time));
 			right = scalarAdd(right, ScalarFeatures.of(1.0));
 
-			tick.add(new Assignment<>(2, () -> new Provider<>(time), pair(left, right)));
+			tick.add(new Assignment<>(2, p(time), pair(left, right)));
 		}
 
-		tick.add(new TimeCellReset(() -> new Provider<>(time), resets));
+		tick.add(new TimeCellReset(p(time), resets));
 		return tick;
 	}
 
 	@Override
-	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
+	public void setReceptor(Receptor<Scalar> r) {
+		if (cellWarnings && this.r != null) {
+			warn("Replacing receptor");
+		}
 
-	public Producer<Scalar> frame() { return l(() -> new Provider<>(time)); }
+		this.r = r;
+	}
+
+	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
+
+	public Producer<PackedCollection<?>> frame() { return c(() -> new Provider<>(time), 0); }
+
+	public Producer<PackedCollection<?>> time(double sampleRate) {
+		return divide(frame(), c(sampleRate));
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+		if (time != null) time.destroy();
+		if (resets != null) resets.destroy();
+		time = null;
+		resets = null;
+	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,26 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
-import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.KernelLayer;
+import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.layers.Learning;
-import org.almostrealism.layers.PropagationCell;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Model implements Setup, CodeFeatures {
-	private List<Block> blocks;
-	private TraversalPolicy shape;
+	private SequentialBlock blocks;
+	private List<Block> inputs;
 
 	private PackedCollection<?> learningRate;
 
@@ -45,18 +44,19 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model(TraversalPolicy shape) {
-		this(shape, 1e-4);
+		this(shape, 1e-5);
 	}
 
 	public Model(TraversalPolicy shape, double learningRate) {
-		this.shape = shape;
-		this.blocks = new ArrayList<>();
+		this.blocks = new SequentialBlock(shape);
+		this.inputs = new ArrayList<>();
 		this.learningRate = new PackedCollection<>(1);
 		setLearningRate(learningRate);
 	}
 
 	public void setLearningRate(double rate) {
 		learningRate.setMem(0, rate);
+		blocks.setLearningRate(p(learningRate));
 	}
 
 	public double getLearningRate() {
@@ -64,71 +64,77 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public List<Block> getBlocks() {
-		return Collections.unmodifiableList(blocks);
+		return blocks.getBlocks();
 	}
 
-	public void addBlock(Block b) {
-		if (shape == null) {
-			if (b.getInputShape() == null) {
-				throw new IllegalArgumentException("Cannot infer input shape");
-			}
-		} else if (b.getInputShape() != null && !shape.equals(b.getInputShape())) {
-			if (blocks.isEmpty()) {
-				throw new IllegalArgumentException("Block input shape does not match initial shape for model");
-			} else {
-				throw new IllegalArgumentException("Block input shape does not match output shape of last block");
-			}
-		}
-
-		if (!blocks.isEmpty()) {
-			blocks.get(blocks.size() - 1).forward().setReceptor(b.forward());
-			b.backward().setReceptor(blocks.get(blocks.size() - 1).backward());
-		}
-
+	public Model add(Block b) {
 		blocks.add(b);
-		shape = b.getOutputShape();
+		return this;
 	}
 
-	public Block addBlock(Function<TraversalPolicy, Block> block) {
-		Block b = block.apply(shape);
-		addBlock(b);
-		return b;
+	public Model add(Function<TraversalPolicy, ? extends Block> block) {
+		add(block.apply(blocks.getOutputShape()));
+		return this;
 	}
 
-	public CellularBlock addLayer(CellularLayer layer) {
-		if (layer instanceof Learning) ((Learning) layer).setLearningRate(p(learningRate));
+	public Model addInput(Block b) {
+		if (b instanceof Learning) {
+			((Learning) b).setLearningRate(p(learningRate));
+		}
 
-		CellularBlock b = new CellularBlock(shape,
-									layer.getOutputShape(), layer.getForward(),
-									layer.getBackward(), layer.setup());
-		addBlock(b);
-		return b;
+		inputs.add(b);
+		return this;
 	}
 
-	public CellularBlock addLayer(Function<TraversalPolicy, CellularLayer> layer) {
-		return addLayer(layer.apply(shape));
+	public SequentialBlock sequential() {
+		SequentialBlock seq = new SequentialBlock(blocks.getOutputShape());
+		add(seq);
+		return seq;
 	}
 
-	public Block lastBlock() {
-		return blocks.get(blocks.size() - 1);
+	public List<Block> getInputs() {
+		return Collections.unmodifiableList(inputs);
 	}
 
-	public TraversalPolicy getShape() { return shape; }
+	public Block firstBlock() { return blocks.firstBlock(); }
+
+	public Block lastBlock() { return blocks.lastBlock(); }
+
+	public TraversalPolicy getInputShape() { return firstBlock().getInputShape(); }
+
+	public TraversalPolicy getOutputShape() { return lastBlock().getOutputShape(); }
 
 	@Override
 	public Supplier<Runnable> setup() {
-		return blocks.stream().map(Block::setup).collect(OperationList.collector());
+		return blocks.setup();
 	}
 
-	public Cell<PackedCollection<?>> forward() { return blocks.get(0).forward(); }
-	public PackedCollection<?> forward(PackedCollection<?> input) {
-		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
-		lastBlock().forward().setReceptor(out ->
-				new MemoryDataCopy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
-		forward().push(p(input)).get().run();
-		return output;
+	public List<Cell<PackedCollection<?>>> forward() {
+		return Stream.concat(Stream.of(
+							blocks.getForward()),
+							inputs.stream().map(CellularPropagation::getForward))
+				.collect(Collectors.toUnmodifiableList());
 	}
 
-	public Cell<PackedCollection<?>> backward() { return lastBlock().backward(); }
-	public void backward(PackedCollection<?> gradient) { backward().push(p(gradient)).get().run(); }
+	public Cell<PackedCollection<?>> backward() { return blocks.getBackward(); }
+
+	public CompiledModel compile() {
+		return CompiledModel.compile(this);
+	}
+
+	public CompiledModel compile(OperationProfile profile) {
+		return CompiledModel.compile(this, profile);
+	}
+
+	public CompiledModel compile(boolean backprop) {
+		return CompiledModel.compile(this, backprop, false, null);
+	}
+
+	public CompiledModel compile(boolean backprop, boolean returnGradient) {
+		return CompiledModel.compile(this, backprop, returnGradient, null);
+	}
+
+	public CompiledModel compile(boolean backprop, OperationProfile profile) {
+		return CompiledModel.compile(this, backprop, false, profile);
+	}
 }

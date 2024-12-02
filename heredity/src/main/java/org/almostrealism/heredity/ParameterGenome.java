@@ -17,18 +17,24 @@
 package org.almostrealism.heredity;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.DoubleSupplier;
+import java.util.function.IntFunction;
 
-public class ParameterGenome implements Genome<PackedCollection<?>> {
+public class ParameterGenome implements Genome<PackedCollection<?>>, ScalarFeatures {
+	private List<ConfigurableChromosome> chromosomes;
 	private AssignableGenome genome;
 
-	public ParameterGenome() { }
+	public ParameterGenome() {
+	}
 
 	protected ParameterGenome(List<ConfigurableChromosome> chromosomes) {
-		genome = new AssignableGenome();
+		this.chromosomes = chromosomes;
+		this.genome = new AssignableGenome();
 
 		for (int x = 0; x < chromosomes.size(); x++) {
 			for (int y = 0; y < chromosomes.get(x).length(); y++) {
@@ -42,7 +48,8 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 		}
 	}
 
-	private ParameterGenome(AssignableGenome genome) {
+	private ParameterGenome(List<ConfigurableChromosome> chromosomes, AssignableGenome genome) {
+		this.chromosomes = chromosomes;
 		this.genome = genome;
 	}
 
@@ -61,12 +68,18 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 		return genome.count();
 	}
 
+	public int getTotalSize() { return genome.getTotalSize(); }
+
 	@Override
 	public Chromosome<PackedCollection<?>> valueAt(int pos) {
 		return genome.valueAt(pos);
 	}
 
 	public ParameterGenome random() {
+		if (chromosomes != null) return random(chromosomes);
+
+		System.out.println("WARN: No chromosomes to use for determining range of random values");
+
 		AssignableGenome random = new AssignableGenome();
 
 		for (int x = 0; x < genome.length(); x++) {
@@ -77,7 +90,46 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 			}
 		}
 
-		return new ParameterGenome(random);
+		return new ParameterGenome(null, random);
+	}
+
+	public ParameterGenome variation(double min, double max, double rate, DoubleSupplier delta) {
+		AssignableGenome random = new AssignableGenome();
+
+		for (int x = 0; x < genome.length(); x++) {
+			for (int y = 0; y < genome.length(x); y++) {
+				for (int z = 0; z < genome.length(x, y); z++) {
+					double v = genome.get(x, y, z).toDouble(0);
+
+					if (Math.random() < rate) {
+						v = Math.min(max, Math.max(min, v + delta.getAsDouble()));
+					}
+
+					random.insert(new Scalar(v), x, y, z);
+				}
+			}
+		}
+
+		return new ParameterGenome(chromosomes, random);
+	}
+
+	public ParameterGenome random(List<ConfigurableChromosome> chromosomes) {
+		AssignableGenome random = new AssignableGenome();
+
+		for (int x = 0; x < genome.length(); x++) {
+			for (int y = 0; y < genome.length(x); y++) {
+				PackedCollection<?> ranges = chromosomes.get(x).getParameterRanges(y);
+
+				for (int z = 0; z < genome.length(x, y); z++) {
+					double min = ranges.get(z).toDouble(0);
+					double max = ranges.get(z).toDouble(1);
+					double len = max - min;
+					random.insert(new Scalar(min + len * Math.random()), x, y, z);
+				}
+			}
+		}
+
+		return new ParameterGenome(chromosomes, random);
 	}
 
 	public String getSerialized() throws IOException {

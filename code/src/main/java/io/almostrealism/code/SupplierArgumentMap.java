@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -26,15 +27,23 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
-	protected ArgumentProvider delegateProvider = DefaultScopeInputManager.getInstance();
+	protected ScopeInputManager delegateProvider;
 	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
 
 	public SupplierArgumentMap() {
 		this.arguments = new HashMap<>();
 	}
 
-	public void setDelegateProvider(ArgumentProvider provider) {
+	public void setDelegateProvider(ScopeInputManager provider) {
 		this.delegateProvider = provider;
+	}
+
+	public ScopeInputManager getDelegateProvider() {
+		if (delegateProvider == null) {
+			delegateProvider = DefaultScopeInputManager.getInstance(null);
+		}
+
+		return delegateProvider;
 	}
 	
 	public void put(Supplier<S> key, ArrayVariable<A> value) {
@@ -58,12 +67,17 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	public ScopeInputManager getScopeInputManager() {
 		return new ScopeInputManager() {
 			@Override
+			public LanguageOperations getLanguage() {
+				return getDelegateProvider().getLanguage();
+			}
+
+			@Override
 			public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
 													ArrayVariable<T> delegate, int delegateOffset) {
 				ArrayVariable arg = get(input, p);
 				if (arg != null) return arg;
 
-				arguments.put((Supplier) input, (ArrayVariable) delegateProvider.getArgument(p, input, delegate, delegateOffset));
+				arguments.put((Supplier) input, (ArrayVariable) getDelegateProvider().getArgument(p, input, delegate, delegateOffset));
 				return (ArrayVariable) get(input, p);
 			}
 		};

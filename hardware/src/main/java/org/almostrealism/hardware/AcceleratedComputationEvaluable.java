@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,25 +16,61 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.uml.Multiple;
+import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
+import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
-	public AcceleratedComputationEvaluable(Computation<T> c) {
-		this(c, true);
-	}
+import java.util.function.IntFunction;
 
-	public AcceleratedComputationEvaluable(Computation<T> c, boolean kernel) {
-		super(c, kernel);
+public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements Evaluable<T> {
+	public static boolean enableRedundantCompilation = true;
+
+	private IntFunction<Multiple<T>> destinationFactory;
+
+	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
+		super(context, c, true);
 	}
 
 	@Override
-	public T evaluate(Object... args) {
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
+	public ProducerComputation<T> getComputation() {
+		return (ProducerComputation<T>) super.getComputation();
+	}
+
+	@Override
+	public boolean isConstant() { return getComputation().isConstant(); }
+
+	public IntFunction<Multiple<T>> getDestinationFactory() {
+		return destinationFactory;
+	}
+
+	public void setDestinationFactory(IntFunction<Multiple<T>> destinationFactory) {
+		this.destinationFactory = destinationFactory;
+	}
+
+	@Override
+	public Multiple<T> createDestination(int size) {
+		if (getDestinationFactory() == null) {
+			return Evaluable.super.createDestination(size);
 		}
+
+		return getDestinationFactory().apply(size);
+	}
+
+	@Override
+	public Evaluable<T> into(Object destination) {
+		return new DestinationEvaluable(this, (MemoryBank) destination);
+	}
+
+	@Override
+	public synchronized void postCompile() {
+		super.postCompile();
 
 		ArrayVariable outputVariable = (ArrayVariable) getOutputVariable();
 
@@ -52,7 +88,41 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(null, args)[outputArgIndex], offset);
+		ComputableInstructionSetManager<?> manager = getInstructionSetManager();
+
+		if (manager instanceof ComputationInstructionsManager mgr) {
+			mgr.setOutputArgumentIndex((DefaultExecutionKey) getExecutionKey(), outputArgIndex);
+			mgr.setOutputOffset((DefaultExecutionKey) getExecutionKey(), offset);
+		} else {
+			warn("Compilation post processing on " + getName() +
+					" with unexpected InstructionSetManager (" +
+					manager.getClass().getSimpleName() + ")");
+		}
+	}
+
+	@Override
+	public T evaluate(Object... args) {
+		if (getArgumentVariables() == null &&
+				(enableRedundantCompilation || getInstructionSetManager() == null)) {
+			if (getInstructionSetManager() == null) {
+				warn(getName() + " was not compiled ahead of time");
+			} else {
+				warn("Instructions already available for " + getName() + " - but it will be redundantly compiled");
+			}
+
+			compile();
+		}
+
+		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
+		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
+
+		try {
+			AcceleratedProcessDetails process = apply(null, args);
+			waitFor(process.getSemaphore());
+			return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+		} catch (HardwareException e) {
+			throw new HardwareException("Failed to evaluate " + getName(), e);
+		}
 	}
 
 	/**
@@ -63,15 +133,5 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	 */
 	protected T postProcessOutput(MemoryData output, int offset) {
 		return (T) output;
-	}
-
-	@Override
-	public ProducerComputation<T> getComputation() {
-		return (ProducerComputation<T>) super.getComputation();
-	}
-
-	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
 	}
 }

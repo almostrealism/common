@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,51 @@
 
 package io.almostrealism.relation;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 
-public interface Operation extends Supplier<Runnable>, Compactable {
+public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Runnable> {
+	@Override
+	default Process<Process<?, ?>, Runnable> isolate() {
+		return new IsolatedProcess(this);
+	}
+
+	static Operation of(Supplier<Runnable> supplier) {
+		return new Operation() {
+
+			@Override
+			public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
+
+			@Override
+			public Runnable get() { return supplier.get(); }
+		};
+	}
+
+	static <P extends Supplier<Runnable>> Supplier<Runnable> optimized(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, Runnable>) process).optimize();
+		} else {
+			return process;
+		}
+	}
+
+	class IsolatedProcess implements Process<Process<?, ?>, Runnable> {
+		private Operation op;
+
+		private IsolatedProcess(Operation op) {
+			this.op = op;
+		}
+
+		@Override
+		public Collection<Process<?, ?>> getChildren() { return op.getChildren(); }
+
+		@Override
+		public Runnable get() { return op.get(); }
+
+		@Override
+		public long getOutputSize() {
+			return op.getOutputSize();
+		}
+	}
 }

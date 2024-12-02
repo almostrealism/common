@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,11 @@ import java.io.ObjectOutput;
 import java.util.function.BiFunction;
 
 import io.almostrealism.code.Memory;
-import org.almostrealism.algebra.Triple;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;
 import org.almostrealism.hardware.NoOpMemoryData;
@@ -36,7 +37,7 @@ import org.almostrealism.hardware.NoOpMemoryData;
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB extends PackedCollection<RGB> implements Triple, Externalizable, Cloneable {
+public class RGB extends PackedCollection<RGB> implements Externalizable, Cloneable {
 	protected interface Data extends MemoryData {
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -110,6 +111,7 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	}
 
 	private RGB(int model, double r, double g, double b, boolean init) {
+		super(RGB.shape());
 		this.initColorModule(model);
 		if (init) this.data.setMem(new double[] { r, g, b });
 	}
@@ -158,6 +160,7 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	}
 
 	public RGB(MemoryData delegate, int delegateOffset) {
+		super(RGB.shape());
 		initColorModule(192, delegate, delegateOffset);
 	}
 
@@ -190,7 +193,8 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 //		else
 //			return Math.pow(c * f, this.gamma);
 	}
-	
+
+	@Override
 	public TraversalPolicy getShape() {
 		return data.getShape();
 	}
@@ -259,24 +263,6 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	  Returns the value of the blue channel of this RGB object as a double value.
 	*/
 	public double getBlue() { return this.data.toDouble(2); }
-
-	@Override
-	public double getA() { return getRed(); }
-
-	@Override
-	public double getB() { return getGreen(); }
-
-	@Override
-	public double getC() { return getBlue(); }
-
-	@Override
-	public void setA(double a) { setRed(a); }
-
-	@Override
-	public void setB(double b) { setGreen(b); }	
-
-	@Override
-	public void setC(double c) { setBlue(c); }
 	
 	/**
 	 * Returns the sum of the RGB value represented by this RGB object and that of the
@@ -554,8 +540,8 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
-	public int getCount() {
-		return data.getShape().getCount();
+	public long getCountLong() {
+		return data.getShape().getCountLong();
 	}
 
 	@Override
@@ -564,9 +550,9 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	}
 
 	@Override
-	public void setDelegate(MemoryData m, int offset) {
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
 		if (data != null)
-			data.setDelegate(m, offset);
+			data.setDelegate(m, offset, order);
 	}
 
 	@Override
@@ -576,10 +562,15 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	public int getDelegateOffset() { return data == null ? 0 : data.getDelegateOffset(); }
 
 	@Override
+	public TraversalOrdering getDelegateOrdering() {
+		return data == null ? null : data.getDelegateOrdering();
+	}
+
+	@Override
 	public void destroy() { data.destroy(); }
 
-	public static KernelizedProducer<RGB> blank() {
-		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
+	public static Producer<RGB> blank() {
+		return new DynamicCollectionProducer<>(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	public static PackedCollection<RGB> bank(int count) {

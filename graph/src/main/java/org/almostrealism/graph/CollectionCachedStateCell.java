@@ -17,13 +17,12 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.function.Supplier;
 
-public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CollectionFeatures {
+public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CodeFeatures {
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());
 	}
@@ -35,6 +34,6 @@ public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends PackedCollection<?>>> out) {
-		return a(1, out, PackedCollection.blank(1));
+		return a(1, out, c(0));
 	}
 }

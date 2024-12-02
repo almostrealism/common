@@ -16,5 +16,13 @@
 
 package org.almostrealism.heredity;
 
+import org.almostrealism.hardware.OperationList;
+
+import java.util.function.Supplier;
+
 public interface CellularTemporalFactor<T> extends TemporalFactor<T>, Cellular {
+	@Override
+	default Supplier<Runnable> setup() {
+		return new OperationList();
+	}
 }

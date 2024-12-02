@@ -16,11 +16,9 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Plural;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 import java.util.stream.IntStream;
 
 public interface Genome<T> extends Plural<Chromosome<T>> {

@@ -16,60 +16,56 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.code.HybridScope;
-import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ProducerCache;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+// TODO  This should extend CollectionProducerComputationBase
 public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCollection<?>>
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
 													AcceleratedConditionalStatement<T>,
-													DestinationSupport<MemoryData>,
 													ComputerFeatures {
 
 	private final int memLength;
 
-	private Supplier<MemoryData> destination;
-
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
-		this(memLength, blankValue, kernelDestination, null, null, null, null);
+	public AcceleratedConditionalStatementAdapter(int memLength, IntFunction<MemoryBank<T>> kernelDestination) {
+		this(memLength, kernelDestination, null, null, null, null);
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<T> blankValue,
 												  IntFunction<MemoryBank<T>> kernelDestination,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
 												  Supplier<Evaluable<? extends T>> trueValue,
 												  Supplier<Evaluable<? extends T>> falseValue) {
 		this.memLength = memLength;
-		this.destination = (Supplier) blankValue;
 
 		List inputs = new ArrayList();
-		inputs.add(new MemoryDataDestination(this, kernelDestination));
+		inputs.add(new MemoryDataDestinationProducer(this, kernelDestination));
 		inputs.add(leftOperand);
 		inputs.add(rightOperand);
 		inputs.add(trueValue);
@@ -82,21 +78,16 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(memLength);
-	}
+	public TraversalPolicy getShape() { return new TraversalPolicy(memLength); }
+
+	@Override
+	public long getCountLong() { return getShape().getCountLong(); }
 
 	/**
 	 * @return  GLOBAL
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	@Override
-	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<MemoryData> getDestination() { return destination; }
 
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;
@@ -111,41 +102,39 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	// TODO  They can be extracted from getTrueValueExpression and getFalseValueExpression
 	// TODO  and passed to the HybridScope directly.
 	@Override
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 
 		ArrayVariable<?> outputVariable = (ArrayVariable<?>) getOutputVariable();
 		List<Variable<?, ?>> vars = new ArrayList<>();
-
-		Variable<?, ?> condition = new Variable<>("", getCondition());
-		vars.add(condition);
+		vars.addAll(getCondition().getDependencies());
 
 		scope.code().accept("if (");
-		scope.code().accept(condition.getExpression().getExpression());
+		scope.code().accept(getCondition().getSimpleExpression(getLanguage()));
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getTrueValueExpression().apply(i), outputVariable);
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getTrueValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getFalseValueExpression().apply(i), outputVariable);
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getFalseValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 
@@ -154,8 +143,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.setDependencies(vars);
 		return scope;
 	}
-
-	protected boolean isCompacted() { return false; }
 
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {
@@ -166,5 +153,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 }

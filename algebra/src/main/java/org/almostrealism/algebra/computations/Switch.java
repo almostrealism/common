@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,24 +17,26 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class Switch extends DynamicOperationComputationAdapter {
+public class Switch extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
 	private final List<Computation> choices;
 
-	public Switch(ProducerComputation<PackedCollection<?>> decision, List<Computation> choices) {
-		super(new ProducerComputation[] { decision });
+	public Switch(Producer<PackedCollection<?>> decision, List<Computation> choices) {
+		super(new Producer[] { decision });
 		this.choices = choices;
 	}
 
@@ -45,38 +47,24 @@ public class Switch extends DynamicOperationComputationAdapter {
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		choices.forEach(c -> c.prepareScope(manager));
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
+		choices.forEach(c -> c.prepareScope(manager, context));
 	}
 
 	@Override
-	public Scope<Void> getScope() {
-		HybridScope<Void> scope = new HybridScope<>(this);
+	public Scope<Void> getScope(KernelStructureContext context) {
+		Cases<Void> scope = new Cases<>(getName(), getMetadata());
 
 		double interval = 1.0 / choices.size();
 
-		Scope<Scalar> decisionScope = ((ProducerComputation) getInputs().get(0)).getScope();
 		ArrayVariable<?> decisionValue = getArgument(0, 2);
 
-		choices.stream().map(Computation::getScope).forEach(atomScope -> {
-			atomScope.convertArgumentsToRequiredScopes();
-			scope.getRequiredScopes().add(atomScope);
-		});
-
-		IntStream.range(0, scope.getRequiredScopes().size()).forEach(i -> {
-			if (i > 0) {
-				scope.code().accept(" else ");
-			}
-
+		IntStream.range(0, choices.size()).forEach(i -> {
 			double val = (i + 1) * interval;
-
-			scope.code().accept("if (" + decisionValue.valueAt(0).getExpression() + " <= " + val + ") {\n");
-			scope.code().accept("\t" + renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
-			scope.code().accept("}");
+			scope.getConditions().add(decisionValue.valueAt(0).lessThanOrEqual(e(val)));
+			scope.getChildren().add(choices.get(i).getScope(context));
 		});
-
-		scope.code().accept("\n");
 
 		return scope;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,10 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -36,7 +33,7 @@ import java.util.function.Supplier;
 public class MatrixDeterminant extends AcceleratedEvaluable<TransformMatrix, Scalar> {
 	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", Scalar.blank(), m);
-		setKernelDestination(ScalarBank::new);
+		setKernelDestination(Scalar::scalarBank);
 		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 }

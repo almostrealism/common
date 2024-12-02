@@ -16,35 +16,50 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import io.almostrealism.scope.HybridScope;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
 
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter<AcceleratedTimeSeries> {
+public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
 		super(new Supplier[] { series, addition } );
 	}
 
+	private AcceleratedTimeSeriesAdd(Supplier<Evaluable<? extends AcceleratedTimeSeries>>... arguments) {
+		super(arguments);
+	}
+
 	@Override
-	public Scope<Void> getScope() {
+	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesAdd(children.toArray(Supplier[]::new));
+	}
+
+	@Override
+	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String bank1 = getArgument(0).valueAt(1).getExpression();
-		String banklast0 = getArgument(0).get("2 * (int)" + bank1).getExpression();
-		String banklast1 = getArgument(0).get("2 * (int)" + bank1 + " + 1").getExpression();
-		String input0 = getArgument(1).valueAt(0).getExpression();
-		String input1 = getArgument(1).valueAt(1).getExpression();
+		Expression<?> bank1 = getArgument(0).valueAt(1);
+		String banklast0 = getArgument(0).referenceRelative(bank1.toInt().multiply(2)).getSimpleExpression(getLanguage());
+		String banklast1 = getArgument(0).referenceRelative(bank1.toInt().multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String input0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String input1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 		code.accept(banklast0 + " = " + input0 + ";\n");
 		code.accept(banklast1 + " = " + input1 + ";\n");
-		code.accept(bank1 + " = " + bank1 + " + 1;\n");
+		code.accept(bank1.getSimpleExpression(getLanguage()) + " = " + bank1.getSimpleExpression(getLanguage()) + " + 1.0;\n");
 		return scope;
 	}
 }

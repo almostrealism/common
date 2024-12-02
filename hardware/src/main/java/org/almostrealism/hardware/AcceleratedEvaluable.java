@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,36 +16,48 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.Variable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.uml.Multiple;
+import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.cl.CLInstructionsManager;
+import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.InstructionSetManager;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 @Deprecated
-public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements Evaluable<O> {
+	private InstructionSetManager<DefaultExecutionKey> instructions;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private IntFunction<MemoryBank<O>> kernelDestination;
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this(function, false, result, inputArgs);
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(ComputeRequirement.CL), function, result, inputArgs);
+	}
+
+	@SafeVarargs
+	public AcceleratedEvaluable(CLComputeContext context, String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+		this(context, function, false, result, inputArgs);
 	}
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(function, kernel, includeResult(result, inputArgs));
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(ComputeRequirement.CL), function, kernel, result, inputArgs);
+	}
+
+	@SafeVarargs
+	public AcceleratedEvaluable(CLComputeContext context, String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+		super(context, function, kernel, includeResult(result, inputArgs));
 		setArgumentMapping(false);
 	}
 
@@ -56,11 +68,23 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	public void setKernelDestination(IntFunction<MemoryBank<O>> kernelDestination) { this.kernelDestination = kernelDestination; }
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
+	protected int getOutputArgumentIndex() {
+		return 0;
+	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public InstructionSetManager<DefaultExecutionKey> getInstructionSetManager() {
+		return instructions;
+	}
+
+	@Override
+	public DefaultExecutionKey getExecutionKey() {
+		return new DefaultExecutionKey(getFunctionName(), getArgsCount());
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		// Result should always be first
 		ArrayVariable arg = getArgumentForInput((Supplier) getInputs().get(0));
@@ -68,7 +92,22 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(null, args)[0], 0); }
+	public Scope<?> compile() {
+		instructions = new CLInstructionsManager(getComputeContext(), getSourceClass());
+		return super.compile();
+	}
+
+	@Override
+	public Evaluable<O> into(Object destination) {
+		return new DestinationEvaluable(this, (MemoryBank) destination);
+	}
+
+	@Override
+	public O evaluate(Object... args) {
+		AcceleratedProcessDetails process = apply(null, args);
+		waitFor(process.getSemaphore());
+		return postProcessOutput((MemoryData) process.getOriginalArguments()[0], 0);
+	}
 
 	/**
 	 * As the result of an {@link AcceleratedEvaluable} is not guaranteed to be
@@ -81,7 +120,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public MemoryBank<O> createKernelDestination(int size) {
+	public Multiple<O> createDestination(int size) {
 		if (kernelDestination != null) {
 			return kernelDestination.apply(size);
 		} else {

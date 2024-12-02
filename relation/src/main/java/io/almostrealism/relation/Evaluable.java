@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,28 @@
 package io.almostrealism.relation;
 
 import io.almostrealism.uml.Function;
+import io.almostrealism.uml.Multiple;
 
 /**
- * The {@link Evaluable} interface is implemented by classes that represent a
- * repeatedly evaluated function.
+ * An {@link Evaluable} is a {@link Computable} that can be directly
+ * evaluated to produce a result.
  *
  * @author  Michael Murray
  */
 @Function
-public interface Evaluable<T> {
+@FunctionalInterface
+public interface Evaluable<T> extends Computable {
+	default Multiple<T> createDestination(int size) {
+		throw new UnsupportedOperationException();
+	}
+
 	default T evaluate() {
 		return evaluate(new Object[0]);
 	}
 
 	T evaluate(Object... args);
+
+	default Evaluable<T> into(Object destination) {
+		throw new UnsupportedOperationException();
+	}
 }

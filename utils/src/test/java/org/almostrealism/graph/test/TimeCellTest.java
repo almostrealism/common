@@ -5,7 +5,8 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -13,9 +14,7 @@ import org.junit.Test;
 public class TimeCellTest implements TestFeatures {
 	@Test
 	public void timeCell() {
-		HardwareOperator.enableVerboseLog = true;
-
-		TimeCell cell = new TimeCell(null, v(44100));
+		TimeCell cell = new TimeCell(null, scalar(44100));
 		cell.setup().get().run();
 
 		Runnable tick = cell.tick().get();
@@ -23,17 +22,17 @@ public class TimeCellTest implements TestFeatures {
 			tick.run();
 		}
 
-		assertEquals(100.0, cell.frame().get().evaluate());
+		assertEquals(100.0, cell.frameScalar().get().evaluate());
 	}
 
 	@Test
 	public void fmod() {
 		Scalar time = new Scalar();
-		Producer<Scalar> loopDuration = v(0.0);
+		Producer<Scalar> loopDuration = scalar(2.0);
 
 		Producer<Scalar> left = l(() -> new Provider<>(time));
-		left = greaterThan(loopDuration, v(0.0),
-				mod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
+		left = scalarGreaterThan(loopDuration, scalar(0.0),
+				scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 				scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
 		Producer<Scalar> right = r(() -> new Provider<>(time));
@@ -41,10 +40,12 @@ public class TimeCellTest implements TestFeatures {
 
 		Runnable r = new Assignment<>(2, () -> new Provider<>(time), pair(left, right)).get();
 
-		for (int i = 0; i < 4; i++) {
-			r.run();
-		}
+		verboseLog(() -> {
+			for (int i = 0; i < 5; i++) {
+				r.run();
+			}
+		});
 
-		assertEquals(4.0, time);
+		assertEquals(1.0, time);
 	}
 }

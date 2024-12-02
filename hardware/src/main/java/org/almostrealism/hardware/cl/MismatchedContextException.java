@@ -21,7 +21,15 @@ import org.jocl.CLException;
 
 public class MismatchedContextException extends HardwareException {
 	public MismatchedContextException(CLDataContext targetContext, CLDataContext actualContext, CLException cause) {
-		super("Attempting to use " + name(targetContext) + " when " + name(actualContext) + " is in effect", cause);
+		super(text(targetContext, actualContext), cause);
+	}
+
+	protected static String text(CLDataContext targetContext, CLDataContext actualContext) {
+		if (actualContext == null) {
+			return "Attempting to use " + name(targetContext) + " when no context supporting OpenCL is in effect";
+		} else {
+			return "Attempting to use " + name(targetContext) + " when " + name(actualContext) + " is in effect";
+		}
 	}
 
 	public static String name(CLDataContext ctx) {

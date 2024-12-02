@@ -16,8 +16,9 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
@@ -30,9 +31,8 @@ import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
@@ -154,11 +154,11 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 		Producer<Scalar> s;
 
 		if (type == Plane.XY) {
-			s = scalar(minus(origin(tr).z()).divide(direction(tr).z()));
+			s = scalar(minus(z(origin(tr))).divide(z(direction(tr))));
 		} else if (type == Plane.XZ) {
-			s = scalar(minus(origin(tr).y()).divide(direction(tr).y()));
+			s = scalar(minus(y(origin(tr))).divide(y(direction(tr))));
 		} else if (type == Plane.YZ) {
-			s = scalar(minus(origin(tr).x()).divide(direction(tr).x()));
+			s = scalar(minus(x(origin(tr))).divide(x(direction(tr))));
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}
@@ -173,31 +173,34 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 	@Override
 	public Operator<Scalar> get() {
-		return new Operator<Scalar>() {
+		return new Operator<>() {
 			@Override
-			public Scalar evaluate(Object[] args) {
-				if (type == Plane.XY)
-					return new Scalar(getInput().evaluate(args).getZ());
-				else if (type == Plane.XZ)
-					return new Scalar(getInput().evaluate(args).getY());
-				else if (type == Plane.YZ)
-					return new Scalar(getInput().evaluate(args).getX());
-				else
-					return null;
+			public Evaluable<Scalar> get() {
+				return args -> {
+					if (type == Plane.XY)
+						return new Scalar(getInput().get().evaluate(args).getZ());
+					else if (type == Plane.XZ)
+						return new Scalar(getInput().get().evaluate(args).getY());
+					else if (type == Plane.YZ)
+						return new Scalar(getInput().get().evaluate(args).getX());
+					else
+						return null;
+				};
 			}
 
-			@Override public Scope<Scalar> getScope() {
-				// TODO  Not sure this is correct
-				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", evaluate(new Object[0])));
+			@Override
+			public Scope<Scalar> getScope(KernelStructureContext context) {
+				Scope<Scalar> s = new Scope<>();
+				// TODO  This is not correct
+				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
 			}
-		};
-	}
 
-	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
+			@Override
+			public Collection<Process<?, ?>> getChildren() {
+				return Collections.emptyList();
+			}
+		};
 	}
 
 	/** @see ParticleGroup#getParticleVertices() */

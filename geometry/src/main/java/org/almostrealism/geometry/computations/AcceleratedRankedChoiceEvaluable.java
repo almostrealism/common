@@ -16,17 +16,22 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
-import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
+import io.almostrealism.code.Precision;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,9 +43,9 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
+public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
+		extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware, ExpressionFeatures {
 	public static final boolean enableCompaction = true;
-	public static final boolean enableOpenClKernelWorkaround = true;
 
 	private int memLength;
 	private int valueCount;
@@ -56,6 +61,8 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	private List<ArrayVariable<T>> choices;
 	private ArrayVariable defaultValue;
 
+	private LanguageOperations lang;
+
 	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
@@ -64,7 +71,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue,
 											double e, Supplier<T> onNull) {
-		super(blank, forKernel, generateArgs(values, defaultValue));
+		super(null, blank, forKernel, generateArgs(values, defaultValue));
 		this.memLength = memLength;
 		this.forKernel = forKernel;
 		this.valueCount = values.size();
@@ -73,15 +80,16 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	protected void prepareScope() {
-		super.prepareScope();
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
+		this.lang = manager.getLanguage();
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
-		addVariable(new Variable(getHighestRankInputVariable().getName(), () -> this, 2 * valueCount, PhysicalScope.LOCAL));
-		addVariable(new Variable(getHighestRankConfVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
+		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
 	}
 
 	@Override
@@ -95,41 +103,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		}
 	}
 
-	public String getBody(Variable<MemoryData, ?> outputVariable) {
-		StringBuilder buf = new StringBuilder();
-
-		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
-
-		List<Variable<?, ?>> variables = new ArrayList<>();
-		writeVariables(buf::append, variables);
-		variables.addAll(getVariables());
-
-		writeInputAssignments(buf::append, variables);
-		buf.append("highestRankLocal(");
-		buf.append(getHighestRankResultVariable().getName());
-		buf.append(", ");
-		buf.append(getHighestRankInputVariable().getName());
-		buf.append(", ");
-		buf.append(getHighestRankConfVariable().getName());
-		buf.append(", 0, 0, 0, 2, 2, 2);\n");
-		if (enableOpenClKernelWorkaround) {
-//			writeHighestRank(buf::append);
-//			buf.append("printf(\"rank = %f, choice = %f\\n\", " +
-//					getHighestRankResultVariable().getName() + "[0], " +
-//					getHighestRankResultVariable().getName() + "[1]);\n");
-			buf.append("printf(\"\");\n");
-		}
-		writeOutputAssignments(buf::append, variables);
-
-		return buf.toString();
-	}
-
-	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables) {
+	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {
 		List<ArrayVariable<Scalar>> ranks = getRanks();
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
 			if (compactedRanks == null || compactedRanks[i] == null) {
-				output.accept(getHighestRankInputVariable().getName());
+				output.accept(getHighestRankInputVariable());
 				output.accept("[");
 				output.accept(String.valueOf(2 * i));
 				output.accept("] = ");
@@ -140,14 +119,14 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 			}
 		});
 
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[0] = ");
-		output.accept(stringForDouble(ranks.size()));
+		output.accept(lang.getPrecision().stringForDouble(ranks.size()));
 		output.accept(";\n");
 
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[1] = ");
-		output.accept(stringForDouble(e));
+		output.accept(lang.getPrecision().stringForDouble(e));
 		output.accept(";\n");
 	}
 
@@ -155,15 +134,10 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		List<ArrayVariable<T>> choices = getChoices();
 		IntStream.range(0, choices.size()).forEach(i -> {
 			output.accept("if (");
-			output.accept(stringForDouble(i));
+			output.accept(lang.getPrecision().stringForDouble(i));
 			output.accept(" == ");
-			output.accept(getHighestRankResultVariable().getName());
+			output.accept(getHighestRankResultVariable());
 			output.accept("[1]) {\n");
-
-//			if (enableOpenClKernelWorkaround) {
-//				output.accept("printf(\"assigning choice " + i + "\\n\");\n");
-//			}
-
 			writeOutputAssignments(output, i, existingVariables);
 			output.accept("}");
 			output.accept(" else ");
@@ -210,14 +184,14 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		output.accept("__local int closestIndex;\n");
 		output.accept("closestIndex = -1;\n");
 		output.accept("for (int i = 0; i < ");
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[0]; i++) {\n");
 		output.accept("__local double value;\n");
 		output.accept("value = ");
-		output.accept(getHighestRankInputVariable().getName());
+		output.accept(getHighestRankInputVariable());
 		output.accept("[i * 2];\n");
 		output.accept("if (value >= ");
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[1]");
 		output.accept(") {\n");
 		output.accept("if (closestIndex == -1 || value < closest) {\n");
@@ -226,15 +200,15 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		output.accept("}\n");
 		output.accept("}\n");
 		output.accept("}\n");
-		output.accept(getHighestRankResultVariable().getName());
+		output.accept(getHighestRankResultVariable());
 		output.accept("[0] = closestIndex < 0 ? -1 : closest;\n");
-		output.accept(getHighestRankResultVariable().getName());
+		output.accept(getHighestRankResultVariable());
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected Variable<Double, ?> getHighestRankResultVariable() { return getVariable(0); }
-	protected Variable<Double, ?> getHighestRankInputVariable() { return getVariable(1); }
-	protected Variable<Double, ?> getHighestRankConfVariable() { return getVariable(2); }
+	protected String getHighestRankResultVariable() { return getVariableName(0); }
+	protected String getHighestRankInputVariable() { return getVariableName(1); }
+	protected String getHighestRankConfVariable() { return getVariableName(2); }
 	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
@@ -250,10 +224,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 	private IntUnaryOperator indexOfChoice() { return i -> i + valueCount + 1; }
 
-	@Override
 	public void compact() {
-		super.compact();
-
 		if (enableCompaction && (compactedRanks == null || compactedChoices == null)) {
 			List<ArrayVariable> newArgs = new ArrayList<>();
 			newArgs.add(getArgumentVariables().get(0));
@@ -274,12 +245,83 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	protected T handleNull(int argIndex) {
-		return onNull == null ? (T) super.handleNull(argIndex) : onNull.get();
+	public MemoryBank<T> createDestination(int size) { return forKernel.apply(size); }
+
+	private String getKernelIndex(int kernelIndex) {
+		return getComputeContext().getLanguage().kernelIndex(kernelIndex);
 	}
 
-	@Override
-	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
+	private String getKernelIndex(ArrayVariable v, int kernelIndex) {
+		if (kernelIndex > 0) {
+			throw new UnsupportedOperationException("Only one kernel dimension is currently supported");
+		}
+
+		return kernelIndex < 0 ? "" :
+				getKernelIndex(kernelIndex) + " * " + getVariableDimName(v, kernelIndex) + " + ";
+	}
+
+	private String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
+		String name;
+
+		if (v instanceof ArrayVariable) {
+			if (v.getProducer() instanceof ParallelProcess
+					&& ((ParallelProcess) v.getProducer()).getCountLong() > 1) {
+				String kernelOffset = getKernelIndex((ArrayVariable) v, kernelIndex);
+
+				if (pos.equals("0") || pos.equals("(0)")) {
+					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
+				} else {
+					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + (int) (" + pos + ")]";
+				}
+			} else {
+				if (pos.equals("0")) {
+					name = v.getName() + "[" + v.getName() + "Offset]";
+				} else {
+					name = v.getName() + "[" + v.getName() + "Offset + (int) (" + pos + ")]";
+				}
+			}
+		} else {
+			name = v.getName() + "[(int) (" + pos + ")]";
+		}
+
+		if (isCastEnabled() && !assignment) {
+			return "(float)" + name;
+		} else {
+			return name;
+		}
+	}
+
+	private boolean isCastEnabled() {
+		return !getComputeContext().isCPU() && getComputeContext().getDataContext().getPrecision() == Precision.FP64;
+	}
+
+	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
+		return getValueName(v, pos, assignment, isKernel() ? kernelIndex : -1);
+	}
+
+	private String getVariableValueName(Variable v, int pos) {
+		return getVariableValueName(v, pos, 0);
+	}
+
+	private String getVariableValueName(Variable v, int pos, int kernelIndex) {
+		return getVariableValueName(v, pos, false, kernelIndex);
+	}
+
+	private String getVariableValueName(Variable v, int pos, boolean assignment) {
+		return getVariableValueName(v, pos, assignment, 0);
+	}
+
+	private String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
+	}
+
+	private String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(v, String.valueOf(pos), assignment, kernelIndex);
+	}
+
+	private String getArgumentValueName(int index, int pos, boolean assignment) {
+		return getArgumentValueName(index, pos, assignment, 0);
+	}
 
 	private static <T> Supplier[] generateArgs(List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue) {
 		List<Supplier> args = new ArrayList<>();

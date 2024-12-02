@@ -17,8 +17,10 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -26,46 +28,18 @@ import java.util.function.Supplier;
  * The {@link ProducerCache} provides static methods for keeping track
  * of the last result of a {@link Evaluable} in the current {@link Thread}.
  * Based on the assumption that a thread processes only one set of arguments
- * at a time, this allows {@link Evaluable} evaluation to be short circuited
+ * at a time, this allows {@link Evaluable} evaluation to be short-circuited
  * when the arguments have not changed.
  *
  * @author  Michael Murray
  */
 public class ProducerCache {
-	public static boolean enableResultCache = false;
 	public static boolean enableEvaluableCache = true;
 
-	private static ThreadLocal<Map<Supplier, Object>> resultCache = new ThreadLocal<>();
 	private static ThreadLocal<Map<Supplier, Evaluable>> evaluableCache = new ThreadLocal<>();
 
-	private static ThreadLocal<Object[]> lastParameter = new ThreadLocal<>();
-
-	/**
-	 * This type is not to be instantiated.
-	 */
+	/** This type is not to be instantiated. */
 	private ProducerCache() { }
-
-	public static <T> T evaluate(Supplier<Evaluable<? extends T>> p, Object args[]) {
-		checkArgs(args);
-
-		// If the result is already known, return it
-		// TODO  There should be a way to indicate that
-		//       a producer is not cacheable (if its
-		//       results are non-deterministic or
-		//       random, etc).
-		if (enableResultCache && getResultCache().containsKey(p)) {
-			return (T) getResultCache().get(p);
-		}
-
-		try {
-			T result = getEvaluableForSupplier(p).evaluate(args);
-
-			if (enableResultCache) getResultCache().put(p, result);
-			return result;
-		} catch (ClassCastException e) {
-			throw new IllegalArgumentException(String.valueOf(p.get().getClass()), e);
-		}
-	}
 
 	/**
 	 * This provides a way to obtain an already available {@link Evaluable} for
@@ -78,11 +52,18 @@ public class ProducerCache {
 	 * returned by this method if it is called again.
 	 */
 	public static <T> Evaluable<? extends T> getEvaluableForSupplier(Supplier<Evaluable<? extends T>> producer) {
-		if (enableEvaluableCache && !getEvaluableCache().containsKey(producer)) {
-			getEvaluableCache().put(producer, producer.get());
+		if (producer == null) {
+			throw new IllegalArgumentException();
 		}
 
-		return enableEvaluableCache ? getEvaluableCache().get(producer) : producer.get();
+		if (enableEvaluableCache) {
+			return getEvaluableCache().computeIfAbsent(producer, p -> {
+				Heap.addOperation(p);
+				return (Evaluable) p.get();
+			});
+		} else {
+			return producer.get();
+		}
 	}
 
 	public static <T> void purgeEvaluableCache(Supplier<Evaluable<? extends T>> producer) {
@@ -91,32 +72,15 @@ public class ProducerCache {
 		}
 	}
 
-	public static void clear() { getResultCache().clear(); }
-
 	public static void destroyEvaluableCache() {
 		getEvaluableCache().clear();
 		evaluableCache.remove();
 		evaluableCache = new ThreadLocal<>();
 	}
 
-	private static void checkArgs(Object args[]) {
-		if (lastParameter.get() != args) {
-			lastParameter.set(args);
-			clear();
-		}
-	}
-
-	private static Map<Supplier, Object> getResultCache() {
-		if (resultCache.get() == null) {
-			resultCache.set(new HashMap<>());
-		}
-
-		return resultCache.get();
-	}
-
 	private static Map<Supplier, Evaluable> getEvaluableCache() {
 		if (evaluableCache.get() == null) {
-			evaluableCache.set(new HashMap<>());
+			evaluableCache.set(new IdentityHashMap<>());
 		}
 
 		return evaluableCache.get();

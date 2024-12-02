@@ -16,17 +16,19 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 
-public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
+public class Abort extends OperationComputationAdapter<MemoryData> implements ExpressionFeatures {
 	private static MemoryData abortFallback;
 
 	static {
@@ -42,10 +44,10 @@ public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).get("0").getExpression());
+		scope.code().accept(getArgument(0).referenceRelative(e(0.0)).getSimpleExpression(getLanguage()));
 		scope.code().accept(" > 0) { return; }");
 		return scope;
 	}

@@ -16,15 +16,14 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.uml.Lifecycle;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalList;
 
 import java.util.Optional;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 

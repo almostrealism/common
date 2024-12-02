@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,21 +16,22 @@
 
 package org.almostrealism.space.test;
 
-import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.space.Plane;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PlaneTest implements HardwareFeatures, CodeFeatures {
+public class PlaneTest implements TestFeatures {
 	protected ShadableIntersection test1() {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
@@ -41,7 +42,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	// TODO @Test
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
-		double distance = ((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue();
+		double distance = intersection.getDistance().evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
@@ -66,13 +67,15 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void intersectionTest2() {
-		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.0, -1.0);
+		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertTrue(((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue() < 0);
+		verboseLog(() -> {
+			Assert.assertTrue(intersection.getDistance().get().evaluate().getValue() < 0);
+		});
 	}
 
 	// TODO @Test
@@ -84,7 +87,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		RayProducerBase t = transform(p.getTransform(true),
+		Producer<Ray> t = transform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());

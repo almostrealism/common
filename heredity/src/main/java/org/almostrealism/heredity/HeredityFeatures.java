@@ -16,9 +16,11 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
@@ -58,17 +60,17 @@ public interface HeredityFeatures extends CollectionFeatures {
 		return 1.0 / (1.0 - Math.pow(f, exp)) - 1.0;
 	}
 
-	default CollectionProducerComputation oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
+	default CollectionProducer<PackedCollection<?>> oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
 		return oneToInfinity(f.getResultant(c(1.0)), exp);
 	}
 
-	default CollectionProducerComputation oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
+	default CollectionProducer<PackedCollection<?>> oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
 		return oneToInfinity(arg, c(exp));
 	}
 
-	default CollectionProducerComputation oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
-		CollectionProducerComputation pow = pow(arg, exp);
-		CollectionProducerComputation out = minus(pow);
+	default CollectionProducer<PackedCollection<?>> oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
+		CollectionProducer<PackedCollection<?>> pow = pow(arg, exp);
+		CollectionProducer<PackedCollection<?>> out = minus(pow);
 		out = add(out, c(1.0));
 		out = pow(out, c(-1.0));
 		out = add(out, c(-1.0));

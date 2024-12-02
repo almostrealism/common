@@ -5,12 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.almostrealism</groupId>
-    <artifactId>Common</artifactId>
-    <version>0.53</version>
+    <artifactId>common</artifactId>
+    <version>0.65</version>
 
 	<properties>
-		<maven.compiler.source>11</maven.compiler.source>
-		<maven.compiler.target>11</maven.compiler.target>
+		<jacoco.version>0.8.11</jacoco.version>
+		<maven.compiler.source>16</maven.compiler.source>
+		<maven.compiler.target>16</maven.compiler.target>
 	</properties>
 
 	<modules>
@@ -35,9 +36,10 @@
 		<module>optimize</module>
 		<module>collect</module>
 		<module>ml</module>
+		<module>ml-script</module>
+		<module>llvm</module>
 	</modules>
 
-	<!-- Output to jar format -->
 	<packaging>pom</packaging>
 
     <build>
@@ -55,18 +57,41 @@
 					<target>11</target>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.2.1</version>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.basedir}/.qodana/code-coverage/</outputDirectory>
+							<formats>XML</formats>
+							<includes>
+								<include>**</include>
+							</includes>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 
     <dependencies>
-		<!-- TODO Can't this be removed? -->
-        <!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
-		<dependency>
-		    <groupId>com.fasterxml.jackson.core</groupId>
-		    <artifactId>jackson-databind</artifactId>
-		    <version>2.8.3</version>
-		</dependency>
-
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
@@ -77,16 +102,9 @@
 
 	<distributionManagement>
 		<repository>
-			<id>central</id>
-			<url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>
+			<id>github</id>
+			<name>GitHub Almost Realism Apache Maven Packages</name>
+			<url>https://maven.pkg.github.com/almostrealism/common</url>
 		</repository>
-<!--		<repository>-->
-<!--			<id>internal</id>-->
-<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
-<!--		</repository>-->
-<!--		<snapshotRepository>-->
-<!--			<id>internal</id>-->
-<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
-<!--		</snapshotRepository>-->
 	</distributionManagement>
 </project>

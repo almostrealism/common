@@ -1,13 +1,21 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.relation.Parent;
+import io.almostrealism.relation.Process;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Supplier;
 
-public class MemoryDataCopy implements Supplier<Runnable> {
+public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, OperationInfo {
 	public static boolean enableVerbose = false;
 
-	private String name;
+	private OperationMetadata metadata;
 	private Supplier<MemoryData> source;
 	private Supplier<MemoryData> target;
 	private int sourcePosition, targetPosition;
@@ -30,7 +38,7 @@ public class MemoryDataCopy implements Supplier<Runnable> {
 	}
 
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
-		this.name = name;
+		this.metadata = new OperationMetadata("copy_" + length, name, "Copy " + length + " values");
 		this.source = source;
 		this.target = target;
 		this.sourcePosition = sourcePosition;
@@ -39,18 +47,44 @@ public class MemoryDataCopy implements Supplier<Runnable> {
 	}
 
 	@Override
+	public OperationMetadata getMetadata() { return metadata; }
+
+	@Override
+	public Collection<Process<?, Runnable>> getChildren() {
+		return Collections.emptyList();
+	}
+
+	@Override
 	public Runnable get() {
-		return () -> {
+		return OperationWithInfo.RunnableWithInfo.of(getMetadata(), () -> {
 			MemoryData source = this.source.get();
 			MemoryData target = this.target.get();
 
 			if (enableVerbose) {
-				System.out.println("MemoryDataCopy[" + name + "]: Copying " + source + " (" +
+				System.out.println("MemoryDataCopy[" + getMetadata().getDisplayName() + "]: Copying " + source + " (" +
 						sourcePosition + ") to " + target + " (" + targetPosition + ") [" + length + "]");
+			}
+
+			if (source == null) {
+				throw new UnsupportedOperationException(getMetadata().getDisplayName());
 			}
 
 			// TODO  This can be done faster if the source and target are on the same MemoryProvider
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
-		};
+		});
+	}
+
+	@Override
+	public long getOutputSize() { return length; }
+
+	@Override
+	public Process<Process<?, Runnable>, Runnable> isolate() { return this; }
+
+	@Override
+	public Parent<Process<?, Runnable>> generate(List<Process<?, Runnable>> children) { return this; }
+
+	@Override
+	public String describe() {
+		return metadata.getDisplayName() + " (Copy " + getOutputSize() + " values)";
 	}
 }

@@ -16,12 +16,16 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.Map;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -29,9 +33,10 @@ import java.util.function.Supplier;
  * 
  * T is the type of the return value of the method.
  */
-public class Method<T> extends Expression<T> implements Nameable {
+public class Method<T> extends Expression<T> implements Statement<Expression<?>>, Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
+	private Map<String, String> arrayVariableReplacements;
 
 	public Method(String name, List<Expression<?>> arguments) {
 		this((Class<T>) String.class, name, arguments);
@@ -46,11 +51,10 @@ public class Method<T> extends Expression<T> implements Nameable {
 	}
 
 	public Method(Class<T> type, String member, String name, List<Expression<?>> arguments) {
-		super(type, null, arguments.toArray(new Expression[0]));
+		super(type, arguments.toArray(new Expression[0]));
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;
-		setExpression(text());
 	}
 
 	public Method(String name, Expression<?>... v) {
@@ -69,15 +73,29 @@ public class Method<T> extends Expression<T> implements Nameable {
 		this(type, member, name, Arrays.asList(v));
 	}
 
-	protected Supplier<String> text() {
-		return () -> {
-			if (getMember() == null) {
-				return getName() + "(" + toString(getArguments()) + ")";
-			} else {
-				return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
-			}
-		};
+	public void setArgument(ArrayVariable<?> methodArg, ArrayVariable<?> replacement) {
+		setArgument(methodArg.getName(), replacement.getName());
 	}
+
+	protected void setArgument(String methodArg, String replacement) {
+		if (arrayVariableReplacements == null) {
+			arrayVariableReplacements = new HashMap<>();
+		}
+
+		arrayVariableReplacements.put(methodArg, replacement);
+	}
+
+	@Override
+	public String getExpression(LanguageOperations lang) {
+		if (getMember() == null) {
+			return getName() + "(" + toString(lang, getArguments()) + ")";
+		} else {
+			return getMember() + "." + getName() + "(" + toString(lang, getArguments()) + ")";
+		}
+	}
+
+	@Override
+	public String getStatement(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public void setName(String n) { this.name = n; }
@@ -89,12 +107,34 @@ public class Method<T> extends Expression<T> implements Nameable {
 
 	public List<Expression<?>> getArguments() { return arguments; }
 
-	protected static String toString(List<Expression<?>> arguments) {
+	@Override
+	public Method<T> simplify(KernelStructureContext context, int depth) {
+		return (Method<T>) super.simplify(context, depth);
+	}
+
+	@Override
+	public Expression<T> recreate(List<Expression<?>> children) {
+		Method m = new Method<>(getType(), getMember(), getName(), children);
+		if (arrayVariableReplacements != null) {
+			arrayVariableReplacements.forEach(m::setArgument);
+		}
+		return m;
+	}
+
+	@Override
+	public boolean compare(Expression e) {
+		return e instanceof Method &&
+				((Method) e).getName().equals(getName()) &&
+				((Method) e).getMember().equals(getMember()) &&
+				((Method) e).getArguments().equals(getArguments());
+	}
+
+	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < arguments.size(); i++) {
 			Expression<?> v = arguments.get(i);
-			buf.append(v.getExpression());
+			buf.append(v.getExpression(lang));
 
 			if (i < (arguments.size() - 1)) {
 				buf.append(", ");

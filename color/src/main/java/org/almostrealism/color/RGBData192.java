@@ -17,10 +17,10 @@
 package org.almostrealism.color;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -74,7 +74,7 @@ public class RGBData192 extends PackedCollection<RGBData192> implements RGB.Data
 	}
 
 	@Override
-	public PooledMem getDefaultDelegate() { return RGBData192Pool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	public double[] toArray() {
 		double d[] = new double[3];

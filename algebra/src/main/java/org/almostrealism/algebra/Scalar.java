@@ -16,12 +16,15 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DynamicScalarProducer;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
 
 import java.util.function.BiFunction;
+import java.util.function.DoubleFunction;
+import java.util.function.IntFunction;
 
 public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
@@ -56,23 +59,52 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return (int) ((this.getValue() - s.getValue() / m) * Integer.MAX_VALUE);
 	}
 
+	@Override
+	public String describe() {
+		return getShape() + " " + toDouble(0);
+	}
+
 	public Scalar clone() {
 		return new Scalar(getValue(), getCertainty());
 	}
-
-	@Override
-	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
 
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(2);
 	}
 
-	public static ScalarProducerBase blank() {
-		return new DynamicScalarProducer(args -> new Scalar(false));
+	public static PackedCollection<Scalar> scalarBank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate) {
+		return scalarBank(count, delegate, 0);
+	}
+
+	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
+	}
+
+	public static Producer<Scalar> blank() {
+		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), Scalar::scalarBank);
+	}
+
+	public static DoubleFunction<Scalar> supply(IntFunction<PackedCollection<?>> supply) {
+		return v -> {
+			Scalar s = new Scalar(supply.apply(2), 0);
+			s.setValue(v);
+			return s;
+		};
 	}
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
 		return (delegate, offset) -> new Scalar(delegate, offset);
+	}
+
+	public static BiFunction<MemoryData, Integer, PackedCollection<Scalar>> scalarBankPostprocessor() {
+		return (output, offset) -> Scalar.scalarBank(output.getMemLength() / 2, output, offset);
 	}
 
 	/**

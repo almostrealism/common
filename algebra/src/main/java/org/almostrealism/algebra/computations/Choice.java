@@ -16,52 +16,63 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.HybridScope;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
-import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationAdapter<T, T> {
+// TODO  Why can't this be a child of TraversableComputationBase?
+public class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 	private int choiceCount;
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super(new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) choices);
+		super("choice", new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
 		this.choiceCount = choiceCount;
 	}
 
-	public Scope<T> getScope() {
+	public Scope<T> getScope(KernelStructureContext context) {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 		Consumer<String> code = scope.code();
 
 		ArrayVariable<?> output = getArgument(0, getMemLength());
 		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
-		String decision = getArgument(1, 2).valueAt(0).getExpression();
-		String choices = stringForDouble(choiceCount);
-		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
+		Expression decision = getArgument(1, 2).valueAt(0);
+		Expression choices = new DoubleConstant((double) choiceCount);
+		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.valueAt(i).getExpression() + " = " + input.get(decisionChoice + " + " + i).getExpression() + ";\n");
+			code.accept(output.referenceRelative(i).getSimpleExpression(getLanguage()) + " = " +
+					input.referenceRelative(decisionChoice.add(i)).getSimpleExpression(getLanguage()) + ";\n");
 		}
 
 		return scope;
+	}
+
+	protected static <T extends PackedCollection<?>> Supplier<Evaluable<? extends MemoryBank<T>>>
+			adjustChoices(int memLength, Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
+		if (!(choices instanceof Shape)) return choices;
+
+		TraversalPolicy shape = ((Shape) choices).getShape();
+		if (shape.getSize() == memLength && shape.getTraversalAxis() > 0) {
+			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) choices);
+		}
+
+		return choices;
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,30 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.scope.Variable;
-import io.almostrealism.relation.Compactable;
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.List;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
-public class Assignment<T extends MemoryData> extends DynamicOperationComputationAdapter<T> {
+public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+	public static boolean enableAdaptiveMemLength = true;
+
 	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
@@ -36,31 +49,107 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 	}
 
 	@Override
+	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
+		metadata = super.prepareMetadata(metadata);
+
+		if (getInputs().get(0) instanceof Shape<?>) {
+			metadata = metadata.withShape(((Shape<?>) getInputs().get(0)).getShape());
+		}
+
+		return metadata;
+	}
+
+	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		super.prepareScope(manager, context);
 
 		purgeVariables();
+	}
 
-		if (getInputs().get(1) instanceof Compactable && ((Compactable) getInputs().get(1)).isStatic()) {
-			IntStream.range(0, memLength).mapToObj(i ->
-					new Variable(getArgument(0, memLength).valueAt(i).getExpression(), false,
-							getInputValue(1, i), getArgument(0, memLength))).forEach(this::addVariable);
-		} else {
-			IntStream.range(0, memLength)
-					.mapToObj(i ->
-							new Variable(getArgument(0).valueAt(i).getExpression(), false,
-									getArgument(1).valueAt(i), getArgument(0)))
-					.forEach(this::addVariable);
-//			IntStream.range(0, memLength)
-//					.mapToObj(i ->
-//							new Variable(getArgument(0).valueAt(i).getExpression(), false,
-//									getInputValue(1, i), getArgument(0)))
-//					.forEach(this::addVariable);
+	@Override
+	public long getCountLong() {
+		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCountLong() : 1;
+	}
+
+	@Override
+	public Scope<Void> getScope(KernelStructureContext context) {
+		Scope<Void> scope = super.getScope(context);
+
+		int len = memLength;
+		OptionalLong contextCount = context.getKernelMaximum();
+
+		if (contextCount.isPresent() && contextCount.getAsLong() != getCountLong()) {
+			if (enableAdaptiveMemLength && getCountLong() % contextCount.getAsLong() == 0) {
+				len = Math.toIntExact(getCountLong() / contextCount.getAsLong());
+			} else {
+				throw new UnsupportedOperationException();
+			}
 		}
+
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, len);
+
+		for (int i = 0; i < len; i++) {
+			Expression index = new KernelIndex(context);
+			if (len > 1) index = index.multiply(len).add(i);
+
+			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
+			Expression<Double> value = exp == null ? getArgument(1).valueAt(index) : exp.getValueAt(index);
+			if (value == null) {
+				throw new UnsupportedOperationException();
+			}
+
+			ExpressionAssignment<?> v;
+			TraversableExpression out = TraversableExpression.traverse(output);
+
+			if (out == null) {
+				v = output.referenceRelative(i).assign(value);
+			} else {
+				Expression o = out.getValueAt(index);
+				v = o.assign(value);
+			}
+
+			scope.getVariables().add(v);
+		}
+
+		return scope;
+	}
+
+	@Override
+	public Process<Process<?, ?>, Runnable> optimize(ProcessContext ctx, Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.optimize(ctx, process);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
+		if (process == (Supplier) getInputs().get(0))
+			return process;
+
+		return super.isolate(process);
+	}
+
+	@Override
+	public Assignment<T> generate(List<Process<?, ?>> children) {
+		if (children.size() != 2) return this;
+
+		Assignment result = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+
+		if (getMetadata().getShortDescription() != null) {
+			result.getMetadata().setShortDescription(getMetadata().getShortDescription());
+		}
+
+		return result;
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";
 	}
 }

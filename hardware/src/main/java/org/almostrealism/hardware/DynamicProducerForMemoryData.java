@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,55 +16,87 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
-import org.jocl.CLException;
+import io.almostrealism.relation.Process;
+import io.almostrealism.uml.Multiple;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
-public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
+public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T>
+		implements ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 
-	private final IntFunction<MemoryBank<T>> kernelDestination;
+	private final OperationMetadata metadata;
+	private final IntFunction<MemoryBank<T>> destination;
 
 	public DynamicProducerForMemoryData(Supplier<T> supplier) {
 		this(args -> supplier.get());
 	}
 
-	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> kernelDestination) {
-		this(args -> supplier.get(), kernelDestination);
+	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> destination) {
+		this(args -> supplier.get(), destination);
 	}
 
 	public DynamicProducerForMemoryData(Function<Object[], T> function) {
 		this(function, null);
 	}
 
-	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> kernelDestination) {
+	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> destination) {
 		super(function);
-		this.kernelDestination = kernelDestination;
+		this.destination = destination;
+
+		if (getFunction() == null) {
+			this.metadata = OperationInfo.metadataForProcess(this, new OperationMetadata("dynamic", "dynamic"));
+		} else {
+			this.metadata = OperationInfo.metadataForProcess(this,
+					new OperationMetadata(OperationInfo.name(getFunction()), OperationInfo.display(getFunction())));
+		}
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() {
+	public OperationMetadata getMetadata() {
+		return metadata;
+	}
+
+	@Override
+	public long getCountLong() { return 1; }
+
+	public IntFunction<MemoryBank<T>> getDestinationFactory() { return destination; }
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return Collections.emptyList();
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		return this;
+	}
+
+	@Override
+	public Evaluable<T> get() {
 		Evaluable<T> e = super.get();
 
-		return new KernelizedEvaluable<T>() {
+		return new Evaluable<T>() {
 			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
-				if (kernelDestination == null) {
+			public Multiple<T> createDestination(int size) {
+				if (destination == null) {
 					throw new UnsupportedOperationException();
 				} else {
-					return kernelDestination.apply(size);
+					return destination.apply(size);
 				}
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
-				return new DestinationEvaluable(e, destination);
+			public Evaluable<T> into(Object destination) {
+				return new DestinationEvaluable(e, (MemoryBank) destination);
 			}
 
 			@Override
@@ -76,5 +108,10 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
+	}
+
+	@Override
+	public String describe() {
+		return getMetadata().getShortDescription();
 	}
 }

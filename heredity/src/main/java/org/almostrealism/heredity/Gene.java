@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Plural;
 
 import java.util.function.IntFunction;
@@ -31,5 +32,19 @@ public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
 		StringBuffer buf = new StringBuffer();
 		IntStream.range(0, length()).mapToObj(this::valueAt).map(Factor::signature).forEach(buf::append);
 		return buf.toString();
+	}
+
+	static <T> Gene<T> of(int length, IntFunction<Factor<T>> factor) {
+		return new Gene<T>() {
+			@Override
+			public Factor<T> valueAt(int pos) {
+				return factor.apply(pos);
+			}
+
+			@Override
+			public int length() {
+				return length;
+			}
+		};
 	}
 }

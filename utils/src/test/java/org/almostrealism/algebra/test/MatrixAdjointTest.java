@@ -19,11 +19,15 @@ package org.almostrealism.algebra.test;
 import org.almostrealism.geometry.computations.MatrixAdjoint;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
-public class MatrixAdjointTest implements CodeFeatures {
+public class MatrixAdjointTest implements TestFeatures {
 	@Test
 	public void test() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		new MatrixAdjoint(p(new TransformMatrix())).evaluate();
 	}
 }

@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +29,7 @@ import io.almostrealism.html.Div;
 import io.almostrealism.html.HTMLContent;
 import io.almostrealism.html.HTMLString;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 
 /**
@@ -96,6 +97,24 @@ public class Tensor<T> implements HTMLContent {
 		}
 
 		return dims;
+	}
+
+	public int getTotalSize() {
+		return totalSize(top);
+	}
+
+	protected int totalSize(List<T> l) {
+		int size = 0;
+
+		for (T o : l) {
+			if (o instanceof LinkedList) {
+				size += totalSize((LinkedList) o);
+			} else {
+				size++;
+			}
+		}
+
+		return size;
 	}
 
 	public PackedCollection<?> pack() {

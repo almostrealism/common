@@ -23,13 +23,18 @@ import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
 import java.awt.image.MemoryImageSource;
 import java.awt.image.RenderedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.function.Function;
 
+import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Pipeline;
 import io.almostrealism.relation.Evaluable;
 
 /**
@@ -68,6 +73,7 @@ public class GraphicsConverter {
 	 * converted to the standard RGB color model if it is not already
 	 * and the alpha channel will be ignored.
 	 */
+	@Deprecated
 	public static RGB[][] convertToRGBArray(Image image) {
 		image = new ImageIcon(image).getImage();
 		BufferedImage bufferedImage = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
@@ -138,7 +144,8 @@ public class GraphicsConverter {
 		
 		return rgb;
 	}
-	
+
+	@Deprecated
 	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage) {
 		return GraphicsConverter.convertToRGBArray(bufferedImage, 0, 0,
 													bufferedImage.getWidth(),
@@ -166,7 +173,8 @@ public class GraphicsConverter {
 		
 		return rgb;
 	}
-	
+
+	@Deprecated
 	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage,
 											int xoff, int yoff, int w, int h) {
 		RGB rgbArray[][] = new RGB[w][h];
@@ -188,6 +196,81 @@ public class GraphicsConverter {
 		}
 		
 		return rgbArray;
+	}
+
+	public static PackedCollection<RGB> loadRgb(File file) throws IOException {
+		BufferedImage image = ImageIO.read(file);
+
+		int width = image.getWidth();
+		int height = image.getHeight();
+
+		PackedCollection<RGB> dest = new PackedCollection<>(
+				new TraversalPolicy(height, width, 3).traverse(2));
+		loadRgb(dest, image, 0, 0, width, height);
+		return dest;
+	}
+
+	public static void loadRgb(PackedCollection<RGB> rgbDestination,
+							   BufferedImage bufferedImage,
+							   int xOff, int yOff, int w, int h) {
+		TraversalPolicy destShape = rgbDestination.getShape();
+		if (destShape.getDimensions() != 3) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy slice = new TraversalPolicy(1, 1, 3).traverseEach();
+
+		for(int r = 0; r < h; r++) {
+			for(int c = 0; c < w; c++) {
+				int color = bufferedImage.getRGB(xOff + c, yOff + r);
+
+				int rChannel = (color >> 16) & 255;
+				int gChannel = (color >> 8) & 255;
+				int bChannel = color & 255;
+
+				rgbDestination.range(slice, destShape.index(r, c, 0))
+						.set(0, rChannel / 255d, gChannel / 255d, bChannel / 255d);
+			}
+		}
+	}
+
+	public static PackedCollection<RGB> loadGrayscale(File file) throws IOException {
+		BufferedImage image = ImageIO.read(file);
+
+		int width = image.getWidth();
+		int height = image.getHeight();
+
+		PackedCollection<RGB> dest = new PackedCollection<>(
+				new TraversalPolicy(height, width, 1).traverse(2));
+		loadGrayscale(dest, image, 0, 0, width, height);
+		return dest;
+	}
+
+	public static void loadGrayscale(
+								PackedCollection<?> rgbDestination,
+							    BufferedImage bufferedImage,
+							    int xOff, int yOff, int w, int h) {
+		TraversalPolicy destShape = rgbDestination.getShape();
+		if (destShape.getDimensions() != 3) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy slice = new TraversalPolicy(1, 1, 1).traverseEach();
+
+		for(int r = 0; r < h; r++) {
+			for(int c = 0; c < w; c++) {
+				int color = bufferedImage.getRGB(xOff + c, yOff + r);
+
+				int rChannel = (color >> 16) & 255;
+				int gChannel = (color >> 8) & 255;
+				int bChannel = color & 255;
+
+				double g = (rChannel / 255d) + (gChannel / 255d) + (bChannel / 255d);
+				g /= 3;
+
+				rgbDestination.range(slice, destShape.index(r, c, 0)).set(0, g);
+			}
+		}
 	}
 
 	public static double[] histogram(BufferedImage bufferedImage,
@@ -218,13 +301,13 @@ public class GraphicsConverter {
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
 	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][]) {
-		return convertToRGBArray(image, (Pipeline) null);
+		return convertToRGBArray(image, (Producer) null);
 	}
 
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Producer notify) {
 		return convertToRGBArray(image, p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
@@ -238,7 +321,7 @@ public class GraphicsConverter {
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
 		RGB evaluated[][] = new RGB[image.length][image[0].length];
 
 		boolean wasNull = false;
@@ -254,7 +337,7 @@ public class GraphicsConverter {
 			}
 
 			if (notify != null) {
-				notify.evaluate(new Object[] { evaluated });
+				notify.get().evaluate(evaluated);
 			}
 		}
 
@@ -278,7 +361,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<RGB> image[][], Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Producer notify) {
 		return convertToAWTImage(image,  p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
@@ -287,7 +370,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;
@@ -312,7 +395,7 @@ public class GraphicsConverter {
 
 			if (notify != null) {
 				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
-				notify.evaluate(new Object[] {img});
+				notify.get().evaluate(img);
 			}
 		}
 		
@@ -337,7 +420,7 @@ public class GraphicsConverter {
 	 * uses the RGB color model with no alpha channel.
 	 */
 	// TODO  Accelerated
-	public static Image convertToAWTImage(RGB image[][], Pipeline notify) {
+	public static Image convertToAWTImage(RGB image[][], Producer notify) {
 		int data[] = new int[image.length * image[0].length];
 
 		int index = 0;
@@ -362,7 +445,7 @@ public class GraphicsConverter {
 
 			if (notify != null) {
 				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
-				notify.evaluate(new Object[] {img});
+				notify.get().evaluate(img);
 			}
 		}
 

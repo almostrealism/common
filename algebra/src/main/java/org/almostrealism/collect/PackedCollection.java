@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,32 +16,53 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Collection;
+import io.almostrealism.collect.DefaultTraversalOrdering;
+import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleSupplier;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, Cloneable {
-	private static ContextSpecific<KernelizedOperation> clear;
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
+		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
+	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
 
 	static {
 		clear = new DefaultContextSpecific<>(() ->
-				(KernelizedOperation)
-						new Assignment<>(1, new PassThroughProducer(1, 0),
-						new PassThroughProducer<>(1, 1, -1)).getKernel());
+				CollectionFeatures.getInstance().multiply(
+						new PassThroughProducer<>(1, 0),
+						CollectionFeatures.getInstance().c(1)).get());
 	}
 
 	private final TraversalPolicy shape;
@@ -53,6 +74,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public PackedCollection(TraversalPolicy shape) {
 		this(shape, shape.getTraversalAxis(), null, 0);
+	}
+
+	public PackedCollection(PackedCollection<T> src) {
+		this(src.getShape(), src.getShape().getTraversalAxis(), src.supply);
+		new MemoryDataCopy("PackedCollection constructor", src, this).get().run();
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis) {
@@ -69,7 +95,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
-		this.shape = shape.traverse(traversalAxis);
+		this(shape, traversalAxis, delegate, delegateOffset, null);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
+		if (shape.getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException("Collection must have a non-zero size");
+		}
+
+		this.shape = shape.traverse(order).traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -91,32 +125,124 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public void set(int index, double... values) {
+		if (index * getAtomicMemLength() + values.length > getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
 
+	public void copyFrom(PackedCollection<T> source) {
+		if (source.getShape().getTotalSize() != getShape().getTotalSize()) {
+			throw new UnsupportedOperationException();
+		}
+
+		setMem(0, source, 0, source.getMemLength());
+	}
+
 	@Override
-	public int getCount() {
-		return shape.getCount();
+	public long getCountLong() {
+		return shape.getCountLong();
 	}
 
 	@Override
 	public int getMemLength() {
-		return shape.getTotalSize();
+		return shape.getTotalInputSize();
 	}
 
 	@Override
 	public int getAtomicMemLength() {
-		return shape.getSize();
+		return shape.getInputSize();
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public TraversalOrdering getDelegateOrdering() {
+		if (getShape().getOrder() == null) return null;
+		return getShape().getOrder().getLength().stream()
+				.mapToObj(DefaultTraversalOrdering::new)
+				.findFirst()
+				.orElseGet(DefaultTraversalOrdering::new);
+	}
+
+	public double toDouble() {
+		if (getShape().getTotalSizeLong() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return toDouble(0);
+	}
+
+	@Override
+	public double toDouble(int index) {
+		if (getShape().getOrder() == null) return super.toDouble(index);
+		return super.toDouble(getShape().getOrder().indexOf(index));
+	}
 
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	public void fill(Function<int[], Double> f) {
-		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
+	public Stream<String> stringStream() {
+		int colWidth = getShape().getSize();
+		return IntStream.range(0, getCount()).mapToObj(r -> toArrayString(r * colWidth, colWidth));
+	}
+
+	public void print(Consumer<String> out) {
+		stringStream().forEach(out);
+	}
+
+	public void print() {
+		print(System.out::println);
+	}
+
+	public PackedCollection<T> fill(double... value) {
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<T> fill(DoubleSupplier values) {
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<T> fill(Function<int[], Double> f) {
+		double data[] = new double[getMemLength()];
+		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<?> replace(DoubleUnaryOperator f) {
+		double in[] = toArray(0, getMemLength());
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<?> identityFill() {
+		return fill(pos -> {
+			for (int i = 0; i < pos.length; i++) {
+				if (pos[i] != pos[0]) {
+					return 0.0;
+				}
+			}
+
+			return 1.0;
+		});
+	}
+
+	public PackedCollection<T> randFill() {
+		rand(getShape()).get().into(this).evaluate();
+		return this;
+	}
+
+	public PackedCollection<T> randnFill() {
+		randn(getShape()).get().into(this).evaluate();
+		return this;
 	}
 
 	public void forEach(Consumer<T> consumer) {
@@ -124,7 +250,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public void clear() {
-		clear.getValue().kernelOperate(this.traverseEach(), new PackedCollection(1));
+		clear.getValue().into(this.traverseEach()).evaluate(new PackedCollection<>(1));
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape) {
@@ -132,7 +258,25 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		return new PackedCollection(shape, 0, this, start);
+		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
+				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
+
+		if (start + required > getShape().getTotalSize()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
+		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
+			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		} else {
+			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
+		}
+	}
+
+	public PackedCollection<T> repeat(int count) {
+		int len = getShape().getTotalSize();
+		TraversalPolicy shape = getShape().prependDimension(count)
+				.withOrder(new RepeatTraversalOrdering(len));
+		return range(shape);
 	}
 
 	public PackedCollection<T> value(int pos) {
@@ -159,8 +303,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return Math.sqrt(lengthSq());
 	}
 
+	public int argmax() {
+		return IntStream.range(0, getMemLength())
+				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
+				.orElse(-1);
+	}
+
 	@Override
-	public PackedCollection reshape(TraversalPolicy shape) {
+	public PackedCollection<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
+	}
+
+	@Override
+	public PackedCollection<T> reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
 					") does not match collection size (" + getMemLength() + ")");
@@ -205,10 +360,132 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
+	public void store(File f) throws IOException {
+		store(new FileOutputStream(f));
+	}
+
+	public void store(OutputStream out) throws IOException {
+		try (DataOutputStream dos = new DataOutputStream(out)) {
+			getShape().store(dos);
+
+			try {
+				doubleStream().forEach(d -> {
+					try {
+						dos.writeDouble(d);
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				});
+			} catch (RuntimeException e) {
+				if (e.getCause() instanceof IOException) {
+					throw (IOException) e.getCause();
+				} else {
+					throw e;
+				}
+			}
+
+			dos.flush();
+		}
+	}
+
+	@Override
+	public void destroy() {
+		if (getDelegate() != null && getDelegate().getMemLength() == getMemLength()) {
+			// When attempting to destroy a collection which extends over the entire
+			// space of its delegate, it is almost certainly expected that the delegate
+			// will also be destroyed
+			getDelegate().destroy();
+			setDelegate(null, 0);
+		}
+
+		super.destroy();
+	}
+
+	@Override
+	public String describe() {
+		if (getShape().getTotalSize() == 1) {
+			return getShape() + " " + toDouble(0);
+		} else {
+			return getShape().toStringDetail();
+		}
+	}
+
 	public PackedCollection<T> clone() {
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static PackedCollection<?> of(double... values) {
+		PackedCollection<?> collection = factory().apply(values.length);
+		collection.setMem(0, values, 0, values.length);
+		return collection;
+	}
+
+	public static IntFunction<PackedCollection<?>> factory() {
+		Heap heap = Heap.getDefault();
+		return heap == null ? PackedCollection::new : factory(heap::allocate);
+	}
+
+	public static IntFunction<PackedCollection<?>> factory(IntFunction<Bytes> allocator) {
+		return len -> {
+			Bytes data = allocator.apply(len);
+			return new PackedCollection<>(new TraversalPolicy(len), 0, data.getDelegate(), data.getDelegateOffset());
+		};
+	}
+
+	public static PackedCollection<?> range(MemoryData data, TraversalPolicy shape, int start) {
+		if (start + shape.getTotalSize() > data.getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
+	}
+
+	public static Iterable<PackedCollection<?>> loadCollections(File src) {
+		try {
+			return loadCollections(new FileInputStream(src));
+		} catch (FileNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static Iterable<PackedCollection<?>> loadCollections(InputStream in) {
+		DataInputStream dis = new DataInputStream(in);
+
+		return () -> new Iterator<>() {
+			@Override
+			public boolean hasNext() {
+				try {
+					if (dis.available() <= 0) {
+						dis.close();
+						return false;
+					}
+
+					return true;
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+
+			@Override
+			public PackedCollection next() {
+				try {
+					TraversalPolicy shape = TraversalPolicy.load(dis);
+					PackedCollection<?> collection = new PackedCollection<>(shape);
+					double input[] = new double[shape.getTotalSize()];
+
+					for (int i = 0; i < shape.getTotalSize(); i++) {
+						input[i] = dis.readDouble();
+					}
+
+					collection.setMem(0, input, 0, input.length);
+					return collection;
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		};
 	}
 
 	public static DynamicCollectionProducer blank(int... dims) {

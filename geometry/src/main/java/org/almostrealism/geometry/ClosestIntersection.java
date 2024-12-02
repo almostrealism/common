@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
 	private Producer<Ray> r;
@@ -36,78 +37,49 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			s.add(in.intersectAt(ray));
 		}
 
-		this.add(new Producer<Ray>() {
-			@Override
-			public Evaluable<Ray> get() {
-				return args -> {
-					double d = Double.MAX_VALUE;
-					ContinuousField intersection = null;
+		this.add(() -> args -> {
+			double d = Double.MAX_VALUE;
+			ContinuousField intersection = null;
 
-					p:
-					for (ContinuousField in : s) {
-						if (in == null) continue p;
+			p:
+			for (ContinuousField in : s) {
+				if (in == null) continue p;
 
-						Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-						if (s == null) continue p;
+				Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				if (s == null) continue p;
 
-						double v = s.getValue();
-						if (v >= 0.0 && v < d) {
-							d = v;
-							intersection = in;
-						}
-					}
-
-					return intersection == null ? null : intersection.get(0).get().evaluate(args);
-				};
+				double v = s.getValue();
+				if (v >= 0.0 && v < d) {
+					d = v;
+					intersection = in;
+				}
 			}
 
-			// TODO  Hardware acceleration
-			@Override
-			public void compact() {
-				r.compact();
-			}
+			return intersection == null ? null : intersection.get(0).get().evaluate(args);
 		});
 	}
 
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return new Producer<Vector>() {
-			@Override
-			public Evaluable<Vector> get() {
-				return args -> {
-					double d = Double.MAX_VALUE;
-					Vector normal = null;
+		return () -> args -> {
+			double d = Double.MAX_VALUE;
+			Vector normal = null;
 
-					p:
-					for (ContinuousField in : s) {
-						if (in == null) continue p;
+			p:
+			for (ContinuousField in : s) {
+				if (in == null) continue p;
 
-						Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-						if (s == null) continue p;
+				Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				if (s == null) continue p;
 
-						double v = s.getValue();
-						if (v >= 0.0 && v < d) {
-							d = v;
-							normal = in.getNormalAt(point).get().evaluate(args);
-						}
-					}
-
-					return normal;
-				};
+				double v = s.getValue();
+				if (v >= 0.0 && v < d) {
+					d = v;
+					normal = in.getNormalAt(point).get().evaluate(args);
+				}
 			}
 
-			// TODO  Hardware acceleration
-			@Override
-			public void compact() {
-				point.compact();
-				r.compact();
-			}
+			return normal;
 		};
-	}
-
-	@Override
-	public Vector operate(Vector in) {
-		// TODO
-		return null;
 	}
 }

@@ -19,24 +19,24 @@ package org.almostrealism.graph.mesh.test;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducerBase;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -96,13 +96,13 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void data1() {
 		System.out.println(def(data1).get().evaluate());
 
-		VectorProducerBase h = TriangleIntersectAt.h(def(data1), direction1);
+		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducerBase f = TriangleIntersectAt.f(abc(data1), h);
+		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		ScalarProducerBase u = TriangleIntersectAt.u(
+		Producer<Scalar> u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
@@ -113,46 +113,48 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void conjunction() {
 		System.out.println(def(data1).get().evaluate());
 
-		VectorProducerBase h = TriangleIntersectAt.h(def(data1), direction1);
+		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducerBase f = TriangleIntersectAt.f(abc(data1), h);
+		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data1), origin1);
 		System.out.println("s = " + s.get().evaluate());
 
-		ScalarProducerBase u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
+		Producer<Scalar> u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().getValue());
 
-		ScalarProducerBase v = TriangleIntersectAt.v(direction1, f,
+		Producer<Scalar> v = TriangleIntersectAt.v(direction1, f,
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		KernelizedEvaluable<Vector> ho = h.get();
+		HardwareEvaluable<Vector> ho = (HardwareEvaluable) h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
-		KernelizedEvaluable<Scalar> fo = f.get();
+		HardwareEvaluable<Scalar> fo = (HardwareEvaluable) f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
-		KernelizedEvaluable<Scalar> uo = u.get();
+		HardwareEvaluable<Scalar> uo = (HardwareEvaluable<Scalar>) u.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
 
-		KernelizedEvaluable<Scalar> vo = v.get();
+		HardwareEvaluable<Scalar> vo = (HardwareEvaluable<Scalar>) v.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
-				u.greaterThan(0.0, true),
-				u.lessThan(1.0, true),
-				v.greaterThan(0.0, true),
-				u.add(v).lessThan(1.0, true));
-		KernelizedEvaluable<Scalar> evs = acs.get();
+				scalarGreaterThan(u, scalar(0.0), true),
+				scalarLessThan(u, scalar(1.0), true),
+				scalarGreaterThan(v, scalar(0.0), true),
+				scalarLessThan(add(u, v), scalar(1.0), true));
+		ArgumentList<Scalar> evs = (ArgumentList) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 
 	@Test
 	public void data2() {
+		if (testDepth < 1) return;
+
 		Producer<Vector> abc = abc(data2);
 		Producer<Vector> def = def(data2);
 		Producer<Vector> jkl = jkl(data2);
@@ -161,13 +163,13 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("def = " + def.get().evaluate());
 		System.out.println("jkl = " + jkl.get().evaluate());
 
-		VectorProducerBase h = TriangleIntersectAt.h(def(data2), direction2);
+		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data2), direction2);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducerBase f = TriangleIntersectAt.f(abc(data2), h);
+		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data2), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		ScalarProducerBase u = TriangleIntersectAt.u(
+		Producer<Scalar> u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
@@ -176,10 +178,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data2), origin2);
 		System.out.println("s = " + s.get().evaluate());
 
-		VectorProducerBase q = TriangleIntersectAt.q(abc(data2), s);
+		ExpressionComputation<Vector> q = TriangleIntersectAt.q(abc(data2), s);
 		System.out.println("q = " + q.get().evaluate());
 
-		ScalarProducerBase v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
+		Producer<Scalar> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
 		System.out.println("v = " + v.get().evaluate().getValue());
 	}
 
@@ -205,15 +207,19 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel1() {
-		ScalarBank distances = new ScalarBank(1);
-		RayProducerBase ray = ray(origin1, direction1);
-		data1.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
+		Producer<Ray> ray = ray(origin1, direction1);
+		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
 
 	@Test
 	public void intersectAt2() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		double distance = intersection().get().evaluate(
 				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
@@ -222,18 +228,22 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel2() {
-		ScalarBank distances = new ScalarBank(1);
-		RayExpressionComputation ray = ray(origin2, direction2);
-		data2.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
+		CollectionProducer<Ray> ray = ray(origin2, direction2);
+		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		assertEquals(1.0, distances.get(0));
 	}
 
 	@Test
 	public void intersectionKernel3() {
-		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
-		ScalarBank distances = new ScalarBank(100);
-		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
+		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
+		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions
 	}
 }

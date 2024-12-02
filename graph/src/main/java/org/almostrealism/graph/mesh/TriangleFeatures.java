@@ -16,19 +16,23 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.IndexProjectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -36,19 +40,19 @@ import java.util.stream.IntStream;
 public interface TriangleFeatures extends VectorFeatures {
 
 
-	default VectorExpressionComputation abc(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default ExpressionComputation<Vector> abc(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
 		return vector(t, 0);
 	}
 
-	default VectorExpressionComputation def(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default ExpressionComputation<Vector> def(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
 		return vector(t, 1);
 	}
 
-	default VectorExpressionComputation jkl(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default ExpressionComputation<Vector> jkl(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
 		return vector(t, 2);
 	}
 
-	default VectorExpressionComputation normal(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default ExpressionComputation<Vector> normal(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
 		return vector(t, 4);
 	}
 
@@ -65,32 +69,34 @@ public interface TriangleFeatures extends VectorFeatures {
 		Producer<Vector> abc = subtract(p2, p1);
 		Producer<Vector> def = subtract(p3, p1);
 		Supplier jkl = p1;
-		return triangle(abc, def, jkl, crossProduct(abc, def).normalize());
+		return triangle(abc, def, jkl, normalize(crossProduct(abc, def)));
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends Vector>> abc,
 																	 Supplier<Evaluable<? extends Vector>> def,
 																	 Supplier<Evaluable<? extends Vector>> jkl,
 																	 Supplier<Evaluable<? extends Vector>> normal) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValue(i % 3)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 12).forEach(i -> expression.add(args ->
+				args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(shape(4, 3), expression, (Supplier) abc, (Supplier) def, (Supplier) jkl, (Supplier) normal);
 	}
 
-	default ExpressionComputation<Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValue(index * 3 + i)));
-		return new ExpressionComputation<>(shape(3), expression, (Supplier) points);
+	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
+		return new DefaultTraversableExpressionComputation<>("point", shape(3),
+				(Function<TraversableExpression[], CollectionExpression>) args ->
+						new IndexProjectionExpression(shape(3),
+							idx -> e(index * 3).add(idx.imod(3)), args[1]),
+						(Supplier) points)
+				.setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,
 										 Supplier<Evaluable<? extends Vector>> p2,
 										 Supplier<Evaluable<? extends Vector>> p3) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 9).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValue(i % 3)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 9).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(expression, (Supplier) p1, (Supplier) p2, (Supplier) p3);
-		// TODO  return new DynamicExpressionComputation<>(shape(9), (args, index) -> args[???].getValueAt(index.mod(3)),
-		// TODO            (Supplier) p1, (Supplier) p2, (Supplier) p3);
 	}
 
 	static TriangleFeatures getInstance() {

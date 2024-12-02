@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,14 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 
 public interface WaveCellData extends BaseAudioData {
 
 	default Scalar waveIndex() { return get(3); }
 	default Scalar waveCount() { return get(4); }
 	default Scalar duration() { return get(5); }
+	default Scalar value() { return get(9); }
 
 	default Producer<Scalar> getWaveIndex() { return p(waveIndex()); }
 	default void setWaveIndex(int count) { waveIndex().setValue(count); }

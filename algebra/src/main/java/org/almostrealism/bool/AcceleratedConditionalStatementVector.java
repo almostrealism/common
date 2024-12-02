@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.code.CollectionUtils;
-import org.almostrealism.algebra.VectorProducerBase;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, VectorProducerBase {
+public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, ProducerComputation<Vector> {
 	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier trueValue, Supplier falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

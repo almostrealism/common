@@ -17,14 +17,12 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -97,7 +95,7 @@ public class TriangleDataTest implements TestFeatures {
 		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
-		((KernelizedEvaluable) td.get()).into(output).evaluate(points);
+		((HardwareEvaluable) td.get()).into(output).evaluate(points);
 		triangleDataAssertions(output.get(0));
 	}
 

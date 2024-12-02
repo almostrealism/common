@@ -16,37 +16,80 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
-public interface CollectionProducer<T extends Shape<?>> extends CollectionProducerBase<T, CollectionProducer<T>>, Shape<CollectionProducer<T>>, CollectionFeatures {
+public interface CollectionProducer<T extends Shape<?>> extends
+		CollectionProducerBase<T, CollectionProducer<T>>,
+		DeltaFeatures {
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat) {
+	@Override
+	default CollectionProducer<T> reshape(int... dims) {
+		return CollectionProducerBase.super.reshape(dims);
+	}
+
+	@Override
+	CollectionProducer<T> traverse(int axis);
+
+	@Override
+	default CollectionProducer<T> consolidate() {
+		return CollectionProducerBase.super.consolidate();
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int repeat) {
 		return repeat(repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> repeat(int axis, int repeat) {
+		return repeat(axis, repeat, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
+		CollectionProducerComputation<V> result = enumerate(shape(this).getTraversalAxis() + 1, 1);
+		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> transpose(int axis) {
+		CollectionProducerComputation<V> result = traverse(axis - 1).enumerate(axis, 1);
+		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int len) {
+		return enumerate(0, len, len, 1);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len) {
+		return enumerate(axis, len, len, 1);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, 1);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
+		return pad(this, depths);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(itemShape, this, mapper);
 	}
 
@@ -54,36 +97,179 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return reduce(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	/**
+	 * @deprecated Use {@link #repeat(int)}
+	 */
+	@Deprecated
+	default <V extends PackedCollection<?>> CollectionProducer<V> expand(int repeat) {
+		return expand(repeat, this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> add(Producer<V> value) {
 		return add((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> value) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> add(double value) {
+		return add((Producer) this, c(value));
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> value) {
+		return relativeAdd((Producer) this, value);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(Producer<V> value) {
 		return subtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtractIgnoreZero(Producer<T> value) {
+		return subtractIgnoreZero((Producer) this, value);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> value) {
+		return relativeSubtract((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mul(double value) {
+		return multiply(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double value) {
+		return multiply((Producer) this, c(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mul(Producer<T> value) {
+		return multiply(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> divide(Producer<T> value) {
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMultiply(Producer<T> value) {
+		return relativeMultiply((Supplier) this, (Supplier) value, null);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> div(double value) {
+		return divide(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> divide(double value) {
+		return divide((Producer) this, c(value));
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> divide(Producer<V> value) {
 		return divide((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt() {
+		return sqrt((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> pow(double value) {
+		return pow((Producer) this, c(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicExpressionComputation<T> minus() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus() {
 		return minus((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> sum() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp() {
+		return exp((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero() {
+		return expIgnoreZero((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log() {
+		return log((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
+		return sq((Producer) this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
+		return magnitude((Producer) this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude(int axis) {
+		return magnitude(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(int axis) {
+		return max(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
+		return max((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax() {
+		return indexOfMax((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min() {
+		// TODO  return min((Producer) this);
+		throw new UnsupportedOperationException();
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> mod) {
+		return mod((Producer) this, (Producer) mod);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
+		return sum(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean(int axis) {
+		return mean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> mean() {
+		return mean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(int axis) {
+		return subtractMean(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean() {
+		return subtractMean((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance(int axis) {
+		return variance(traverse(axis, (Producer) this));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> variance() {
+		return variance((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid() {
+		return sigmoid((Producer) this);
+	}
+
+	default CollectionProducer<T> delta(Producer<?> target) {
+		CollectionProducer<T> delta = attemptDelta(this, target);
+		if (delta != null) return delta;
+
+		throw new UnsupportedOperationException();
 	}
 
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {
@@ -107,24 +293,24 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return new GreaterThanCollection(this, operand, trueValue, falseValue, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier operand) {
 		return _lessThan(operand, false);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand, boolean includeEqual) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier operand, boolean includeEqual) {
 		return _lessThan(operand, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
 		return _lessThan(operand, trueValue, falseValue, false);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
 																boolean includeEqual) {
-		return new LessThanCollection(this, operand, trueValue, falseValue, includeEqual);
+		return lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 }

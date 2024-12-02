@@ -56,7 +56,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	
 	/**
 	 * Constructs a {@link Scene} with the specified {@link Camera}, {@link Light}s,
-	 * and {@link Gradient}s.
+	 * and {@link ShadableSurface}s.
 	 */
 	public Scene(Camera camera, List<Light> lights, T surfaces[]) {
 		this.setCamera(camera);

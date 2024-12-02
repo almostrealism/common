@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,64 +16,71 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 
-import java.util.function.Supplier;
-
-public class ScalarBankPad extends CollectionProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducerBase, DestinationSupport<ScalarBank>, ComputerFeatures {
+public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
+		implements ScalarBankProducerBase, ComputerFeatures {
 	private final int count;
 	private final int total;
 
-	private Supplier<ScalarBank> destination;
-
-	public ScalarBankPad(int count, int total, Supplier<Evaluable<? extends ScalarBank>> input) {
-		super(new TraversalPolicy(count, 2), input);
+	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
+		super("scalarBankPad", new TraversalPolicy(count, 2), adjustInput(input));
 		this.count = count;
 		this.total = total;
 	}
 
 	@Override
-	public void setDestination(Supplier<ScalarBank> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<ScalarBank> getDestination() { return destination; }
-
-	@Override
-	public Scope<ScalarBank> getScope() {
-		HybridScope<ScalarBank> scope = new HybridScope<>(this);
+	public Scope<PackedCollection<Scalar>> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection<Scalar>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
-		String i = getVariablePrefix() + "_i";
-		String resultX = getArgument(0, 2 * count).get("2 * " + i).getExpression();
-		String resultY = getArgument(0, 2 * count).get("2 * " + i + " + 1").getExpression();
-		String valueX = getArgument(1, 2 * count).get("2 * " + i).getExpression();
-		String valueY = getArgument(1, 2 * count).get("2 * " + i + " + 1").getExpression();
+		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
+		Expression resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2));
+		Expression resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1));
+		Expression valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2));
+		Expression valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1));
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");
-		scope.code().accept("        " + resultX + " = " + valueX + ";\n");
-		scope.code().accept("        " + resultY + " = " + valueY + ";\n");
+		scope.code().accept("        " + resultX.assign(valueX).getStatement(getLanguage()) + ";\n");
+		scope.code().accept("        " + resultY.assign(valueY).getStatement(getLanguage()) + ";\n");
 		scope.code().accept("    } else {\n");
-		scope.code().accept("        " + resultX + " = " + stringForDouble(0.0) + ";\n");
-		scope.code().accept("        " + resultY + " = " + stringForDouble(1.0) + ";\n");
+		scope.code().accept("        " + resultX.assign(e(0.0)).getStatement(getLanguage()) + ";\n");
+		scope.code().accept("        " + resultY.assign(e(1.0)).getStatement(getLanguage()) + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");
 		return scope;
 	}
 
 	@Override
-	public ScalarBank postProcessOutput(MemoryData output, int offset) {
-		return new ScalarBank(output.getMemLength() / 2, output, offset);
+	public PackedCollection<Scalar> postProcessOutput(MemoryData output, int offset) {
+		return Scalar.scalarBank(output.getMemLength() / 2, output, offset);
+	}
+
+	protected static Producer<PackedCollection<Scalar>>
+			adjustInput(Producer<PackedCollection<Scalar>> input) {
+		if (!(input instanceof Shape)) return input;
+
+		TraversalPolicy shape = ((Shape) input).getShape();
+		if (shape.getSize() == 2 && shape.getTraversalAxis() > 0) {
+			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) input);
+		}
+
+		return input;
 	}
 }

@@ -1,5 +1,15 @@
 .DS_Store
 **/.DS_Store
+
+.fleet/**
+.idea/*.xml
+.idea/codeStyles/**
+
 /**/target/
 **/*.versionsBackup
+
+**/*.hwcache/**
+**/*.hprof
 /utils/data/**
+/utils/results/**
+/utils/generated_images/**

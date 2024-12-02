@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,15 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.kernel.KernelStructureContext;
+
 import java.util.Objects;
 import java.util.stream.Stream;
 
 public interface ScopeLifecycle {
 	default void prepareArguments(ArgumentMap map) { }
 
-	default void prepareScope(ScopeInputManager manager) { }
+	default void prepareScope(ScopeInputManager manager, KernelStructureContext context) { }
 
 	default void resetArguments() { }
 
@@ -33,11 +35,11 @@ public interface ScopeLifecycle {
 				.forEach(sl -> sl.prepareArguments(map));
 	}
 
-	static void prepareScope(Stream<?> potentialLifecycles, ScopeInputManager manager) {
+	static void prepareScope(Stream<?> potentialLifecycles, ScopeInputManager manager, KernelStructureContext context) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
 				.filter(Objects::nonNull)
-				.forEach(sl -> sl.prepareScope(manager));
+				.forEach(sl -> sl.prepareScope(manager, context));
 	}
 
 	static void resetArguments(Stream<?> potentialLifecycles) {

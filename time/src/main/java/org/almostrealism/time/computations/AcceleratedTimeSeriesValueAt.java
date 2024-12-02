@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,57 +16,78 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import io.almostrealism.scope.HybridScope;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
+import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ScalarProducerBase {
+@Deprecated
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
-		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+		super(null, new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+	}
+
+	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(null, new TraversalPolicy(2).traverse(0), arguments);
 	}
 
 	@Override
-	public Scope<Scalar> getScope() {
-		Scope<Scalar> parentScope = super.getScope();
-		HybridScope<Scalar> scope = new HybridScope<>(this);
-		scope.getVariables().add(parentScope.getVariables().get(1));
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends Scalar>> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
+	}
 
-		String left = getVariableName(0);
-		String right = getVariableName(1);
+	@Override
+	public Scope<Scalar> getScope(KernelStructureContext context) {
+		HybridScope<Scalar> scope = new HybridScope<>(this);
+
+		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
+
+		scope.getVariables().add(outputVariable.valueAt(1).assign(e(1.0)));
+
+		Expression i = new StaticReference(Integer.class, "i");
+		Expression left = new StaticReference(Integer.class, getVariableName(0));
+		Expression right = new StaticReference(Integer.class, getVariableName(1));
 		String v1 = getVariableName(2);
 		String v2 = getVariableName(3);
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
+		scope.getVariables().add(new ExpressionAssignment(true, left, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, right, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getExpression();
-		String bank0 = getArgument(1).valueAt(0).getExpression();
-		String bank1 = getArgument(1).valueAt(1).getExpression();
-		String banki = getArgument(1).get("2 * i").getExpression();
-		String bankl0 = getArgument(1).get("2 * " + left).getExpression();
-		String bankl1 = getArgument(1).get("2 * " + left + " + 1").getExpression();
-		String bankr0 = getArgument(1).get("2 * " + right).getExpression();
-		String bankr1 = getArgument(1).get("2 * " + right + " + 1").getExpression();
-		String cursor0 = getArgument(2).valueAt(0).getExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
+		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression(getLanguage());
+		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");
@@ -93,12 +114,11 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		code.accept("	}\n");
 		code.accept("}\n");
 
-		return scope;
-	}
+//		code.accept("if (fabs(" + res + ") > 0.99) {\n");
+//		code.accept("    printf(\"left = %i, right = %i -- value = %f\\n\", " + left + ", " + right + ", " + res + ");\n");
+//		code.accept("}\n");
 
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new Expression<>(Double.class, "1.0");
+		return scope;
 	}
 
 	@Override

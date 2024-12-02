@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,5 +22,5 @@ public class Generated%KIND%%NUMBER% extends BaseGenerated%KIND% {
 	public Generated%KIND%%NUMBER%(Computation computation) { super(computation); }
 
 	@Override
-	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count);
+	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId, long kernelSize);
 }

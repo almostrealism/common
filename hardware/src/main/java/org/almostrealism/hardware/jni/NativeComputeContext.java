@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,33 +18,81 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.CJNIPrintWriter;
+import io.almostrealism.lang.ScopeEncoder;
+import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 
-public class NativeComputeContext extends AbstractComputeContext {
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class NativeComputeContext extends AbstractComputeContext<NativeDataContext> {
 	public static boolean enableVerbose = false;
+	public static boolean enableLargeScopeMonitoring = false;
 	protected static long totalInvocations = 0;
 
 	private NativeCompiler compiler;
 
-	public NativeComputeContext(Hardware hardware) {
-		super(hardware, false, true);
+	public NativeComputeContext(NativeDataContext dc, NativeCompiler compiler) {
+		super(dc);
+		this.compiler = compiler;
 	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return new CJNILanguageOperations(getDataContext().getPrecision());
+	}
+
+	public NativeCompiler getNativeCompiler() { return compiler; }
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
+		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
+		target.setComputeContext(this);
+		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
+		target.setParallelism(NativeExecution.PARALLELISM);
+
+		JNIMemoryAccessor accessor;
+
+		if (getDataContext().getMemoryProvider() instanceof MetalMemoryProvider) {
+			accessor = new MetalJNIMemoryAccessor();
+		} else {
+			accessor = new DefaultJNIMemoryAccessor();
+		}
+
+		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet target = compiler.reserveLibraryTarget();
-		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
-		compiler.compile(target, buf.toString());
-		return target;
+
+		try {
+			buf.append(new ScopeEncoder(pw ->
+					new CJNIPrintWriter(pw, target.getFunctionName(), target.getParallelism(),
+							getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
+
+			if (enableLargeScopeMonitoring) {
+				if (buf.length() > 240000) {
+					try {
+						Files.writeString(Path.of("large_scope.txt"), buf.toString());
+					} catch (IOException ex) {
+						throw new RuntimeException(ex);
+					}
+
+					System.out.println("Wrote large Scope to large_scope.txt");
+				}
+			}
+
+			getNativeCompiler().compile(target, buf.toString());
+			return target;
+		} finally {
+			recordCompilation(scope, buf::toString, System.nanoTime() - start);
+		}
 	}
 
 	@Override
-	public boolean isKernelSupported() { return false; }
+	public boolean isCPU() { return true; }
 
 	@Override
 	public void destroy() { }

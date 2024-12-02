@@ -1,11 +1,12 @@
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -18,19 +19,19 @@ import org.junit.Test;
 import java.util.List;
 import java.util.function.Function;
 
-public class AcceleratedComputationOperationTest implements HardwareFeatures, TestFeatures {
+public class AcceleratedComputationOperationTest implements TestFeatures {
 	@Test
 	public void sum() {
 		Producer<Vector> v = vector(1.0, 2.0, 3.0);
 		Producer<Vector> in = Input.value(Vector.shape(), 0);
 
-		Evaluable<Vector> s = compileProducer(add(v, in));
+		Evaluable<Vector> s = compileProducer((Computation) add(v, in));
 	}
 
 	@Test
 	public void providerExpressionComputation() {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				Sum.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		PackedCollection<?> a = new PackedCollection(1);
 		PackedCollection<?> b = new PackedCollection(1);

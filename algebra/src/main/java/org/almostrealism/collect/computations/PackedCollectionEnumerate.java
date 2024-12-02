@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,75 +16,114 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
+import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Variable;
-import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryBank;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 
-import java.util.function.Function;
-import java.util.function.IntFunction;
-import java.util.function.Supplier;
+import java.util.List;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends IndexProjectionProducerComputation<T> {
+	public static boolean enablePreferIsolation = true;
+	public static boolean enableDetectTraversalDepth = true;
+	public static boolean enablePositionSimplification = true;
 
-	private TraversalPolicy strideShape;
+	private TraversalPolicy inputShape;
+	private int traversalDepth;
+
 	private TraversalPolicy subsetShape;
+	private TraversalPolicy strideShape;
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, Producer<?> collection) {
-		this(shape, computeStride(shape, collection), collection);
+		this(shape, computeStride(shape, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0), collection);
 	}
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		super(computeShape(shape, stride, collection), (Supplier) collection);
+		this(shape, stride, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0);
+	}
+
+	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride,
+									 Producer<?> collection, int traversalDepth) {
+		super(computeShape(shape, stride, collection, traversalDepth), null, collection);
+		this.inputShape = shape(collection).traverse(traversalDepth).item();
+		this.traversalDepth = traversalDepth;
 		this.subsetShape = shape;
 		this.strideShape = stride;
+	}
+
+	@Override
+	protected boolean isOutputRelative() {
+		return false;
 	}
 
 	@Override
 	public int getMemLength() { return 1; }
 
 	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0) throw new IllegalArgumentException("Invalid position");
-
-			Expression index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
+	public long getCountLong() {
+		return getShape().getTotalSizeLong();
 	}
 
 	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
+	public boolean isIsolationTarget(ProcessContext context) {
+		if (super.isIsolationTarget(context)) return true;
+
+		if (enablePreferIsolation &&
+				getParallelism() > minCount &&
+				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
+			return true;
+		}
+
+		return false;
 	}
 
-	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
+	@Override
+	protected Expression<?> projectIndex(Expression<?> index) {
+		Expression block;
+		long blockSize = getShape().sizeLong(traversalDepth);
+
+		if (!isFixedCount() || getShape().getTotalSizeLong() != blockSize) {
+			// Determine the current block
+			block = index.divide(blockSize);
+			index = index.imod(blockSize);
+		} else {
+			// There can be only one block
+			block = e(0);
+		}
 
 		// Determine which slice to extract
-		Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+		// Starting over from the beginning for each new block
+		Expression<?> slice;
+
+		if (subsetShape.getTotalSize() == 1) {
+			slice = index;
+		} else if (!index.isFP()) {
+			slice = index.divide(e(subsetShape.getTotalSizeLong()));
+		} else {
+			throw new IllegalArgumentException();
+		}
 
 		// Find the index in that slice
-		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
+		Expression<?> offset = index.toInt().imod(subsetShape.getTotalSizeLong());
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+
+		if (enablePositionSimplification) {
+			KernelStructureContext ctx = index.getStructureContext();
+			if (ctx == null) ctx = new NoOpKernelStructureContext();
+
+			offset = offset.simplify(ctx);
+			slice = slice.simplify(ctx);
+		}
 
 		for (int j = 0; j < subsetShape.getDimensions(); j++) {
 			if (strideShape.length(j) > 0) {
@@ -94,7 +133,16 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		return var.get(subsetShape, p).getValueAt(offset);
+		Expression blockOffset = inputShape.subset(subsetShape, offset, p);
+		return block.multiply(inputShape.getTotalSizeLong()).add(blockOffset);
+	}
+
+	@Override
+	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
+		return (PackedCollectionEnumerate)
+				new PackedCollectionEnumerate<>(subsetShape, strideShape,
+								(Producer) children.get(1), traversalDepth)
+						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
@@ -104,36 +152,59 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
+	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
+												Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
+		TraversalPolicy itemShape = superShape.traverse(traversalDepth).item();
+		if (itemShape.getDimensions() <= 0) {
+			throw new IllegalArgumentException("Invalid traversal depth");
+		}
 
 		int count = IntStream.range(0, shape.getDimensions()).map(dim -> {
 						int pad = stride.length(dim) - shape.length(dim);
-						return stride.length(dim) > 0 ? (superShape.length(dim) + pad) / stride.length(dim) : -1;
+						return stride.length(dim) > 0 ? (itemShape.length(dim) + pad) / stride.length(dim) : -1;
 					})
 					.filter(i -> i > 0).min()
 					.orElseThrow(() -> new IllegalArgumentException("Invalid stride"));
 
-		return shape.prependDimension(count).traverseEach();
+		int dims[] = new int[superShape.getDimensions() + 1];
+
+		for (int i = 0; i < dims.length; i++) {
+			int axis = i - traversalDepth;
+
+			if (axis < 0) {
+				dims[i] = superShape.length(i);
+			} else if (axis == 0) {
+				dims[i] = count;
+			} else {
+				dims[i] = shape.length(axis - 1);
+			}
+		}
+
+		return new TraversalPolicy(dims).traverse(traversalDepth);
 	}
 
-	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection) {
+	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 
 		int dims[] = new int[shape.getDimensions()];
 		for (int i = 0; i < dims.length; i++) {
-			if (superShape.length(i) % shape.length(i) != 0) {
-				throw new IllegalArgumentException("Dimension " + i +
-						" of collection is not divisible by the corresponding dimension of the subset shape");
-			} else {
-				dims[i] = superShape.length(i) / shape.length(i);
+			if (i >= traversalDepth) {
+				int axis = i - traversalDepth;
+
+				if (superShape.length(i) % shape.length(axis) != 0) {
+					throw new IllegalArgumentException("Dimension " + i +
+							" of collection is not divisible by the corresponding dimension of the subset shape");
+				} else {
+					dims[axis] = superShape.length(i) / shape.length(axis);
+				}
 			}
 		}
 
 		int axis = -1;
 
 		for (int i = 0; i < dims.length; i++) {
-			if (dims[i] > 1) {
+			if (dims[i] > 1 || (axis < 0 && (i + 1) >= dims.length)) {
 				if (axis >= 0) {
 					throw new UnsupportedOperationException("Enumeration across more than one axis is not currently supported");
 				} else {
@@ -145,6 +216,6 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		return new TraversalPolicy(dims);
+		return new TraversalPolicy(true, dims);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.almostrealism.heredity;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.function.IntFunction;
 
 public class SimpleChromosome extends ConfigurableChromosome {
 	private int geneLength;
@@ -48,6 +49,17 @@ public class SimpleChromosome extends ConfigurableChromosome {
 	@Override
 	public PackedCollection<?> getParameters(int gene) {
 		return ((GeneParameters) chromosome.valueAt(gene)).getParameters();
+	}
+
+	@Override
+	public PackedCollection<?> getParameterRanges(int gene) {
+		return ((GeneParameters) chromosome.valueAt(gene)).getParameterRanges();
+	}
+
+	public void setParameterRange(int factor, double min, double max) {
+		for (int i = 0; i < chromosome.size(); i++) {
+			((SimpleGene) chromosome.valueAt(i)).setRange(factor, min, max);
+		}
 	}
 
 	@Override

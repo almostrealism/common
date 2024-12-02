@@ -16,16 +16,14 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
-import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
 
@@ -115,9 +113,19 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	}
 
 	@Override
-	public PooledMem getDefaultDelegate() { return PairPool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
-	/** @return A String representation of this Vector object. */
+	@Override
+	public String describe() {
+		return getShape() +
+				" [" +
+				Defaults.displayFormat.format(getX()) +
+				", " +
+				Defaults.displayFormat.format(getY()) +
+				"]";
+	}
+
+	/** @return A String representation of this Pair. */
 	@Override
 	public String toString() {
 		return "[" +
@@ -140,16 +148,6 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	@Deprecated
-	public static PackedCollection<Pair<?>> bank(int count, Evaluable<Pair<?>> source) {
-		PackedCollection<Pair<?>> bank = Pair.bank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, source.evaluate());
-		}
-
-		return bank;
-	}
-
 	public static PackedCollection<Pair<?>> bank(int count, MemoryData delegate, int delegateOffset) {
 		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()),
@@ -168,6 +166,13 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
 		return (delegate, offset) -> new Pair<>(delegate, offset);
+	}
+
+	public static BiFunction<MemoryData, Integer, PackedCollection<Pair<?>>> bankPostprocessor() {
+		return (output, offset) -> {
+			TraversalPolicy shape = ((PackedCollection) output).getShape();
+			return Pair.bank(shape.getTotalSize() / 2, output, offset);
+		};
 	}
 
 	public static ExpressionComputation<Pair<?>> postprocess(ExpressionComputation c) {

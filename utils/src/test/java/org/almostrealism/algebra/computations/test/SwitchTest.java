@@ -17,10 +17,10 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -33,11 +33,11 @@ public class SwitchTest implements TestFeatures {
 		return choice(output, v(decision), v(multiplier));
 	}
 
-	public Switch choice(Scalar output, ScalarProducerBase decision, ScalarProducerBase multiplier) {
-		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
-		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
-		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
-		return new Switch((ProducerComputation) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
+	public Switch choice(Scalar output, Producer<Scalar> decision, Producer<Scalar> multiplier) {
+		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(2.0)));
+		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(4.0)));
+		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(8.0)));
+		return new Switch((CollectionProducer) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test
@@ -47,8 +47,10 @@ public class SwitchTest implements TestFeatures {
 
 		Switch choice = choice(output, decision, new Scalar(1.0));
 
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
-		op.run();
+		verboseLog(() -> {
+			AcceleratedOperation op = (AcceleratedOperation) choice.get();
+			op.run();
+		});
 
 		System.out.println("chosen = " + output.getValue());
 		assertEquals(new Scalar(4.0), output);
@@ -66,8 +68,10 @@ public class SwitchTest implements TestFeatures {
 		list.add(choice(output1, decision1, new Scalar(1.0)));
 		list.add(choice(output2, decision2, new Scalar(1.0)));
 
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
-		op.run();
+		verboseLog(() -> {
+			AcceleratedOperation op = (AcceleratedOperation) list.get();
+			op.run();
+		});
 
 		System.out.println("first choice = " + output1.getValue());
 		System.out.println("second choice = " + output2.getValue());
@@ -78,25 +82,25 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void nestedChoiceList() {
-		ScalarProducerBase multiplier = v(2.0);
+		Producer<Scalar> multiplier = scalar(2.0);
 
 		Scalar output1a = new Scalar(0.0);
 		Scalar output1b = new Scalar(0.0);
-		ScalarProducerBase decisionA = v(0.4);
+		Producer<Scalar> decisionA = scalar(0.4);
 		Scalar output2a = new Scalar(0.0);
 		Scalar output2b = new Scalar(0.0);
-		ScalarProducerBase decisionB = scalarsMultiply(v(0.4), multiplier);
+		Producer<Scalar> decisionB = scalarsMultiply(scalar(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));
-		embeddedList.add(choice(output2b, decisionB, v(1.0)));
+		embeddedList.add(choice(output2b, decisionB, scalar(1.0)));
 
 		OperationList list = new OperationList("Choice List");
-		list.add(choice(output1a, decisionA, v(1.0)));
+		list.add(choice(output1a, decisionA, scalar(1.0)));
 		list.add(choice(output1b, decisionB, multiplier));
 		list.add(embeddedList);
 
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
+		AcceleratedOperation op = (AcceleratedOperation) list.get();
 		op.run();
 
 		System.out.println("first choice A = " + output1a.getValue());

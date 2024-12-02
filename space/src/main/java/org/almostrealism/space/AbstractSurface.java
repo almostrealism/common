@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,17 @@
 
 package org.almostrealism.space;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Set;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.color.*;
-import org.almostrealism.color.computations.RGBAdd;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.color.Shader;
+import org.almostrealism.color.ShaderContext;
+import org.almostrealism.color.ShaderSet;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import io.almostrealism.code.Constant;
@@ -39,7 +44,7 @@ import org.almostrealism.geometry.TransformMatrix;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous, HardwareFeatures {
+public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -516,8 +521,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Producer<RGB> fc = color;
-				color = () -> new RGBAdd(fc, getParent().shade(p));
+				color = add(color, getParent().shade(p));
 			}
 		}
 		
@@ -560,7 +564,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	    if (textures.length > 0) {
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-				colorAt = multiply(colorAt, new AdaptProducerRGB(() -> args -> t.operate((Triple) args[0]), fp));
+				colorAt = multiply(colorAt, new AdaptProducerRGB(() -> args -> t.operate((Vector) args[0]), fp));
 	        }
 	    }
 
@@ -569,20 +573,6 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		
 		return colorAt;
 	}
-
-	@Override
-	public RGB operate(Vector in) {
-		return getValueAt(v(in)).get().evaluate();
-	}
-
-	@Override
-	public boolean cancel(boolean mayInterruptIfRunning) { return false; }
-
-	@Override
-	public boolean isCancelled() { return false; }
-
-	@Override
-	public boolean isDone() { return true; }
 
 	@Override
 	public BoundingSolid calculateBoundingSolid() { return null; }

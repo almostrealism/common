@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,7 @@ package org.almostrealism.color;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.KernelizedOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.HardwareOperator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
@@ -45,10 +43,11 @@ public class RealizableImage implements Producer<RGB[][]> {
 
 	public Pair getDimensions() { return dim; }
 
+	// TODO  This should be Evaluable<PackedCollection<?>>
 	@Override
 	public Evaluable<RGB[][]> get() {
 		return args -> {
-			if (KernelizedOperation.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
+			if (HardwareOperator.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
 
 			if (args == null || args.length <= 0) {
 				args = new Object[]{new Pair(0, 0)};
@@ -64,7 +63,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 			PackedCollection<RGB> output = RGB.bank(size);
 
 			if (source != null) {
-				((KernelizedEvaluable) source.get()).into(output).evaluate(input);
+				source.get().into(output).evaluate(input);
 			} else if (func != null) {
 				RGB result[] = input.stream().map(func).toArray(RGB[]::new);
 				for (int i = 0; i < result.length; i++) output.set(i, result[i]);
@@ -75,9 +74,6 @@ public class RealizableImage implements Producer<RGB[][]> {
 			return processKernelOutput(w, h, output);
 		};
 	}
-
-	@Override
-	public void compact() { source.compact(); }
 
 	public static PackedCollection<Pair<?>> generateKernelInput(int x, int y, int width, int height) {
 		int size = width * height;

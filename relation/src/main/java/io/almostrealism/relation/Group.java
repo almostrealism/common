@@ -16,8 +16,8 @@
 
 package io.almostrealism.relation;
 
-import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public interface Group<T> {
-	void forEach(Consumer<? super T> consumer);
+	Stream<T> children();
 }

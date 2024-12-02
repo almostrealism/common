@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,32 +17,66 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.Collection;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
+public class TemporalRunner implements Setup, Temporal, OperationComputation<Void> {
+	public static boolean enableFlatten = true;
+	public static boolean enableOptimization = false;
+	public static boolean enableIsolation = false;
+
 	private Supplier<Runnable> setup, run;
 	private Runnable s, r;
+
+	private OperationProfile profile;
 
 	public TemporalRunner(Temporal o, int iter) {
 		this(((Setup) o).setup(), o.tick(), iter);
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		this.run = loop((Computation<Void>) tick, iter);
+		if (enableFlatten && tick instanceof OperationList) {
+			tick = ((OperationList) tick).flatten();
+		}
+
+		if (enableOptimization) {
+			tick = Process.optimized(tick);
+		}
+
+		if (enableIsolation) {
+			tick = Process.isolated(tick);
+		}
+
+		this.run = loop(tick, iter);
+
+		if (enableFlatten && setup instanceof OperationList) {
+			setup = ((OperationList) setup).flatten();
+		}
+
 		this.setup = setup;
+	}
+
+	public OperationProfile getProfile() {
+		return profile;
+	}
+
+	public void setProfile(OperationProfile profile) {
+		this.profile = profile;
 	}
 
 	@Override
@@ -58,20 +92,16 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		ScopeLifecycle.prepareScope(Stream.of(setup), manager);
-		ScopeLifecycle.prepareScope(Stream.of(run), manager);
+	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		ScopeLifecycle.prepareScope(Stream.of(setup), manager, context);
+		ScopeLifecycle.prepareScope(Stream.of(run), manager, context);
 	}
 
 	public void compile() {
 		if (s != null || r != null) return;
 
-		s = setup.get();
-		r = run.get();
-
-		// TODO  These probably should be removed completely
-		if (s instanceof OperationAdapter && !((OperationAdapter) s).isCompiled()) ((OperationAdapter<?>) s).compile();
-		if (r instanceof OperationAdapter && !((OperationAdapter) r).isCompiled()) ((OperationAdapter<?>) r).compile();
+		s = setup instanceof OperationList ? ((OperationList) setup).get(profile) : setup.get();
+		r = run instanceof OperationList ? ((OperationList) run).get(profile) : run.get();
 	}
 
 	@Override
@@ -90,16 +120,16 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	@Override
-	public Scope<Void> getScope() {
+	public Scope<Void> getScope(KernelStructureContext context) {
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	public void compact() {
-		Stream.of(setup).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
-		Stream.of(run).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
+	public Collection<Process<?, ?>> getChildren() {
+		return Stream.of(s, r)
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
 	}
 
 	public void destroy() {

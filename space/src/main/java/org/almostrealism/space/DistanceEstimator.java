@@ -28,5 +28,5 @@ import io.almostrealism.uml.Function;
  */
 @Function
 public interface DistanceEstimator {
-	public double estimateDistance(Ray r);
+	double estimateDistance(Ray r);
 }

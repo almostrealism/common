@@ -16,8 +16,7 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.CodeFeatures;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.Temporal;
 import io.almostrealism.relation.Evaluable;
@@ -25,7 +24,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal, CodeFeatures {
+public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
 	private final T cachedValue;
 	private final T outValue;
 
@@ -80,7 +79,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	public Supplier<Runnable> tick() {
 		String name = getClass().getSimpleName();
 		if (name == null || name.length() <= 0) name = "anonymous";
-		OperationList tick = new OperationList(name + " Tick");
+		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
 		tick.add(assign(p(outValue), p(cachedValue)));
 		tick.add(reset(p(cachedValue)));
 		tick.add(super.push(null));

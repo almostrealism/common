@@ -18,7 +18,7 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -40,16 +40,9 @@ public class PowerSpectrumTest implements TestFeatures {
 		PackedCollection<Pair<?>> window = window(size);
 		IntStream.range(0, window.getCount()).mapToObj(window::get).forEach(System.out::println);
 
-		System.out.println("Standard...");
-		Evaluable<ScalarBank> ev = powerSpectrumOld(size, v(2 * size, 0)).get();
+		Evaluable<PackedCollection<Scalar>> ev = powerSpectrum(size, v(2 * size, 0)).get();
 
-		ScalarBank spectrum = ev.evaluate(window(size));
-		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
-
-		System.out.println("Fast...");
-		ev = powerSpectrum(size, v(2 * size, 0)).get();
-
-		spectrum = ev.evaluate(window(size));
+		PackedCollection<Scalar> spectrum = ev.evaluate(window(size));
 		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
 	}
 
@@ -57,18 +50,13 @@ public class PowerSpectrumTest implements TestFeatures {
 	public void powerSpectrum512() {
 		int size = 512;
 
-		System.out.println("Standard...");
-		Evaluable<ScalarBank> ev = powerSpectrumOld(size, v(2 * size, 0)).get();
+		Evaluable<PackedCollection<Scalar>> ev = powerSpectrum(size, v(2 * size, 0)).get();
 
-		ScalarBank spectrum = ev.evaluate(window(size));
+		PackedCollection<Scalar> spectrum = ev.evaluate(window(size));
 		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
 
-		System.out.println("Fast...");
-		ev = powerSpectrum(size, v(2 * size, 0)).get();
-
-		ScalarBank spectrumFast = ev.evaluate(window(size));
-		IntStream.range(0, spectrumFast.getCount()).mapToObj(spectrumFast::get).forEach(System.out::println);
-
-		IntStream.range(0, spectrumFast.getCount()).forEach(i -> assertEquals(spectrum.get(i), spectrumFast.get(i)));
+		assertEquals(16, spectrum.get(0));
+		assertEquals(9396, spectrum.get(8));
+		assertEquals(100, spectrum.get(spectrum.getCount() - 1));
 	}
 }

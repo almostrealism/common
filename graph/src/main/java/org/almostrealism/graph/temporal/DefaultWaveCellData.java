@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,22 @@
 
 package org.almostrealism.graph.temporal;
 
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 
-public class DefaultWaveCellData extends ScalarBank implements WaveCellData {
+public class DefaultWaveCellData extends PackedCollection<Scalar> implements WaveCellData {
 	public static final int SIZE = 15;
 
 	public DefaultWaveCellData() {
-		super(SIZE);
+		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	public DefaultWaveCellData(MemoryData delegate, int delegateOffset) {
-		super(SIZE, delegate, delegateOffset);
+		super(new TraversalPolicy(SIZE, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 }

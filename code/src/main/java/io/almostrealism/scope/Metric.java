@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.Expression;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,30 +24,30 @@ import java.util.List;
 import java.util.Map;
 
 public class Metric {
-	private InstanceReference<?> counter;
+	private Expression<?> counter;
 	private int logFrequency;
-	private Map<String, InstanceReference<?>> variables;
+	private Map<String, Expression<?>> variables;
 
-	public Metric(InstanceReference<?> counter, int logFrequency) {
+	public Metric(Expression<?> counter, int logFrequency) {
 		this.counter = counter;
 		this.logFrequency = logFrequency;
 		this.variables = new HashMap<>();
 	}
 
-	public List<InstanceReference<?>> getArguments() {
-		List<InstanceReference<?>> refs = new ArrayList<>();
+	public List<Expression<?>> getArguments() {
+		List<Expression<?>> refs = new ArrayList<>();
 		refs.add(getCounter());
 		refs.addAll(variables.values());
 		return refs;
 	}
 
-	public InstanceReference<?> getCounter() { return counter; }
+	public Expression<?> getCounter() { return counter; }
 
 	public int getLogFrequency() { return logFrequency; }
 
-	public void addMonitoredVariable(String message, InstanceReference<?> variable) {
+	public void addMonitoredVariable(String message, Expression<?> variable) {
 		variables.put(message, variable);
 	}
 
-	public Map<String, InstanceReference<?>> getVariables() { return variables; }
+	public Map<String, Expression<?>> getVariables() { return variables; }
 }

@@ -16,6 +16,8 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;

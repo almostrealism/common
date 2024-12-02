@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,15 +17,12 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.geometry.computations.RayExpressionComputation;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
@@ -37,56 +34,59 @@ import java.util.stream.IntStream;
 
 public interface RayFeatures extends VectorFeatures {
 
-	default ExpressionComputation<Ray> v(Ray value) { return value(value); }
+	default CollectionProducer<Ray> v(Ray value) { return value(value); }
 
-	default ExpressionComputation<Ray> value(Ray value) {
+	default CollectionProducer<Ray> value(Ray value) {
 		return ExpressionComputation.fixed(value, Ray.postprocessor());
 	}
 
-	default ExpressionComputation<Ray> ray(double x, double y, double z, double dx, double dy, double dz) {
+	default CollectionProducer<Ray> ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
 	}
 
-	default RayExpressionComputation ray(Supplier<Evaluable<? extends Vector>> origin,
+	default CollectionProducer<Ray> ray(Supplier<Evaluable<? extends Vector>> origin,
 											Supplier<Evaluable<? extends Vector>> direction) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValue(i % 3)));
-		return new RayExpressionComputation(comp, (Supplier) origin, (Supplier) direction);
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValueRelative(i % 3)));
+		return new ExpressionComputation<>(comp, (Supplier) origin, (Supplier) direction)
+				.setPostprocessor(Ray.postprocessor());
 	}
 
-	default ExpressionComputation<Ray> ray(IntFunction<Double> values) {
+	default CollectionProducer<Ray> ray(IntFunction<Double> values) {
 		return ray(values.apply(0), values.apply(1), values.apply(2),
 				values.apply(3), values.apply(4), values.apply(5));
 	}
 
-	default VectorProducerBase origin(Supplier<Evaluable<? extends Ray>> r) {
-		return new VectorExpressionComputation(List.of(
-				args -> args.get(1).getValue(0),
-				args -> args.get(1).getValue(1),
-				args -> args.get(1).getValue(2)),
-				(Supplier) r);
+	default ExpressionComputation<Vector> origin(Supplier<Evaluable<? extends Ray>> r) {
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
+				args -> args.get(1).getValueRelative(0),
+				args -> args.get(1).getValueRelative(1),
+				args -> args.get(1).getValueRelative(2)),
+				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default VectorProducerBase direction(Supplier<Evaluable<? extends Ray>> r) {
-		return new VectorExpressionComputation(List.of(
-				args -> args.get(1).getValue(3),
-				args -> args.get(1).getValue(4),
-				args -> args.get(1).getValue(5)),
-				(Supplier) r);
+	default ExpressionComputation<Vector> direction(Supplier<Evaluable<? extends Ray>> r) {
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
+				args -> args.get(1).getValueRelative(3),
+				args -> args.get(1).getValueRelative(4),
+				args -> args.get(1).getValueRelative(5)),
+				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default VectorProducerBase pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
-		return add(origin(r), scalarMultiply(direction(r), t));
+	default CollectionProducer<Vector> pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
+		return vector(add(origin(r), scalarMultiply(direction(r), t)));
 	}
 
-	default ScalarExpressionComputation oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
+	default CollectionProducer<Scalar> oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
 
-	default ScalarExpressionComputation dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
+	default CollectionProducer<Scalar> dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
 
-	default ScalarExpressionComputation oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
+	default CollectionProducer<Scalar> oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
 
-	default RayExpressionComputation transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
-		return ray(TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)), TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));
+	default CollectionProducer<Ray> transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
+		return ray(
+				TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)),
+				TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));
 	}
 
 	static RayFeatures getInstance() {

@@ -17,17 +17,15 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Minus;
-import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
-import org.almostrealism.algebra.computations.ScalarBankSum;
+import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,80 +34,91 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface ScalarBankFeatures extends ScalarFeatures {
-	default ExpressionComputation<ScalarBank> value(ScalarBank value) {
-		return ExpressionComputation.fixed(value, ScalarBank.postprocessor());
+	boolean enableDeprecated = !SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
+
+	default CollectionProducer<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
+		return ExpressionComputation.fixed(value, Scalar.scalarBankPostprocessor());
 	}
 
 	@Deprecated
-	default ScalarBankProducerBase scalarBankAdd(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		if (!enableDeprecated) throw new UnsupportedOperationException();
+
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
-						new Sum(args.get(1).getValue(i), args.get(2).getValue(0)) : args.get(1).getValue(i)));
-		return new ScalarBankExpressionComputation(expression, (Supplier) input, (Supplier) value);
+						Sum.of(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier) input, (Supplier) value)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	@Deprecated
-	default Producer<ScalarBank> scalarBankProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
-												   Supplier<Evaluable<? extends ScalarBank>> b) {
+	default Producer<PackedCollection<Scalar>> scalarBankProduct(int count,
+																 Producer<PackedCollection<Scalar>> a,
+												   				 Producer<PackedCollection<Scalar>> b) {
 		return () -> {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
-			Evaluable<? extends ScalarBank> x = a.get();
-			Evaluable<? extends ScalarBank> y = b.get();
-			KernelizedEvaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
+			Evaluable<? extends PackedCollection<Scalar>> x = a.get();
+			Evaluable<? extends PackedCollection<Scalar>> y = b.get();
+			Evaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
 
 			return args -> {
-				ScalarBank d1 = x.evaluate(args);
-				ScalarBank d2 = y.evaluate(args);
-				ScalarBank out = new ScalarBank(count);
+				PackedCollection<Scalar> d1 = x.evaluate(args);
+				PackedCollection<Scalar> d2 = y.evaluate(args);
+				PackedCollection<Scalar> out = Scalar.scalarBank(count);
 				ev.into(out).evaluate(d1, d2);
 				return out;
 			};
 		};
 	}
 
-	default ScalarBankProducerBase dither(int count, Supplier<Evaluable<? extends ScalarBank>> input,
-				   Supplier<Evaluable<? extends Scalar>> ditherValue) {
+	default ExpressionComputation<PackedCollection<Scalar>> dither(int count,
+										  Producer<PackedCollection<Scalar>> input,
+				   						  Supplier<Evaluable<? extends Scalar>> ditherValue) {
 		ditherValue = scalarsMultiply(ditherValue, scalar(shape(1), randn(shape(1)), 0));
 		return scalarBankAdd(count, input, ditherValue);
 	}
 
-	default ScalarBankProducerBase ditherAndRemoveDcOffset(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+	default ExpressionComputation<PackedCollection<Scalar>> ditherAndRemoveDcOffset(int count,
+														   Producer<PackedCollection<Scalar>> input,
 														   Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		ScalarBankProducerBase dither = dither(count, input, ditherValue);
-		return scalarBankAdd(count, dither, new ScalarBankSum(count, dither).divide(count).multiply(-1));
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(count, input, ditherValue);
+		return scalarBankAdd(count, dither, scalar(subset(shape(count, 1), dither, 0).sum().divide(c(count)).multiply(c(-1))));
 	}
 
-	default Producer<ScalarBank> preemphasize(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+	default Producer<PackedCollection<Scalar>> preemphasize(int count, Supplier<Evaluable<? extends PackedCollection<Scalar>>> input,
 											  Supplier<Evaluable<? extends Scalar>> coefficient) {
 		return () -> {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
 			Evaluable<? extends Scalar> coeff = coefficient.get();
-			Evaluable<? extends ScalarBank> in = input.get();
-			ScalarProducerBase offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2, -1));
-			KernelizedEvaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
+			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
+			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2));
+			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
 
 			return args -> {
 				Scalar c = coeff.evaluate(args);
-				ScalarBank data = in.evaluate(args);
-				ScalarBank out = new ScalarBank(count);
+				PackedCollection<Scalar> data = in.evaluate(args);
+				PackedCollection<Scalar> out = Scalar.scalarBank(count);
 
-				ev.into(out.range(0, 1))
-						.evaluate(data.range(0, 1), data.range(0, 1), c);
-				ev.into(out.range(1, count - 1))
-						.evaluate(data.range(1, count - 1), data.range(0, count - 1), c);
+				ev.into(out.range(shape(1, 2)).traverse(1))
+						.evaluate(data.range(shape(1, 2)).traverse(1),
+								  data.range(shape(1, 2)).traverse(1), c);
+				ev.into(out.range(shape(count - 1, 2), 2).traverse(1))
+						.evaluate(data.range(shape(count - 1, 2), 2).traverse(1),
+								  data.range(shape(count - 1, 2)).traverse(1), c);
 				return out;
 			};
 		};
 	}
 
-	default ScalarBankProducerBase scalars(Supplier<Evaluable<? extends Scalar>>... values) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValue(i % 2)));
-		return new ScalarBankExpressionComputation(expression, (Supplier[]) values);
+	default ExpressionComputation<PackedCollection<Scalar>> scalars(Supplier<Evaluable<? extends Scalar>>... values) {
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueRelative(i % 2)));
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier[]) values)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	static ScalarBankFeatures getInstance() {

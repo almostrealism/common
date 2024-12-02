@@ -1,7 +1,24 @@
+/*
+ * Copyright 2023 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.bool.AcceleratedConditionalStatement;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
@@ -9,8 +26,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
@@ -23,11 +38,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void randomLessThan() {
 		IntStream.range(1, 6).forEach(i -> {
-			ScalarProducerBase a = scalar(i * Math.random());
-			ScalarProducerBase b = scalar(i * Math.random());
+			Producer<Scalar> a = scalar(i * Math.random());
+			Producer<Scalar> b = scalar(i * Math.random());
 
-			AcceleratedComputationEvaluable<Scalar> lt =
-					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
+			Evaluable<Scalar> lt = lessThan(a, b).get();
 
 			Scalar s = lt.evaluate();
 			System.out.println("lessThan = " + s.getValue());
@@ -36,6 +50,31 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 				assertEquals(a.get().evaluate().getValue(), s.getValue());
 			} else {
 				assertEquals(b.get().evaluate().getValue(), s.getValue());
+			}
+		});
+	}
+
+	@Test
+	public void randomLessThanKernel() {
+		PackedCollection<?> x = rand(shape(100, 2)).get().evaluate();
+		PackedCollection<?> y = rand(shape(100, 2)).get().evaluate();
+
+		PackedCollection<?> less = new PackedCollection<>(shape(100, 2), 1);
+		lessThan().get().into(less).evaluate(x.traverse(1), y.traverse(1));
+
+		Assert.assertEquals(100, less.getShape().length(0));
+		Assert.assertEquals(2, less.getShape().length(1));
+
+		IntStream.range(0, 100).forEach(i -> {
+			double a = x.valueAt(i, 0);
+			double b = y.valueAt(i, 0);
+			double s = less.valueAt(i, 0);
+			System.out.println("lessThan = " + s);
+
+			if (a < b) {
+				assertEquals(a, s);
+			} else {
+				assertEquals(b, s);
 			}
 		});
 	}
@@ -76,8 +115,9 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void compactWithCrossProduct() {
 		LessThan<Scalar> lt1 = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0)));
-		AcceleratedConditionalStatementScalar lt2 = crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))
-														.length().lessThan(lt1, v(1), v(2));
+		AcceleratedConditionalStatement<Scalar> lt2 =
+				scalarLessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
+														lt1, scalar(1), scalar(2), false);
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
@@ -104,10 +144,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			ScalarProducerBase pa = scalar(a);
-			ScalarProducerBase pb = scalar(b);
-			ScalarProducerBase pc = scalar(c);
-			ScalarProducerBase pd = scalar(d);
+			Producer<Scalar> pa = scalar(a);
+			Producer<Scalar> pb = scalar(b);
+			Producer<Scalar> pc = scalar(c);
+			Producer<Scalar> pd = scalar(d);
 
 			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
 			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);
