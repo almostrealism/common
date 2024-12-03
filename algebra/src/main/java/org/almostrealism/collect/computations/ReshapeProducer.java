@@ -40,6 +40,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.io.Describable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -80,15 +81,20 @@ public class ReshapeProducer<T extends Shape<T>>
 
 			if (child == null) {
 				return;
-			} else if (shape == null) {
-				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
-						child.getShortDescription() + " {-> axis " + traversalAxis + "}");
 			} else {
 				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
-						child.getShortDescription() + " {-> " + getShape() + "}");
+						extendDescription(child.getShortDescription()));
 			}
 
 			metadata = new OperationMetadata(metadata, List.of(child));
+		}
+	}
+
+	protected String extendDescription(String description) {
+		if (shape == null) {
+			return description + " {-> axis " + traversalAxis + "}";
+		} else {
+			return description + " {-> " + getShape() + "}";
 		}
 	}
 
@@ -324,6 +330,15 @@ public class ReshapeProducer<T extends Shape<T>>
 			return apply(out);
 		});
 		return hev;
+	}
+
+	@Override
+	public String describe() {
+		if (producer instanceof Describable) {
+			return extendDescription(((Describable) producer).describe());
+		}
+
+		return CollectionProducer.super.describe();
 	}
 
 	private T apply(Shape<T> in) {

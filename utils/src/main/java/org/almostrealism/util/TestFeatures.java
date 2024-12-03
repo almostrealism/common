@@ -175,21 +175,19 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			verboseLog(() -> {
-				PackedCollection<?> output = outputRef.get();
-				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
+			PackedCollection<?> output = outputRef.get();
+			PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 
-				System.out.println("TestFeatures: Running optimized kernel operation...");
-				OperationList op = new OperationList();
-				op.add(output.getAtomicMemLength(), supply.get(), p(output));
-				op.add(copy(p(output), p(dest), output.getMemLength()));
+			System.out.println("TestFeatures: Running optimized kernel operation...");
+			OperationList op = new OperationList();
+			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.add(copy(p(output), p(dest), output.getMemLength()));
 
-				ParallelProcess<?, Runnable> p = op.optimize();
-				profile(profile, p);
-				System.out.println("TestFeatures: Validating optimized kernel output...");
-				validate.accept(output);
-				validate.accept(dest);
-			});
+			ParallelProcess<?, Runnable> p = op.optimize();
+			profile(profile, p);
+			System.out.println("TestFeatures: Validating optimized kernel output...");
+			validate.accept(output);
+			validate.accept(dest);
 		}
 
 		return profile;

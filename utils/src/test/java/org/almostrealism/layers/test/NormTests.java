@@ -91,12 +91,22 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
-	public void normComputation() {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+	public void normComputationNoWeights() {
+		normComputation(12, 10, 4, null, null);
+	}
 
-		int c = 12;
-		int v = 10;
-		int groups = 4;
+	@Test
+	public void normComputationMedium() {
+		int c = 28;
+		int v = 28 * 28;
+
+		PackedCollection<?> weights = new PackedCollection<>(c * v).randnFill();
+		PackedCollection<?> biases = new PackedCollection<>(c * v).randnFill();
+		normComputation(c, v, 4, weights, biases);
+	}
+
+	public void normComputation(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -105,13 +115,16 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		kernelTest(() -> {
 					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
-					return input
+					CollectionProducer<PackedCollection<?>> out = input
 							.subtractMean(2)
 							.divide(input.variance(2).add(c(eps)).sqrt())
 							.reshape(-1, shape.getTotalSize());
+					if (weights != null) out = out.multiply(cp(weights));
+					if (biases != null) out = out.add(cp(biases));
+					return out;
 				},
 				output -> {
-					validate(groups, c / groups, v, o, output, null, null);
+					validate(groups, c / groups, v, o, output, weights, biases);
 				}, false, false, true);
 	}
 
@@ -261,7 +274,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium2() throws IOException {
-		log("Starting backwardsBiasMedium2");
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
@@ -480,9 +492,9 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
 
 		try {
-			if (c > 64) {
-				WeightedSumExpression.enableCollectionExpression = false;
-			}
+//			if (c > 64) {
+//				WeightedSumExpression.enableCollectionExpression = false;
+//			}
 
 			normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
 		} finally {
@@ -490,7 +502,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		}
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast, Supplier<PackedCollection<?>> inputSource) throws IOException {
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast,
+										  Supplier<PackedCollection<?>> inputSource) throws IOException {
 		double w = 1.0; // 0.5;
 		double b = 0.0; // 0.5;
 

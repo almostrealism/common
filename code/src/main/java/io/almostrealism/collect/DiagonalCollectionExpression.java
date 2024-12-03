@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -23,13 +24,22 @@ import io.almostrealism.kernel.NoOpKernelStructureContext;
 
 public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 	public static boolean enableIndexSimplification = true;
+	public static boolean enableAutomaticPosition = true;
 
 	private TraversableExpression<Double> values;
 	private TraversalPolicy positionShape;
 
 	public DiagonalCollectionExpression(TraversalPolicy shape, TraversableExpression<Double> values) {
-		super(null, shape);
+		this("diagonal", shape, values);
+	}
+
+	protected DiagonalCollectionExpression(String name, TraversalPolicy shape, TraversableExpression<Double> values) {
+		super(name, shape);
 		this.values = values;
+
+		if (shape.getCountLong() == 1 || shape.getSizeLong() == 1) {
+			warn("Suspicious diagonal shape " + shape.toStringDetail());
+		}
 	}
 
 	public TraversalPolicy getPositionShape() {
@@ -63,7 +73,12 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 		}
 
 		Expression pos[] = getPosition(index);
-		return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
+
+		if (enableAutomaticPosition && (pos[0].countNodes() > pos[1].countNodes() || pos[1] instanceof Constant)) {
+			return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[1]), e(0));
+		} else {
+			return conditional(pos[0].eq(pos[1]), values.getValueAt(pos[0]), e(0));
+		}
 	}
 
 	@Override

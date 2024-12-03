@@ -75,7 +75,8 @@ public class GroupExpression extends OperandCollectionExpression {
 
 	@Override
 	public Expression<Double> getValueAt(Expression<?> index) {
-		return combiner.apply(getMembers(index));
+		List<Expression[]> members = getMembers(index);
+		return combiner.apply(members);
 	}
 
 	public interface MemberIndexGenerator {

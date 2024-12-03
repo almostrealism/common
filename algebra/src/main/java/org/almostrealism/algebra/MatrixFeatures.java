@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.DiagonalCollectionExpression;
 import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
@@ -40,6 +41,24 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			@Override
 			public boolean isIdentity(int width) {
 				return width == shape.length(0) && width == shape.length(1);
+			}
+		};
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> diagonal(Producer<T> vector) {
+		TraversalPolicy shape = shape(vector);
+
+		if (shape.getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
+
+		return new DefaultTraversableExpressionComputation<>("diagonal", diagonalShape.traverseEach(),
+				(args) -> new DiagonalCollectionExpression(diagonalShape, args[1]), vector) {
+			@Override
+			public boolean isDiagonal(int width) {
+				return width == shape.length(0);
 			}
 		};
 	}

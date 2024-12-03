@@ -33,8 +33,19 @@ public interface Algebraic extends Computable {
 		return false;
 	}
 
+	/**
+	 * Checks if this {@link Algebraic} {@link Computable} represents a diagonal
+	 * transformation on vectors of the specified size. A diagonal transformation
+	 * scales the input vector by a constant factor.
+	 */
+	default boolean isDiagonal(int width) { return isIdentity(width); }
+
 	static <T> boolean isIdentity(int width, T value) {
 		return value instanceof Algebraic && ((Algebraic) value).isIdentity(width);
+	}
+
+	static <T> boolean isDiagonal(int width, T value) {
+		return value instanceof Algebraic && ((Algebraic) value).isDiagonal(width);
 	}
 }
 

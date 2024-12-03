@@ -27,7 +27,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Equals extends Comparison {
-	public static boolean enableIdentityDetection = true;
+	public static boolean enableExpandQuotient = false;
 
 	protected Equals(Expression<?> left, Expression<?> right) {
 		super(left, right);
@@ -94,18 +94,25 @@ public class Equals extends Comparison {
 	}
 
 	protected static Expression create(Expression<?> left, Expression<?> right) {
-		if (enableIdentityDetection) {
-			if (left.longValue().isPresent() && right.longValue().isPresent()) {
-				return new BooleanConstant(left.longValue().getAsLong() == right.longValue().getAsLong());
-			} else if (Objects.equals(left, right)) {
-				return new BooleanConstant(true);
-			}
+		if (left.longValue().isPresent() && right.longValue().isPresent()) {
+			return new BooleanConstant(left.longValue().getAsLong() == right.longValue().getAsLong());
+		} else if (Objects.equals(left, right)) {
+			return new BooleanConstant(true);
 		}
 
 		if (left instanceof Mask && right.doubleValue().isPresent()) {
 			OptionalDouble masked = ((Mask) left).getMaskedValue().doubleValue();
 			if (masked.isPresent() && masked.getAsDouble() == right.doubleValue().getAsDouble()) {
 				return left;
+			}
+		}
+
+		if (enableExpandQuotient && !left.isFP() && !right.isFP() && left instanceof Quotient) {
+			Quotient q = (Quotient) left;
+			Expression<?> d = q.getDenominator();
+
+			if (d instanceof Constant) {
+				return create(q.getNumerator(), right.multiply(d));
 			}
 		}
 

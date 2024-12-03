@@ -142,15 +142,20 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 
+			int pSize = producerShape.getTotalSize();
+			int tSize = shape(target).getTotalSize();
+			TraversalPolicy finalShape = producerShape.append(shape(target));
+
 			switch (strategy) {
 				case IGNORE:
 					return (CollectionProducer)
-							MatrixFeatures.getInstance().identity(shape(producerShape.getTotalSize(), shape(target).getTotalSize()))
-									.reshape(producerShape.append(shape(target)));
+							MatrixFeatures.getInstance().identity(shape(pSize, tSize))
+									.reshape(finalShape);
 				case COMBINE:
-					return producerFactory.apply(terms.stream()
+					CollectionProducer result = producerFactory.apply(terms.stream()
 							.filter(t -> !AlgebraFeatures.match(t, target))
-							.collect(Collectors.toList()));
+							.collect(Collectors.toList())).flatten();
+					return (CollectionProducer) diagonal(result).reshape(finalShape);
 				default:
 					throw new IllegalArgumentException();
 			}

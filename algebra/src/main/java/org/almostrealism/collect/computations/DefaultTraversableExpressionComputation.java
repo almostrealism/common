@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -32,9 +33,17 @@ import java.util.function.Supplier;
 
 public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableExpressionComputation<T> {
+	public static boolean enableCombineDeltaStrategy = true;
 	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
+
+	@SafeVarargs
+	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
+												   Function<TraversableExpression[], CollectionExpression> expression,
+												   Producer<? extends PackedCollection<?>>... args) {
+		this(name, shape, MultiTermDeltaStrategy.NONE, expression, args);
+	}
 
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
@@ -48,7 +57,9 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 												   MultiTermDeltaStrategy deltaStrategy,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape, deltaStrategy, validateArgs(args));
+		super(name, shape,
+				(enableCombineDeltaStrategy || deltaStrategy != MultiTermDeltaStrategy.COMBINE) ? deltaStrategy : MultiTermDeltaStrategy.NONE,
+					validateArgs(args));
 		this.expression = expression;
 	}
 

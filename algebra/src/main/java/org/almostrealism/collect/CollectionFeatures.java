@@ -94,6 +94,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableAxisAlignment = true;
 	boolean enableVariableRepeat = false;
 	boolean enableStrictAssignmentSize = true;
+	boolean enableReshapeSimplification = true;
 
 	Console console = Computation.console.child();
 
@@ -491,6 +492,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
+		if (enableReshapeSimplification && producer instanceof ReshapeProducer) {
+			return ((ReshapeProducer) producer).traverse(axis);
+		}
+
 		return new ReshapeProducer(axis, producer);
 	}
 
@@ -705,7 +710,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException();
 		}
 
-		return compute("add", shape -> args ->
+		return compute("add", DeltaFeatures.MultiTermDeltaStrategy.IGNORE,
+				shape -> args ->
 						sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				null, operands.toArray(new Producer[0]));
 	}
@@ -766,13 +772,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		return compute("multiply", shape -> args ->
+		return compute("multiply", DeltaFeatures.MultiTermDeltaStrategy.COMBINE,
+				shape -> args ->
 					product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				shortCircuit, a, b);
 	}
 
 	@Deprecated
-	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMultiply(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMultiply(Supplier<Evaluable<? extends PackedCollection<?>>> a,
+																					  Supplier<Evaluable<? extends PackedCollection<?>>> b,
 																					  Evaluable<T> shortCircuit) {
 		TraversalPolicy shape = shape(1);
 		if (shape(a).getSize() == shape(b).getSize()) {

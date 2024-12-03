@@ -35,8 +35,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	public static boolean enableContextualKernelIndex = true;
-
 	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
 												Supplier<Evaluable<? extends I>>... arguments) {
 		super(name, outputShape, arguments);
@@ -52,7 +50,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			KernelIndex kernelIndex = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
+			KernelIndex kernelIndex = new KernelIndex(context);
 			Expression index = kernelIndex;
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 

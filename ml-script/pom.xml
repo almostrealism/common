@@ -4,9 +4,13 @@
 		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>org.almostrealism</groupId>
+	<parent>
+		<groupId>org.almostrealism</groupId>
+		<artifactId>common</artifactId>
+		<version>0.66</version>
+	</parent>
+
 	<artifactId>ar-ml-script</artifactId>
-	<version>0.66</version>
 
 	<dependencies>
 		<dependency>

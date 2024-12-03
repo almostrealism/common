@@ -189,7 +189,13 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	@Override
 	public String describe() {
-		return getName() + " " + getShape().toStringDetail();
+		Supplier<?> p = getProducer();
+
+		if (p instanceof Shape) {
+			return super.describe();
+		} else {
+			return super.describe() + " " + getShape().toStringDetail();
+		}
 	}
 
 	public static <T> ArrayVariable<T> create(NameProvider np, String name,

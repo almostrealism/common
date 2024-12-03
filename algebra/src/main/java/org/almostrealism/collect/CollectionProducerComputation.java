@@ -37,6 +37,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
@@ -48,8 +49,8 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
-	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
-	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
+	 * When enabled, the {@link TraversalPolicy} of results from {@link #postProcessOutput(MemoryData, int)}
+	 * will avoid prepending dimensions to the {@link TraversalPolicy} from {@link #getShape()}.
 	 */
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
@@ -68,9 +69,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		}
 
 		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
-				args -> generate((List) args.stream()
-						.map(t -> (Process) t).collect(Collectors.toList())),
-				shape(producer), target).apply(terms);
+				producerFactory(this), shape(producer), target).apply(terms);
 	}
 
 	@Override
@@ -141,6 +140,23 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		T data = factory.apply(c.getShape());
 		data.setDelegate(c, 0);
 		return data;
+	}
+
+	static <T extends PackedCollection<?>> Function<List<Producer<?>>, CollectionProducer<T>>
+				producerFactory(CollectionProducerComputation<T> original) {
+		return args -> {
+			List<Producer<?>> terms = new ArrayList<>();
+			args.stream().skip(1).forEach(terms::add);
+
+			if (terms.isEmpty()) {
+				throw new IllegalArgumentException();
+			} else if (terms.size() == 1) {
+				return (CollectionProducer<T>) terms.get(0);
+			} else {
+				return original.generate((List) args.stream()
+						.map(t -> (Process) t).collect(Collectors.toList()));
+			}
+		};
 	}
 
 	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {

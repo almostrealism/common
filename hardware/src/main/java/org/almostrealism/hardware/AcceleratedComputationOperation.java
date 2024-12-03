@@ -235,38 +235,42 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (verboseCompile) log("Compiling " + getFunctionName());
 
-		return new ExpressionCache().use(getMetadata(), () -> {
-			prepareScope();
-			setupOutputVariable();
+		try {
+			return new ExpressionCache().use(getMetadata(), () -> {
+				prepareScope();
+				setupOutputVariable();
 
-			Computation<T> c = getComputation();
+				Computation<T> c = getComputation();
 
-			long start = System.nanoTime();
+				long start = System.nanoTime();
 
-			scope = c.getScope(this);
-			if (timing != null) {
-				timing.recordDuration(getMetadata(), scope.getMetadata(),
-						"getScope", System.nanoTime() - start);
-			}
+				scope = c.getScope(this);
+				if (timing != null) {
+					timing.recordDuration(getMetadata(), scope.getMetadata(),
+							"getScope", System.nanoTime() - start);
+				}
 
-			if (!enablePostConversionSimplify)
-				scope = scope.simplify(this);
+				if (!enablePostConversionSimplify)
+					scope = scope.simplify(this);
 
-			start = System.nanoTime();
-			scope.convertArgumentsToRequiredScopes(this);
-			if (timing != null) {
-				timing.recordDuration(getMetadata(), scope.getMetadata(),
-						"convertRequired", System.nanoTime() - start);
-			}
+				start = System.nanoTime();
+				scope.convertArgumentsToRequiredScopes(this);
+				if (timing != null) {
+					timing.recordDuration(getMetadata(), scope.getMetadata(),
+							"convertRequired", System.nanoTime() - start);
+				}
 
-			if (enablePostConversionSimplify)
-				scope = scope.simplify(this);
+				if (enablePostConversionSimplify)
+					scope = scope.simplify(this);
 
-			postCompile();
+				postCompile();
 
-			if (verboseCompile) log("Done compiling " + getFunctionName());
-			return scope;
-		});
+				if (verboseCompile) log("Done compiling " + getFunctionName());
+				return scope;
+			});
+		} catch (Exception e) {
+			throw new HardwareException("Cannot compile " + getName(), e);
+		}
 	}
 
 	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
