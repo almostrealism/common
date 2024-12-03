@@ -25,24 +25,23 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.ctx.HardwareDataContext;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.concurrent.Callable;
 
-public class NativeDataContext implements DataContext<MemoryData> {
+public class NativeDataContext extends HardwareDataContext {
 	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
 
 	private final boolean isExternal, isClMemory;
-	private final long maxReservation;
 
 	private NativeCompiler compiler;
 	private DataContext<MemoryData> delegate;
 	private MemoryProvider<? extends Memory> ram;
 	private boolean providedRam = false;
 
-	private String name;
 	private Precision precision;
 	private ComputeContext<MemoryData> context;
 
@@ -51,10 +50,9 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	}
 
 	public NativeDataContext(String name, Precision precision, long maxReservation, boolean clMemory) {
-		this.name = name;
+		super(name, maxReservation);
 		this.precision = precision;
 		this.isExternal = external;
-		this.maxReservation = maxReservation;
 		this.isClMemory = clMemory;
 	}
 
@@ -64,14 +62,11 @@ public class NativeDataContext implements DataContext<MemoryData> {
 		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
 
 		if (ram == null) {
-			ram = new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes());
+			ram = new NativeMemoryProvider(compiler, getMaxReservation() * getPrecision().bytes());
 		}
 
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
 	}
-
-	@Override
-	public String getName() { return name; }
 
 	@Override
 	public Precision getPrecision() { return precision; }

@@ -135,6 +135,12 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 
 	public void setAmplitude(double amp) { amplitude = amp; }
 
+	public WaveCellData getData() { return data; }
+
+	public TimeCell getClock() { return clock; }
+
+	public Producer<Scalar> getFrame() { return frame; }
+
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("WaveCell Setup");
