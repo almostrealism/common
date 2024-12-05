@@ -36,19 +36,19 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	protected int count;
 
 	@SafeVarargs
-	public ConstantRepeatedProducerComputation(TraversalPolicy shape, int count,
-												 BiFunction<TraversableExpression[], Expression, Expression> initial,
-												 BiFunction<TraversableExpression[], Expression, Expression> expression,
-												 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(shape, 1, count, initial, expression, args);
+	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
+											   BiFunction<TraversableExpression[], Expression, Expression> initial,
+											   BiFunction<TraversableExpression[], Expression, Expression> expression,
+											   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		this(name, shape, 1, count, initial, expression, args);
 	}
 
 	@SafeVarargs
-	public ConstantRepeatedProducerComputation(TraversalPolicy shape, int size, int count,
-												 BiFunction<TraversableExpression[], Expression, Expression> initial,
-												 BiFunction<TraversableExpression[], Expression, Expression> expression,
-												 Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
-		super(shape, size, initial, (args, index) -> index.lessThan(new IntegerConstant(count)), expression, inputs);
+	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
+											   BiFunction<TraversableExpression[], Expression, Expression> initial,
+											   BiFunction<TraversableExpression[], Expression, Expression> expression,
+											   Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
+		super(name, shape, size, initial, (args, index) -> index.lessThan(new IntegerConstant(count)), expression, inputs);
 		this.count = count;
 	}
 
@@ -69,7 +69,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	@Override
 	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new ConstantRepeatedProducerComputation<>(
-				getShape(), getMemLength(), count,
+				getName(), getShape(), getMemLength(), count,
 				initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}

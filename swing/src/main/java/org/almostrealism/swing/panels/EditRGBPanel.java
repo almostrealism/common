@@ -31,9 +31,10 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
+import io.almostrealism.util.NumberFormats;
+
 import org.almostrealism.color.RGB;
 import org.almostrealism.texture.GraphicsConverter;
-import org.almostrealism.algebra.Defaults;
 
 /** An EditRGBPanel object can be used to specify an RGB color. */
 public class EditRGBPanel extends JPanel {
@@ -55,9 +56,9 @@ public class EditRGBPanel extends JPanel {
 	public EditRGBPanel(RGB color) {
 		super(new GridLayout(0, 2));
 		
-		this.redField = new JFormattedTextField(Defaults.decimalFormat);
-		this.greenField = new JFormattedTextField(Defaults.decimalFormat);
-		this.blueField = new JFormattedTextField(Defaults.decimalFormat);
+		this.redField = new JFormattedTextField(NumberFormats.decimalFormat);
+		this.greenField = new JFormattedTextField(NumberFormats.decimalFormat);
+		this.blueField = new JFormattedTextField(NumberFormats.decimalFormat);
 		
 		this.redField.setColumns(6);
 		this.greenField.setColumns(6);
@@ -112,9 +113,9 @@ public class EditRGBPanel extends JPanel {
 	*/
 	
 	public void setSelectedColor(RGB color) {
-		this.redField.setValue(new Double(color.getRed()));
-		this.greenField.setValue(new Double(color.getGreen()));
-		this.blueField.setValue(new Double(color.getBlue()));
+		this.redField.setValue(Double.valueOf(color.getRed()));
+		this.greenField.setValue(Double.valueOf(color.getGreen()));
+		this.blueField.setValue(Double.valueOf(color.getBlue()));
 	}
 	
 	/**

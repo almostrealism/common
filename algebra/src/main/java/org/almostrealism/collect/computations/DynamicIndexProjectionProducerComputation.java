@@ -20,8 +20,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -50,7 +48,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 													 boolean relative,
 													 Producer<?> collection,
 													 Producer<?>... inputs) {
-		super(shape, null, relative, collection, inputs);
+		super(null, shape, null, relative, collection, inputs);
 		this.indexExpression = indexExpression;
 	}
 

@@ -22,7 +22,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class MinimumValue extends StaticReference<Double> {
@@ -53,6 +52,6 @@ public class MinimumValue extends StaticReference<Double> {
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return zeros(target.getShape());
+		return constantZero(target.getShape());
 	}
 }

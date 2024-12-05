@@ -217,7 +217,7 @@ public interface ExpressionFeatures {
 					.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
 	}
 
-	default CollectionExpression zeros(TraversalPolicy shape) {
+	default CollectionExpression constantZero(TraversalPolicy shape) {
 		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
 	}
 

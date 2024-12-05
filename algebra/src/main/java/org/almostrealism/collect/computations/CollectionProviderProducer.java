@@ -26,6 +26,7 @@ import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -36,7 +37,7 @@ import java.util.List;
 public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
-				OperationInfo,
+				OperationInfo, DescribableParent<Process<?, ?>>,
 				CollectionFeatures {
 	private OperationMetadata metadata;
 	private Shape value;
@@ -84,6 +85,16 @@ public class CollectionProviderProducer<T extends Shape>
 	@Override
 	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
 		return this;
+	}
+
+	@Override
+	public String describe() {
+		return "p(" + getShape().describe() + ")";
+	}
+
+	@Override
+	public String description() {
+		return "p" + getShape().toString();
 	}
 
 	@Override

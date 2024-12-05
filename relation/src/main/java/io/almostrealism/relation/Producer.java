@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  *
  * @author  Michael Murray
  */
-public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node,  Destroyable {
+public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computable, Node, Destroyable {
 	@Override
 	Evaluable<T> get();
 

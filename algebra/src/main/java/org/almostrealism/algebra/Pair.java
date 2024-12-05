@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -119,9 +120,9 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	public String describe() {
 		return getShape() +
 				" [" +
-				Defaults.displayFormat.format(getX()) +
+				NumberFormats.formatNumber(getX()) +
 				", " +
-				Defaults.displayFormat.format(getY()) +
+				NumberFormats.formatNumber(getY()) +
 				"]";
 	}
 
@@ -129,9 +130,9 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	@Override
 	public String toString() {
 		return "[" +
-				Defaults.displayFormat.format(getX()) +
+				NumberFormats.formatNumber(getX()) +
 				", " +
-				Defaults.displayFormat.format(getY()) +
+				NumberFormats.formatNumber(getY()) +
 				"]";
 	}
 

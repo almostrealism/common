@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,21 @@ package org.almostrealism.heredity;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Random;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Defaults;
 import org.almostrealism.collect.PackedCollection;
 
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
+	private Random random;
+
 	/** Constructs an empty {@link ProbabilisticFactory}. */
-	public ProbabilisticFactory() { }
+	public ProbabilisticFactory() {
+		random = new Random();
+	}
 	
 	/**
 	 * Constructs a {@link ProbabilisticFactory} with the specified factories, where
@@ -49,7 +53,7 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	
 	@Override
 	public V construct() {
-		double r = Defaults.random.nextDouble();
+		double r = random.nextDouble();
 		double p = 0;
 		
 		for (Entry<Factory<V>, Double> e : entrySet()) {

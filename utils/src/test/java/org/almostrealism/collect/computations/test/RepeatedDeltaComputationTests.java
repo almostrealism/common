@@ -91,7 +91,7 @@ public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeat
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> c = cp(in).multiply(cp(multiplier)).sum().delta(cp(in))
 					.reshape(2, 4);
-			c = new IndexProjectionProducerComputation<>(c.getShape().traverseEach(), index -> index, c) {
+			c = new IndexProjectionProducerComputation<>(null, c.getShape().traverseEach(), index -> index, c) {
 				@Override
 				public int getMemLength() {return 1;}
 			};

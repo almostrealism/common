@@ -33,6 +33,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -48,8 +49,8 @@ import java.util.List;
 
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
-		ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					ScopeLifecycle {
+					ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+					ScopeLifecycle, DescribableParent<Process<?, ?>> {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = false;
 
@@ -83,18 +84,20 @@ public class ReshapeProducer<T extends Shape<T>>
 				return;
 			} else {
 				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
-						extendDescription(child.getShortDescription()));
+						extendDescription(child.getShortDescription(), false));
 			}
 
 			metadata = new OperationMetadata(metadata, List.of(child));
 		}
 	}
 
-	protected String extendDescription(String description) {
-		if (shape == null) {
-			return description + " {-> axis " + traversalAxis + "}";
+	protected String extendDescription(String description, boolean brief) {
+		if (shape != null) {
+			return description + "{->" + getShape() + "}";
+		} else if (!brief) {
+			return description + "{->" + traversalAxis + "}";
 		} else {
-			return description + " {-> " + getShape() + "}";
+			return description;
 		}
 	}
 
@@ -334,11 +337,18 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public String describe() {
-		if (producer instanceof Describable) {
-			return extendDescription(((Describable) producer).describe());
+		return description() + " | " + getShape().toStringDetail();
+	}
+
+	@Override
+	public String description() {
+		if (producer instanceof CollectionProviderProducer) {
+			return "p" + getShape().toString();
+		} else if (producer instanceof DescribableParent) {
+			return extendDescription(((DescribableParent) producer).description(), true);
 		}
 
-		return CollectionProducer.super.describe();
+		return describe();
 	}
 
 	private T apply(Shape<T> in) {

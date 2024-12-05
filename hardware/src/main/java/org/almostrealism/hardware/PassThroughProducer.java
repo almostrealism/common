@@ -32,6 +32,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
@@ -42,7 +43,7 @@ import java.util.function.Supplier;
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
-					ComputerFeatures  {
+					DescribableParent<Process<?, ?>>, ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
 
@@ -200,5 +201,18 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return getMetadata().getShortDescription() + " " +
 				getShape().toStringDetail() +
 				(isFixedCount() ? " (fixed)" : " (variable)");
+	}
+
+	@Override
+	public String description(List<String> children) {
+		if (argIndex == 0) {
+			return "x";
+		} else if (argIndex == 1) {
+			return "y";
+		} else if (argIndex == 2) {
+			return "z";
+		} else {
+			return "input" + argIndex;
+		}
 	}
 }

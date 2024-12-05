@@ -586,6 +586,12 @@ public abstract class Expression<T> implements
 
 	public List<Expression<?>> flatten() { return getChildren(); }
 
+	public Expression<?> simplify() {
+		KernelStructureContext ctx = getStructureContext();
+		if (ctx == null) ctx = new NoOpKernelStructureContext();
+		return simplify(ctx);
+	}
+
 	@Override
 	public Expression<?> simplify(KernelStructureContext context) {
 		return ScopeSettings.reviewSimplification(this,
@@ -733,6 +739,10 @@ public abstract class Expression<T> implements
 		}
 
 		return result;
+	}
+
+	public static LanguageOperations defaultLanguage() {
+		return lang;
 	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {

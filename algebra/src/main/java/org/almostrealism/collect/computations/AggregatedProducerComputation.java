@@ -35,13 +35,16 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
-	public static boolean enableContextualKernelIndex = true;
+	public static boolean enableIndexSimplification = true;
+	public static boolean enableIndexCache = false;
 	public static boolean enableLogging = false;
 
 	private BiFunction<Expression, Expression, Expression> expression;
@@ -52,13 +55,18 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	private Expression<Integer> uniqueOffset;
 	private Expression<? extends Number> uniqueIndex;
 
-	public AggregatedProducerComputation(TraversalPolicy shape, int count,
+	private Map<String, Expression<?>> indexCache;
+
+	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
 										 Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(shape, count, initial, null, arguments);
+		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
+
+		if (enableIndexCache)
+			indexCache = new HashMap<>();
 
 		if (enableLogging)
 			log("Created AggregatedProducerComputation (" + count + " items)");
@@ -131,9 +139,38 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		return scope;
 	}
 
+	protected Expression<?> checkCache(Expression<?> index) {
+		if (indexCache == null || index.countNodes() > 100) return null;
+
+		String key = index.getExpression(Expression.defaultLanguage());
+		if (indexCache.containsKey(key)) {
+			if (enableLogging)
+				log("Using cached value for index " + key);
+
+			return indexCache.get(key);
+		}
+
+		return null;
+	}
+
+	protected Expression<Double> cache(Expression<?> index, Expression<Double> result) {
+		if (indexCache == null || index.countNodes() > 100) return result;
+
+		String key = index.getExpression(Expression.defaultLanguage());
+		indexCache.put(key, result);
+		return result;
+	}
+
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		if (uniqueIndex == null) {
+			if (enableIndexSimplification) {
+				index = index.simplify();
+			}
+
+			Expression e = checkCache(index);
+			if (e != null) return e;
+
 			TraversableExpression args[] = getTraversableArguments(index);
 
 			Expression value = initial.apply(args, e(0));
@@ -154,7 +191,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 				}
 			}
 
-			return value;
+			return cache(index, value);
 		} else {
 			Expression uniqueIndex = index
 					.multiply(Math.toIntExact(ref.getLimit().getAsLong()))
@@ -165,7 +202,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		if (enableContextualKernelIndex && globalIndex instanceof KernelIndex) {
+		if (globalIndex instanceof KernelIndex) {
 			Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
 					.referenceRelative(new IntegerConstant(0), (KernelIndex) globalIndex);
 			return expression.apply(currentValue, args[1].getValueRelative(localIndex));
@@ -197,7 +234,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			delta = delta.reshape(outLength, inLength);
 			delta = delta.enumerate(1, 1);
 			delta = delta.enumerate(1, count).traverse(2);
-			return new AggregatedProducerComputation<>(shape(delta).replace(shape(1)),
+			return new AggregatedProducerComputation<>(getName(), shape(delta).replace(shape(1)),
 						count, initial, expression, (Supplier) delta)
 					.setReplaceLoop(isReplaceLoop())
 					.reshape(getShape().append(shape(target)));
@@ -217,7 +254,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getShape(),
+		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 		c.setReplaceLoop(replaceLoop);

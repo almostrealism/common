@@ -30,8 +30,9 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
+import io.almostrealism.util.NumberFormats;
+
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.Defaults;
 
 /** An EditVectorPanel object can be used to specify a 3D vector. */
 public class EditVectorPanel extends JPanel {
@@ -53,9 +54,9 @@ public class EditVectorPanel extends JPanel {
 	public EditVectorPanel(Vector value) {
 		super(new GridLayout(0, 2));
 		
-		this.xField = new JFormattedTextField(Defaults.decimalFormat);
-		this.yField = new JFormattedTextField(Defaults.decimalFormat);
-		this.zField = new JFormattedTextField(Defaults.decimalFormat);
+		this.xField = new JFormattedTextField(NumberFormats.decimalFormat);
+		this.yField = new JFormattedTextField(NumberFormats.decimalFormat);
+		this.zField = new JFormattedTextField(NumberFormats.decimalFormat);
 		
 		this.xField.setColumns(6);
 		this.yField.setColumns(6);
@@ -110,9 +111,9 @@ public class EditVectorPanel extends JPanel {
 	 * the vector represented by the specified Vector object.
 	 */
 	public void setSelectedVector(Vector value) {
-		this.xField.setValue(new Double(value.getX()));
-		this.yField.setValue(new Double(value.getY()));
-		this.zField.setValue(new Double(value.getZ()));
+		this.xField.setValue(Double.valueOf(value.getX()));
+		this.yField.setValue(Double.valueOf(value.getY()));
+		this.zField.setValue(Double.valueOf(value.getZ()));
 		this.coordTypeBox.setSelectedIndex(0);
 	}
 	

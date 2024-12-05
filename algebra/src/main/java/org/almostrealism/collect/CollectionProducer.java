@@ -150,11 +150,6 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return multiply((Producer) this, value);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMultiply(Producer<T> value) {
-		return relativeMultiply((Supplier) this, (Supplier) value, null);
-	}
-
 	default <V extends PackedCollection<?>> CollectionProducer<V> div(double value) {
 		return divide(value);
 	}
@@ -271,6 +266,8 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	default CollectionProducer<T> delta(Producer<?> target) {
 		CollectionProducer<T> delta = attemptDelta(target);
 		if (delta != null) return delta;
+
+		attemptDelta(target);
 
 		throw new UnsupportedOperationException();
 	}

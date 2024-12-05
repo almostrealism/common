@@ -33,7 +33,6 @@ import java.util.function.Supplier;
 
 public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableExpressionComputation<T> {
-	public static boolean enableCombineDeltaStrategy = true;
 	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
@@ -57,9 +56,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 												   MultiTermDeltaStrategy deltaStrategy,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape,
-				(enableCombineDeltaStrategy || deltaStrategy != MultiTermDeltaStrategy.COMBINE) ? deltaStrategy : MultiTermDeltaStrategy.NONE,
-					validateArgs(args));
+		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
 	}
 
@@ -91,6 +88,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 						getDeltaStrategy(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor())
+				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
 				.addAllDependentLifecycles(getDependentLifecycles());
 	}
@@ -104,6 +102,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 		return (DefaultTraversableExpressionComputation<T>)
 				new DefaultTraversableExpressionComputation<T>("constant", value.getShape(),
 						args -> new ConditionalIndexExpression(value.getShape(), value))
+						.setDescription(children -> value.describe())
 						.setPostprocessor(postprocessor).setShortCircuit(args -> {
 							PackedCollection v = new PackedCollection(value.getShape());
 							v.setMem(value.toArray(0, value.getMemLength()));

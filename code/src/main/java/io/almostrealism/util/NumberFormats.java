@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +14,11 @@
  * limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.util;
 
-import java.awt.Color;
 import java.text.DecimalFormat;
-import java.util.Random;
 
-/**
- * @author  Michael Murray
- */
-public class Defaults {
-	public static final double FLT_EPSILON = 1.19209290e-07f;
-
+public class NumberFormats {
 	private static class DefaultIntegerFormat extends DecimalFormat {
 		public DefaultIntegerFormat() {
 			super("#");
@@ -38,22 +31,13 @@ public class Defaults {
 
 	private static class DefaultDecimalFormat extends DecimalFormat {
 		public DefaultDecimalFormat() {
-			super("#");
-
-			this.setMinimumIntegerDigits(1);
-			this.setMinimumFractionDigits(1);
-			this.setMaximumFractionDigits(340);
+			super("0.000##E0");
 		}
 	}
 
 	private static class TruncatedDecimalFormat extends DecimalFormat {
 		public TruncatedDecimalFormat() {
-			super("####00.0000");
-
-			this.setMinimumIntegerDigits(1);
-			this.setMaximumIntegerDigits(6);
-			this.setMaximumFractionDigits(4);
-			this.setMinimumFractionDigits(4);
+			super("#####0.00##");
 		}
 	}
 
@@ -66,24 +50,15 @@ public class Defaults {
 	/** An instance of DecimalFormat that can be used to format decimal numbers for display. */
 	public static final DecimalFormat displayFormat = new TruncatedDecimalFormat();
 
-	/** AWT Color representing the primary 1 color for the default theme. */
-	public static Color themePrimary1 = (new Color(0, 108, 175)).darker();
-
-	/** AWT Color representing the primary 2 color for the default theme. */
-	public static Color themePrimary2 = new Color(0, 108, 175);
-
-	/** AWT Color representing the primary 3 color for the default theme. */
-	public static Color themePrimary3 =  themePrimary2.brighter();
-
-	/** AWT Color representing the secondary 1 color for the default theme. */
-	public static Color themeSecondary1 = new Color(102, 103, 104);
-
-	/** AWT Color representing the secondary 2 color for the default theme. */
-	public static Color themeSecondary2 = new Color(170, 174, 177);
-
-	/** AWT Color representing the secondary 3 color for the default theme. */
-	public static Color themeSecondary3 = new Color(209, 212, 214);
-
-	/** A general purpose instance of {@link Random}. */
-	public static Random random = new Random();
+	public static String formatNumber(Number value) {
+		if (value == null) {
+			return null;
+		} else if (value instanceof Integer) {
+			return integerFormat.format(value);
+		} else if (value.doubleValue() >= 0.0005 && value.doubleValue() <= 500000) {
+			return displayFormat.format(value);
+		} else {
+			return decimalFormat.format(value);
+		}
+	}
 }

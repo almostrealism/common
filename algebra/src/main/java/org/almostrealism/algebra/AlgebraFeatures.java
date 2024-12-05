@@ -37,10 +37,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public interface AlgebraFeatures extends CollectionFeatures {
 	boolean enableIsolationWarnings = false;
+	boolean enableDeepCannotMatch = false;
+	boolean enableOptionalMatch = false;
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,
@@ -98,18 +101,25 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		return matched;
 	}
 
-	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
+	default <T> Optional<Producer<T>> matchInput(Producer<T> producer, Producer<?> target) {
 		List<Producer<T>> matched = matchingInputs(producer, target);
 
-		if (matched.size() == 1) {
-			return matched.get(0);
+		if (matched.isEmpty()) {
+			return enableOptionalMatch ? Optional.empty() : null;
+		} else if (matched.size() == 1) {
+			return Optional.of(matched.get(0));
 		}
 
 		return null;
 	}
 
 	static boolean cannotMatch(Supplier<?> p, Supplier<?> target) {
-		if (p instanceof CollectionProviderProducer && target instanceof CollectionProviderProducer) {
+		if (enableDeepCannotMatch) {
+			p = getRoot(p);
+			target = getRoot(target);
+		}
+
+		if (isRoot(p) && isRoot(target)) {
 			return !match(p, target);
 		}
 
@@ -130,7 +140,11 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		return false;
 	}
 
-	static boolean match(Supplier<?> p, Supplier<?> q) {
+	static boolean isRoot(Supplier<?> p) {
+		return p instanceof CollectionProviderProducer || p instanceof PassThroughProducer;
+	}
+
+	static Supplier<?> getRoot(Supplier<?> p) {
 		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
 			if (p instanceof ReshapeProducer) {
 				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
@@ -139,13 +153,12 @@ public interface AlgebraFeatures extends CollectionFeatures {
 			}
 		}
 
-		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestinationProducer) {
-			if (q instanceof ReshapeProducer) {
-				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
-			} else {
-				q = (Producer<?>) ((MemoryDataDestinationProducer) q).getDelegate();
-			}
-		}
+		return p;
+	}
+
+	static boolean match(Supplier<?> p, Supplier<?> q) {
+		p = getRoot(p);
+		q = getRoot(q);
 
 		if (Objects.equals(p, q)) {
 			return true;

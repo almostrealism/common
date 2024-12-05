@@ -20,9 +20,9 @@ import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -404,7 +404,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	@Override
 	public String describe() {
 		if (getShape().getTotalSize() == 1) {
-			return getShape() + " " + toDouble(0);
+			return NumberFormats.formatNumber(toDouble(0));
 		} else {
 			return getShape().toStringDetail();
 		}

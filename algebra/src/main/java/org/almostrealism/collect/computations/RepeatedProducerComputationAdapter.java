@@ -31,7 +31,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
 											  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(shape,
+		super(null, shape,
 				(args, index) ->
 						new DoubleConstant(0.0),
 				null,

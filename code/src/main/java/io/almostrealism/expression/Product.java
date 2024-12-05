@@ -174,7 +174,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		CollectionExpression<?> result;
 
 		if (sum.isEmpty()) {
-			result = zeros(target.getShape());
+			result = constantZero(target.getShape());
 		} else if (sum.size() == 1) {
 			result = sum.get(0);
 		} else {

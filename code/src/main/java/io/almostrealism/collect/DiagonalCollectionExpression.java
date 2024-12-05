@@ -62,9 +62,7 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 		}
 
 		if (enableIndexSimplification) {
-			KernelStructureContext ctx = index.getStructureContext();
-			if (ctx == null) ctx = new NoOpKernelStructureContext();
-			index = index.simplify(ctx);
+			index = index.simplify();
 		}
 
 		if (getTotalShape() == null || !getTotalShape().isFixedCount() ||

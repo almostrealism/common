@@ -176,16 +176,99 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		// y = f(x)
 		Evaluable<PackedCollection<?>> y = c.get();
 		PackedCollection<?> out = y.evaluate(v);
+		out.print();
+
+
+		// dy = f'(x)
+		//    = 2x + w
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < dim; j++) {
+				for (int k = 0; k < dim; k++) {
+					if (j == k) {
+						assertEquals(2 * v.valueAt(i, j) + w.valueAt(j), dout.valueAt(i, j, k));
+					} else {
+						assertEquals(0.0, dout.valueAt(i, j, k));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void polynomial5() {
+		int dim = 3;
+
+		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(4, dim).traverse();
+		PackedCollection<?> w = pack(4, -3, 2);
+		CollectionProducer<PackedCollection<?>> x = x(dim);
+
+		// x^2 + w * -x + 1
+		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate(v);
 		System.out.println(Arrays.toString(out.toArray(0, 4 * dim)));
 
+		// dy = f'(x)
+		//    = 2x - w
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
 
-		verboseLog(() -> {
-			// dy = f'(x)
-			//    = 2x + w
-			Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-			PackedCollection<?> dout = dy.evaluate(v);
-			System.out.println(Arrays.toString(dout.toArray(0, 4 * dim)));
-		});
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < dim; j++) {
+				for (int k = 0; k < dim; k++) {
+					if (j == k) {
+						assertEquals(2 * v.valueAt(i, j) - w.valueAt(j), dout.valueAt(i, j, k));
+					} else {
+						assertEquals(0.0, dout.valueAt(i, j, k));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void polynomial6() {
+		int dim = 3;
+
+		PackedCollection<?> v = pack(IntStream.range(0, dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(dim).traverse();
+		PackedCollection<?> w = pack(4, -3, 2);
+		CollectionProducer<PackedCollection<?>> x = cp(v);
+
+		// x^2 + w * -x + 1
+		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
+		System.out.println(c.describe());
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate();
+		out.print();
+
+		// dy = f'(x)
+		//    = 2x - w
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
+		PackedCollection<?> dout = dy.evaluate();
+		dout.print();
+
+		for (int j = 0; j < dim; j++) {
+			for (int k = 0; k < dim; k++) {
+				if (j == k) {
+					assertEquals(2 * v.valueAt(j) - w.valueAt(j), dout.valueAt(j, k));
+				} else {
+					assertEquals(0.0, dout.valueAt(j, k));
+				}
+			}
+		}
 	}
 
 	@Test
@@ -909,6 +992,57 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 			for (int j = 0; j < dim; j++) {
 				if (i == j) {
 					assertEquals(f.valueAt(j), dout.valueAt(i, j));
+				} else {
+					assertEquals(0.0, dout.valueAt(i, j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void multiplyAdd1() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> g = new PackedCollection<>(shape(dim)).randFill();
+
+		CollectionProducer cdy = cp(v).multiply(cp(f).add(cp(g)))
+				.delta(p(f));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		dout.traverse().print();
+
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(v.valueAt(j), dout.valueAt(i, j));
+				} else {
+					assertEquals(0.0, dout.valueAt(i, j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void multiplyAdd2() {
+		int dim = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> f = new PackedCollection<>(shape(dim)).randFill();
+		PackedCollection<?> g = new PackedCollection<>(shape(dim)).randFill();
+
+		// y = f * (f + g) = f^2 + f * g
+		CollectionProducer cdy = cp(f).multiply(cp(f).add(cp(g)))
+				.delta(p(f));
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate().reshape(dim, dim);
+		dout.traverse().print();
+
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(2.0 * f.valueAt(j) + g.valueAt(j), dout.valueAt(i, j));
 				} else {
 					assertEquals(0.0, dout.valueAt(i, j));
 				}

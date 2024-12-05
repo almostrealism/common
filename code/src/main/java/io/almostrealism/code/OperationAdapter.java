@@ -27,6 +27,7 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.util.DescribableParent;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,7 +40,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class OperationAdapter<T, C> implements
-											NameProvider, Parent<C>,
+											NameProvider, DescribableParent<C>,
 											Destroyable, OperationInfo,
 											NamedFunction, Named {
 
@@ -213,8 +214,9 @@ public abstract class OperationAdapter<T, C> implements
 	}
 
 	@Override
-	public String describe() {
-		return getMetadata().getShortDescription();
+	public String description(List<String> children) {
+		return getMetadata().getShortDescription() + "(" +
+				String.join(", ", children) + ")";
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {

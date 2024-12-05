@@ -35,6 +35,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.algebra.DeltaAlternate;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -52,6 +54,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -59,7 +62,8 @@ import java.util.stream.Stream;
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, IndexSet,
-														   MemoryDataComputation<O>, ComputerFeatures {
+															DeltaAlternate<O>, MemoryDataComputation<O>,
+															ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 
 	private String name;
@@ -71,11 +75,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private HardwareEvaluable<O> evaluable;
 	private boolean evaluableOutdated;
 
+	private CollectionProducer<O> deltaAlternate;
+	private Function<List<String>, String> description;
+
 	protected CollectionProducerComputationBase() {
 	}
 
 	@SafeVarargs
-	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape,
+											 Supplier<Evaluable<? extends I>>... arguments) {
 		this();
 
 		if (outputShape.getTotalSizeLong() <= 0) {
@@ -100,6 +108,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	protected List<ArrayVariable<Double>> getInputArguments() {
 		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
+	}
+
+	@Override
+	public CollectionProducer<O> getDeltaAlternate() {
+		return deltaAlternate;
+	}
+
+	public void setDeltaAlternate(CollectionProducer<O> deltaAlternate) {
+		this.deltaAlternate = deltaAlternate;
 	}
 
 	public CollectionProducerComputationBase<I, O> addDependentLifecycle(ScopeLifecycle lifecycle) {
@@ -263,6 +280,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return this;
 	}
 
+	public Function<List<String>, String> getDescription() {
+		return description;
+	}
+
+	public CollectionProducerComputationBase<I, O> setDescription(Function<List<String>, String> description) {
+		this.description = description;
+		return this;
+	}
+
 	/**
 	 * @return  PhysicalScope#GLOBAL
 	 */
@@ -352,16 +378,18 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public String describe() {
-		return getMetadata().getShortDescription() + " " +
-				getCountLong() + "x" +
-				(isFixedCount() ? " (fixed) " : " (variable) ") +
-				getShape().toString();
+	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
+		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 
 	@Override
-	public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
-		return CollectionProducerComputation.super.delegate(original, actual);
+	public String describe() {
+		return super.describe() + " " + getShape().toString();
+	}
+
+	@Override
+	public String description(List<String> children) {
+		return description == null ? super.description(children) : description.apply(children);
 	}
 
 	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

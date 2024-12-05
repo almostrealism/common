@@ -190,7 +190,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public String describe() {
-		return getMetadata().getShortDescription() + " " +
+		return super.describe() + " | " +
 				getCountLong() + "x" +
 				(isFixedCount() ? " (fixed)" : " (variable)");
 	}

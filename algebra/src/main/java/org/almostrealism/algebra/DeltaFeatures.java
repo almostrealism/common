@@ -37,6 +37,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -81,10 +82,13 @@ public interface DeltaFeatures extends MatrixFeatures {
 		TraversalPolicy shape = producer.getShape();
 		TraversalPolicy targetShape = shape(target);
 
-		if (AlgebraFeatures.match(producer, target)) {
+		if (AlgebraFeatures.cannotMatch(producer, target)) {
 			return (CollectionProducer)
-					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-						.reshape(shape.append(targetShape));
+					zeros(shape.append(targetShape));
+		} else if (AlgebraFeatures.match(producer, target)) {
+			return (CollectionProducer)
+						identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+								.reshape(shape.append(targetShape));
 		}
 
 		if (isChainRuleSupported()) {
@@ -94,7 +98,16 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 
-			Producer<T> in = matchInput(producer, target);
+			Optional<Producer<T>> match = matchInput(producer, target);
+
+			if (match == null) {
+				return null;
+			} else if (match.isEmpty()) {
+				return (CollectionProducer<T>) zeros(shape.append(targetShape));
+			}
+
+			Producer<T> in = match.get();
+
 			if (AlgebraFeatures.match(in, target)) {
 				return applyDeltaStrategy(producer, target);
 			}
