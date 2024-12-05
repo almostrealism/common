@@ -92,13 +92,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	// Should be removed
 	boolean enableTraversableRepeated = true;
+	boolean enableQuotientExpression = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 	boolean enableProductComputation = false;
 	boolean enableMinusDeltaStrategy = false;
-	boolean enableQuotientExpression = false;
 
 	Console console = Computation.console.child();
 
@@ -834,7 +834,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		c.setDeltaAlternate(multiply(a, pow(b, c(-1.0))));
-		return c;
+		return p;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
