@@ -38,6 +38,7 @@ import io.almostrealism.expression.Logarithm;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Countable;
@@ -86,13 +87,18 @@ import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableIndexProjectionDeltaAlt = true;
-	boolean enableTraversableRepeated = true;
-	boolean enableCollectionIndexSize = false;
 	boolean enableVariableRepeat = false;
 	boolean enableStrictAssignmentSize = true;
+
+	// Should be removed
+	boolean enableTraversableRepeated = true;
+
+	// Should be flipped and removed
+	boolean enableIndexProjectionDeltaAlt = true;
+	boolean enableCollectionIndexSize = false;
 	boolean enableProductComputation = false;
 	boolean enableMinusDeltaStrategy = false;
+	boolean enableQuotientExpression = false;
 
 	Console console = Computation.console.child();
 
@@ -804,10 +810,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
-		CollectionProducer<T> p = compute("divide",
-				shape -> (args) ->
-						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				(List<String> args) -> String.join(" / ", applyParentheses(args)), null, a, b);
+		CollectionProducer<T> p;
+
+		if (enableQuotientExpression) {
+			p = compute("divide",
+					shape -> (args) ->
+							quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+					(List<String> args) -> String.join(" / ", applyParentheses(args)), null, a, b);
+		} else {
+			console.features(CollectionFeatures.class)
+					.warn("Using inefficient expression for division");
+			p = compute("divide", shape -> (args) ->
+					CollectionExpression.create(shape, index ->
+							Quotient.of(args[1].getValueAt(index), args[2].getValueAt(index))), null, a, b);
+		}
 
 		CollectionProducerComputationBase c;
 
@@ -816,6 +832,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		} else {
 			c = (CollectionProducerComputationBase) p;
 		}
+
 		c.setDeltaAlternate(multiply(a, pow(b, c(-1.0))));
 		return c;
 	}
