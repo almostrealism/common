@@ -54,7 +54,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
 
-		return new DefaultTraversableExpressionComputation<>("diagonal", diagonalShape.traverseEach(),
+		return new DefaultTraversableExpressionComputation<>("diagonal", diagonalShape,
 				(args) -> new DiagonalCollectionExpression(diagonalShape, args[1]), vector) {
 			@Override
 			public boolean isDiagonal(int width) {
