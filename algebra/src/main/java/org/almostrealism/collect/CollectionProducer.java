@@ -267,8 +267,6 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducer<T> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
-		attemptDelta(target);
-
 		throw new UnsupportedOperationException();
 	}
 

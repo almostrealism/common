@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 
 public interface AlgebraFeatures extends CollectionFeatures {
 	boolean enableIsolationWarnings = false;
-	boolean enableDeepCannotMatch = false;
+	boolean enableDeepCannotMatch = true;
 	boolean enableOptionalMatch = false;
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,

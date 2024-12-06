@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionFeatures;
@@ -23,7 +24,49 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 
+import java.util.function.BiConsumer;
+import java.util.function.IntFunction;
+
 public interface GradientTestFeatures extends CodeFeatures {
+
+	default void runTest(String name, int dim,
+						 IntFunction<PackedCollection<?>> inputGenerator,
+						 Factor<PackedCollection<?>> operation,
+						 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+		runTest(name, dim, inputGenerator, operation, validate, true, true);
+	}
+
+	default void runTest(String name, int dim,
+						 IntFunction<PackedCollection<?>> inputGenerator,
+						 Factor<PackedCollection<?>> operation,
+						 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate,
+						 boolean fixed, boolean variable) {
+		if (fixed) {
+			// TODO  Should use kernelTest
+			log("Validating fixed input...");
+			PackedCollection<?> fixedInput = inputGenerator.apply(1);
+			fixedInput = fixedInput.reshape(fixedInput.getShape().item());
+
+			CollectionProducer<PackedCollection<?>> p = cp(fixedInput);
+
+			Producer<PackedCollection<?>> c = operation.getResultant(p);
+			PackedCollection<?> out = c.get().evaluate();
+			validate.accept(
+					fixedInput.reshape(fixedInput.getShape().prependDimension(1)),
+					out.reshape(out.getShape().prependDimension(1)));
+		}
+
+		if (variable) {
+			log("Validating variable input...");
+			PackedCollection<?> variableInput = inputGenerator.apply(4);
+			CollectionProducer<PackedCollection<?>> x = x(dim);
+
+			Producer<PackedCollection<?>> c = operation.getResultant(x);
+			PackedCollection<?> out = c.get().evaluate(variableInput);
+			validate.accept(variableInput, out);
+		}
+	}
+
 	default Producer<PackedCollection<?>> applyGradient(CollectionProducer<?> delta,
 														CollectionProducer<?> gradient) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();

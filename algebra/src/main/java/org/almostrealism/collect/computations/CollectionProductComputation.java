@@ -24,7 +24,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -59,32 +58,34 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 					.filter(p -> p instanceof CollectionProducer)
 					.toArray(CollectionProducer[]::new));
 
+		boolean supported = true;
+
 		if (operands.size() != getChildren().size() - 1) {
+			supported = false;
+		} else if (operands.size() != 2) {
+			warn("Product delta not implemented for more than two operands");
+			supported = false;
+		} else if (operands.stream().anyMatch(o -> !o.isFixedCount())) {
+			warn("Product delta not implemented for variable count operands");
+			supported = false;
+		}
+
+		if (!supported) {
 			return super.delta(target);
 		}
 
 		TraversalPolicy shape = getShape().append(targetShape);
 
-		if (operands.size() == 2) {
-			int finalLength = shape.getTotalSize();
-			int outLength = getShape().getTotalSize();
-			int inLength = targetShape.getTotalSize();
+		CollectionProducer<PackedCollection<?>> u = operands.get(0);
+		CollectionProducer<PackedCollection<?>> v = operands.get(1);
+		CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
+		CollectionProducer<PackedCollection<?>> vDelta = v.delta(target);
 
-			CollectionProducer<PackedCollection<?>> u = operands.get(0);
-			CollectionProducer<PackedCollection<?>> v = operands.get(1);
-			CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
-			CollectionProducer<PackedCollection<?>> vDelta = v.delta(target);
+		u = diagonal(u.flatten());
+		v = diagonal(v.flatten());
+		uDelta = uDelta.reshape(v.getShape()).traverse(0);
+		vDelta = vDelta.reshape(u.getShape()).traverse(0);
 
-//			u = u.flatten().each().repeat(inLength);
-//			v = v.flatten().each().repeat(inLength);
-
-			u = diagonal(u.flatten());
-			v = diagonal(v.flatten());
-
-			return (CollectionProducer) matmul(u, vDelta).add(matmul(v, uDelta)).reshape(shape);
-		}
-
-		warn("Product delta not implemented for more than two operands");
-		return super.delta(target);
+		return (CollectionProducer) matmul(u, vDelta).add(matmul(v, uDelta)).reshape(shape);
 	}
 }
