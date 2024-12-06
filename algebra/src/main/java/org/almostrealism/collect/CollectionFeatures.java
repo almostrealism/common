@@ -48,7 +48,7 @@ import io.almostrealism.relation.ProducerFeatures;
 import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.algebra.DeltaFeatures;
+import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;

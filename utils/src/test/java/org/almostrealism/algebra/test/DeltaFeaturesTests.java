@@ -19,13 +19,10 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.DeltaFeatures;
+import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Test;
 
 import java.util.stream.IntStream;

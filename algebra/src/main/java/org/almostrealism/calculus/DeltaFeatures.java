@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.calculus;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
@@ -23,7 +23,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.InputStub;
+import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.computations.ReshapeProducer;
