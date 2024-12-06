@@ -130,6 +130,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void normComputationDeltaMedium() {
+		if (skipLongTests) return;
+
 		int c = 28;
 		int v = 28 * 28;
 
@@ -468,7 +470,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableProgressiveLarge() throws IOException {
-		if (testDepth < 3) return;
+		if (testDepth < 3 || skipLongTests) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 200;
