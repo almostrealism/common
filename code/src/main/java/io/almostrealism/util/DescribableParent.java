@@ -18,6 +18,8 @@ package io.almostrealism.util;
 import io.almostrealism.relation.Parent;
 import org.almostrealism.io.Describable;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,7 +30,10 @@ public interface DescribableParent<T> extends Parent<T>, Describable {
 	}
 
 	default String description() {
-		return description(getChildren().stream()
+		Collection<T> children = getChildren();
+		if (children == null) children = Collections.emptyList();
+
+		return description(children.stream()
 				.map(DescribableParent::description)
 				.collect(Collectors.toList()));
 	}

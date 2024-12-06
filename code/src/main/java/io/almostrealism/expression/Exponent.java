@@ -28,8 +28,14 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Exponent extends Expression<Double> {
-	public Exponent(Expression<Double> base, Expression<Double> exponent) {
+	public static boolean enableCollapseConstants = true;
+
+	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, base, exponent);
+
+		if (enableCollapseConstants && base.doubleValue().isPresent() && exponent.doubleValue().isPresent()) {
+			warn("Exponentiation of constants");
+		}
 	}
 
 	@Override
@@ -124,6 +130,12 @@ public class Exponent extends Expression<Double> {
 				return new DoubleConstant(1.0);
 			} else if (exponentValue.getAsDouble() == 1.0) {
 				return base;
+			}
+
+			OptionalDouble baseValue = base.doubleValue();
+
+			if (enableCollapseConstants && baseValue.isPresent()) {
+				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exponentValue.getAsDouble()));
 			}
 		}
 

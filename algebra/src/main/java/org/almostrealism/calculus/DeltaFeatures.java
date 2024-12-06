@@ -40,7 +40,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-// TODO  Move to calculus package
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableTotalIsolation = false;
 	boolean enableRestoreReplacements = false;

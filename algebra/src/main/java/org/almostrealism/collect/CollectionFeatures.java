@@ -93,12 +93,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	// Should be removed
 	boolean enableTraversableRepeated = true;
 	boolean enableQuotientExpression = true;
+	boolean enableMinusDeltaStrategy = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 	boolean enableProductComputation = false;
-	boolean enableMinusDeltaStrategy = false;
 
 	Console console = Computation.console.child();
 
