@@ -34,11 +34,11 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements GradientTestFeatures, TestFeatures {
-
 	@Test
 	public void polynomial0() {
 		// x + 1
@@ -272,50 +272,203 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 	}
 
 	@Test
-	public void power1() {
+	public void powerFixed() {
 		int dim = 3;
 
-		PackedCollection<?> v = pack(IntStream.range(0, 4 * dim).boxed()
+		PackedCollection<?> v = pack(IntStream.range(0, dim).boxed()
 				.mapToDouble(d -> 1 + d / 2.0).toArray())
-				.reshape(4, dim).traverse();
+				.reshape(dim);
 		PackedCollection<?> w = pack(4, 1, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = cp(v);
 
 		// x^3 + w^x + 1
 		CollectionProducer<PackedCollection<?>> c = x.pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
 
-		// y = f(x)
-		Evaluable<PackedCollection<?>> y = c.get();
-		PackedCollection<?> out = y.evaluate(v);
-		out.print();
-
-		for (int n = 0; n < 4; n++) {
-			for (int i = 0; i < dim; i++) {
-				assertEquals(Math.pow(v.valueAt(n, i), 3) +
-								Math.pow(w.valueAt(i), v.valueAt(n, i)) + 1,
-						out.toDouble(n * dim + i));
-			}
-		}
-
 		// dy = f'(x)
 		//    = 3x^2 + w^x * log(w)
 		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
-		PackedCollection<?> dout = dy.evaluate(v);
+		PackedCollection<?> dout = dy.evaluate();
 		dout.print();
 
-		for (int n = 0; n < 4; n++) {
-			for (int i = 0; i < dim; i++) {
-				for (int j = 0; j < dim; j++) {
-					if (i == j) {
-						assertEquals(3 * Math.pow(v.valueAt(n, i), 2) +
-										Math.pow(w.valueAt(i), v.valueAt(n, i)) * Math.log(w.valueAt(i)),
-								dout.valueAt(n, i, j));
-					} else {
-						assertEquals(0.0, dout.valueAt(n, i, j));
-					}
+		for (int i = 0; i < dim; i++) {
+			for (int j = 0; j < dim; j++) {
+				if (i == j) {
+					assertEquals(3 * Math.pow(v.valueAt(i), 2) +
+									Math.pow(w.valueAt(i), v.valueAt(i)) * Math.log(w.valueAt(i)),
+							dout.valueAt(i, j));
+				} else {
+					assertEquals(0.0, dout.valueAt(i, j));
 				}
 			}
 		}
+	}
+
+	@Test
+	public void power1() {
+		int dim = 3;
+
+		IntFunction<PackedCollection<?>> inputGenerator = count ->
+				pack(IntStream.range(0, count * dim).boxed()
+						.mapToDouble(d -> 1 + d / 2.0).toArray())
+						.reshape(count, dim).traverse();
+
+		Factor<PackedCollection<?>> f = x -> {
+			// x^3 + w^x + 1
+			CollectionProducer<PackedCollection<?>> c = c(x).pow(3);
+
+			// dy = f'(x)
+			//    = 3x^2
+			return c.delta(x);
+		};
+
+		runTest("power1", dim, inputGenerator, f, (in, out) -> {
+			out.traverse(2).print();
+
+			for (int n = 0; n < in.getCount(); n++) {
+				for (int i = 0; i < dim; i++) {
+					for (int j = 0; j < dim; j++) {
+						if (i == j) {
+							assertEquals(3 * Math.pow(in.valueAt(n, i), 2), out.valueAt(n, i, j));
+						} else {
+							assertEquals(0.0, out.valueAt(n, i, j));
+						}
+					}
+				}
+			}
+		}, true, false);
+	}
+
+	@Test
+	public void power2() {
+		int dim = 3;
+
+		IntFunction<PackedCollection<?>> inputGenerator = count ->
+				pack(IntStream.range(0, count * dim).boxed()
+						.mapToDouble(d -> 1 + d / 2.0).toArray())
+						.reshape(count, dim).traverse();
+
+		PackedCollection<?> w = pack(4, 1, 2);
+
+		Factor<PackedCollection<?>> f = x -> {
+			// x^3 + w^x + 1
+			CollectionProducer<PackedCollection<?>> c =
+					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
+			return c;
+		};
+
+		runTest("power2", dim, inputGenerator, f, (in, out) -> {
+			out.print();
+
+			for (int n = 0; n < in.getCount(); n++) {
+				for (int i = 0; i < dim; i++) {
+					assertEquals(Math.pow(in.valueAt(n, i), 3) +
+									Math.pow(w.valueAt(i), in.valueAt(n, i)) + 1,
+							out.toDouble(n * dim + i));
+				}
+			}
+		});
+
+		f = x -> {
+			// x^3 + w^x + 1
+			CollectionProducer<PackedCollection<?>> c =
+					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
+
+			// dy = f'(x)
+			//    = 3x^2 + w^x * log(w)
+			return c.delta(x);
+		};
+
+		runTest("power2_delta", dim, inputGenerator, f, (in, out) -> {
+			out.print();
+
+			for (int n = 0; n < in.getCount(); n++) {
+				for (int i = 0; i < dim; i++) {
+					for (int j = 0; j < dim; j++) {
+						if (i == j) {
+							assertEquals(3 * Math.pow(in.valueAt(n, i), 2) +
+											Math.pow(w.valueAt(i), in.valueAt(n, i)) * Math.log(w.valueAt(i)),
+									out.valueAt(n, i, j));
+						} else {
+							assertEquals(0.0, out.valueAt(n, i, j));
+						}
+					}
+				}
+			}
+		});
+	}
+
+	@Test
+	public void sumPow1() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input.sum().pow(2.0).repeat(2)
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double a = o.valueAt(0);
+					double b = o.valueAt(1);
+
+					assertEquals(2 * a + 2 * b, output.valueAt(0, 0));
+					assertEquals(2 * b + 2 * a, output.valueAt(0, 1));
+					assertEquals(2 * a + 2 * b, output.valueAt(1, 0));
+					assertEquals(2 * b + 2 * a, output.valueAt(1, 1));
+				});
+	}
+
+	@Test
+	public void productSum1() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.multiply(input.sum().repeat(2))
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double a = o.valueAt(0);
+					double b = o.valueAt(1);
+
+					assertEquals(2 * a + b, output.valueAt(0, 0));
+					assertEquals(a, output.valueAt(0, 1));
+					assertEquals(b, output.valueAt(1, 0));
+					assertEquals(2 * b + a, output.valueAt(1, 1));
+				});
+	}
+
+	@Test
+	public void productSumPow1() {
+		PackedCollection<?> o = new PackedCollection<>(2).fill(1.5, 2.5);
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, 1, 2);
+					CollectionProducer out = input
+							.multiply(input.sum().pow(2.0).repeat(2))
+							.reshape(-1, 2);
+					return out.delta(input);
+				},
+				output -> {
+					output = output.reshape(2, 2);
+					output.traverse(1).print();
+
+					double a = o.valueAt(0);
+					double b = o.valueAt(1);
+
+					assertEquals(3 * a * a + b * b + 4 * a * b, output.valueAt(0, 0));
+					assertEquals(2 * a * b + 2 * a * a, output.valueAt(0, 1));
+					assertEquals(2 * a * b + 2 * b * b, output.valueAt(1, 0));
+					assertEquals(a * a + 3 * b * b + 4 * a * b, output.valueAt(1, 1));
+				});
 	}
 
 	public OperationProfileNode variance(String name, double x, double y) {
@@ -632,7 +785,6 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		recursiveDivisionTest(in -> {
 					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
-							// .divide(mean(pow(subtractMean(input), c(2.0))).add(c(eps)).sqrt())
 							.divide(mean(sq(subtractMean(input))).add(c(eps)).sqrt())
 							.reshape(-1, 2);
 					return out.delta(input);
@@ -868,6 +1020,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 		//    = w2 * w1
 		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
 		PackedCollection<?> dout = dy.evaluate(v);
+		log(dout.getShape());
 		dout.print();
 
 		for (int i = 0; i < count; i++) {

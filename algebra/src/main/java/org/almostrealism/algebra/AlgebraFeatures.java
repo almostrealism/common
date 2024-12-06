@@ -17,11 +17,10 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -86,15 +85,13 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	}
 
 	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
-		if (!(producer instanceof ComputationBase)) return Collections.emptyList();
+		if (!(producer instanceof Process)) return Collections.emptyList();
 
-		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
 		List<Producer<T>> matched = new ArrayList<>();
 
-		for (int i = 1; i < inputs.size(); i++) {
-			Supplier<Evaluable<? extends T>> input = inputs.get(i);
-			if (deepMatch(input, target)) {
-				matched.add((Producer<T>) input);
+		for (Process<?, ?> p : ((Process<?, ?>) producer).getChildren()) {
+			if (deepMatch(p, target)) {
+				matched.add((Producer<T>) p);
 			}
 		}
 

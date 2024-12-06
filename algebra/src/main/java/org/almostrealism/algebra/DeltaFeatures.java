@@ -20,16 +20,13 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
+import org.almostrealism.calculus.InputStub;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,8 +39,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+// TODO  Move to calculus package
 public interface DeltaFeatures extends MatrixFeatures {
 	boolean enableTotalIsolation = false;
+	boolean enableRestoreReplacements = false;
 
 	default boolean isChainRuleSupported() {
 		return false;
@@ -57,17 +56,15 @@ public interface DeltaFeatures extends MatrixFeatures {
 		CollectionProducer isolated = (CollectionProducer) replaceInput(producer, toReplace, replacements);
 		CollectionProducer delta = isolated.delta(replacements.get(input));
 
-		if (enableTotalIsolation) {
-			List restore = new ArrayList();
+		if (enableRestoreReplacements) {
+			List<Supplier> restore = new ArrayList();
 			Map<Producer<?>, Producer<?>> originals = new HashMap<>();
 			replacements.forEach((k, v) -> {
-				if (k != input) {
-					originals.put(v, k);
-					restore.add(v);
-				}
+				originals.put(v, k);
+				restore.add(v);
 			});
 
-			delta = (CollectionProducer) replaceInput((ComputationBase) delta, restore, originals);
+			delta = replaceInput(delta, restore, originals);
 		}
 
 		return (CollectionProducer) delta;
@@ -175,6 +172,19 @@ public interface DeltaFeatures extends MatrixFeatures {
 		};
 	}
 
+	default <T extends Shape<?>> CollectionProducer<T> replaceInput(
+			Producer<T> producer,
+			List<Supplier> toReplace,
+			Map<Producer<?>, Producer<?>> replacements) {
+		if (producer instanceof ReshapeProducer) {
+			return ((ReshapeProducer) producer).generate(List.of(
+						replaceInput((Producer) ((ReshapeProducer) producer).getChildren().iterator().next(),
+					toReplace, replacements)));
+		} else {
+			return (CollectionProducer) replaceInput((ComputationBase) producer, toReplace, replacements);
+		}
+	}
+
 	default <T extends Shape<?>> ComputationBase<T, T, Evaluable<T>> replaceInput(
 			ComputationBase<T, T, Evaluable<T>> producer,
 			List<Supplier> toReplace,
@@ -187,8 +197,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 			Supplier<Evaluable<? extends T>> input = inputs.get(i);
 
 			if (toReplace.contains(input)) {
-				Producer<?> inputStub = replacements.getOrDefault(input,
-						inputStub(shape(input), Countable.isFixedCount(input)));
+				Producer<?> inputStub = replacements.getOrDefault(input, new InputStub((Producer) input));
 				newInputs.add((Process) inputStub);
 				replacements.put((Producer) input, inputStub);
 			} else {
@@ -197,55 +206,6 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		return (ComputationBase<T, T, Evaluable<T>>) producer.generate(newInputs);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> inputStub(TraversalPolicy shape, boolean fixedCount) {
-		return new CollectionProducerComputation<T>() {
-			@Override
-			public long getCountLong() {
-				return CollectionProducerComputation.super.getCountLong();
-			}
-
-			@Override
-			public boolean isFixedCount() {
-				return fixedCount;
-			}
-
-			@Override
-			public TraversalPolicy getShape() {
-				return shape;
-			}
-
-			@Override
-			public CollectionProducer<T> reshape(TraversalPolicy shape) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public CollectionProducer<T> traverse(int axis) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public Scope<T> getScope(KernelStructureContext context) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public Collection<Process<?, ?>> getChildren() {
-				return Collections.emptyList();
-			}
-
-			@Override
-			public CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
-				return this;
-			}
-
-			@Override
-			public Evaluable<T> get() {
-				return null;
-			}
-		};
 	}
 
 	enum MultiTermDeltaStrategy {
