@@ -32,10 +32,6 @@ public class Exponent extends Expression<Double> {
 
 	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, base, exponent);
-
-		if (enableCollapseConstants && base.doubleValue().isPresent() && exponent.doubleValue().isPresent()) {
-			warn("Exponentiation of constants");
-		}
 	}
 
 	@Override
@@ -120,7 +116,7 @@ public class Exponent extends Expression<Double> {
 	}
 
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
-		return ExpressionCache.match(Exponent.create(base, exponent));
+		return Expression.process(create(base, exponent));
 	}
 
 	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {

@@ -62,6 +62,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
 	private KernelTraversalOperationGenerator traversalGenerator;
+	private OptionalLong kernelMaximum;
 	private boolean kernelStructureSupported;
 
 	private Scope<T> scope;
@@ -129,7 +130,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public OptionalLong getKernelMaximum() {
-		return isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
+		if (kernelMaximum == null) {
+			kernelMaximum = isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
+		}
+
+		return kernelMaximum;
 	}
 
 	@Override
@@ -209,6 +214,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public void resetArguments() {
 		super.resetArguments();
 		getComputation().resetArguments();
+		this.kernelMaximum = null;
 	}
 
 	protected void setupOutputVariable() {

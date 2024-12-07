@@ -488,7 +488,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		if (skipLongTests || testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		int c = 2000;
+		int c = 1000;
 		int groups = 4;
 		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
 	}

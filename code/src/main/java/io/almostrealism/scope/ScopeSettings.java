@@ -40,6 +40,7 @@ public class ScopeSettings {
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
 	public static int maxDepth = 1024;
+	public static int maxNodeCount = 1 << 23;
 
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
