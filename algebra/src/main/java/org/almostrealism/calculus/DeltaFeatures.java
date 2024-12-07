@@ -99,10 +99,6 @@ public interface DeltaFeatures extends MatrixFeatures {
 			Optional<Producer<T>> match = matchInput(producer, target);
 
 			if (match == null) {
-				if (!Named.nameOf(producer).equals("add") && !Named.nameOf(producer).equals("multiply")) {
-					System.out.println("!");
-				}
-
 				return null;
 			} else if (match.isEmpty()) {
 				return (CollectionProducer<T>) zeros(shape.append(targetShape));
