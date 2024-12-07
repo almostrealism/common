@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -241,7 +242,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public long getCountLong() {
-		return getShape().getCountLong();
+		return Optional.ofNullable(getShape())
+				.map(TraversalPolicy::getCountLong)
+				.orElse(0L);
 	}
 
 	@Override
@@ -384,7 +387,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public String describe() {
-		return super.describe() + " " + getShape().toString();
+		return super.describe() + " " + getShape();
 	}
 
 	@Override

@@ -20,6 +20,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.Argument;
@@ -71,13 +72,16 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public boolean isFixedCount() {
-		return getInputs().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		if (inputs == null) return false;
+
+		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
 	}
 
 	@Override
 	public Scope compile() {
-		System.out.println("WARN: Attempting to compile a Computation, " +
-							"rather than an Evaluable container for one");
+		warn("Attempting to compile a Computation, " +
+			"rather than an Evaluable container for one");
 		return null;
 	}
 
@@ -141,7 +145,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
-		return getInputs().stream()
+		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		if (inputs == null) return null;
+
+		return inputs.stream()
 				.map(in -> in instanceof Process<?, ?> ? (Process<?, ?>) in : Process.of(in))
 				.collect(Collectors.toList());
 	}

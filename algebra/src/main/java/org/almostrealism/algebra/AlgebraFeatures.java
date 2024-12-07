@@ -159,6 +159,9 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		q = getRoot(q);
 
 		if (Objects.equals(p, q)) {
+			// This comparison between p and q does not cover the case where they are both
+			// CollectionProviderProducers referring to the same underlying value via
+			// delegation
 			return true;
 		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
 			return ((PassThroughProducer) p).getReferencedArgumentIndex() == ((PassThroughProducer) q).getReferencedArgumentIndex();

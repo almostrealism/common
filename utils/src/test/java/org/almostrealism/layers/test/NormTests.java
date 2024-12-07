@@ -484,14 +484,33 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
-	public void backwardsTrainableVeryLarge() throws IOException {
+	public void backwardsTrainableVeryLarge1() throws IOException {
 		if (skipLongTests || testDepth < 3) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		// int c = 2000;
+		int c = 2000;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableVeryLarge2() throws IOException {
+		if (skipLongTests || testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int c = 3456;
 		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
+		normBackwardsTrainable("backwardsTrainableVeryLarge2", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableVeryLarge3() throws IOException {
+		if (skipLongTests || testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		int c = 21952;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups);
 	}
 
 	@Test

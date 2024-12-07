@@ -166,6 +166,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 				.orElseGet(DefaultTraversalOrdering::new);
 	}
 
+	@Override
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
+		if (m instanceof PackedCollection && ((PackedCollection<?>) m).getShape().equals(getShape())) {
+			warn("Creating a collection identical to the delegate");
+		}
+
+		super.setDelegate(m, offset, order);
+	}
+
 	public double toDouble() {
 		if (getShape().getTotalSizeLong() != 1) {
 			throw new UnsupportedOperationException();
@@ -263,6 +272,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
+		} else if (start == 0 && shape.equals(getShape())) {
+			return this;
 		}
 
 		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
@@ -319,6 +330,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
 					") does not match collection size (" + getMemLength() + ")");
+		} else if (getShape().equals(shape)) {
+			return this;
 		}
 
 		int axis = shape.getTraversalAxis();

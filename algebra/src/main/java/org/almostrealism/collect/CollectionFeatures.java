@@ -56,6 +56,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
@@ -98,7 +99,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
+
+	boolean enableSumComputation = false;
 	boolean enableProductComputation = false;
+
 
 	Console console = Computation.console.child();
 
@@ -733,11 +737,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException();
 		}
 
-		return compute("add", DeltaFeatures.MultiTermDeltaStrategy.IGNORE,
-				shape -> args ->
-						sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				args -> String.join(" + ", applyParentheses(args)),
-				null, operands.toArray(new Producer[0]));
+		if (enableSumComputation) {
+			return compute((shape, args) ->
+							new CollectionSumComputation<>(shape, args.toArray(new Producer[0])),
+					args -> String.join(" + ", applyParentheses(args)), null,
+					operands.toArray(new Producer[0]));
+		} else {
+			return compute("add", DeltaFeatures.MultiTermDeltaStrategy.IGNORE,
+					shape -> args ->
+							sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+					args -> String.join(" + ", applyParentheses(args)),
+					null, operands.toArray(new Producer[0]));
+		}
 	}
 
 	@Deprecated

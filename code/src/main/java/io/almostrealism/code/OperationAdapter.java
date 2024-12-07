@@ -215,8 +215,8 @@ public abstract class OperationAdapter<T, C> implements
 
 	@Override
 	public String description(List<String> children) {
-		return getMetadata().getShortDescription() + "(" +
-				String.join(", ", children) + ")";
+		return Optional.ofNullable(getMetadata()).map(OperationMetadata::getShortDescription).orElse("null") +
+				"(" + String.join(", ", children) + ")";
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {

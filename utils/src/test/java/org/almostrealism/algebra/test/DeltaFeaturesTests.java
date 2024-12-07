@@ -67,6 +67,42 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 	}
 
 	@Test
+	public void embeddedPower() {
+		if (skipKnownIssues) return;
+
+		int dim = 3;
+		int count = 2;
+
+		PackedCollection<?> v = pack(IntStream.range(0, count * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(count, dim).traverse();
+
+		CollectionProducer<PackedCollection<?>> x = x(dim);
+
+		// f(x) = x^2
+		CollectionProducer<PackedCollection<?>> c = x.each().pow(2.0);
+
+		// dy = f'(x)
+		//    = 2x
+		Producer<PackedCollection<?>> in = matchInput(c, x).get();
+		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
+		PackedCollection<?> dout = dy.evaluate(v);
+		dout.print();
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0 ; j < dim; j++) {
+				for (int k = 0; k < dim; k++) {
+					if (j == k) {
+						assertEquals(2 * v.valueAt(i, j), dout.valueAt(i, j, k));
+					} else {
+						assertEquals(0.0, dout.valueAt(i, j, k));
+					}
+				}
+			}
+		}
+	}
+
+	@Test
 	public void embeddedSum() {
 		// f(x) = x0 + x1, x2 + x3
 		// g(x) = w * x
