@@ -212,7 +212,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	public static Expression of(Expression input, Expression mod, boolean fp) {
-		return ExpressionCache.match(create(input, mod, fp));
+		return Expression.process(create(input, mod, fp));
 	}
 
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {

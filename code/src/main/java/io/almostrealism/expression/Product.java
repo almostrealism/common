@@ -257,7 +257,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
-		return ExpressionCache.match(create(values));
+		return Expression.process(create(values));
 	}
 
 	protected static Expression<?> create(Expression<?>... values) {

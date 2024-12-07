@@ -245,7 +245,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
-		return ExpressionCache.match(create(values));
+		return Expression.process(create(values));
 	}
 
 	protected static <T> Expression<T> create(Expression<?>... values) {

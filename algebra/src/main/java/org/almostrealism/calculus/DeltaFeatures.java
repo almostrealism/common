@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Named;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
@@ -98,6 +99,10 @@ public interface DeltaFeatures extends MatrixFeatures {
 			Optional<Producer<T>> match = matchInput(producer, target);
 
 			if (match == null) {
+				if (!Named.nameOf(producer).equals("add") && !Named.nameOf(producer).equals("multiply")) {
+					System.out.println("!");
+				}
+
 				return null;
 			} else if (match.isEmpty()) {
 				return (CollectionProducer<T>) zeros(shape.append(targetShape));

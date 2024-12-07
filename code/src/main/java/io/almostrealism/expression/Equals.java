@@ -90,7 +90,7 @@ public class Equals extends Comparison {
 	}
 
 	public static Expression of(Expression<?> left, Expression<?> right) {
-		return ExpressionCache.match(create(left, right));
+		return Expression.process(create(left, right));
 	}
 
 	protected static Expression create(Expression<?> left, Expression<?> right) {

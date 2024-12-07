@@ -100,8 +100,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 
-	boolean enableSumComputation = false;
-	boolean enableProductComputation = false;
+	boolean enableSumComputation = true;
+	boolean enableProductComputation = true;
 
 
 	Console console = Computation.console.child();

@@ -34,6 +34,7 @@ import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.profile.ScopeTimingListener;
+import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
@@ -702,6 +703,22 @@ public abstract class Expression<T> implements
 				Bits.put(16, 10, nodeCount) +
 				Bits.put(26, 4, depth) +
 				Bits.put(30, 2, getChildren().size());
+	}
+
+	public static <T> Expression<T> process(Expression<T> e) {
+		int nodes = e.nodeCount;
+
+		if (e.countNodes() > ScopeSettings.maxNodeCount) {
+			e = (Expression<T>) e.simplify();
+
+			if (nodes == e.countNodes()) {
+				throw new ExpressionException(
+						"Large expression not improved by simplification",
+						e.treeDepth(), e.countNodes());
+			}
+		}
+
+		return ExpressionCache.match(e);
 	}
 
 	public static Comparator<? super Expression> depthOrder() {
