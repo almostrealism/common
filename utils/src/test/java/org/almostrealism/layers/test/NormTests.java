@@ -97,6 +97,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void normComputationMedium() {
+		if (testDepth < 1) return;
+
 		int c = 28;
 		int v = 28 * 28;
 

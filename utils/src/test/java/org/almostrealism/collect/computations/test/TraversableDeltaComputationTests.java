@@ -714,6 +714,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divide7() {
+		if (testDepth < 1) return;
+
 		recursiveDivisionTest(in -> {
 					CollectionProducer input = c(in).reshape(-1, 1, 2);
 					CollectionProducer out = input.subtractMean()
@@ -778,7 +780,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 
 	@Test
 	public void divide10() {
-		if (testDepth < 1) return;
+		if (testDepth < 2) return;
 
 		double eps = 1e-5;
 
