@@ -68,7 +68,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new ConstantRepeatedProducerComputation<>(
 				getName(), getShape(), getMemLength(), count,
 				initial, expression,

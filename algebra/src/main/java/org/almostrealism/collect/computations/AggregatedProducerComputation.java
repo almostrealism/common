@@ -254,7 +254,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
