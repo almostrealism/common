@@ -23,6 +23,7 @@ import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.calculus.InputStub;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -139,7 +140,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	}
 
 	static boolean isRoot(Supplier<?> p) {
-		return p instanceof CollectionProviderProducer || p instanceof PassThroughProducer;
+		return p instanceof CollectionProviderProducer || p instanceof PassThroughProducer || p instanceof InputStub;
 	}
 
 	static Supplier<?> getRoot(Supplier<?> p) {

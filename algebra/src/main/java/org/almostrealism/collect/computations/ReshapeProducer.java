@@ -88,6 +88,8 @@ public class ReshapeProducer<T extends Shape<T>>
 			}
 
 			metadata = new OperationMetadata(metadata, List.of(child));
+		} else {
+			metadata = new OperationMetadata("reshape", "reshape");
 		}
 	}
 
@@ -346,9 +348,9 @@ public class ReshapeProducer<T extends Shape<T>>
 			return "p" + getShape().toString();
 		} else if (producer instanceof DescribableParent) {
 			return extendDescription(((DescribableParent) producer).description(), true);
+		} else {
+			return extendDescription(Describable.describe(producer), true);
 		}
-
-		return describe();
 	}
 
 	private T apply(Shape<T> in) {

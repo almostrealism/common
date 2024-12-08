@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -40,10 +41,20 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
 										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super("multiply", shape, MultiTermDeltaStrategy.COMBINE,
+		super(name, shape, MultiTermDeltaStrategy.NONE,
 				args ->
 						ExpressionFeatures.getInstance().product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
 				arguments);
+	}
+
+	@Override
+	public CollectionProductComputation<T> generate(List<Process<?, ?>> children) {
+		return (CollectionProductComputation<T>) new CollectionProductComputation(getName(), getShape(),
+				children.stream().skip(1).toArray(Supplier[]::new))
+				.setPostprocessor(getPostprocessor())
+				.setDescription(getDescription())
+				.setShortCircuit(getShortCircuit())
+				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
 	@Override

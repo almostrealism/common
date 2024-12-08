@@ -16,6 +16,8 @@
 
 package org.almostrealism.calculus;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -30,14 +32,19 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.Collection;
 import java.util.List;
 
+// TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection<?>> implements CollectionProducer<T>,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-														TraversableExpression<Double> {
+														TraversableExpression<Double>, OperationInfo {
 	private final Producer<T> producer;
+	private final OperationMetadata metadata;
 
 	public InputStub(Producer<T> producer) {
 		this.producer = producer;
+		this.metadata = new OperationMetadata("stub", "stub");
 	}
+
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public long getParallelism() {
@@ -71,11 +78,19 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 
 	@Override
 	public CollectionProducer<T> reshape(TraversalPolicy shape) {
+		if (producer instanceof CollectionProducer) {
+			return new InputStub<>(((CollectionProducer<T>) producer).reshape(shape));
+		}
+
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public CollectionProducer<T> traverse(int axis) {
+		if (producer instanceof CollectionProducer) {
+			return new InputStub<>(((CollectionProducer<T>) producer).traverse(axis));
+		}
+
 		throw new UnsupportedOperationException();
 	}
 
@@ -96,6 +111,6 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 
 	@Override
 	public String describe() {
-		return "<stub>";
+		return "<stub> " + getShape().toStringDetail();
 	}
 }

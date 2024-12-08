@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
@@ -26,32 +25,28 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-public class CollectionSumComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionMinusComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
 
-	public CollectionSumComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
-		this("add", shape, arguments);
+	public CollectionMinusComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
+		this("minus", shape, arguments);
 	}
 
-	public CollectionSumComputation(TraversalPolicy shape,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		this("add", shape, arguments);
+	public CollectionMinusComputation(TraversalPolicy shape,
+									Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		this("minus", shape, arguments);
 	}
 
-	protected CollectionSumComputation(String name, TraversalPolicy shape,
-										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	protected CollectionMinusComputation(String name, TraversalPolicy shape,
+									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(name, shape,
 				args ->
-						ExpressionFeatures.getInstance().sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
+						ExpressionFeatures.getInstance().minus(shape, args[1]),
 				arguments);
 	}
 
 	@Override
 	public DefaultTraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		List<Producer<?>> args = children.stream().skip(1)
-				.map(p -> (Producer<?>) p).collect(Collectors.toList());
-		return (DefaultTraversableExpressionComputation) add(args);
+		return (DefaultTraversableExpressionComputation) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

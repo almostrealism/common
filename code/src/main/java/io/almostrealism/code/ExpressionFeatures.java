@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -126,7 +127,15 @@ public interface ExpressionFeatures {
 	}
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
-		return Conditional.of(condition, (Expression) positive, (Expression) negative);
+		return Conditional.of(condition, positive, negative);
+	}
+
+	default CollectionExpression ident(TraversalPolicy shape) {
+		if (shape.getTotalSizeLong() == 1) {
+			return new ConstantCollectionExpression(shape, new IntegerConstant(1));
+		} else {
+			return new IdentityCollectionExpression(shape);
+		}
 	}
 
 	default CollectionExpression sum(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {

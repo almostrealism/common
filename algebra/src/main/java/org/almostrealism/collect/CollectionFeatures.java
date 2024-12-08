@@ -52,6 +52,7 @@ import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
@@ -94,7 +95,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	// Should be removed
 	boolean enableTraversableRepeated = true;
 	boolean enableQuotientExpression = true;
-	boolean enableMinusDeltaStrategy = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
@@ -102,6 +102,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	boolean enableSumComputation = true;
 	boolean enableProductComputation = true;
+	boolean enableMinusComputation = true;
 
 
 	Console console = Computation.console.child();
@@ -850,12 +851,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
 		Function<List<String>, String> description = args -> "-" + args.get(0);
-		Function<TraversableExpression[], CollectionExpression> expression = args ->  minus(shape(a), args[1]);
-		DeltaFeatures.MultiTermDeltaStrategy deltaStrategy = enableMinusDeltaStrategy ?
-				DeltaFeatures.MultiTermDeltaStrategy.NONE : DeltaFeatures.MultiTermDeltaStrategy.COMBINE;
-		return new DefaultTraversableExpressionComputation<>("minus", shape(a),
-										deltaStrategy, expression,
+
+		if (enableMinusComputation) {
+			return (CollectionProducerComputationBase)
+					new CollectionMinusComputation<>(shape(a), a)
+						.setDescription(description);
+		} else {
+			Function<TraversableExpression[], CollectionExpression> expression = args -> minus(shape(a), args[1]);
+			DeltaFeatures.MultiTermDeltaStrategy deltaStrategy = DeltaFeatures.MultiTermDeltaStrategy.NONE;
+			return new DefaultTraversableExpressionComputation<>("minus", shape(a),
+					deltaStrategy, expression,
 					(Supplier) a).setDescription(description);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {

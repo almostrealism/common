@@ -37,7 +37,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
-				(args) -> new IdentityCollectionExpression(shape.traverse(1))) {
+				(args) -> ident(shape.traverse(1))) {
 			@Override
 			public boolean isIdentity(int width) {
 				return width == shape.length(0) && width == shape.length(1);
@@ -50,6 +50,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 		if (shape.getDimensions() != 1) {
 			throw new IllegalArgumentException();
+		} else if (shape.length(0) == 1) {
+			return c(vector);
 		}
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
@@ -66,8 +68,12 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);
-		if (shape.getDimensions() != 2)
+
+		if (shape.getTotalSizeLong() == 1 && vshape.getTotalSizeLong() == 1) {
+			return multiply(c(matrix), c(vector));
+		} else if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
+		}
 
 		CollectionProducer<PackedCollection<?>> a;
 		CollectionProducer<PackedCollection<?>> b;
