@@ -29,6 +29,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -95,7 +96,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		return !matchingInputs(this, target).contains(process);
+		return !AlgebraFeatures.matchingInputs(this, target).contains(process);
 	}
 
 	@Override

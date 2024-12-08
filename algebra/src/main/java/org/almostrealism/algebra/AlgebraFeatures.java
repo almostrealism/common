@@ -86,7 +86,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 						args[1], args[2]), (Supplier) input, (Supplier) weights);
 	}
 
-	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
+	static <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
 		if (!(producer instanceof Process)) return Collections.emptyList();
 
 		List<Producer<T>> matched = new ArrayList<>();
@@ -100,7 +100,15 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		return matched;
 	}
 
-	default <T> Optional<Producer<T>> matchInput(Producer<T> producer, Producer<?> target) {
+	static Optional<Producer<?>> matchInput(Supplier<?> producer, Supplier<?> target) {
+		if (producer instanceof Producer && target instanceof Producer) {
+			return matchInput((Producer) producer, (Producer<?>) target);
+		}
+
+		return null;
+	}
+
+	static <T> Optional<Producer<T>> matchInput(Producer<T> producer, Producer<?> target) {
 		List<Producer<T>> matched = matchingInputs(producer, target);
 
 		if (matched.isEmpty()) {
@@ -120,6 +128,11 @@ public interface AlgebraFeatures extends CollectionFeatures {
 
 		if (isRoot(p) && isRoot(target)) {
 			return !match(p, target);
+		}
+
+		Optional<Producer<?>> matched = matchInput(p, target);
+		if (matched != null) {
+			return matched.isEmpty();
 		}
 
 		return false;

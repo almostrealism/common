@@ -96,7 +96,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 				return null;
 			}
 
-			Optional<Producer<T>> match = matchInput(producer, target);
+			Optional<Producer<T>> match = AlgebraFeatures.matchInput(producer, target);
 
 			if (match == null) {
 				return null;

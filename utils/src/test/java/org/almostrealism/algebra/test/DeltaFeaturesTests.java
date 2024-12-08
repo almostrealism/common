@@ -19,6 +19,7 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -48,7 +49,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 
 		// dy = f'(g(x))
 		//    = w2
-		Producer<PackedCollection<?>> in = matchInput(c, x).get();
+		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, x).get();
 		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate(v);
 		dout.print();
@@ -84,7 +85,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 
 		// dy = f'(x)
 		//    = 2x
-		Producer<PackedCollection<?>> in = matchInput(c, x).get();
+		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, x).get();
 		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate(v);
 		dout.print();
@@ -120,7 +121,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection<?>> in = matchInput(c, cp(input)).get();
+		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, cp(input)).get();
 		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate();
 		dout.traverse().print();
@@ -152,7 +153,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 
 		// dy = f'(g(x))
 		//    = w0, w1
-		Producer<PackedCollection<?>> in = matchInput(c, cp(input)).get();
+		Producer<PackedCollection<?>> in = AlgebraFeatures.matchInput(c, cp(input)).get();
 		Evaluable<PackedCollection<?>> dy = generateIsolatedDelta((ComputationBase) c, in).get();
 		PackedCollection<?> dout = dy.evaluate();
 		dout.traverse().print();
