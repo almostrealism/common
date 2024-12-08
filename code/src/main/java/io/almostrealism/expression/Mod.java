@@ -34,7 +34,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
 	public static boolean enableInnerSumSimplify = true;
 	public static boolean enableRedundantModReplacement = true;
-	public static boolean enableDistributiveSum = false;
+	public static boolean enableRemoveMultiples = true;
 
 	private boolean fp;
 
@@ -236,8 +236,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 							false);
 				}
 			}
-		} else if (enableDistributiveSum && input instanceof Sum && !input.isFP()) {
-			input = Sum.of(input.getChildren().stream().map(e -> e.imod(m)).toArray(Expression[]::new));
+		} else if (enableRemoveMultiples && input instanceof Sum && !input.isFP()) {
+			input = Sum.of(input.getChildren().stream()
+					.filter(e -> !e.isMultiple(mod).orElse(false))
+					.toArray(Expression[]::new));
 		}
 
 		OptionalLong u = input.upperBound();

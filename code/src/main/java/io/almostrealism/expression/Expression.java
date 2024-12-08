@@ -260,6 +260,14 @@ public abstract class Expression<T> implements
 		return doubleValue().orElse(-1.0) < 0.0;
 	}
 
+	public Optional<Boolean> isMultiple(Expression<?> e) {
+		if (intValue().isPresent() && e.intValue().isPresent()) {
+			return Optional.of(intValue().getAsInt() % e.intValue().getAsInt() == 0);
+		}
+
+		return Optional.empty();
+	}
+
 	public Number evaluate(Number... children) {
 		throw new UnsupportedOperationException();
 	}
