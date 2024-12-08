@@ -20,6 +20,7 @@ import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -83,7 +84,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	}
 
 	@Override
-	public DefaultTraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (DefaultTraversableExpressionComputation<T>) new DefaultTraversableExpressionComputation(getName(), getShape(),
 						getDeltaStrategy(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))

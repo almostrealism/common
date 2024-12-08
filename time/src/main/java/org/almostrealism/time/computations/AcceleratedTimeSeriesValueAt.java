@@ -28,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -51,7 +52,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 	}
 
 	@Override
-	public AcceleratedTimeSeriesValueAt generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<Scalar> generate(List<Process<?, ?>> children) {
 		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
 	}
 

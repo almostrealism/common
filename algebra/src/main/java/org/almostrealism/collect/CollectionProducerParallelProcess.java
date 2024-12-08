@@ -14,15 +14,13 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.relation;
+package org.almostrealism.collect;
 
-/**
- * A simple way to track the origin of some data.
- */
-public interface Generated<T, V> {
-	T getGenerator();
+import io.almostrealism.code.ComputableParallelProcess;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 
-	default V getGenerated() {
-		return (V) this;
-	}
+public interface CollectionProducerParallelProcess<T extends Shape<?>> extends
+			CollectionProducer<T>, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 }

@@ -601,7 +601,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 											  boolean requireIdenticalTotalSize, BiFunction<Integer, V, V> traversalFunction,
 											  BiFunction<Integer, V, V> expandFunction,
 											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
-		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
+		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSizeLong));
 		sortedShapes.addAll(shapes);
 
 		s: for (TraversalPolicy shape : sortedShapes) {

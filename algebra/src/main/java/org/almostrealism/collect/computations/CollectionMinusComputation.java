@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -46,7 +47,7 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	}
 
 	@Override
-	public DefaultTraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return (DefaultTraversableExpressionComputation) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+		return (CollectionProducerParallelProcess) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

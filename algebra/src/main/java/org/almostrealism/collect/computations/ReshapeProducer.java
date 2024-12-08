@@ -39,6 +39,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Describable;
@@ -48,8 +49,8 @@ import java.util.Collections;
 import java.util.List;
 
 public class ReshapeProducer<T extends Shape<T>>
-		implements CollectionProducer<T>, TraversableExpression<Double>,
-					ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+		implements CollectionProducerParallelProcess<T>,
+					TraversableExpression<Double>,
 					ScopeLifecycle, DescribableParent<Process<?, ?>> {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = false;
@@ -123,6 +124,33 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public boolean isConstant() {
 		return producer.isConstant();
+	}
+
+	@Override
+	public boolean isZero() {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isZero();
+		}
+
+		return TraversableExpression.super.isZero();
+	}
+
+	@Override
+	public boolean isIdentity(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isIdentity(width);
+		}
+
+		return TraversableExpression.super.isIdentity(width);
+	}
+
+	@Override
+	public boolean isDiagonal(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isDiagonal(width);
+		}
+
+		return TraversableExpression.super.isDiagonal(width);
 	}
 
 	@Override
@@ -272,15 +300,6 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public boolean isIdentity(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isIdentity(width);
-		}
-
-		return TraversableExpression.super.isIdentity(width);
-	}
-
-	@Override
 	public boolean isTraversable() {
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
@@ -303,7 +322,7 @@ public class ReshapeProducer<T extends Shape<T>>
 			}
 		}
 
-		return CollectionProducer.super.delta(target);
+		return CollectionProducerParallelProcess.super.delta(target);
 	}
 
 	public CollectionProducer<T> traverse(int axis) {

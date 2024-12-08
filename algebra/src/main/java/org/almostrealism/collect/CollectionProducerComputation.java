@@ -24,7 +24,6 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -45,7 +44,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
@@ -65,7 +64,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 					.map(t -> (Producer) t)
 					.collect(Collectors.toList());
 		} else {
-			return CollectionProducer.super.applyDeltaStrategy(producer, target);
+			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
 		}
 
 		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
@@ -73,7 +72,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	@Override
-	default CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException();
 	}
 

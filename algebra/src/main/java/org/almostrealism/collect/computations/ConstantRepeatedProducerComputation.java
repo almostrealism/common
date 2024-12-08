@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -67,7 +68,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ConstantRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return new ConstantRepeatedProducerComputation<>(
 				getName(), getShape(), getMemLength(), count,
 				initial, expression,

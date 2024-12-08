@@ -69,6 +69,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);
 
+		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
+			if (vshape.getDimensions() == 1) {
+				return zeros(shape(shape.length(0), 1));
+			}
+
+			return zeros(shape(shape.length(0), vshape.length(1)));
+		}
+
 		if (shape.getTotalSizeLong() == 1 && vshape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
 		} else if (shape.getDimensions() != 2) {
@@ -88,6 +96,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 
 				if (Algebraic.isIdentity(vshape.length(0), matrix)) {
 					return c(vector);
+				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
+					return c(matrix);
 				}
 
 				return weightedSum("matmul",

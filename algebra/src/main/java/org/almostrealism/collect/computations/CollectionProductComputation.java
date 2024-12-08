@@ -23,6 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -48,7 +49,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	}
 
 	@Override
-	public CollectionProductComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (CollectionProductComputation<T>) new CollectionProductComputation(getName(), getShape(),
 				children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor())

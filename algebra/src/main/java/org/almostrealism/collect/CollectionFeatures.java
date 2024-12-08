@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.ArithmeticSequenceExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
@@ -82,6 +83,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -284,7 +286,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> zeros(TraversalPolicy shape) {
-		return (CollectionProducer<V>) compute("zeros", ExpressionFeatures.getInstance().constantZero(shape));
+		return new DefaultTraversableExpressionComputation<>("zeros", shape,
+					ExpressionFeatures.getInstance().constantZero(shape)) {
+			@Override
+			public boolean isZero() { return true; }
+		};
 	}
 
 	default <T extends MemoryData> Assignment<T> a(String shortDescription, Producer<T> result, Producer<T> value) {
@@ -692,22 +698,28 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				BiFunction<TraversalPolicy, List<Producer<T>>, P> processor,
 				Function<List<String>, String> description, Evaluable<T> shortCircuit,
 				Producer<T>... arguments) {
-		CollectionProducerComputationBase<T, T> c =
-				(CollectionProducerComputationBase) alignTraversalAxes(List.of(arguments), processor);
-		c.setDescription(description);
-		c.setShortCircuit(shortCircuit);
+		Producer<T> c = alignTraversalAxes(List.of(arguments), processor);
+
+		if (c instanceof CollectionProducerComputationBase) {
+			((CollectionProducerComputationBase<T, T>) c).setDescription(description);
+			((CollectionProducerComputationBase<T, T>) c).setShortCircuit(shortCircuit);
+		}
 
 		long count = highestCount(List.of(arguments));
 
-		if (c.getShape().getCountLong() != count) {
-			for (int i = 0; i <= c.getShape().getDimensions(); i++) {
-				if (c.getShape().traverse(i).getCountLong() == count) {
-					return c.traverse(i);
+		if (c instanceof Shape) {
+			Shape<?> s = (Shape<?>) c;
+
+			if (s.getShape().getCountLong() != count) {
+				for (int i = 0; i <= s.getShape().getDimensions(); i++) {
+					if (s.getShape().traverse(i).getCountLong() == count) {
+						return c((Producer) s.traverse(i));
+					}
 				}
 			}
 		}
 
-		return c;
+		return c(c);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers() {
@@ -739,8 +751,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		if (enableSumComputation) {
-			return compute((shape, args) ->
-							new CollectionSumComputation<>(shape, args.toArray(new Producer[0])),
+			return compute((shape, args) -> {
+						Producer p[] = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
+
+						if (p.length == 0) {
+							return zeros(shape);
+						} else if (p.length == 1) {
+							return c(reshape(shape, p[0]));
+						}
+
+						return new CollectionSumComputation<>(shape, p);
+					},
 					args -> String.join(" + ", applyParentheses(args)), null,
 					operands.toArray(new Producer[0]));
 		} else {
@@ -809,8 +830,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
 		if (enableProductComputation) {
-			return compute((shape, args) ->
-							new CollectionProductComputation<>(shape, args.toArray(new Producer[0])),
+			return compute((shape, args) -> {
+						if (args.stream().anyMatch(Algebraic::isZero)) {
+							return zeros(shape);
+						}
+
+						return new CollectionProductComputation<>(shape, args.toArray(new Producer[0]));
+					},
 					args -> String.join(" * ", applyParentheses(args)), shortCircuit, a, b);
 		} else {
 			return compute("multiply", DeltaFeatures.MultiTermDeltaStrategy.COMBINE,

@@ -25,6 +25,15 @@ import io.almostrealism.relation.Computable;
  */
 public interface Algebraic extends Computable {
 	/**
+	 * Checks if this {@link Algebraic} {@link Computable} represents an annihilating
+	 * transformation on vectors of the specified size. An Annihilating transformation
+	 * always produces a zero length vector.
+	 */
+	default boolean isZero() {
+		return false;
+	}
+
+	/**
 	 * Checks if this {@link Algebraic} {@link Computable} represents an identity
 	 * transformation on vectors of the specified size. An identity transformation
 	 * leaves the input vector unaltered.
@@ -39,6 +48,10 @@ public interface Algebraic extends Computable {
 	 * scales the input vector by a constant factor.
 	 */
 	default boolean isDiagonal(int width) { return isIdentity(width); }
+
+	static <T> boolean isZero(T value) {
+		return value instanceof Algebraic && ((Algebraic) value).isZero();
+	}
 
 	static <T> boolean isIdentity(int width, T value) {
 		return value instanceof Algebraic && ((Algebraic) value).isIdentity(width);
