@@ -70,6 +70,12 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	@Override
+	public boolean isDiagonal(int width) {
+		if (getShape().getTotalSize() == 1) return true;
+		return TraversableExpression.super.isDiagonal(width);
+	}
+
+	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {
 		CollectionProducer<O> delta = attemptDelta(target);
 		if (delta != null) return delta;

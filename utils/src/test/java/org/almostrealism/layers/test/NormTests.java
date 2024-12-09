@@ -456,20 +456,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
-	// @Test
-	public void backwardsTrainableProgressive() throws IOException {
-		if (testDepth < 2) return;
-
-		int c = 32;
-		int groups = 4;
-
-		for (int i = 0; i < 3; i++) {
-			log("Iteration " + i + " c = " + c);
-			normBackwardsTrainable(null, c, groups);
-			c = c * 2;
-		}
-	}
-
 	@Test
 	public void backwardsTrainableProgressiveLarge() throws IOException {
 		if (testDepth < 3 || skipLongTests) return;
@@ -603,24 +589,18 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double actual = result.valueAt(start + i);
 				double diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdGamma.valueAt(i);
 				actual = origWeights.valueAt(start + i) - weights.valueAt(start + i);
 				diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
 				actual = origBiases.valueAt(start + i) - biases.valueAt(start + i);
 				diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 			}
 		}

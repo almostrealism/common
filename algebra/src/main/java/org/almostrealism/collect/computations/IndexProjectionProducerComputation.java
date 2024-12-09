@@ -215,7 +215,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			};
 
 			return traverse(traversalAxis,
-					new IndexProjectionProducerComputation<>(null, shape.traverseEach(), project, false, delta));
+					new IndexProjectionProducerComputation<>("projectDelta", shape.traverseEach(), project, false, delta));
 		}
 
 		return super.delta(target);

@@ -18,7 +18,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.DiagonalCollectionExpression;
-import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Producer;
@@ -60,7 +59,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				(args) -> new DiagonalCollectionExpression(diagonalShape, args[1]), vector) {
 			@Override
 			public boolean isDiagonal(int width) {
-				return width == shape.length(0);
+				return width == shape.length(0) || super.isDiagonal(width);
 			}
 		};
 	}
@@ -77,7 +76,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			return zeros(shape(shape.length(0), vshape.length(1)));
 		}
 
-		if (shape.getTotalSizeLong() == 1 && vshape.getTotalSizeLong() == 1) {
+		if (shape.getTotalSizeLong() == 1 || vshape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
 		} else if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
@@ -98,6 +97,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 					return c(vector);
 				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
 					return c(matrix);
+				} else if (Algebraic.isDiagonal(vshape.length(0), matrix)) {
+					console.features(MatrixFeatures.class)
+							.log("Matrix multiplication by diagonal matrix");
 				}
 
 				return weightedSum("matmul",

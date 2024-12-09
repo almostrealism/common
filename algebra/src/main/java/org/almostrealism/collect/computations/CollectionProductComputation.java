@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -31,6 +32,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class CollectionProductComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
+	public static boolean enableAttemptDelta = false;
+
 	public CollectionProductComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
 		this("multiply", shape, arguments);
 	}
@@ -60,8 +63,10 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		CollectionProducer<T> delta = attemptDelta(target);
-		if (delta != null) return delta;
+		if (enableAttemptDelta) {
+			CollectionProducer<T> delta = attemptDelta(target);
+			if (delta != null) return delta;
+		}
 
 		TraversalPolicy targetShape = shape(target);
 
@@ -93,11 +98,23 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<PackedCollection<?>> uDelta = u.delta(target);
 		CollectionProducer<PackedCollection<?>> vDelta = v.delta(target);
 
-		u = diagonal(u.flatten());
-		v = diagonal(v.flatten());
-		uDelta = uDelta.reshape(v.getShape()).traverse(0);
-		vDelta = vDelta.reshape(u.getShape()).traverse(0);
+		uDelta = uDelta.reshape(v.getShape().getTotalSize(), -1).traverse(0);
+		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
+		return (CollectionProducer) expandAndMultiply(u.flatten(), vDelta)
+				.add(expandAndMultiply(v.flatten(), uDelta)).reshape(shape);
+	}
 
-		return (CollectionProducer) matmul(u, vDelta).add(matmul(v, uDelta)).reshape(shape);
+	// TODO  It seems like this should be something that is just
+	// TODO  part of MatrixFeatures, or even an option for matmul
+	protected <V extends PackedCollection<?>> CollectionProducer<V> expandAndMultiply(
+			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
+		if (vector.getShape().getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+			return diagonal(vector);
+		} else {
+			CollectionProducer<V> expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			return multiply(expanded, matrix);
+		}
 	}
 }

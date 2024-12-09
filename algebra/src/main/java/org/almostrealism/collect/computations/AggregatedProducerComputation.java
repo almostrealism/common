@@ -32,8 +32,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.HashMap;
@@ -44,6 +44,7 @@ import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
+	public static boolean enableChainRule = false;
 	public static boolean enableIndexSimplification = true;
 	public static boolean enableIndexCache = false;
 	public static boolean enableLogging = false;
@@ -80,6 +81,11 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public AggregatedProducerComputation<T> setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
 		return this;
+	}
+
+	@Override
+	public boolean isChainRuleSupported() {
+		return enableChainRule || super.isChainRuleSupported();
 	}
 
 	@Override
@@ -231,9 +237,14 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			int outLength = ((CollectionProducer<T>) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
-			delta = ((CollectionProducer) getInputs().get(1)).delta(target);
-			delta = delta.reshape(outLength, inLength);
-			delta = delta.enumerate(1, 1);
+			if (AlgebraFeatures.match(getInputs().get(1), target)) {
+				delta = identity(shape(inLength, outLength)).traverse(0);
+			} else {
+				delta = ((CollectionProducer) getInputs().get(1)).delta(target);
+				delta = delta.reshape(outLength, inLength);
+				delta = delta.enumerate(1, 1);
+			}
+
 			delta = delta.enumerate(1, count).traverse(2);
 			return new AggregatedProducerComputation<>(getName(), shape(delta).replace(shape(1)),
 						count, initial, expression, (Supplier) delta)
