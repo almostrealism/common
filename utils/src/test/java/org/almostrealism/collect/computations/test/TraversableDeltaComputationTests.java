@@ -664,7 +664,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 							assertEquals(expected, actual);
 						}
 					}
-				});
+				}, false, false, true);
 	}
 
 	@Test
@@ -691,11 +691,17 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					assertEquals(2 / diffSquared, output.valueAt(0, 1));
 					assertEquals(2 / diffSquared, output.valueAt(1, 0));
 					assertEquals(-2 / diffSquared, output.valueAt(1, 1));
-				});
+				}, false, false, true);
 	}
 
 	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply,
 										 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate) {
+		recursiveDivisionTest(supply, validate, false);
+	}
+
+	protected void recursiveDivisionTest(Factor<PackedCollection<?>> supply,
+										 BiConsumer<PackedCollection<?>, PackedCollection<?>> validate,
+										 boolean optimizeOnly) {
 		double x = 1.0;
 		double y = 1.02 * Math.pow(2, 5);
 
@@ -708,7 +714,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 			log("Iteration " + i + " y = " + y);
 			kernelTest(
 					() -> supply.getResultant(cp(o)),
-					out -> validate.accept(o, out));
+					out -> validate.accept(o, out),
+					!optimizeOnly, !optimizeOnly, true);
 		}
 	}
 
@@ -832,7 +839,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					assertEquals(-4 * eps / denominator, output.valueAt(0, 1));
 					assertEquals(-4 * eps / denominator, output.valueAt(1, 0));
 					assertEquals( 4 * eps / denominator, output.valueAt(1, 1));
-				});
+				}, true);
 	}
 
 	@Test
@@ -924,11 +931,9 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 					for (int i = 0; i < c; i++) {
 						double expected = dLdXGroup.valueAt(i) / stdG;
 						double actual = output.valueAt(i);
-						// log(expected + " vs " + actual);
-
 						Assert.assertEquals(expected, actual, 1e-5);
 					}
-				}).save("results/divideProduct2.xml");
+				}, false, true, true).save("results/divideProduct2.xml");
 	}
 
 	@Test

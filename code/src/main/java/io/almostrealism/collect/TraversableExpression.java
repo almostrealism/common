@@ -66,7 +66,8 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 		Expression<?> column[] = indices.allColumnsMatch();
 		if (column != null) {
 			// TODO
-			throw new RuntimeException("localIndex is irrelevant");
+			// throw new RuntimeException("localIndex is irrelevant");
+			warn("localIndex is irrelevant");
 		}
 
 		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {

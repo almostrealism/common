@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Parent;
@@ -172,7 +173,9 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		p = getRoot(p);
 		q = getRoot(q);
 
-		if (Objects.equals(p, q)) {
+		if (p instanceof Algebraic && q instanceof Algebraic) {
+			return ((Algebraic) p).matches((Algebraic) q);
+		} else if (Objects.equals(p, q)) {
 			// This comparison between p and q does not cover the case where they are both
 			// CollectionProviderProducers referring to the same underlying value via
 			// delegation

@@ -18,13 +18,14 @@ package org.almostrealism.calculus;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -35,13 +36,17 @@ import java.util.List;
 // TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection<?>> implements CollectionProducer<T>,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-														TraversableExpression<Double>, OperationInfo {
-	private final Producer<T> producer;
+														Algebraic, OperationInfo {
 	private final OperationMetadata metadata;
+	private final Producer<T> producer;
 
 	public InputStub(Producer<T> producer) {
+		this(new OperationMetadata("stub", "stub"), producer);
+	}
+
+	protected InputStub(OperationMetadata metadata, Producer<T> producer) {
+		this.metadata = metadata;
 		this.producer = producer;
-		this.metadata = new OperationMetadata("stub", "stub");
 	}
 
 	public OperationMetadata getMetadata() { return metadata; }
@@ -64,11 +69,6 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 	@Override
 	public TraversalPolicy getShape() {
 		return shape(producer);
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression<?> index) {
-		return null;
 	}
 
 	@Override
@@ -95,18 +95,34 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 	}
 
 	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize(ProcessContext ctx) {
+		return ParallelProcess.super.optimize(ctx);
+	}
+
+	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return List.of((Process<?, ?>) producer);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
-		return new InputStub<>((Producer) children.iterator().next());
+		return new InputStub<>(metadata, (Producer) children.iterator().next());
 	}
 
 	@Override
 	public Evaluable<T> get() {
 		return producer.get();
+	}
+
+	@Override
+	public <A extends Algebraic> boolean matches(A other) {
+		if (other instanceof InputStub<?> && getMetadata().getId() == ((InputStub<?>) other).getMetadata().getId()) {
+			return true;
+		} else if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).matches(other);
+		}
+
+		return false;
 	}
 
 	@Override

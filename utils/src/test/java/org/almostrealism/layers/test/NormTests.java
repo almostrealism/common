@@ -457,7 +457,25 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
-	public void backwardsTrainableProgressiveLarge() throws IOException {
+	public void backwardsTrainableLarge1() throws IOException {
+		if (testDepth < 2) return;
+
+		int c = 120;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableLarge1", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableLarge2() throws IOException {
+		if (testDepth < 1) return;
+
+		int c = 96;
+		int groups = 6;
+		normBackwardsTrainable("backwardsTrainableLarge2", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableProgressive() throws IOException {
 		if (testDepth < 3 || skipLongTests) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
@@ -499,24 +517,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		int c = 21952;
 		int groups = 4;
 		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups);
-	}
-
-	@Test
-	public void backwardsTrainableLarge1() throws IOException {
-		if (testDepth < 2) return;
-
-		int c = 120;
-		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableLarge1", c, groups);
-	}
-
-	@Test
-	public void backwardsTrainableLarge2() throws IOException {
-		if (testDepth < 1) return;
-
-		int c = 96;
-		int groups = 6;
-		normBackwardsTrainable("backwardsTrainableLarge2", c, groups);
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups) throws IOException {

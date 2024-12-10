@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
@@ -174,6 +175,15 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public PassThroughProducer<T> generate(List<Process<?, ?>> children) {
 		return this;
+	}
+
+	@Override
+	public <A extends Algebraic> boolean matches(A other) {
+		if (other instanceof PassThroughProducer<?>) {
+			return getReferencedArgumentIndex() == ((PassThroughProducer) other).getReferencedArgumentIndex();
+		}
+
+		return false;
 	}
 
 	@Override

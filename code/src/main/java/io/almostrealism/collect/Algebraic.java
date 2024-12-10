@@ -49,6 +49,10 @@ public interface Algebraic extends Computable {
 	 */
 	default boolean isDiagonal(int width) { return isIdentity(width); }
 
+	default <T extends Algebraic> boolean matches(T other) {
+		return equals(other);
+	}
+
 	static <T> boolean isZero(T value) {
 		return value instanceof Algebraic && ((Algebraic) value).isZero();
 	}
