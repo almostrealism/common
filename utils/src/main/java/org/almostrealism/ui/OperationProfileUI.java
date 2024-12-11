@@ -82,7 +82,7 @@ public class OperationProfileUI {
 				if (root.getOperationSources().containsKey(node.getNode().getKey())) {
 					for (OperationSource source : root.getOperationSources().get(node.getNode().getKey())) {
 						if (source.getArgumentKeys() != null) {
-							out.append("\n---------\nArguments: ");
+							out.append("\n---------\nArguments: \n");
 							for (int i = 0; i < source.getArgumentKeys().size(); i++) {
 								out.append(source.getArgumentNames().get(i))
 										.append(": ")
