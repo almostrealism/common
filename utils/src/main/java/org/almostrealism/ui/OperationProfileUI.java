@@ -17,6 +17,7 @@
 package org.almostrealism.ui;
 
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.profile.OperationSource;
 import org.almostrealism.io.TimingMetric;
 
 import javax.swing.JFrame;
@@ -24,6 +25,9 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTree;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
+import java.awt.Component;
 import java.io.IOException;
 import java.util.function.Consumer;
 
@@ -34,6 +38,24 @@ public class OperationProfileUI {
 	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
 		JTree tree = new JTree(new OperationProfileNodeUI(root, root));
 
+		tree.setCellRenderer(new DefaultTreeCellRenderer() {
+			@Override
+			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded, boolean leaf, int row, boolean hasFocus) {
+				super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+				if (!(value instanceof DefaultMutableTreeNode)) return this;
+
+				Object o = ((DefaultMutableTreeNode) value).getUserObject();
+
+				if (o instanceof OperationProfileNodeInfo) {
+					if (((OperationProfileNodeInfo) o).isCompiled()) {
+						setIcon(getDefaultLeafIcon());
+					}
+				}
+
+				return this;
+			}
+		});
+
 		if (textDisplay != null) {
 			tree.addTreeSelectionListener(e -> {
 				if (tree.getLastSelectedPathComponent() == null) return;
@@ -43,7 +65,7 @@ public class OperationProfileUI {
 				if (node == null) return;
 
 				StringBuilder out = new StringBuilder();
-				String name = root.getMetadataDetail(node.getNode().getName());
+				String name = root.getMetadataDetail(node.getNode().getKey());
 
 				TimingMetric metric = node.getNode().getMetric();
 				if (metric == null) metric = node.getNode().getMergedMetric();
@@ -57,9 +79,22 @@ public class OperationProfileUI {
 					out.append(details.summary(name));
 				}
 
-				if (root.getOperationSources().containsKey(node.getNode().getName())) {
-					out.append("\n---------\nSource:\n");
-					out.append(root.getOperationSources().get(node.getNode().getName()));
+				if (root.getOperationSources().containsKey(node.getNode().getKey())) {
+					for (OperationSource source : root.getOperationSources().get(node.getNode().getKey())) {
+						if (source.getArgumentKeys() != null) {
+							out.append("\n---------\nArguments: ");
+							for (int i = 0; i < source.getArgumentKeys().size(); i++) {
+								out.append(source.getArgumentNames().get(i))
+										.append(": ")
+										.append(root.getMetadataDetail(source.getArgumentKeys().get(i)))
+										.append("\n");
+							}
+						}
+
+						out.append("\n---------\nSource:\n");
+						out.append(source.getSource());
+						out.append("\n");
+					}
 				}
 
 				textDisplay.accept(out.toString());

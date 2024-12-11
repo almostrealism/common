@@ -254,8 +254,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			for (int i = 0; i < groupSize; i++) {
 				double expected = dLdXGroup.valueAt(i) / stdG;
 				double actual = result.valueAt(start + i);
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}

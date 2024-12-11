@@ -39,6 +39,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
@@ -179,8 +180,15 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public <A extends Algebraic> boolean matches(A other) {
-		if (other instanceof PassThroughProducer<?>) {
-			return getReferencedArgumentIndex() == ((PassThroughProducer) other).getReferencedArgumentIndex();
+		if ((other instanceof ProducerArgumentReference)) {
+			if (!(other instanceof PassThroughProducer)) {
+				// This should not be an issue, but it is something that might be
+				// worth knowing if there is ever a future system which matches
+				// across different types of the argument references
+				warn(other.getClass().getSimpleName() + " is not a PassThroughProducer");
+			}
+
+			return ((ProducerArgumentReference) other).getReferencedArgumentIndex() == getReferencedArgumentIndex();
 		}
 
 		return false;
@@ -193,11 +201,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public boolean equals(Object obj) {
-		if ((obj instanceof PassThroughProducer)) {
-			return ((PassThroughProducer) obj).getReferencedArgumentIndex() == getReferencedArgumentIndex();
+		if (!Objects.equals(getClass(), obj.getClass()) || !(obj instanceof Algebraic)) {
+			return false;
 		}
 
-		return super.equals(obj);
+		return matches((Algebraic) obj);
 	}
 
 	@Override

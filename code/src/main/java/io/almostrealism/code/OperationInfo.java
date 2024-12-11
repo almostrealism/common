@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+// TODO  Move to io.almostrealism.profile (or some other package)
 public interface OperationInfo extends Describable {
 	OperationMetadata getMetadata();
 

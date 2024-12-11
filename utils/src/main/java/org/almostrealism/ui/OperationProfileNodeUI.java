@@ -34,7 +34,8 @@ public class OperationProfileNodeUI extends DefaultMutableTreeNode {
 		OperationProfileNodeInfo node = (OperationProfileNodeInfo) getUserObject();
 
 		if (node != null) {
-			node.getNode().getChildren(comparator).forEach(child -> add(new OperationProfileNodeUI(node.getRoot(), child)));
+			node.getNode().getChildren(comparator).forEach(child ->
+					add(new OperationProfileNodeUI(node.getRoot(), child)));
 		}
 	}
 }

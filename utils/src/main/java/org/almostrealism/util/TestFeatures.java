@@ -194,7 +194,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void initKernelMetrics() {
-		initKernelMetrics(new OperationProfile("HardwareOperator",
+		initKernelMetrics(new OperationProfile(null, "HardwareOperator",
 				OperationProfile.appendContext(OperationMetadata::getDisplayName)));
 	}
 

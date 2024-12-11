@@ -39,6 +39,10 @@ public class OperationProfileNodeInfo {
 		return node;
 	}
 
+	public boolean isCompiled() {
+		return getRoot().getOperationSources().containsKey(getNode().getKey());
+	}
+
 	@Override
 	public String toString() {
 		if (label == null) {
@@ -52,7 +56,7 @@ public class OperationProfileNodeInfo {
 							duration > 180.0 ? (duration / 60.0) : duration) +
 							(duration > 180.0 ? " minutes" : " seconds");
 
-			String result = root.getMetadataDetail(node.getName()) +
+			String result = root.getMetadataDetail(node.getKey()) +
 					" - " + displayLong.apply(node.getTotalDuration());
 
 			double selfDuration = node.getSelfDuration();

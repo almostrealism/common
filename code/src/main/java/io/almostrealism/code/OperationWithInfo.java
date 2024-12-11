@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
+// TODO  Move to io.almostrealism.profile (or some other package)
 public class OperationWithInfo implements Operation, OperationInfo {
 	private final OperationMetadata metadata;
 	private final Operation operation;

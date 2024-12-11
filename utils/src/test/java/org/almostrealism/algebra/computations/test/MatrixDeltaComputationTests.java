@@ -268,7 +268,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	public void matmal(String name, int size, int nodes, boolean dIn) throws IOException {
-		OperationProfileNode profile = new OperationProfileNode(name);
+		OperationProfileNode profile = new OperationProfileNode( name);
 
 		try {
 			initKernelMetrics(profile);

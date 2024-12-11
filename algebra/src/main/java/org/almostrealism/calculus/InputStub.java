@@ -45,8 +45,15 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 	}
 
 	protected InputStub(OperationMetadata metadata, Producer<T> producer) {
-		this.metadata = metadata;
+		this.metadata = new OperationMetadata(metadata);
 		this.producer = producer;
+		prepareMetadata();
+	}
+
+	protected void prepareMetadata() {
+		if (producer instanceof OperationInfo) {
+			this.metadata.setChildren(List.of(((OperationInfo) producer).getMetadata()));
+		}
 	}
 
 	public OperationMetadata getMetadata() { return metadata; }
