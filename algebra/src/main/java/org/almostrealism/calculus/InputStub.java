@@ -41,7 +41,7 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 	private final Producer<T> producer;
 
 	public InputStub(Producer<T> producer) {
-		this(new OperationMetadata("stub", "stub"), producer);
+		this(new OperationMetadata("stub", "InputStub"), producer);
 	}
 
 	protected InputStub(OperationMetadata metadata, Producer<T> producer) {
@@ -50,9 +50,22 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 		prepareMetadata();
 	}
 
+	protected String extendDescription(String description, boolean brief) {
+		if (brief) {
+			return "stub(" + description + ")";
+		} else {
+			return getClass().getSimpleName() + "(" + description + ")";
+		}
+	}
+
 	protected void prepareMetadata() {
 		if (producer instanceof OperationInfo) {
-			this.metadata.setChildren(List.of(((OperationInfo) producer).getMetadata()));
+			OperationMetadata child = ((OperationInfo) producer).getMetadata();
+			this.metadata.setDisplayName(
+					extendDescription(child.getDisplayName(), true));
+			this.metadata.setShortDescription(
+					extendDescription(child.getShortDescription(), false));
+			this.metadata.setChildren(List.of(child));
 		}
 	}
 

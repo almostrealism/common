@@ -551,7 +551,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return this + "[axis=" + getTraversalAxis() + "]";
 		}
 
-		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSize() + "]";
+		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSizeLong() + "]";
 	}
 
 	@Override

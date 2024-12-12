@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
@@ -187,27 +188,31 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (aggregateData != null) aggregateData.destroy();
 	}
 
-	protected MemoryData rootDelegate(MemoryData mw) {
-		if (mw.getDelegate() == null) {
-			return mw;
-		} else {
-			return rootDelegate(mw.getDelegate());
-		}
-	}
-
-	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider> {
+	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
+															Delegated<Provider>, OperationInfo {
 		private Provider provider;
+		private OperationMetadata metadata;
 
 		public RootDelegateProviderSupplier(MemoryData mem) {
-			this.provider = new Provider<>(rootDelegate(mem));
+			MemoryData root = mem.getRootDelegate();
+			this.provider = new Provider<>(root);
+			this.metadata = new OperationMetadata("rootDelegate", "RootDelegateProviderSupplier");
 			rootDelegateSuppliers.add(this);
 		}
+
+		@Override
+		public OperationMetadata getMetadata() { return metadata; }
 
 		@Override
 		public Evaluable<? extends MemoryData> get() { return provider; }
 
 		@Override
 		public Provider getDelegate() { return provider; }
+
+		@Override
+		public String describe() {
+			return getMetadata().describe();
+		}
 
 		public void destroy() { this.provider = null; }
 	}

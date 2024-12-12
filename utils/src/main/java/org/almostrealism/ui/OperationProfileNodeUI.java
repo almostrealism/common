@@ -19,23 +19,57 @@ package org.almostrealism.ui;
 import io.almostrealism.profile.OperationProfileNode;
 
 import javax.swing.tree.DefaultMutableTreeNode;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class OperationProfileNodeUI extends DefaultMutableTreeNode {
 	public static final Comparator<OperationProfileNode> comparator =
 			Comparator.comparingDouble(OperationProfileNode::getTotalDuration).reversed();
 
-	public OperationProfileNodeUI(OperationProfileNode root, OperationProfileNode node) {
-		super(new OperationProfileNodeInfo(root, node));
-		init();
+	public OperationProfileNodeUI(OperationProfileNode root, OperationProfileNode node, boolean onlyCompiled) {
+		this(new OperationProfileNodeInfo(root, node), onlyCompiled);
 	}
 
-	protected void init() {
+	public OperationProfileNodeUI(OperationProfileNodeInfo node, boolean onlyCompiled) {
+		super(node);
+		init(onlyCompiled);
+	}
+
+	protected void init(boolean onlyCompiled) {
 		OperationProfileNodeInfo node = (OperationProfileNodeInfo) getUserObject();
 
 		if (node != null) {
-			node.getNode().getChildren(comparator).forEach(child ->
-					add(new OperationProfileNodeUI(node.getRoot(), child)));
+			List<OperationProfileNodeInfo> children;
+			List<OperationProfileNode> nodes = new ArrayList<>(node.getNode().getChildren(comparator));
+
+			if (onlyCompiled) {
+				children = nodes.stream()
+						.map(n -> new OperationProfileNodeInfo(node.getRoot(), n))
+						.map(this::compiledChildren)
+						.flatMap(List::stream)
+						.collect(Collectors.toList());
+			} else {
+				children = nodes.stream()
+						.map(n -> new OperationProfileNodeInfo(node.getRoot(), n))
+						.collect(Collectors.toList());
+			}
+
+			children.forEach(child ->
+					add(new OperationProfileNodeUI(child, onlyCompiled)));
 		}
+	}
+
+	protected List<OperationProfileNodeInfo> compiledChildren(OperationProfileNodeInfo node) {
+		if (node.isCompiled()) {
+			return List.of(node);
+		}
+
+		return node.getNode().getChildren(comparator).stream()
+				.map(n -> new OperationProfileNodeInfo(node.getRoot(), n))
+				.map(this::compiledChildren)
+				.flatMap(List::stream)
+				.collect(Collectors.toList());
 	}
 }

@@ -44,13 +44,27 @@ public class DelegatedProducer<T> implements
 	public DelegatedProducer(Producer<T> op, boolean directDelegate) {
 		this.op = op;
 		this.direct = directDelegate;
-		this.metadata = new OperationMetadata(getClass().getSimpleName(), getClass().getSimpleName());
 		prepareMetadata();
+	}
+
+	protected String extendDescription(String description, boolean brief) {
+		if (brief) {
+			return "delegate(" + description + ")";
+		} else {
+			return getClass().getSimpleName() + "(" + description + ")";
+		}
 	}
 
 	protected void prepareMetadata() {
 		if (op instanceof OperationInfo) {
-			this.metadata.setChildren(List.of(((OperationInfo) op).getMetadata()));
+			OperationMetadata child = ((OperationInfo) op).getMetadata();
+			this.metadata = new OperationMetadata(
+									extendDescription(child.getDisplayName(), true),
+									extendDescription(child.getShortDescription(), false));
+			this.metadata.setChildren(List.of(child));
+		} else {
+			this.metadata = new OperationMetadata("delegate",
+									getClass().getSimpleName());
 		}
 	}
 

@@ -248,6 +248,10 @@ public class OperationProfileNode extends OperationProfile
 					.map(p -> p instanceof OperationInfo ?
 							((OperationInfo) p).getMetadata() : null)
 					.collect(Collectors.toList());
+			if (argMeta.stream().anyMatch(Objects::isNull)) {
+				warn("Some arguments have no metadata");
+			}
+
 			argKeys = argMeta.stream().map(OperationProfile::metadataKey)
 					.map(k -> k == null ? "<unknown>" : k)
 					.collect(Collectors.toList());
@@ -261,8 +265,8 @@ public class OperationProfileNode extends OperationProfile
 		sources.add(new OperationSource(code, argKeys, argNames));
 		operationSources.put(key, sources);
 
-		if (operationSources.size() > 1) {
-			warn("Multiple sources for " + key);
+		if (sources.size() > 1) {
+			throw new IllegalArgumentException("Multiple sources for " + key);
 		}
 
 		OperationProfileNode node = getProfileNode(metadata);

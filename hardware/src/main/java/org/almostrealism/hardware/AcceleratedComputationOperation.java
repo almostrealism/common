@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
@@ -291,7 +292,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		outputVariable = getComputation().getOutputVariable();
 
 		if (getComputation() instanceof Shape) {
-			scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+			TraversalPolicy shape = scope.getMetadata().getShape();
+
+			if (shape == null) {
+				warn("Missing TraversalPolicy for Scope metadata");
+				scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+			} else if (!shape.equals(((Shape<?>) getComputation()).getShape())) {
+				throw new IllegalArgumentException("Shape mismatch between Scope metadata and Computation");
+			}
 		}
 
 		// kernelSeriesCache.destroy();

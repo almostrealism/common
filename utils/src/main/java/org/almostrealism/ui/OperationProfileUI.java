@@ -27,21 +27,33 @@ import javax.swing.JTextArea;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
+import javax.swing.tree.TreePath;
 import java.awt.Component;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 public class OperationProfileUI {
 	private JScrollPane textScroll;
 	private JTextArea textArea;
+	private List<JTree> trees;
+	private boolean updatingSelection;
 
-	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay) {
-		JTree tree = new JTree(new OperationProfileNodeUI(root, root));
+	public OperationProfileUI() {
+		trees = new ArrayList<>();
+	}
+
+	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay, boolean onlyCompiled) {
+		JTree tree = new JTree(new OperationProfileNodeUI(root, root, onlyCompiled));
+		trees.add(tree);
 
 		tree.setCellRenderer(new DefaultTreeCellRenderer() {
 			@Override
-			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded, boolean leaf, int row, boolean hasFocus) {
-				super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
+														  boolean expanded, boolean leaf, int row,
+														  boolean hasFocus) {
+				super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
 				if (!(value instanceof DefaultMutableTreeNode)) return this;
 
 				Object o = ((DefaultMutableTreeNode) value).getUserObject();
@@ -58,7 +70,7 @@ public class OperationProfileUI {
 
 		if (textDisplay != null) {
 			tree.addTreeSelectionListener(e -> {
-				if (tree.getLastSelectedPathComponent() == null) return;
+				if (tree.getLastSelectedPathComponent() == null || updatingSelection) return;
 
 				OperationProfileNodeInfo node = (OperationProfileNodeInfo)
 						((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
@@ -101,21 +113,64 @@ public class OperationProfileUI {
 			});
 		}
 
+		tree.addTreeSelectionListener(e -> {
+			if (tree.getLastSelectedPathComponent() == null || updatingSelection) return;
+
+			OperationProfileNodeInfo selectedNode = (OperationProfileNodeInfo)
+					((OperationProfileNodeUI) tree.getLastSelectedPathComponent()).getUserObject();
+			if (selectedNode == null) return;
+
+			String selectedKey = selectedNode.getNode().getKey();
+			if (selectedKey != null) {
+				try {
+					updatingSelection = true;
+					trees.stream().filter(t -> t != tree).forEach(t -> {
+						DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode) t.getModel().getRoot();
+						traverseAndSelect(rootNode, selectedKey, t);
+					});
+				} finally {
+					updatingSelection = false;
+				}
+			}
+		});
+
 		return tree;
 	}
 
-	public JFrame display(OperationProfileNode root) {
-		JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+	private void traverseAndSelect(DefaultMutableTreeNode node, String key, JTree tree) {
+		if (node == null) return;
 
+		OperationProfileNodeInfo nodeInfo = node.getUserObject() instanceof OperationProfileNodeInfo ?
+				(OperationProfileNodeInfo) node.getUserObject() : null;
+
+		if (nodeInfo != null && key.equals(nodeInfo.getNode().getKey())) {
+			tree.setSelectionPath(new TreePath(node.getPath()));
+			tree.scrollPathToVisible(new TreePath(node.getPath()));
+			return;
+		}
+
+		for (int i = 0; i < node.getChildCount(); i++) {
+			traverseAndSelect((DefaultMutableTreeNode) node.getChildAt(i), key, tree);
+		}
+	}
+
+	public JFrame display(OperationProfileNode root) {
 		textArea = new JTextArea(80, 120);
 		textScroll = new JScrollPane(textArea);
 
-		body.setRightComponent(textScroll);
-		body.setLeftComponent(new JScrollPane(createTree(root, text -> {
+		Consumer<String> textDisplay = text -> {
 			textArea.setText(text);
 			textArea.setCaretPosition(0);
 			textScroll.getVerticalScrollBar().setValue(0);
-		})));
+		};
+
+		JSplitPane trees = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+		trees.setLeftComponent(new JScrollPane(createTree(root, textDisplay, false)));
+		trees.setRightComponent(new JScrollPane(createTree(root, textDisplay, true)));
+
+		JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+		body.setRightComponent(textScroll);
+		body.setLeftComponent(trees);
 
 		JFrame frame = new JFrame("OperationProfile - " + root.getName());
 		frame.getContentPane().add(body);
