@@ -41,6 +41,9 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
+	private ProcessContext optimizationCtx;
+	private ComputationBase<I, O, T> optimized;
+
 	public ComputationBase() {
 		super(new Supplier[0]);
 	}
@@ -176,10 +179,18 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	 */
 	@Override
 	public ComputationBase<I, O, T> optimize(ProcessContext ctx) {
-		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ComputableParallelProcess.super.optimize(ctx);
-		replacement.setComputeRequirements(getComputeRequirements());
-		return replacement;
+		if (optimized == null) {
+			optimizationCtx = ctx;
+			optimized = (ComputationBase<I, O, T>)
+					ComputableParallelProcess.super.optimize(ctx);
+			optimized.setComputeRequirements(getComputeRequirements());
+		} else if (Countable.count(ctx) != Countable.count(optimizationCtx)) {
+			warn("Cached optimization may not be ideal for new ProcessContext count of " +
+					Countable.count(ctx) + " compared to " +
+					Countable.count(optimizationCtx) + ")");
+		}
+
+		return optimized;
 	}
 
 	/**
