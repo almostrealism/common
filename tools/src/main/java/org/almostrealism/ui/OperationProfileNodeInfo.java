@@ -17,8 +17,11 @@
 package org.almostrealism.ui;
 
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.profile.OperationSource;
 import org.almostrealism.io.MetricBase;
 
+import java.util.Collections;
+import java.util.Optional;
 import java.util.function.Function;
 
 public class OperationProfileNodeInfo {
@@ -31,20 +34,21 @@ public class OperationProfileNodeInfo {
 		this.node = node;
 	}
 
-	public OperationProfileNode getRoot() {
-		return root;
-	}
+	public OperationProfileNode getRoot() { return root; }
 
-	public OperationProfileNode getNode() {
-		return node;
-	}
+	public OperationProfileNode getNode() { return node; }
 
 	public boolean isCompiled() {
 		return getRoot().getOperationSources().containsKey(getNode().getKey());
 	}
 
-	@Override
-	public String toString() {
+	public Optional<OperationSource> getProgram() {
+		return getRoot().getOperationSources()
+				.getOrDefault(getNode().getKey(), Collections.emptyList())
+				.stream().findFirst();
+	}
+
+	public String getLabel() {
 		if (label == null) {
 			Function<Double, String> displayShort = duration ->
 					MetricBase.format.getValue().format(
@@ -73,5 +77,10 @@ public class OperationProfileNodeInfo {
 		}
 
 		return label;
+	}
+
+	@Override
+	public String toString() {
+		return getLabel();
 	}
 }

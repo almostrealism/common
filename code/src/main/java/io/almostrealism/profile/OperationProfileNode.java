@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -180,33 +181,36 @@ public class OperationProfileNode extends OperationProfile
 	public OperationProfileNode getProfileNode(OperationMetadata metadata, boolean top) {
 		if (metadata == null) return null;
 
-		OperationProfileNode node = null;
-
 		String key = metadataKey(metadata);
-
-		if (Objects.equals(key, getKey())) {
-			return this;
-		} else if (nodeCache != null && nodeCache.containsKey(key)) {
-			node = nodeCache.get(key);
-		} else if (children != null) {
-			node = getChildren().stream().map(v -> v.getProfileNode(metadata, false))
-					.filter(Objects::nonNull)
-					.findFirst()
-					.orElse(null);
-		}
+		Optional<OperationProfileNode> node = getProfileNode(key);
 
 		if (top) {
-			if (node == null) {
-				node = OperationProfileNode.forMetadata(metadata, this::recordMetadata, getIdentifier());
+			if (node.isEmpty()) {
+				node = Optional.of(OperationProfileNode.forMetadata(metadata, this::recordMetadata, getIdentifier()));
 				recordMetadata(metadata);
-				addChild(node);
+				addChild(node.get());
 			}
 
 			if (nodeCache == null) nodeCache = new FrequencyCache(60, 0.5);
-			nodeCache.put(metadataKey(metadata), node);
+			nodeCache.put(metadataKey(metadata), node.get());
 		}
 
-		return node;
+		return node.orElse(null);
+	}
+
+	public Optional<OperationProfileNode> getProfileNode(String key) {
+		if (Objects.equals(key, getKey())) {
+			return Optional.of(this);
+		} else if (nodeCache != null && nodeCache.containsKey(key)) {
+			return Optional.of(nodeCache.get(key));
+		} else if (children != null) {
+			return getChildren().stream()
+					.map(v -> v.getProfileNode(key).orElse(null))
+					.filter(Objects::nonNull)
+					.findFirst();
+		}
+
+		return Optional.empty();
 	}
 
 	protected void recordMetadata(OperationMetadata metadata) {

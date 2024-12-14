@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class OperationProfileUI {
+	public static boolean enableJavaFx = true;
+
 	private JScrollPane textScroll;
 	private JTextArea textArea;
 	private List<JTree> trees;
@@ -44,8 +46,8 @@ public class OperationProfileUI {
 		trees = new ArrayList<>();
 	}
 
-	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay, boolean onlyCompiled) {
-		JTree tree = new JTree(new OperationProfileNodeUI(root, root, onlyCompiled));
+	public JTree createTree(OperationProfileNode root, Consumer<String> textDisplay, ProfileTreeFeatures.TreeStructure structure) {
+		JTree tree = new JTree(new OperationProfileNodeUI(root, root, structure));
 		trees.add(tree);
 
 		tree.setCellRenderer(new DefaultTreeCellRenderer() {
@@ -165,8 +167,8 @@ public class OperationProfileUI {
 		};
 
 		JSplitPane trees = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-		trees.setLeftComponent(new JScrollPane(createTree(root, textDisplay, false)));
-		trees.setRightComponent(new JScrollPane(createTree(root, textDisplay, true)));
+		trees.setLeftComponent(new JScrollPane(createTree(root, textDisplay, ProfileTreeFeatures.TreeStructure.COMPILED_ONLY)));
+		trees.setRightComponent(new JScrollPane(createTree(root, textDisplay, ProfileTreeFeatures.TreeStructure.ALL)));
 
 		JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		body.setRightComponent(textScroll);
@@ -182,14 +184,18 @@ public class OperationProfileUI {
 	}
 
 	public static void main(String args[]) throws IOException {
-		OperationProfileUI profileDisplay = new OperationProfileUI();
-		profileDisplay.display(OperationProfileNode.load(args[0]))
-				.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		if (enableJavaFx) {
+			OperationProfileFX.create(args[0]);
+		} else {
+			OperationProfileUI profileDisplay = new OperationProfileUI();
+			profileDisplay.display(OperationProfileNode.load(args[0]))
+					.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-		try {
-			Thread.sleep(24 * 60 * 60 * 1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
+			try {
+				Thread.sleep(24 * 60 * 60 * 1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 }
