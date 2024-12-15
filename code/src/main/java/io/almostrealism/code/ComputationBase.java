@@ -162,6 +162,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
+		if (optimized != null & optimized != this) {
+			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
+		}
+
 		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
 		if (getComputeRequirements() != null) {
 			scope.setComputeRequirements(getComputeRequirements());
