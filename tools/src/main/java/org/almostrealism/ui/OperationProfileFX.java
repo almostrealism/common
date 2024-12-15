@@ -19,22 +19,28 @@ package org.almostrealism.ui;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationSource;
 import javafx.application.Application;
+import javafx.beans.value.ObservableValue;
 import javafx.geometry.Orientation;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 public class OperationProfileFX extends Application {
 	private static String path;
@@ -43,7 +49,10 @@ public class OperationProfileFX extends Application {
 	private TreeView<OperationProfileNodeInfo> detailTree;
 	private TreeView<OperationProfileNodeInfo> scopeTree;
 
-	private TextArea textArea;
+	private TextField idField;
+	private TextArea infoArea;
+	private TextArea sourceArea;
+
 	private List<TreeView<OperationProfileNodeInfo>> trees;
 	private boolean updatingSelection;
 
@@ -52,9 +61,8 @@ public class OperationProfileFX extends Application {
 	}
 
 	public TreeView<OperationProfileNodeInfo> createTree(OperationProfileNode root,
-														 Consumer<String> textDisplay,
 														 ProfileTreeFeatures.TreeStructure structure,
-														 boolean syncSelection) {
+														 boolean updateInfo, boolean syncSelection) {
 		TreeItem<OperationProfileNodeInfo> rootItem = new OperationProfileNodeTreeItem(root, root, structure);
 
 		TreeView<OperationProfileNodeInfo> treeView = new TreeView<>(rootItem);
@@ -80,73 +88,85 @@ public class OperationProfileFX extends Application {
 		});
 
 		// Display detailed information about the selected node
-		if (textDisplay != null) {
-			treeView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-				if (newValue == null || updatingSelection) return;
-
-				OperationProfileNodeInfo nodeInfo = newValue.getValue();
-				StringBuilder out = new StringBuilder();
-				String name = root.getMetadataDetail(nodeInfo.getNode().getKey());
-
-				TimingMetric metric = nodeInfo.getNode().getMetric();
-				if (metric == null) metric = nodeInfo.getNode().getMergedMetric();
-				if (metric != null) {
-					out.append(metric.summary(name, root::getMetadataDetail));
-				}
-
-				TimingMetric details = nodeInfo.getNode().getStageDetailTime();
-				if (details != null) {
-					out.append("\n---------\nStage Details:\n");
-					out.append(details.summary(name));
-				}
-
-				if (root.getOperationSources().containsKey(nodeInfo.getNode().getKey())) {
-					for (OperationSource source : root.getOperationSources().get(nodeInfo.getNode().getKey())) {
-						if (source.getArgumentKeys() != null) {
-							out.append("\n---------\nArguments: \n");
-							for (int i = 0; i < source.getArgumentKeys().size(); i++) {
-								out.append(source.getArgumentNames().get(i))
-										.append(": ")
-										.append(root.getMetadataDetail(source.getArgumentKeys().get(i)))
-										.append("\n");
-							}
-						}
-
-						out.append("\n---------\nSource:\n");
-						out.append(source.getSource());
-						out.append("\n");
-					}
-				}
-
-				textDisplay.accept(out.toString());
-			});
+		if (updateInfo) {
+			treeView.getSelectionModel().selectedItemProperty().addListener(this::selected);
 		}
 
 		if (syncSelection) {
-			treeView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-				if (newValue == null || updatingSelection) return;
-
-				OperationProfileNodeInfo selectedNode = newValue.getValue();
-				String selectedKey = selectedNode.getNode().getKey();
-
-				if (selectedKey != null) {
-					updatingSelection = true;
-
-					try {
-						for (TreeView<OperationProfileNodeInfo> otherTree : trees) {
-							if (otherTree == treeView) continue;
-							traverseAndSelect(otherTree.getRoot(), selectedKey, otherTree);
-						}
-					} finally {
-						updatingSelection = false;
-					}
-				}
-			});
+			treeView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) ->
+							syncSelection(treeView, observable, oldValue, newValue));
 
 			trees.add(treeView);
 		}
 
 		return treeView;
+	}
+
+	protected void selected(ObservableValue<? extends TreeItem<OperationProfileNodeInfo>> observable,
+						   TreeItem<OperationProfileNodeInfo> oldValue,
+						   TreeItem<OperationProfileNodeInfo> newValue) {
+		if (newValue == null || updatingSelection) return;
+
+		OperationProfileNodeInfo nodeInfo = newValue.getValue();
+		OperationProfileNode root = nodeInfo.getRoot();
+
+		idField.setText(nodeInfo.getNode().getKey());
+
+		StringBuilder out = new StringBuilder();
+		String name = root.getMetadataDetail(nodeInfo.getNode().getKey());
+
+		TimingMetric metric = nodeInfo.getNode().getMetric();
+		if (metric == null) metric = nodeInfo.getNode().getMergedMetric();
+		if (metric != null) {
+			out.append(metric.summary(name, root::getMetadataDetail));
+		}
+
+		TimingMetric details = nodeInfo.getNode().getStageDetailTime();
+		if (details != null) {
+			out.append("\n---------\nStage Details:\n");
+			out.append(details.summary(name));
+		}
+
+		if (root.getOperationSources().containsKey(nodeInfo.getNode().getKey())) {
+			for (OperationSource source : root.getOperationSources().get(nodeInfo.getNode().getKey())) {
+				if (source.getArgumentKeys() != null) {
+					out.append("\n---------\nArguments: \n");
+					for (int i = 0; i < source.getArgumentKeys().size(); i++) {
+						out.append(source.getArgumentNames().get(i))
+								.append(": ")
+								.append(root.getMetadataDetail(source.getArgumentKeys().get(i)))
+								.append("\n");
+					}
+				}
+
+				updateSource(source.getSource());
+			}
+		}
+
+		updateInfo(out.toString());
+	}
+
+	protected void syncSelection(TreeView<OperationProfileNodeInfo> treeView,
+								 ObservableValue<? extends TreeItem<OperationProfileNodeInfo>> observable,
+								 TreeItem<OperationProfileNodeInfo> oldValue,
+								 TreeItem<OperationProfileNodeInfo> newValue) {
+		if (newValue == null || updatingSelection) return;
+
+		OperationProfileNodeInfo selectedNode = newValue.getValue();
+		String selectedKey = selectedNode.getNode().getKey();
+
+		if (selectedKey != null) {
+			updatingSelection = true;
+
+			try {
+				for (TreeView<OperationProfileNodeInfo> otherTree : trees) {
+					if (otherTree == treeView) continue;
+					traverseAndSelect(otherTree.getRoot(), selectedKey, otherTree);
+				}
+			} finally {
+				updatingSelection = false;
+			}
+		}
 	}
 
 	private void expandAll(TreeItem<OperationProfileNodeInfo> item) {
@@ -180,10 +200,12 @@ public class OperationProfileFX extends Application {
 	public void start(Stage stage) throws Exception {
 		OperationProfileNode root = OperationProfileNode.load(path);
 
-		this.textArea = new TextArea();
-		this.compiledTree = createTree(root, this::updateText, ProfileTreeFeatures.TreeStructure.COMPILED_ONLY, true);
-		this.detailTree = createTree(root, this::updateText, ProfileTreeFeatures.TreeStructure.STOP_AT_COMPILED, false);
-		this.scopeTree = createTree(root, null, ProfileTreeFeatures.TreeStructure.SCOPE_INPUTS, false);
+		this.infoArea = new TextArea();
+		this.sourceArea = new TextArea();
+		this.idField = new TextField();
+		this.compiledTree = createTree(root, ProfileTreeFeatures.TreeStructure.COMPILED_ONLY, true, true);
+		this.detailTree = createTree(root, ProfileTreeFeatures.TreeStructure.STOP_AT_COMPILED, true, false);
+		this.scopeTree = createTree(root, ProfileTreeFeatures.TreeStructure.SCOPE_INPUTS, false, false);
 
 		this.compiledTree.getSelectionModel().selectedItemProperty().addListener((observableValue, oldValue, newValue) -> {
 			if (newValue == null) return;
@@ -202,8 +224,30 @@ public class OperationProfileFX extends Application {
 
 		SplitPane treesPane = new SplitPane(createScrollPane(compiledTree), createScrollPane(detailTree));
 		treesPane.setDividerPositions(0.5);
+		
+		TabPane tabPane = new TabPane();
+		{
+			HBox idBox = new HBox();
+			idBox.setSpacing(5);
+			idBox.getChildren().add(new Label("ID:"));
+			idBox.getChildren().add(idField);
 
-		SplitPane infoPane = new SplitPane(createScrollPane(scopeTree), createScrollPane(textArea));
+			BorderPane infoBox = new BorderPane();
+			infoBox.setTop(idBox);
+			infoBox.setCenter(createScrollPane(infoArea));
+
+			Tab infoTab = new Tab("Info");
+			infoTab.setContent(infoBox);
+			infoTab.setClosable(false);
+
+			Tab sourceTab = new Tab("Source");
+			sourceTab.setContent(createScrollPane(sourceArea));
+			sourceTab.setClosable(false);
+
+			tabPane.getTabs().addAll(infoTab, sourceTab);
+		}
+
+		SplitPane infoPane = new SplitPane(createScrollPane(scopeTree), tabPane);
 		infoPane.setDividerPositions(0.3);
 
 		SplitPane rootPane = new SplitPane(treesPane, infoPane);
@@ -219,9 +263,14 @@ public class OperationProfileFX extends Application {
 		stage.show();
 	}
 
-	private void updateText(String text) {
-		textArea.setText(text);
-		textArea.setScrollTop(0);
+	private void updateInfo(String text) {
+		infoArea.setText(text);
+		infoArea.setScrollTop(0);
+	}
+
+	private void updateSource(String text) {
+		sourceArea.setText(text);
+		sourceArea.setScrollTop(0);
 	}
 
 	private ScrollPane createScrollPane(Node content) {
