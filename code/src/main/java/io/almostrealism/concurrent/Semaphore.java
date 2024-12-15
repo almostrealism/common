@@ -14,8 +14,14 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.concurrent;
+
+import io.almostrealism.code.OperationMetadata;
 
 public interface Semaphore {
+	OperationMetadata getRequester();
+
 	void waitFor();
+
+	Semaphore withRequester(OperationMetadata requester);
 }

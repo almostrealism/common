@@ -174,6 +174,24 @@ public class OperationProfileNode extends OperationProfile
 		return operationSources;
 	}
 
+	/**
+	 * Attempt to retrieve the specific {@link OperationProfileNode} that matches the
+	 * provided {@link OperationMetadata operationMetadata} which is a child of the
+	 * provided {@link OperationMetadata requesterMetadata}. This will fall back to
+	 * returning any {@link OperationProfileNode} that matches the provided
+	 * {@link OperationMetadata operationMetadata} if the {@link OperationProfileNode}
+	 * matching {@link OperationMetadata requesterMetadata} does not have a child
+	 * that matches the provided {@link OperationMetadata operationMetadata}.
+	 */
+	public OperationProfileNode getProfileNode(OperationMetadata requesterMetadata, OperationMetadata operationMetadata) {
+		return getProfileNode(requesterMetadata).getProfileNode(metadataKey(operationMetadata))
+				.orElseGet(() -> {
+					warn("Could not find " + operationMetadata.describe() +
+							" under " + requesterMetadata.describe());
+					return getProfileNode(operationMetadata);
+				});
+	}
+
 	public OperationProfileNode getProfileNode(OperationMetadata metadata) {
 		return metadata == null ? this : getProfileNode(metadata, true);
 	}
@@ -226,14 +244,14 @@ public class OperationProfileNode extends OperationProfile
 	}
 
 	@Override
-	public void recordDuration(OperationMetadata metadata, long nanos) {
-		if (Objects.equals(getKey(), metadataKey(metadata))) {
+	public void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos) {
+		if (Objects.equals(getKey(), metadataKey(operationMetadata))) {
 			if (measuredTime == null) measuredTime = new TimingMetric();
-			measuredTime.addEntry(metadataKey(metadata), nanos);
+			measuredTime.addEntry(metadataKey(operationMetadata), nanos);
 			return;
 		}
 
-		getProfileNode(metadata).recordDuration(metadata, nanos);
+		getProfileNode(operationMetadata).recordDuration(requesterMetadata, operationMetadata, nanos);
 	}
 
 	public <A> void recordCompilation(OperationMetadata metadata,
@@ -280,10 +298,10 @@ public class OperationProfileNode extends OperationProfile
 
 	@Override
 	public OperationTimingListener getRuntimeListener() {
-		return (metadata, nanos) -> {
-			OperationProfileNode node = getProfileNode(metadata);
+		return (requesterMetadata, operationMetadata, nanos) -> {
+			OperationProfileNode node = getProfileNode(requesterMetadata, operationMetadata);
 			node.initMetric();
-			node.getMetric().addEntry(getIdentifier().apply(metadata) + " run", nanos);
+			node.getMetric().addEntry(getIdentifier().apply(operationMetadata) + " run", nanos);
 		};
 	}
 

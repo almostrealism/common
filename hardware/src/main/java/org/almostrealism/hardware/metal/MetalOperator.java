@@ -19,7 +19,7 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.Semaphore;
+import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -127,7 +127,7 @@ public class MetalOperator extends HardwareOperator {
 		int dimMasks[] = computeDimensionMasks(data);
 
 		Future<?> run = context.getCommandRunner().submit((offset, size, dim0, queue) -> {
-			recordDuration(() -> {
+			recordDuration(null, () -> {
 				int index = 0;
 				long totalSize = 0;
 

@@ -19,7 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.Semaphore;
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
@@ -57,7 +58,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public abstract class AcceleratedOperation<T extends MemoryData>
 									extends OperationAdapter<T, Argument<? extends T>>
@@ -267,7 +267,24 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	}
 
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
-		return getDetailsFactory().init(output, args).construct();
+		Semaphore lastSemaphore = getSemaphore();
+
+		try {
+			pushSemaphore();
+			return getDetailsFactory().init(output, args).construct();
+		} finally {
+			semaphores.set(lastSemaphore);
+		}
+	}
+
+	protected void pushSemaphore() {
+		Semaphore current = getSemaphore();
+
+		if (current == null) {
+			semaphores.set(new DefaultLatchSemaphore(getMetadata(), 0));
+		} else {
+			semaphores.set(current.withRequester(getMetadata()));
+		}
 	}
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
@@ -276,15 +293,30 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 			compile();
 		}
 
-		if (HardwareOperator.enableKernelLog) log("Preparing " + getName() + " kernel");
+		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
+		MemoryData input[] = process.getArguments(MemoryData[]::new);
 
+		// Operator preparation
+		Execution operator = preOperate(process);
+
+		// Run the operator
+		long start = System.nanoTime();
+		Semaphore semaphore = operator.accept(input, semaphores.get());
+		acceptMetric.addEntry(System.nanoTime() - start);
+		process.setSemaphore(semaphore);
+		semaphores.set(semaphore);
+
+		// Operator postprocessing
+		return postOperate(process, semaphore);
+	}
+
+	protected Execution preOperate(AcceleratedProcessDetails process) {
 		long start = System.nanoTime();
 		Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
-		if (operator instanceof KernelWork == false) {
+		if (!(operator instanceof KernelWork)) {
 			throw new UnsupportedOperationException();
 		} else if (operator.isDestroyed()) {
 			throw new HardwareException("Operator has already been destroyed");
@@ -292,10 +324,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
-		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
-
-		if (HardwareOperator.enableKernelLog)
-			log("Evaluating " + getName() + " kernel (size = " + process.getKernelSize() + ")");
+		processArgumentsMetric.addEntry(System.nanoTime() - start);
 
 		boolean processing = !process.isEmpty();
 		if (preOp != null && !preOp.isEmpty()) processing = true;
@@ -306,12 +335,11 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 			process.getPrepare().get().run();
 		}
 
-		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptMetric.addEntry(System.nanoTime() - start);
-		process.setSemaphore(semaphore);
-		semaphores.set(semaphore);
+		return operator;
+	}
 
-		if (processing) {
+	protected AcceleratedProcessDetails postOperate(AcceleratedProcessDetails process, Semaphore semaphore) {
+		if (!process.isEmpty()) {
 			if (semaphore != null) throw new UnsupportedOperationException();
 			process.getPostprocess().get().run();
 			postApply();

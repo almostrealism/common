@@ -468,7 +468,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				} else {
 					for (int i = 0; i < run.size(); i++) {
-						timingListener.recordDuration(run.get(i));
+						timingListener.recordDuration(getMetadata(), run.get(i));
 					}
 				}
 			} finally {

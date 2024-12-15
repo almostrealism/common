@@ -48,6 +48,7 @@ import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.Describable;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
@@ -329,6 +330,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public boolean isAggregatedInput() { return true; }
+
+	@Override
+	public String describe() {
+		if (getComputation() instanceof Describable) {
+			return ((Describable) getComputation()).describe();
+		} else {
+			return super.describe();
+		}
+	}
 
 	@Override
 	public void destroy() {

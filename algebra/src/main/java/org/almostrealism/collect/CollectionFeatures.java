@@ -97,14 +97,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	// Should be removed
 	boolean enableTraversableRepeated = true;
 	boolean enableQuotientExpression = true;
+	boolean enableSumComputation = true;
+	boolean enableProductComputation = true;
+	boolean enableMinusComputation = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
-
-	boolean enableSumComputation = true;
-	boolean enableProductComputation = true;
-	boolean enableMinusComputation = true;
 
 
 	Console console = Computation.console.child();

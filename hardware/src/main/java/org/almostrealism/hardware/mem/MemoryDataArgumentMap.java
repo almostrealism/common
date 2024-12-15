@@ -171,7 +171,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			}
 		} finally {
 			if (profile != null) {
-				profile.recordDuration(metadata.appendShortDescription(" get"), System.nanoTime() - start);
+				profile.recordDuration(null, metadata.appendShortDescription(" get"), System.nanoTime() - start);
 			}
 		}
 	}

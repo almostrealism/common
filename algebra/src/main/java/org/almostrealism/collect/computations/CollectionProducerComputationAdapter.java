@@ -29,6 +29,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
@@ -82,7 +84,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 		delta = TraversableDeltaComputation.create(getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-				(Supplier) this);
+				(Supplier) this)
+				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");
 		return delta;
 	}
 

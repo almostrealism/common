@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.Semaphore;
+import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
@@ -29,6 +29,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.IntFunction;
+import java.util.stream.Stream;
 
 public class AcceleratedProcessDetails implements ConsoleFeatures {
 	private boolean enableAggregation = true;
@@ -65,6 +67,10 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	public Semaphore getSemaphore() { return semaphore; }
 	public void setSemaphore(Semaphore semaphore) { this.semaphore = semaphore; }
+
+	public <A> A[] getArguments(IntFunction<A[]> generator) {
+		return Stream.of(getArguments()).toArray(generator);
+	}
 
 	public Object[] getArguments() { return arguments; }
 	public Object[] getOriginalArguments() { return originalArguments; }

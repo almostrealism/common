@@ -155,7 +155,8 @@ public class NativeCompiler implements ConsoleFeatures {
 	}
 
 	public void compileAndLoad(Class target, String code) {
-		if (HardwareOperator.enableInstructionSetMonitoring || (HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
+		if (HardwareOperator.enableInstructionSetMonitoring ||
+				(HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
 			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
@@ -248,6 +249,12 @@ public class NativeCompiler implements ConsoleFeatures {
 										libDir, libFormat, data, cl);
 		};
 	}
+
+	/**
+	 * The total number of {@link NativeInstructionSet}s that have been compiled
+	 * by instances of {@link NativeCompiler}.
+	 */
+	public static long getTotalInstructionSets() { return runnableCount; }
 
 	@Override
 	public Console console() { return Hardware.console; }

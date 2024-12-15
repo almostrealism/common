@@ -123,9 +123,9 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
-	public void recordDuration(OperationMetadata metadata, long nanos) {
+	public void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos) {
 		initMetric();
-		metric.addEntry(getIdentifier().apply(metadata), nanos);
+		metric.addEntry(getIdentifier().apply(operationMetadata), nanos);
 	}
 
 	public void clear() {
