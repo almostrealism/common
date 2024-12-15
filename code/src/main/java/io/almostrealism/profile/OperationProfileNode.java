@@ -184,6 +184,9 @@ public class OperationProfileNode extends OperationProfile
 	 * that matches the provided {@link OperationMetadata operationMetadata}.
 	 */
 	public OperationProfileNode getProfileNode(OperationMetadata requesterMetadata, OperationMetadata operationMetadata) {
+		if (requesterMetadata == null)
+			return getProfileNode(operationMetadata);
+
 		return getProfileNode(requesterMetadata).getProfileNode(metadataKey(operationMetadata))
 				.orElseGet(() -> {
 					warn("Could not find " + operationMetadata.describe() +

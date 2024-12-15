@@ -340,7 +340,14 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 
 	protected AcceleratedProcessDetails postOperate(AcceleratedProcessDetails process, Semaphore semaphore) {
 		if (!process.isEmpty()) {
-			if (semaphore != null) throw new UnsupportedOperationException();
+			if (semaphore != null) {
+				// TODO  This should actually result in a new Semaphore
+				// TODO  that performs the post processing whenever the
+				// TODO  original semaphore is finished
+				warn("Postprocessing will wait for semaphore");
+				semaphore.waitFor();
+			}
+
 			process.getPostprocess().get().run();
 			postApply();
 		}
