@@ -297,8 +297,15 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-		// Operator preparation
-		Execution operator = preOperate(process);
+		// Prepare the operator
+		Execution operator = setupOperator(process);
+		boolean processing = isPreprocessingRequired(process);
+
+		// Preprocessing
+		if (processing) {
+			preApply();
+			process.getPrepare().get().run();
+		}
 
 		// Run the operator
 		long start = System.nanoTime();
@@ -307,11 +314,24 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 
-		// Operator postprocessing
-		return postOperate(process, semaphore);
+		// Postprocessing
+		if (processing) {
+			if (semaphore != null) {
+				// TODO  This should actually result in a new Semaphore
+				// TODO  that performs the post processing whenever the
+				// TODO  original semaphore is finished
+				// warn("Postprocessing will wait for semaphore");
+				semaphore.waitFor();
+			}
+
+			process.getPostprocess().get().run();
+			postApply();
+		}
+
+		return process;
 	}
 
-	protected Execution preOperate(AcceleratedProcessDetails process) {
+	protected Execution setupOperator(AcceleratedProcessDetails process) {
 		long start = System.nanoTime();
 		Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
 		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
@@ -326,33 +346,14 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
 		processArgumentsMetric.addEntry(System.nanoTime() - start);
 
-		boolean processing = !process.isEmpty();
-		if (preOp != null && !preOp.isEmpty()) processing = true;
-		if (postOp != null && !postOp.isEmpty()) processing = true;
-
-		if (processing) {
-			preApply();
-			process.getPrepare().get().run();
-		}
-
 		return operator;
 	}
 
-	protected AcceleratedProcessDetails postOperate(AcceleratedProcessDetails process, Semaphore semaphore) {
-		if (!process.isEmpty()) {
-			if (semaphore != null) {
-				// TODO  This should actually result in a new Semaphore
-				// TODO  that performs the post processing whenever the
-				// TODO  original semaphore is finished
-				warn("Postprocessing will wait for semaphore");
-				semaphore.waitFor();
-			}
-
-			process.getPostprocess().get().run();
-			postApply();
-		}
-
-		return process;
+	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
+		if (!process.isEmpty()) return true;
+		if (preOp != null && !preOp.isEmpty()) return true;
+		if (postOp != null && !postOp.isEmpty()) return true;
+		return false;
 	}
 
 	private double sec(long nanos) {
