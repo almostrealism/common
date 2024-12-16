@@ -42,7 +42,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	private List<ComputeRequirement> requirements;
 
 	private ProcessContext optimizationCtx;
-	private ComputationBase<I, O, T> optimized;
+	protected ComputationBase<I, O, T> optimized;
 
 	public ComputationBase() {
 		super(new Supplier[0]);
