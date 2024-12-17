@@ -278,6 +278,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
 			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		} else if (getDelegate() instanceof PackedCollection) {
+			return ((PackedCollection<T>) getDelegate()).range(shape, start + getDelegateOffset());
 		} else {
 			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
 		}

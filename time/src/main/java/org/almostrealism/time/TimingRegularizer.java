@@ -25,7 +25,7 @@ public class TimingRegularizer {
 	private final int maxRecentDurations = 3;
 
 	/**
-	 * Initializes the TimingRegularizer with the standard duration.
+	 * Initializes the {@link TimingRegularizer} with the standard duration.
 	 *
 	 * @param standardDuration the standard duration in nanoseconds
 	 */

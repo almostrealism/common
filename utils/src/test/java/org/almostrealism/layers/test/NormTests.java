@@ -495,7 +495,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsTrainableVeryLarge1() throws IOException {
-		if (testDepth < 3) return;
+		if (testDepth < 2) return;
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		int c = 1600;

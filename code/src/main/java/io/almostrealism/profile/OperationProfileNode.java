@@ -23,6 +23,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.util.DescribableParent;
 import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.beans.XMLDecoder;
@@ -47,6 +48,8 @@ import java.util.stream.Collectors;
 public class OperationProfileNode extends OperationProfile
 		implements DescribableParent<OperationProfileNode>,
 					Tree<OperationProfileNode>, Nameable {
+
+	public static boolean metadataWarnings = SystemUtils.isEnabled("AR_PROFILE_METADATA_WARNINGS").orElse(false);
 
 	private static Function<OperationMetadata, String> metadataDetail =
 			OperationProfile.appendContext(
@@ -239,7 +242,7 @@ public class OperationProfileNode extends OperationProfile
 
 		String key = metadataKey(metadata);
 
-		if (metadataCache.containsKey(key)) {
+		if (metadataWarnings && metadataCache.containsKey(key)) {
 			warn("Duplicate metadata key " + key);
 		}
 
@@ -273,7 +276,7 @@ public class OperationProfileNode extends OperationProfile
 					.map(p -> p instanceof OperationInfo ?
 							((OperationInfo) p).getMetadata() : null)
 					.collect(Collectors.toList());
-			if (argMeta.stream().anyMatch(Objects::isNull)) {
+			if (metadataWarnings && argMeta.stream().anyMatch(Objects::isNull)) {
 				warn("Some arguments have no metadata");
 			}
 
