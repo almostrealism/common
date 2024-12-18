@@ -169,7 +169,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	@Override
 	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
 		if (m instanceof PackedCollection && ((PackedCollection<?>) m).getShape().equals(getShape())) {
-			warn("Creating a collection identical to the delegate");
+			if (getClass() == PackedCollection.class) {
+				warn("Creating a collection identical to the delegate");
+			} else {
+				// Subclasses often have a valid reason for doing this
+			}
 		}
 
 		super.setDelegate(m, offset, order);
