@@ -69,6 +69,10 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		resets.setMem(index, (double) value);
 	}
 
+	public int getReset(int index) {
+		return (int) resets.toDouble(index);
+	}
+
 	@Override
 	public Supplier<Runnable> setup() {
 		if (initial == null) {

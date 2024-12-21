@@ -20,12 +20,10 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import io.almostrealism.relation.Factor;
@@ -102,24 +100,24 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 		this.frameCount = frameCount;
 	}
 
-	public WaveCell(PackedCollection<?> wav, int sampleRate, Producer<Scalar> frame) {
-		this(wav, sampleRate, 1.0, frame);
+	public WaveCell(PackedCollection<?> wav, Producer<Scalar> frame) {
+		this(wav, 1.0, frame);
 	}
 
-	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame);
+	public WaveCell(PackedCollection<?> wav, double amplitude, Producer<Scalar> frame) {
+		this(new DefaultWaveCellData(), wav, amplitude, frame);
 	}
 
-	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(data, wav, sampleRate, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, double amplitude, Producer<Scalar> frame) {
+		this(data, wav, amplitude, frame, Ops.o().scalar(0.0), Ops.o().scalar(wav.getCountLong()));
 	}
 
-	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, double amplitude,
 					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
-		this(data, () -> new Provider<>(wav), sampleRate, amplitude, frame, frameIndex, frameCount);
+		this(data, () -> new Provider<>(wav), amplitude, frame, frameIndex, frameCount);
 	}
 
-	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav, int sampleRate, double amplitude,
+	public WaveCell(WaveCellData data, Producer<PackedCollection<?>> wav, double amplitude,
 					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
@@ -152,6 +150,8 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 		setup.add(super.setup());
 		return setup;
 	}
+
+	public Supplier<Runnable> push() { return push(null); }
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
