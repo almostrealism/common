@@ -22,6 +22,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 
+import java.io.File;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -84,8 +85,11 @@ public class NativeBuffer extends RAM implements Destroyable {
 
 	protected static ByteBuffer buffer(int bytes, String sharedLocation) {
 		if (sharedLocation != null) {
-			return NIO.mapSharedMemory(sharedLocation, bytes)
+			ByteBuffer buffer = NIO.mapSharedMemory(sharedLocation, bytes)
 					.order(ByteOrder.nativeOrder());
+			Runtime.getRuntime().addShutdownHook(
+					new Thread(() -> new File(sharedLocation).delete()));
+			return buffer;
 		} else {
 			return ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
 		}
