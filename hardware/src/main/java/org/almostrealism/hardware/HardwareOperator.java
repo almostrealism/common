@@ -22,6 +22,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -117,7 +118,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 				new OperationMetadata("reassignMemory_" + from + "_" + to,
 				"Reassign Memory " + from + " -> " + to);
 
-		recordDuration(new OperationWithInfo.RunnableWithInfo(metadata,
+		recordDuration(null, new OperationWithInfo.RunnableWithInfo(metadata,
 				() -> {
 					// Memory is not supported by the operation,
 					// and the entire reservation that it is part
@@ -176,19 +177,22 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		}
 	}
 
-	protected void recordDuration(Runnable r) {
-		recordDuration(r, true);
+	protected void recordDuration(Semaphore semaphore, Runnable r) {
+		recordDuration(semaphore, r, true);
 	}
 
-	protected void recordDuration(Runnable r, boolean countOp) {
+	protected void recordDuration(Semaphore semaphore, Runnable r, boolean countOp) {
 		long duration = -1;
+
+		OperationMetadata requester = null;
+		if (semaphore != null) requester = semaphore.getRequester();
 
 		if (timingListener == null) {
 			r.run();
 		} else if (r instanceof OperationInfo) {
-			duration = timingListener.recordDuration(r);
+			duration = timingListener.recordDuration(requester, r);
 		} else {
-			duration = timingListener.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
+			duration = timingListener.recordDuration(requester, OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
 		}
 
 		if (countOp && duration > 0) {

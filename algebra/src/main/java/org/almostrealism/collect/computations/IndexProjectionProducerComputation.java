@@ -24,11 +24,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
-import org.almostrealism.algebra.DeltaFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -47,25 +45,25 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	private UnaryOperator<Expression<?>> indexProjection;
 	protected boolean relative;
 
-	public IndexProjectionProducerComputation(TraversalPolicy shape,
+	public IndexProjectionProducerComputation(String name, TraversalPolicy shape,
 											  UnaryOperator<Expression<?>> indexProjection,
 											  Producer<?> collection) {
-		this(shape, indexProjection, false, collection, new Producer[0]);
+		this(name, shape, indexProjection, false, collection, new Producer[0]);
 	}
 
-	public IndexProjectionProducerComputation(TraversalPolicy shape,
+	public IndexProjectionProducerComputation(String name, TraversalPolicy shape,
 											  UnaryOperator<Expression<?>> indexProjection,
 											  boolean relative,
 											  Producer<?> collection) {
-		this(shape, indexProjection, relative, collection, new Producer[0]);
+		this(name, shape, indexProjection, relative, collection, new Producer[0]);
 	}
 
-	protected IndexProjectionProducerComputation(TraversalPolicy shape,
-											  UnaryOperator<Expression<?>> indexProjection,
-											  boolean relative,
-											  Producer<?> collection,
-											  Producer<?>... inputs) {
-		super(null, shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
+	protected IndexProjectionProducerComputation(String name, TraversalPolicy shape,
+												 UnaryOperator<Expression<?>> indexProjection,
+												 boolean relative,
+												 Producer<?> collection,
+												 Producer<?>... inputs) {
+		super(name, shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
 		this.indexProjection = indexProjection;
 		this.relative = relative;
 	}
@@ -124,7 +122,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		TraversalPolicy shape = shape(outSize, inSize);
 
 		// TODO  This should use DiagonalCollectionExpression
-		return compute(CollectionExpression.create(shape.traverse(), idx -> {
+		return compute(null, CollectionExpression.create(shape.traverse(), idx -> {
 						Expression pos[] = shape.position(idx);
 						return conditional(pos[0].eq(projectIndex(pos[1])), e(1), e(0));
 					}))
@@ -169,8 +167,8 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
-		return new IndexProjectionProducerComputation<>(getShape(), indexProjection, relative,
+	public IndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return new IndexProjectionProducerComputation<>(getName(), getShape(), indexProjection, relative,
 				(Producer<?>) children.get(1),
 				children.stream().skip(2).toArray(Producer[]::new));
 	}
@@ -182,9 +180,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 		if (AlgebraFeatures.cannotMatch(in, target)) {
 			TraversalPolicy shape = getShape();
 			TraversalPolicy targetShape = shape(target);
-			return (CollectionProducer)
-					compute(zeros(shape(shape.getTotalSize(), targetShape.getTotalSize())))
-						.reshape(shape.append(targetShape));
+			return zeros(shape.append(targetShape));
 		}
 
 		CollectionProducer<PackedCollection<?>> delta = null;
@@ -219,7 +215,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			};
 
 			return traverse(traversalAxis,
-					new IndexProjectionProducerComputation<>(shape.traverseEach(), project, false, delta));
+					new IndexProjectionProducerComputation<>("projectDelta", shape.traverseEach(), project, false, delta));
 		}
 
 		return super.delta(target);

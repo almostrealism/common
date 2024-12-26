@@ -29,13 +29,13 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
-
-	public static boolean enableContextualKernelIndex = true;
 
 	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
 												Supplier<Evaluable<? extends I>>... arguments) {
@@ -52,7 +52,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			KernelIndex kernelIndex = enableContextualKernelIndex ? new KernelIndex(context) : new KernelIndex();
+			KernelIndex kernelIndex = new KernelIndex(context);
 			Expression index = kernelIndex;
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
@@ -72,13 +72,20 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	@Override
+	public boolean isDiagonal(int width) {
+		if (getShape().getTotalSizeLong() == 1) return true;
+		return TraversableExpression.super.isDiagonal(width);
+	}
+
+	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {
-		CollectionProducer<O> delta = attemptDelta(this, target);
+		CollectionProducer<O> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-				(Supplier) this);
+				(Supplier) this)
+				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");
 		return delta;
 	}
 

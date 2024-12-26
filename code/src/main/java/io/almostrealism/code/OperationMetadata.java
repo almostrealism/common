@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ package io.almostrealism.code;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.util.DescribableParent;
 
 import java.util.List;
 
-public class OperationMetadata {
+// TODO  Move to io.almostrealism.profile (or some other package)
+public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private static long opIndex = 0;
 
 	private long id;
@@ -127,5 +129,10 @@ public class OperationMetadata {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShortDescription(metadata.getShortDescription() + desc);
 		return metadata;
+	}
+
+	@Override
+	public String description(List<String> children) {
+		return displayName + "(id=" + id + ")";
 	}
 }

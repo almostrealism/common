@@ -22,12 +22,12 @@ import io.almostrealism.expression.Expression;
 import java.util.function.Function;
 
 public class ConditionalFilterExpression extends UniformConditionalExpression {
-	public ConditionalFilterExpression(TraversalPolicy shape,
+	public ConditionalFilterExpression(String name, TraversalPolicy shape,
 									   Function<Expression<?>, Expression<Boolean>> condition,
 									   Function<Expression<?>, Expression<?>> filter,
 									   boolean positive,
 									   TraversableExpression input) {
-		super(shape,
+		super(name, shape,
 				args -> Conditional.of(condition.apply(args[0]),
 						positive ? filter.apply(args[0]) : args[0],
 						positive ? args[0] : filter.apply(args[0])),

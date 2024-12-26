@@ -80,6 +80,8 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 			if (exp.isValue(new IndexValues().put(index, 0))) {
 				CachedValue<IndexSequence> seq = new CachedValue<>(args ->
 						exp.sequence(index, ((Number) args[0]).longValue(), getSequenceComputationLimit()));
+				seq.setAllowNull(true);
+
 				int l = Math.toIntExact(len.getAsLong());
 
 				if (exp.getType() == Boolean.class) {

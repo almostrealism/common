@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.concurrent.Semaphore;
+
 public interface Execution {
 	default Semaphore accept(Object[] args) {
 		return accept(args, null);

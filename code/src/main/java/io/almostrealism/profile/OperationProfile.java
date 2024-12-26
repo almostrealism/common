@@ -18,7 +18,7 @@ package io.almostrealism.profile;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.uml.Named;
+import io.almostrealism.uml.Nameable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
@@ -26,34 +26,59 @@ import org.almostrealism.io.TimingMetric;
 import java.util.Map;
 import java.util.function.Function;
 
-public class OperationProfile implements Named, ConsoleFeatures {
+public class OperationProfile implements Nameable, ConsoleFeatures {
+	public static boolean enableMetadataId = true;
+
 	public static long id = 0;
 
+	private String key;
 	protected String name;
 	private TimingMetric metric;
-	private Function<OperationMetadata, String> key;
+	private Function<OperationMetadata, String> identifier;
 
 	public OperationProfile() {
-		this("default");
+		this(null, "default");
 	}
 
 	public OperationProfile(String name) {
-		this(name, OperationProfile::defaultKey);
+		this(null, name);
 	}
 
-	public OperationProfile(String name, Function<OperationMetadata, String> key) {
-		this.name = name;
-		setKey(key);
+	public OperationProfile(String key, String name) {
+		this(key, name, OperationProfile::defaultIdentifier);
 	}
+
+	public OperationProfile(OperationMetadata metadata) {
+		this(metadata, OperationProfile::defaultIdentifier);
+	}
+
+	public OperationProfile(OperationMetadata metadata, Function<OperationMetadata, String> identifier) {
+		this(metadataKey(metadata), metadata.getDisplayName(), identifier);
+	}
+
+	public OperationProfile(String key, String name,
+							Function<OperationMetadata, String> identifier) {
+		setKey(key);
+		setName(name);
+		setIdentifier(identifier);
+	}
+
+	public String getKey() { return key; }
+	public void setKey(String key) { this.key = key; }
+
+	@Override
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	@Override
+	public String getName() { return name; }
 
 	protected void initMetric() {
 		if (metric == null) {
 			metric = console().timing(name + "_prof" + id++);
 		}
 	}
-
-	@Override
-	public String getName() { return name; }
 
 	public void setMetricEntries(Map<String, Double> entries) {
 		initMetric();
@@ -74,9 +99,9 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public double getTotalDuration() { return metric == null ? 0.0 : metric.getTotal(); }
 
-	public Function<OperationMetadata, String> getKey() { return key; }
+	public Function<OperationMetadata, String> getIdentifier() { return identifier; }
 
-	public void setKey(Function<OperationMetadata, String> key) { this.key = key; }
+	public void setIdentifier(Function<OperationMetadata, String> key) { this.identifier = key; }
 
 	public OperationTimingListener getTimingListener() {
 		return this::recordDuration;
@@ -91,16 +116,16 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	}
 
 	public CompilationTimingListener getCompilationListener() {
-		return (metadata, code, nanos) -> { };
+		return (metadata, arguments, code, nanos) -> { };
 	}
 
 	public void print() { log(summary()); }
 
 	public String summary() { return metric == null ? "No metric data" : metric.summary(getName()); }
 
-	public void recordDuration(OperationMetadata metadata, long nanos) {
+	public void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos) {
 		initMetric();
-		metric.addEntry(getKey().apply(metadata), nanos);
+		metric.addEntry(getIdentifier().apply(operationMetadata), nanos);
 	}
 
 	public void clear() {
@@ -110,7 +135,12 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	@Override
 	public Console console() { return Computation.console; }
 
-	public static String defaultKey(OperationMetadata metadata) {
+	public static String metadataKey(OperationMetadata metadata) {
+		if (metadata == null) return null;
+		return enableMetadataId ? String.valueOf(metadata.getId()) : metadata.getDisplayName();
+	}
+
+	public static String defaultIdentifier(OperationMetadata metadata) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
 		if (metadata.getShape() != null) key += " " + metadata.getShape().toStringDetail();

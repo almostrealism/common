@@ -43,9 +43,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
-	public static boolean enableMinusSimplification = true;
 	public static boolean enableConstantExtraction = true;
 	public static boolean enableCoefficientExtraction = true;
+	public static boolean enableFlattenRepeatedSum = false;
 	public static int maxOppositeDetectionDepth = 10;
 	public static int maxDistinctDetectionWidth = 8;
 	public static int maxCoefficientExtractionWidth = 8;
@@ -168,29 +168,27 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
 		}
 
-		if (enableMinusSimplification) {
-			Set<Integer> removed = new HashSet<>();
+		Set<Integer> removed = new HashSet<>();
 
-			i: for (int i = 0; i < children.size(); i++) {
-				if (removed.contains(i)) continue i;
+		i: for (int i = 0; i < children.size(); i++) {
+			if (removed.contains(i)) continue i;
 
-				if (children.get(i) instanceof Minus) {
-					j: for (int j = 0; j < children.size(); j++) {
-						if (i == j || removed.contains(j)) continue j;
+			if (children.get(i) instanceof Minus) {
+				j: for (int j = 0; j < children.size(); j++) {
+					if (i == j || removed.contains(j)) continue j;
 
-						if (children.get(j).equals(children.get(i).getChildren().get(0))) {
-							removed.add(i);
-							removed.add(j);
-							children.set(i, new IntegerConstant(0));
-							children.set(j, new IntegerConstant(0));
-							continue i;
-						}
+					if (children.get(j).equals(children.get(i).getChildren().get(0))) {
+						removed.add(i);
+						removed.add(j);
+						children.set(i, new IntegerConstant(0));
+						children.set(j, new IntegerConstant(0));
+						continue i;
 					}
 				}
 			}
-
-			if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 		}
+
+		if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 
 		if (context.getTraversalProvider() != null &&
 				children.stream().allMatch(e -> e.isSingleIndexMasked())) {
@@ -247,10 +245,31 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static <T> Expression<T> of(Expression... values) {
-		return ExpressionCache.match(create(values));
+		return Expression.process(create(values));
 	}
 
 	protected static <T> Expression<T> create(Expression<?>... values) {
+		if (enableFlattenRepeatedSum && values.length == 2) {
+			List<Expression<?>> args = new ArrayList<>();
+			boolean containsSum = false;
+
+			if (values[0] instanceof Sum) {
+				args.addAll(values[0].getChildren());
+				containsSum = true;
+			} else {
+				args.add(values[0]);
+			}
+
+			if (values[1] instanceof Sum) {
+				args.addAll(values[1].getChildren());
+				containsSum = true;
+			} else {
+				args.add(values[1]);
+			}
+
+			if (containsSum) return create(args.toArray(new Expression[0]));
+		}
+
 		double constant = 0.0;
 		List<Expression<?>> operands;
 

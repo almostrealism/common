@@ -17,10 +17,10 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Defaults;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -62,5 +62,5 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 	}
 
 	@Override
-	public String toString() { return Defaults.displayFormat.format(scale.getValue()); }
+	public String toString() { return NumberFormats.displayFormat.format(scale.getValue()); }
 }

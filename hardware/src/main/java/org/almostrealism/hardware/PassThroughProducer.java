@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
@@ -32,17 +33,19 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
-					ComputerFeatures  {
+					DescribableParent<Process<?, ?>>, ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
 
@@ -176,17 +179,33 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
+	public <A extends Algebraic> boolean matches(A other) {
+		if ((other instanceof ProducerArgumentReference)) {
+			if (!(other instanceof PassThroughProducer)) {
+				// This should not be an issue, but it is something that might be
+				// worth knowing if there is ever a future system which matches
+				// across different types of the argument references
+				warn(other.getClass().getSimpleName() + " is not a PassThroughProducer");
+			}
+
+			return ((ProducerArgumentReference) other).getReferencedArgumentIndex() == getReferencedArgumentIndex();
+		}
+
+		return false;
+	}
+
+	@Override
 	public int hashCode() {
 		return getReferencedArgumentIndex();
 	}
 
 	@Override
 	public boolean equals(Object obj) {
-		if ((obj instanceof PassThroughProducer)) {
-			return ((PassThroughProducer) obj).getReferencedArgumentIndex() == getReferencedArgumentIndex();
+		if (!Objects.equals(getClass(), obj.getClass()) || !(obj instanceof Algebraic)) {
+			return false;
 		}
 
-		return super.equals(obj);
+		return matches((Algebraic) obj);
 	}
 
 	@Override
@@ -200,5 +219,18 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return getMetadata().getShortDescription() + " " +
 				getShape().toStringDetail() +
 				(isFixedCount() ? " (fixed)" : " (variable)");
+	}
+
+	@Override
+	public String description(List<String> children) {
+		if (argIndex == 0) {
+			return "x";
+		} else if (argIndex == 1) {
+			return "y";
+		} else if (argIndex == 2) {
+			return "z";
+		} else {
+			return "input" + argIndex;
+		}
 	}
 }

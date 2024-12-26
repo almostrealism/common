@@ -17,8 +17,6 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.ExpressionMatrix;
 
 import java.util.function.Function;
 
@@ -26,7 +24,7 @@ public class DefaultCollectionExpression extends CollectionExpressionAdapter {
 	private final Function<Expression<?>, Expression<?>> valueAt;
 
 	public DefaultCollectionExpression(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
-		super(shape);
+		super(null, shape);
 		this.valueAt = valueAt;
 	}
 

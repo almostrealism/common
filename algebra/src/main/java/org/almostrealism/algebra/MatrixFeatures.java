@@ -16,7 +16,8 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.collect.IdentityCollectionExpression;
+import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.DiagonalCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Producer;
@@ -35,14 +36,51 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
-				(args) -> new IdentityCollectionExpression(shape.traverse(1)));
+				(args) -> ident(shape.traverse(1))) {
+			@Override
+			public boolean isIdentity(int width) {
+				return width == shape.length(0) && width == shape.length(1);
+			}
+		};
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> diagonal(Producer<T> vector) {
+		TraversalPolicy shape = shape(vector);
+
+		if (shape.getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		} else if (shape.length(0) == 1) {
+			return c(vector);
+		}
+
+		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
+
+		return new DefaultTraversableExpressionComputation<>("diagonal", diagonalShape,
+				(args) -> new DiagonalCollectionExpression(diagonalShape, args[1]), vector) {
+			@Override
+			public boolean isDiagonal(int width) {
+				return width == shape.length(0) || super.isDiagonal(width);
+			}
+		};
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);
-		if (shape.getDimensions() != 2)
+
+		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
+			if (vshape.getDimensions() == 1) {
+				return zeros(shape(shape.length(0), 1));
+			}
+
+			return zeros(shape(shape.length(0), vshape.length(1)));
+		}
+
+		if (shape.getTotalSizeLong() == 1 || vshape.getTotalSizeLong() == 1) {
+			return multiply(c(matrix), c(vector));
+		} else if (shape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
+		}
 
 		CollectionProducer<PackedCollection<?>> a;
 		CollectionProducer<PackedCollection<?>> b;
@@ -54,6 +92,15 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			if (WeightedSumExpression.enableCollectionExpression) {
 				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
 				int p = weightShape.length(1);
+
+				if (Algebraic.isIdentity(vshape.length(0), matrix)) {
+					return c(vector);
+				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
+					return c(matrix);
+				} else if (Algebraic.isDiagonal(vshape.length(0), matrix)) {
+					console.features(MatrixFeatures.class)
+							.log("Matrix multiplication by diagonal matrix");
+				}
 
 				return weightedSum("matmul",
 						shape(m, p).withRate(1, n, p),

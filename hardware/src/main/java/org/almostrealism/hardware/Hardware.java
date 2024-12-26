@@ -507,6 +507,10 @@ public final class Hardware {
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 
+	public MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
+		return nioMemory;
+	}
+
 	private static List<DataContext<MemoryData>> filterContexts(List<DataContext<MemoryData>> contexts, ComputeRequirement... requirements) {
 		List<DataContext<MemoryData>> filtered = new ArrayList<>();
 

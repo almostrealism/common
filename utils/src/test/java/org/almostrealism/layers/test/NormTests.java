@@ -17,7 +17,6 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -27,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.BackPropagationCell;
@@ -91,12 +91,24 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	@Test
-	public void normComputation() {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+	public void normComputationNoWeights() {
+		normComputation(12, 10, 4, null, null);
+	}
 
-		int c = 12;
-		int v = 10;
-		int groups = 4;
+	@Test
+	public void normComputationMedium() {
+		if (testDepth < 1) return;
+
+		int c = 28;
+		int v = 28 * 28;
+
+		PackedCollection<?> weights = new PackedCollection<>(c * v).randnFill();
+		PackedCollection<?> biases = new PackedCollection<>(c * v).randnFill();
+		normComputation(c, v, 4, weights, biases);
+	}
+
+	public void normComputation(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -105,13 +117,52 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		kernelTest(() -> {
 					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
-					return input
+					CollectionProducer<PackedCollection<?>> out = input
 							.subtractMean(2)
 							.divide(input.variance(2).add(c(eps)).sqrt())
 							.reshape(-1, shape.getTotalSize());
+					if (weights != null) out = out.multiply(cp(weights));
+					if (biases != null) out = out.add(cp(biases));
+					return out;
 				},
 				output -> {
-					validate(groups, c / groups, v, o, output, null, null);
+					// TODO
+				}, false, false, true);
+	}
+
+	@Test
+	public void normComputationDeltaMedium() {
+		if (skipLongTests) return;
+
+		int c = 28;
+		int v = 28 * 28;
+
+		PackedCollection<?> weights = new PackedCollection<>(c * v).randnFill();
+		PackedCollection<?> biases = new PackedCollection<>(c * v).randnFill();
+		normComputationDelta(c, v, 4, weights, null);
+	}
+
+	public void normComputationDelta(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
+		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+
+		TraversalPolicy shape = shape(c, v);
+
+		PackedCollection<?> o = new PackedCollection<>(shape.getTotalSize());
+		o.fill(pos -> Math.random());
+
+		kernelTest(() -> {
+					CollectionProducer<?> input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
+					CollectionProducer<PackedCollection<?>> out = input
+							.subtractMean(2)
+							.divide(input.variance(2).add(c(eps)).sqrt())
+							.reshape(-1, shape.getTotalSize());
+					if (weights != null) out = out.multiply(cp(weights));
+					if (biases != null) out = out.add(cp(biases));
+					out.describe();
+					return out.delta(cp(o));
+				},
+				output -> {
+					validate(groups, c / groups, v, o, output, weights, biases);
 				}, false, false, true);
 	}
 
@@ -156,11 +207,14 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		validate(groups, groupSize, v, in, out, weights, biases);
 	}
 
-	protected void normBackwards(int c, int groups) {
-		normBackwards(c, groups, randomInput(c));
+	protected void normBackwards(int c, int groups) throws IOException {
+		normBackwards(null, c, groups, randomInput(c));
 	}
 
-	protected void normBackwards(int c, int groups, Supplier<PackedCollection<?>> inputSource) {
+	protected void normBackwards(String name, int c, int groups,
+								 Supplier<PackedCollection<?>> inputSource) throws IOException {
+		log("Total native programs = " + NativeCompiler.getTotalInstructionSets());
+
 		PackedCollection<?> lr = pack(0.01);
 		PackedCollection<?> input = inputSource.get();
 		PackedCollection<?> gradient = randomGradient(c).get();
@@ -172,7 +226,10 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 
-		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
+		// Process.optimized(layer.getBackward().push(p(gradient))).get().run();
+		run(name, layer.getBackward(), gradient);
+
+		log("Total native programs after run = " + NativeCompiler.getTotalInstructionSets());
 
 		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
@@ -203,30 +260,31 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			for (int i = 0; i < groupSize; i++) {
 				double expected = dLdXGroup.valueAt(i) / stdG;
 				double actual = result.valueAt(start + i);
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
+
+		log("Total native programs after validate = " + NativeCompiler.getTotalInstructionSets());
 	}
 
 	@Test
-	public void backwardsSmallLowVariance() {
-		normBackwards(2, 1, () -> new PackedCollection(shape(2)).fill(1.0, 1.01));
+	public void backwardsSmallLowVariance() throws IOException {
+		normBackwards("backwardsSmallLowVariance", 2, 1,
+				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
 	@Test
-	public void backwardsSmall() {
+	public void backwardsSmall() throws IOException {
 		normBackwards(2, 1);
 	}
 
 	@Test
-	public void backwardsMedium() {
+	public void backwardsMedium() throws IOException {
 		normBackwards(120, 4);
 	}
 
 	@Test
-	public void backwardsProgressive() {
+	public void backwardsProgressive() throws IOException {
 		if (testDepth < 3) return;
 
 		int c = 120;
@@ -261,7 +319,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void backwardsBiasMedium2() throws IOException {
-		log("Starting backwardsBiasMedium2");
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
@@ -343,16 +400,12 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double actual = result.valueAt(start + i);
 				double diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log("Gradient " + expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
 				actual = origBiases.valueAt(start + i) - biases.valueAt(start + i);
 				diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log("Bias " + expected + " vs " + actual);
 				assertSimilar(expected, actual);
 			}
 		}
@@ -406,54 +459,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
-	// @Test
-	public void backwardsTrainableProgressive() throws IOException {
-		if (testDepth < 2) return;
-
-		int c = 32;
-		int groups = 4;
-
-		for (int i = 0; i < 3; i++) {
-			log("Iteration " + i + " c = " + c);
-			normBackwardsTrainable(null, c, groups);
-			c = c * 2;
-		}
-	}
-
-	@Test
-	public void backwardsTrainableProgressiveLarge() throws IOException {
-		if (testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
-
-		try {
-			WeightedSumExpression.enableCollectionExpression = false;
-
-			int c = 200;
-			int groups = 4;
-
-			while (c < 1400) {
-				log("START c = " + c);
-				normBackwardsTrainable("backwardsTrainable" + c, c, groups);
-				c = c + 200;
-			}
-		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
-		}
-	}
-
-	@Test
-	public void backwardsTrainableVeryLarge() throws IOException {
-		if (skipLongTests || testDepth < 3) return;
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
-		// int c = 2000;
-		int c = 3456;
-		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableVeryLarge", c, groups);
-	}
-
 	@Test
 	public void backwardsTrainableLarge1() throws IOException {
 		if (testDepth < 2) return;
@@ -472,25 +477,64 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		normBackwardsTrainable("backwardsTrainableLarge2", c, groups);
 	}
 
+	@Test
+	public void backwardsTrainableProgressive() throws IOException {
+		if (skipKnownIssues) return;
+		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		int c = 200;
+		int groups = 4;
+
+		while (c < 1400) {
+			log("START c = " + c);
+			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
+			c = c + 200;
+		}
+	}
+
+	@Test
+	public void backwardsTrainableVeryLarge1() throws IOException {
+		if (testDepth < 2) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		int c = 1600;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableVeryLarge2() throws IOException {
+		if (skipKnownIssues) return;
+		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		int c = 3456;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge2", c, groups);
+	}
+
+	@Test
+	public void backwardsTrainableVeryLarge3() throws IOException {
+		if (skipKnownIssues) return;
+		if (skipLongTests || testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		int c = 21952;
+		int groups = 4;
+		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups);
+	}
+
 	protected void normBackwardsTrainable(String name, int c, int groups) throws IOException {
 		normBackwardsTrainable(name, c, groups, true);
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast) throws IOException {
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
-
-		try {
-			if (c > 64) {
-				WeightedSumExpression.enableCollectionExpression = false;
-			}
-
-			normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
-		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
-		}
+		normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast, Supplier<PackedCollection<?>> inputSource) throws IOException {
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast,
+										  Supplier<PackedCollection<?>> inputSource) throws IOException {
 		double w = 1.0; // 0.5;
 		double b = 0.0; // 0.5;
 
@@ -535,11 +579,9 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			double varG = variance(cp(xGroup)).evaluate().toDouble();
 			double stdG = Math.sqrt(varG + eps);
 
-//			PackedCollection<?> xHatGroup = cp(xGroup).subtract(c(muG)).divide(c(stdG)).evaluate();
 			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));
 
 			PackedCollection<?> dLdBeta = dLdyGroup;
-//			PackedCollection<?> dLdGamma = cp(dLdyGroup).multiply(cp(xHatGroup)).evaluate();
 			PackedCollection<?> dLdGamma = dLdGammaEval.evaluate(dLdyGroup, xHatGroup);
 
 			PackedCollection<?> expectedGrad = normBackwards(
@@ -553,24 +595,18 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 				double actual = result.valueAt(start + i);
 				double diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdGamma.valueAt(i);
 				actual = origWeights.valueAt(start + i) - weights.valueAt(start + i);
 				diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
 				actual = origBiases.valueAt(start + i) - biases.valueAt(start + i);
 				diff = Math.abs(expected - actual);
 				loss += diff;
-
-				// log(expected + " vs " + actual);
 				assertSimilar(expected, actual, threshold);
 			}
 		}

@@ -19,7 +19,8 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.Semaphore;
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -27,7 +28,6 @@ import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Predicate;
@@ -89,50 +89,44 @@ public class NativeExecution extends HardwareOperator {
 		}
 		dimMaskMetric.addEntry(System.nanoTime() - s);
 
-		if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
-		}
-
-		if (inst.getParallelism() != 1 && getGlobalWorkOffset() != 0) {
+		if (getGlobalWorkSize() > Integer.MAX_VALUE ||
+				inst.getParallelism() != 1 && getGlobalWorkOffset() != 0) {
 			throw new UnsupportedOperationException();
 		}
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
-		CountDownLatch latch = new CountDownLatch(p);
+		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
 		if (enableExecutor) {
-			recordDuration(() -> {
+			recordDuration(latch, () -> {
 				IntStream.range(0, p).parallel()
 						.mapToObj(id ->
 								executor.submit(() -> {
 									try {
 										inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
 									} catch (Exception e) {
-										e.printStackTrace();
+										warn("Operation " + id + " of " +
+												getGlobalWorkSize() + " failed", e);
 									} finally {
 										latch.countDown();
 									}
 								}))
 						.collect(Collectors.toList());
 
-				try {
-					latch.await();
-				} catch (InterruptedException e) {
-					throw new RuntimeException(e);
-				}
+				// TODO  The user of the semaphore should decide when to wait
+				// TODO  rather than it happening proactively here
+				latch.waitFor();
 			});
-
-			// TODO  The latch should be turned into a Semaphore and returned
-			return null;
 		} else {
-			recordDuration(() -> {
+			recordDuration(latch, () -> {
 				for (int i = 0; i < inst.getParallelism(); i++) {
 					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), dim0, data);
+					latch.countDown();
 				}
 			});
-
-			return null;
 		}
+
+		return latch;
 	}
 }

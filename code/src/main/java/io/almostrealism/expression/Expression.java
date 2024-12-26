@@ -34,6 +34,7 @@ import io.almostrealism.kernel.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.profile.ScopeTimingListener;
+import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
@@ -257,6 +258,14 @@ public abstract class Expression<T> implements
 
 	public boolean isPossiblyNegative() {
 		return doubleValue().orElse(-1.0) < 0.0;
+	}
+
+	public Optional<Boolean> isMultiple(Expression<?> e) {
+		if (intValue().isPresent() && e.intValue().isPresent()) {
+			return Optional.of(intValue().getAsInt() % e.intValue().getAsInt() == 0);
+		}
+
+		return Optional.empty();
 	}
 
 	public Number evaluate(Number... children) {
@@ -586,6 +595,12 @@ public abstract class Expression<T> implements
 
 	public List<Expression<?>> flatten() { return getChildren(); }
 
+	public Expression<?> simplify() {
+		KernelStructureContext ctx = getStructureContext();
+		if (ctx == null) ctx = new NoOpKernelStructureContext();
+		return simplify(ctx);
+	}
+
 	@Override
 	public Expression<?> simplify(KernelStructureContext context) {
 		return ScopeSettings.reviewSimplification(this,
@@ -698,6 +713,22 @@ public abstract class Expression<T> implements
 				Bits.put(30, 2, getChildren().size());
 	}
 
+	public static <T> Expression<T> process(Expression<T> e) {
+		int nodes = e.nodeCount;
+
+		if (e.countNodes() > ScopeSettings.maxNodeCount) {
+			e = (Expression<T>) e.simplify();
+
+			if (nodes == e.countNodes()) {
+				throw new ExpressionException(
+						"Large expression not improved by simplification",
+						e.treeDepth(), e.countNodes());
+			}
+		}
+
+		return ExpressionCache.match(e);
+	}
+
 	public static Comparator<? super Expression> depthOrder() {
 		return (a, b) -> {
 			int aDepth = a.treeDepth();
@@ -733,6 +764,10 @@ public abstract class Expression<T> implements
 		}
 
 		return result;
+	}
+
+	public static LanguageOperations defaultLanguage() {
+		return lang;
 	}
 
 	private static void cacheSeq(String exp, IndexSequence seq) {

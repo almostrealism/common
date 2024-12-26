@@ -20,6 +20,6 @@ import io.almostrealism.expression.IntegerConstant;
 
 public class IdentityCollectionExpression extends DiagonalCollectionExpression {
 	public IdentityCollectionExpression(TraversalPolicy shape) {
-		super(shape, new ConstantCollectionExpression(shape.item(), new IntegerConstant(1)));
+		super("identity", shape, new ConstantCollectionExpression(shape.item(), new IntegerConstant(1)));
 	}
 }

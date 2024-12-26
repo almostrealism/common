@@ -22,6 +22,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -32,22 +33,25 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.io.Describable;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
 public class ReshapeProducer<T extends Shape<T>>
-		implements CollectionProducer<T>, TraversableExpression<Double>,
-		ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
-					ScopeLifecycle {
+		implements CollectionProducerParallelProcess<T>,
+					TraversableExpression<Double>,
+					ScopeLifecycle, DescribableParent<Process<?, ?>> {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = false;
 
@@ -79,15 +83,24 @@ public class ReshapeProducer<T extends Shape<T>>
 
 			if (child == null) {
 				return;
-			} else if (shape == null) {
-				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
-						child.getShortDescription() + " {-> axis " + traversalAxis + "}");
 			} else {
 				metadata = new OperationMetadata("reshape(" + child.getDisplayName() + ")",
-						child.getShortDescription() + " {-> " + getShape() + "}");
+						extendDescription(child.getShortDescription(), false));
 			}
 
 			metadata = new OperationMetadata(metadata, List.of(child));
+		} else {
+			metadata = new OperationMetadata("reshape", "reshape");
+		}
+	}
+
+	protected String extendDescription(String description, boolean brief) {
+		if (shape != null) {
+			return description + "{->" + getShape() + "}";
+		} else if (!brief) {
+			return description + "{->" + traversalAxis + "}";
+		} else {
+			return description;
 		}
 	}
 
@@ -111,6 +124,33 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public boolean isConstant() {
 		return producer.isConstant();
+	}
+
+	@Override
+	public boolean isZero() {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isZero();
+		}
+
+		return TraversableExpression.super.isZero();
+	}
+
+	@Override
+	public boolean isIdentity(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isIdentity(width);
+		}
+
+		return TraversableExpression.super.isIdentity(width);
+	}
+
+	@Override
+	public boolean isDiagonal(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isDiagonal(width);
+		}
+
+		return TraversableExpression.super.isDiagonal(width);
 	}
 
 	@Override
@@ -282,7 +322,7 @@ public class ReshapeProducer<T extends Shape<T>>
 			}
 		}
 
-		return CollectionProducer.super.delta(target);
+		return CollectionProducerParallelProcess.super.delta(target);
 	}
 
 	public CollectionProducer<T> traverse(int axis) {
@@ -314,6 +354,22 @@ public class ReshapeProducer<T extends Shape<T>>
 			return apply(out);
 		});
 		return hev;
+	}
+
+	@Override
+	public String describe() {
+		return description() + " | " + getShape().toStringDetail();
+	}
+
+	@Override
+	public String description() {
+		if (producer instanceof CollectionProviderProducer) {
+			return "p" + getShape().toString();
+		} else if (producer instanceof DescribableParent) {
+			return extendDescription(((DescribableParent) producer).description(), true);
+		} else {
+			return extendDescription(Describable.describe(producer), true);
+		}
 	}
 
 	private T apply(Shape<T> in) {

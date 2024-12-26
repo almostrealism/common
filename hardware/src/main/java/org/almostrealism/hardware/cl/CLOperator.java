@@ -19,21 +19,17 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.Semaphore;
-import io.almostrealism.relation.Factory;
+import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.*;
 
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.stream.IntStream;
 
 /**
  * {@link CLOperator}s are intended to be used with {@link ThreadLocal}.
@@ -110,7 +106,7 @@ public class CLOperator extends HardwareOperator {
 		if (dependsOn != null) dependsOn.waitFor();
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		recordDuration(() -> {
+		recordDuration(null, () -> {
 			int index = 0;
 			long totalSize = 0;
 

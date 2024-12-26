@@ -26,7 +26,6 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -93,6 +92,18 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
 		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
+	}
+
+	@Override
+	public Optional<Boolean> isMultiple(Expression<?> e) {
+		if (isFP() || e.isFP()) return Optional.empty();
+
+		if (getChildren().stream()
+				.anyMatch(c -> c.isMultiple(e).orElse(false))) {
+			return Optional.of(true);
+		}
+
+		return Optional.empty();
 	}
 
 	@Override
@@ -174,7 +185,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		CollectionExpression<?> result;
 
 		if (sum.isEmpty()) {
-			result = zeros(target.getShape());
+			result = constantZero(target.getShape());
 		} else if (sum.size() == 1) {
 			result = sum.get(0);
 		} else {
@@ -257,7 +268,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
-		return ExpressionCache.match(create(values));
+		return Expression.process(create(values));
 	}
 
 	protected static Expression<?> create(Expression<?>... values) {

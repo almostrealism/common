@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
@@ -45,6 +47,15 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	protected GeneratedColorProducer(T generator, Producer<RGB> p) {
 		this.generator = generator;
 		this.p = p;
+	}
+
+	@Override
+	public OperationMetadata getMetadata() {
+		if (p instanceof OperationInfo) {
+			return ((OperationInfo) p).getMetadata();
+		}
+
+		return null;
 	}
 
 	public T getGenerator() { return generator; }

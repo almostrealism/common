@@ -268,7 +268,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	public void matmal(String name, int size, int nodes, boolean dIn) throws IOException {
-		OperationProfileNode profile = new OperationProfileNode(name);
+		OperationProfileNode profile = new OperationProfileNode( name);
 
 		try {
 			initKernelMetrics(profile);
@@ -399,36 +399,36 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void denseWeightsSmallest() {
+	public void denseWeightsSmallest() throws IOException {
 		try {
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableExpressionComputation_16"));
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_traversableDeltaComputation_17"));
 			// ParallelProcess.explicitIsolationTargets.add(operationFilter("f_aggregatedCollectionProducerComputation_22"));
 
-			denseWeights(4, 3);
+			denseWeights("denseWeightsSmallest", 4, 3);
 		} finally {
 			ParallelProcess.explicitIsolationTargets.clear();
 		}
 	}
 
 	@Test
-	public void denseWeightsSmall() {
-		denseWeights(120, 10);
+	public void denseWeightsSmall() throws IOException {
+		denseWeights("denseWeightsSmall", 120, 10);
 	}
 
 	@Test
-	public void denseWeightsMedium() {
-		denseWeights(600, 10);
+	public void denseWeightsMedium() throws IOException {
+		denseWeights("denseWeightsMedium", 600, 10);
 	}
 
 	@Test
-	public void denseWeightsLarge() {
+	public void denseWeightsLarge() throws IOException {
 		if (skipKnownIssues) return;
 
-		denseWeights(7688, 10);
+		denseWeights("denseWeightsLarge", 7688, 10);
 	}
 
-	public void denseWeights(int size, int nodes) {
+	public void denseWeights(String name, int size, int nodes) throws IOException {
 		PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
 		PackedCollection<?> g = new PackedCollection<>(shape(nodes)).fill(Math::random);
 		PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
@@ -450,7 +450,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		try {
 			initKernelMetrics();
 			Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy))).optimize();
-			cda.get().run();
+			profile(name, cda).save("results/" + name + ".xml");
 		} finally {
 			logKernelMetrics();
 		}

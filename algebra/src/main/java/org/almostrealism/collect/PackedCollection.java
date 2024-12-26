@@ -20,9 +20,9 @@ import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -166,6 +166,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 				.orElseGet(DefaultTraversalOrdering::new);
 	}
 
+	@Override
+	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) {
+		if (m instanceof PackedCollection && ((PackedCollection<?>) m).getShape().equals(getShape())) {
+			if (getClass() == PackedCollection.class) {
+				warn("Creating a collection identical to the delegate");
+			} else {
+				// Subclasses often have a valid reason for doing this
+			}
+		}
+
+		super.setDelegate(m, offset, order);
+	}
+
 	public double toDouble() {
 		if (getShape().getTotalSizeLong() != 1) {
 			throw new UnsupportedOperationException();
@@ -263,10 +276,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 		if (start + required > getShape().getTotalSize()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
+		} else if (start == 0 && shape.equals(getShape())) {
+			return this;
 		}
 
 		if (getDelegate() == null || getDelegateOffset() != 0 || getDelegateOrdering() != null) {
 			return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
+		} else if (getDelegate() instanceof PackedCollection) {
+			return ((PackedCollection<T>) getDelegate()).range(shape, start + getDelegateOffset());
 		} else {
 			return new PackedCollection<>(shape, shape.getTraversalAxis(), getDelegate(), start);
 		}
@@ -319,6 +336,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
 					") does not match collection size (" + getMemLength() + ")");
+		} else if (getShape().equals(shape)) {
+			return this;
 		}
 
 		int axis = shape.getTraversalAxis();
@@ -404,7 +423,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	@Override
 	public String describe() {
 		if (getShape().getTotalSize() == 1) {
-			return getShape() + " " + toDouble(0);
+			return NumberFormats.formatNumber(toDouble(0));
 		} else {
 			return getShape().toStringDetail();
 		}

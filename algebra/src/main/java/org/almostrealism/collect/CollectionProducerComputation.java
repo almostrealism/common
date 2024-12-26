@@ -24,8 +24,9 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -35,20 +36,45 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);
 
 	/**
-	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
-	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
+	 * When enabled, the {@link TraversalPolicy} of results from {@link #postProcessOutput(MemoryData, int)}
+	 * will avoid prepending dimensions to the {@link TraversalPolicy} from {@link #getShape()}.
 	 */
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
+
+	@Override
+	default <V extends Shape<?>> CollectionProducer<V> applyDeltaStrategy(CollectionProducer<V> producer,
+																		  Producer<?> target) {
+		Collection<Producer<?>> terms;
+
+		if (producer instanceof Parent) {
+			terms = (Collection) ((Parent<?>) producer).getChildren().stream()
+					.map(t -> (Producer) t)
+					.collect(Collectors.toList());
+		} else {
+			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
+		}
+
+		return (CollectionProducer) deltaStrategyProcessor(producer.getDeltaStrategy(),
+				producerFactory(this), shape(producer), target).apply(terms);
+	}
+
+	@Override
+	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	default Stream<? extends Process> processChildren(Collection<? extends Process> children) {
@@ -113,6 +139,23 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		T data = factory.apply(c.getShape());
 		data.setDelegate(c, 0);
 		return data;
+	}
+
+	static <T extends PackedCollection<?>> Function<List<Producer<?>>, CollectionProducer<T>>
+				producerFactory(CollectionProducerComputation<T> original) {
+		return args -> {
+			List<Producer<?>> terms = new ArrayList<>();
+			args.stream().skip(1).forEach(terms::add);
+
+			if (terms.isEmpty()) {
+				throw new IllegalArgumentException();
+			} else if (terms.size() == 1) {
+				return (CollectionProducer<T>) terms.get(0);
+			} else {
+				return original.generate((List) args.stream()
+						.map(t -> (Process) t).collect(Collectors.toList()));
+			}
+		};
 	}
 
 	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {

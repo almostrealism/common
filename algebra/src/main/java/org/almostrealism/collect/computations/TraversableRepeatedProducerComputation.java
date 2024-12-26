@@ -39,11 +39,11 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
 	@SafeVarargs
-	public TraversableRepeatedProducerComputation(TraversalPolicy shape, int count,
+	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
 												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
 												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(shape, count, initial, null, arguments);
+		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
 	}
@@ -81,7 +81,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 
 	@Override
 	public TraversableRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new TraversableRepeatedProducerComputation<>(getShape(),
+		return new TraversableRepeatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}

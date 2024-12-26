@@ -36,7 +36,8 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 		super(data, wave, frame, output);
 	}
 
-	public WaveCellPush(WaveCellData data, Producer<PackedCollection<?>> wave, Producer<Scalar> frame, Scalar output) {
+	public WaveCellPush(WaveCellData data, Producer<PackedCollection<?>> wave,
+						Producer<Scalar> frame, Scalar output) {
 		super(data, wave, frame, output);
 	}
 

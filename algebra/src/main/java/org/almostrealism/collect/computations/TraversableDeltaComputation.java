@@ -29,6 +29,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -45,6 +46,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	public static boolean enableOptimization = true;
+	public static boolean enableStubOptimization = false;
 	public static boolean enableAtomicScope = false;
 	public static boolean enableIsolate = false;
 
@@ -95,7 +97,14 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	protected boolean permitOptimization(Process<Process<?, ?>, Evaluable<? extends T>> process) {
-		return !matchingInputs(this, target).contains(process);
+		if (enableStubOptimization && !(process instanceof TraversableExpression)) {
+			// There is no harm in optimizing a process which will not reveal an Expression
+			// because there is no information being hidden from the delta Expression due
+			// to isolation if there is no Expression in the first place
+			return true;
+		}
+
+		return !AlgebraFeatures.matchingInputs(this, target).contains(process);
 	}
 
 	@Override

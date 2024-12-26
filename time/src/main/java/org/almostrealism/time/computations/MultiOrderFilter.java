@@ -99,7 +99,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection<?>>> generate(List<Process<?, ?>> children) {
+	public MultiOrderFilter generate(List<Process<?, ?>> children) {
 		return new MultiOrderFilter(getShape(), (Producer) children.get(1), (Producer) children.get(2));
 	}
 

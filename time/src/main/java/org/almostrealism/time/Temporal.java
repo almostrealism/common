@@ -31,6 +31,10 @@ import java.util.function.Supplier;
 public interface Temporal extends TemporalFeatures {
 	Supplier<Runnable> tick();
 
+	default TemporalRunner buffer(int frames) {
+		return new TemporalRunner(this, frames);
+	}
+
 	default Supplier<Runnable> iter(int iter) {
 		return iter(this, iter);
 	}

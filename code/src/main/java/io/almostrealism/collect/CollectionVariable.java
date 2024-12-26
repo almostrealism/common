@@ -188,8 +188,27 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	@Override
+	public <A extends Algebraic> boolean matches(A other) {
+		if (other instanceof CollectionVariable) {
+			Supplier<?> a = getProducer();
+			Supplier<?> b = ((CollectionVariable) other).getProducer();
+			if (a instanceof Algebraic && b instanceof Algebraic) {
+				return ((Algebraic) a).matches((Algebraic) b);
+			}
+		}
+
+		return CollectionExpression.super.matches(other);
+	}
+
+	@Override
 	public String describe() {
-		return getName() + " " + getShape().toStringDetail();
+		Supplier<?> p = getProducer();
+
+		if (p instanceof Shape) {
+			return super.describe();
+		} else {
+			return super.describe() + " " + getShape().toStringDetail();
+		}
 	}
 
 	public static <T> ArrayVariable<T> create(NameProvider np, String name,

@@ -17,12 +17,14 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ComputationBase;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.calculus.InputStub;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -37,10 +39,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public interface AlgebraFeatures extends CollectionFeatures {
 	boolean enableIsolationWarnings = false;
+	boolean enableDeepCannotMatch = true;
+	boolean enableOptionalMatch = true;
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,
@@ -82,35 +87,53 @@ public interface AlgebraFeatures extends CollectionFeatures {
 						args[1], args[2]), (Supplier) input, (Supplier) weights);
 	}
 
-	default <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
-		if (!(producer instanceof ComputationBase)) return Collections.emptyList();
+	static <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
+		if (!(producer instanceof Process)) return Collections.emptyList();
 
-		List<Supplier<Evaluable<? extends T>>> inputs = ((ComputationBase) producer).getInputs();
 		List<Producer<T>> matched = new ArrayList<>();
 
-		for (int i = 1; i < inputs.size(); i++) {
-			Supplier<Evaluable<? extends T>> input = inputs.get(i);
-			if (deepMatch(input, target)) {
-				matched.add((Producer<T>) input);
+		for (Process<?, ?> p : ((Process<?, ?>) producer).getChildren()) {
+			if (deepMatch(p, target)) {
+				matched.add((Producer<T>) p);
 			}
 		}
 
 		return matched;
 	}
 
-	default <T> Producer<T> matchInput(Producer<T> producer, Producer<?> target) {
+	static Optional<Producer<?>> matchInput(Supplier<?> producer, Supplier<?> target) {
+		if (producer instanceof Producer && target instanceof Producer) {
+			return matchInput((Producer) producer, (Producer<?>) target);
+		}
+
+		return null;
+	}
+
+	static <T> Optional<Producer<T>> matchInput(Producer<T> producer, Producer<?> target) {
 		List<Producer<T>> matched = matchingInputs(producer, target);
 
-		if (matched.size() == 1) {
-			return matched.get(0);
+		if (matched.isEmpty()) {
+			return enableOptionalMatch ? Optional.empty() : null;
+		} else if (matched.size() == 1) {
+			return Optional.of(matched.get(0));
 		}
 
 		return null;
 	}
 
 	static boolean cannotMatch(Supplier<?> p, Supplier<?> target) {
-		if (p instanceof CollectionProviderProducer && target instanceof CollectionProviderProducer) {
+		if (enableDeepCannotMatch) {
+			p = getRoot(p);
+			target = getRoot(target);
+		}
+
+		if (isRoot(p) && isRoot(target)) {
 			return !match(p, target);
+		}
+
+		Optional<Producer<?>> matched = matchInput(p, target);
+		if (matched != null) {
+			return matched.isEmpty();
 		}
 
 		return false;
@@ -130,7 +153,11 @@ public interface AlgebraFeatures extends CollectionFeatures {
 		return false;
 	}
 
-	static boolean match(Supplier<?> p, Supplier<?> q) {
+	static boolean isRoot(Supplier<?> p) {
+		return p instanceof CollectionProviderProducer || p instanceof PassThroughProducer || p instanceof InputStub;
+	}
+
+	static Supplier<?> getRoot(Supplier<?> p) {
 		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestinationProducer) {
 			if (p instanceof ReshapeProducer) {
 				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
@@ -139,15 +166,19 @@ public interface AlgebraFeatures extends CollectionFeatures {
 			}
 		}
 
-		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestinationProducer) {
-			if (q instanceof ReshapeProducer) {
-				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
-			} else {
-				q = (Producer<?>) ((MemoryDataDestinationProducer) q).getDelegate();
-			}
-		}
+		return p;
+	}
 
-		if (Objects.equals(p, q)) {
+	static boolean match(Supplier<?> p, Supplier<?> q) {
+		p = getRoot(p);
+		q = getRoot(q);
+
+		if (p instanceof Algebraic && q instanceof Algebraic) {
+			return ((Algebraic) p).matches((Algebraic) q);
+		} else if (Objects.equals(p, q)) {
+			// This comparison between p and q does not cover the case where they are both
+			// CollectionProviderProducers referring to the same underlying value via
+			// delegation
 			return true;
 		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
 			return ((PassThroughProducer) p).getReferencedArgumentIndex() == ((PassThroughProducer) q).getReferencedArgumentIndex();
