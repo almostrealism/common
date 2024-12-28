@@ -130,11 +130,15 @@ public class Model implements Setup, CodeFeatures {
 		return CompiledModel.compile(this, backprop, false, null);
 	}
 
+	public CompiledModel compile(boolean backprop, OperationProfile profile) {
+		return CompiledModel.compile(this, backprop, false, profile);
+	}
+
 	public CompiledModel compile(boolean backprop, boolean returnGradient) {
 		return CompiledModel.compile(this, backprop, returnGradient, null);
 	}
 
-	public CompiledModel compile(boolean backprop, OperationProfile profile) {
-		return CompiledModel.compile(this, backprop, false, profile);
+	public CompiledModel compile(boolean backprop, boolean returnGradient, OperationProfile profile) {
+		return CompiledModel.compile(this, backprop, returnGradient, profile);
 	}
 }

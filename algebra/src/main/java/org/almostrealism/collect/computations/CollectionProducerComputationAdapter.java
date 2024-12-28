@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
@@ -30,6 +31,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -75,6 +77,12 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	public boolean isDiagonal(int width) {
 		if (getShape().getTotalSizeLong() == 1) return true;
 		return TraversableExpression.super.isDiagonal(width);
+	}
+
+	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		if (getShape().getTotalSizeLong() == 1) return Optional.of(this);
+		return TraversableExpression.super.getDiagonalScalar(width);
 	}
 
 	@Override

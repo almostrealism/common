@@ -26,6 +26,7 @@ import io.almostrealism.collect.Algebraic;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
@@ -47,6 +48,7 @@ import org.almostrealism.io.Describable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducerParallelProcess<T>,
@@ -151,6 +153,15 @@ public class ReshapeProducer<T extends Shape<T>>
 		}
 
 		return TraversableExpression.super.isDiagonal(width);
+	}
+
+	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).getDiagonalScalar(width);
+		}
+
+		return TraversableExpression.super.getDiagonalScalar(width);
 	}
 
 	@Override

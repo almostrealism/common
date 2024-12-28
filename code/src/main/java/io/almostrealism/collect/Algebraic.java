@@ -18,6 +18,8 @@ package io.almostrealism.collect;
 
 import io.almostrealism.relation.Computable;
 
+import java.util.Optional;
+
 /**
  * Represents a data-structure, system or process that adheres to the rules of
  * linear algebra. Types implementing this interface can be interpreted as
@@ -26,7 +28,7 @@ import io.almostrealism.relation.Computable;
 public interface Algebraic extends Computable {
 	/**
 	 * Checks if this {@link Algebraic} {@link Computable} represents an annihilating
-	 * transformation on vectors of the specified size. An Annihilating transformation
+	 * transformation on vectors of the specified size. An annihilating transformation
 	 * always produces a zero length vector.
 	 */
 	default boolean isZero() {
@@ -45,9 +47,22 @@ public interface Algebraic extends Computable {
 	/**
 	 * Checks if this {@link Algebraic} {@link Computable} represents a diagonal
 	 * transformation on vectors of the specified size. A diagonal transformation
-	 * scales the input vector by a constant factor.
+	 * scales each component of the input vector by a constant factor.
 	 */
-	default boolean isDiagonal(int width) { return isIdentity(width); }
+	default boolean isDiagonal(int width) {
+		return isIdentity(width) || getDiagonalScalar(width).isPresent();
+	}
+
+	/**
+	 * If this {@link Algebraic} {@link Computable} represents a diagonal constant
+	 * transformation on vectors of the specified size, this method returns the
+	 * {@link Computable} which represents the scalar factor. A diagonal constant
+	 * transformation scales all components of the input vector by the same constant
+	 * factor.
+	 */
+	default Optional<Computable> getDiagonalScalar(int width) {
+		return Optional.empty();
+	}
 
 	default <T extends Algebraic> boolean matches(T other) {
 		return equals(other);
@@ -63,6 +78,14 @@ public interface Algebraic extends Computable {
 
 	static <T> boolean isDiagonal(int width, T value) {
 		return value instanceof Algebraic && ((Algebraic) value).isDiagonal(width);
+	}
+
+	static <T> Optional<Computable> getDiagonalScalar(int width, T value) {
+		if (!(value instanceof Algebraic)) {
+			return Optional.empty();
+		}
+
+		return ((Algebraic) value).getDiagonalScalar(width);
 	}
 }
 

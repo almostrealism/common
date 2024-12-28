@@ -17,13 +17,16 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.DiagonalCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
+import org.almostrealism.algebra.computations.IdentityMatrixComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+
+import java.util.Optional;
 
 public interface MatrixFeatures extends AlgebraFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> identity(int size) {
@@ -35,13 +38,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		return new DefaultTraversableExpressionComputation<>("identity", shape.traverseEach(),
-				(args) -> ident(shape.traverse(1))) {
-			@Override
-			public boolean isIdentity(int width) {
-				return width == shape.length(0) && width == shape.length(1);
-			}
-		};
+		return new IdentityMatrixComputation<>(shape.traverseEach());
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> diagonal(Producer<T> vector) {
@@ -54,21 +51,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		}
 
 		TraversalPolicy diagonalShape = shape(shape.length(0), shape.length(0)).traverse(1);
-
-		return new DefaultTraversableExpressionComputation<>("diagonal", diagonalShape,
-				(args) -> new DiagonalCollectionExpression(diagonalShape, args[1]), vector) {
-			@Override
-			public boolean isDiagonal(int width) {
-				return width == shape.length(0) || super.isDiagonal(width);
-			}
-		};
+		return new DiagonalMatrixComputation<>("diagonal", diagonalShape, vector);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
 		TraversalPolicy vshape = shape(vector);
 
-		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
+ 		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
 			if (vshape.getDimensions() == 1) {
 				return zeros(shape(shape.length(0), 1));
 			}
@@ -97,7 +87,24 @@ public interface MatrixFeatures extends AlgebraFeatures {
 					return c(vector);
 				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
 					return c(matrix);
-				} else if (Algebraic.isDiagonal(vshape.length(0), matrix)) {
+				}
+
+				// Is the matrix just a scalar transform?
+				Optional<Computable> scalar =
+						Algebraic.getDiagonalScalar(vshape.length(0), matrix);
+				if (scalar.isPresent() && scalar.get() instanceof Producer) {
+					return multiply(c(vector), (Producer) scalar.get());
+				}
+
+				// Is the vector just a scalar transform?
+				scalar =
+						Algebraic.getDiagonalScalar(shape.length(0), vector);
+				if (scalar.isPresent() && scalar.get() instanceof Producer) {
+					return multiply(c(matrix), (Producer) scalar.get());
+				}
+
+				if (Algebraic.isDiagonal(vshape.length(0), matrix) ||
+						Algebraic.isDiagonal(shape.length(0), vector)) {
 					console.features(MatrixFeatures.class)
 							.log("Matrix multiplication by diagonal matrix");
 				}

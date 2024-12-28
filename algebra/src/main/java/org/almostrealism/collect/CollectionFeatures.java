@@ -49,6 +49,8 @@ import io.almostrealism.relation.ProducerFeatures;
 import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.util.DescribableParent;
+import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
@@ -97,9 +99,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	// Should be removed
 	boolean enableTraversableRepeated = true;
 	boolean enableQuotientExpression = true;
-	boolean enableSumComputation = true;
-	boolean enableProductComputation = true;
-	boolean enableMinusComputation = true;
+	boolean enableScalarMatrixDetection = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
@@ -749,27 +749,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException();
 		}
 
-		if (enableSumComputation) {
-			return compute((shape, args) -> {
-						Producer p[] = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
+		return compute((shape, args) -> {
+					Producer p[] = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
 
-						if (p.length == 0) {
-							return zeros(shape);
-						} else if (p.length == 1) {
-							return c(reshape(shape, p[0]));
-						}
+					if (p.length == 0) {
+						return zeros(shape);
+					} else if (p.length == 1) {
+						return c(reshape(shape, p[0]));
+					}
 
-						return new CollectionSumComputation<>(shape, p);
-					},
-					args -> String.join(" + ", applyParentheses(args)), null,
-					operands.toArray(new Producer[0]));
-		} else {
-			return compute("add", DeltaFeatures.MultiTermDeltaStrategy.IGNORE,
-					shape -> args ->
-							sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-					args -> String.join(" + ", applyParentheses(args)),
-					null, operands.toArray(new Producer[0]));
-		}
+					return new CollectionSumComputation<>(shape, p);
+				},
+				args -> String.join(" + ", applyParentheses(args)), null,
+				operands.toArray(new Producer[0]));
 	}
 
 	@Deprecated
@@ -828,22 +820,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (enableProductComputation) {
-			return compute((shape, args) -> {
-						if (args.stream().anyMatch(Algebraic::isZero)) {
-							return zeros(shape);
-						}
+		return compute((shape, args) -> {
+					if (args.stream().anyMatch(Algebraic::isZero)) {
+						return zeros(shape);
+					}
 
-						return new CollectionProductComputation<>(shape, args.toArray(new Producer[0]));
-					},
-					args -> String.join(" * ", applyParentheses(args)), shortCircuit, a, b);
-		} else {
-			return compute("multiply", DeltaFeatures.MultiTermDeltaStrategy.COMBINE,
-					shape -> args ->
-							product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-					args -> String.join(" * ", applyParentheses(args)),
-					shortCircuit, a, b);
-		}
+					return new CollectionProductComputation<>(shape, args.toArray(new Producer[0]));
+				},
+				args -> String.join(" * ", applyParentheses(args)), shortCircuit, a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
@@ -875,19 +859,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
-		Function<List<String>, String> description = args -> "-" + args.get(0);
+		TraversalPolicy shape = shape(a);
+		int w = shape.length(0);
 
-		if (enableMinusComputation) {
+		if (enableScalarMatrixDetection && Algebraic.isIdentity(w, a)) {
 			return (CollectionProducerComputationBase)
-					new CollectionMinusComputation<>(shape(a), a)
-						.setDescription(description);
-		} else {
-			Function<TraversableExpression[], CollectionExpression> expression = args -> minus(shape(a), args[1]);
-			DeltaFeatures.MultiTermDeltaStrategy deltaStrategy = DeltaFeatures.MultiTermDeltaStrategy.NONE;
-			return new DefaultTraversableExpressionComputation<>("minus", shape(a),
-					deltaStrategy, expression,
-					(Supplier) a).setDescription(description);
+					new ScalarMatrixComputation<>(shape, c(-1))
+						.setDescription(args -> "-" + DescribableParent.description(a));
 		}
+
+		return (CollectionProducerComputationBase)
+				new CollectionMinusComputation<>(shape, a)
+						.setDescription(args -> "-" + args.get(0));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {

@@ -16,9 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -26,9 +28,12 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
 
@@ -36,6 +41,36 @@ public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
 												   Function<TraversableExpression[], CollectionExpression> expression,
 									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, expression, arguments);
+	}
+
+	@Override
+	public boolean isZero() {
+		return super.isZero() || getChildren().stream().skip(1).allMatch(Algebraic::isZero);
+	}
+
+	@Override
+	public boolean isDiagonal(int width) {
+		if (getChildren().stream().skip(1)
+				.allMatch(p -> Algebraic.isDiagonal(width, p)))
+			return true;
+
+		return super.isDiagonal(width);
+	}
+
+	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		List<Process<?, ?>> scalars = isDiagonal(width) ? getChildren().stream().skip(1)
+				.map(p -> Algebraic.getDiagonalScalar(width, p))
+				.filter(Optional::isPresent)
+				.map(Optional::get)
+				.filter(c -> c instanceof Process)
+				.map(c -> (Process<?, ?>) c)
+				.collect(Collectors.toList()) : Collections.emptyList();
+		if (scalars.size() != getChildren().size() - 1) {
+			return super.getDiagonalScalar(width);
+		}
+
+		return Optional.of(generate(scalars));
 	}
 
 	@Override

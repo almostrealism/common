@@ -39,6 +39,8 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,7 +57,7 @@ import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
-		ComputableParallelProcess<Process<?, ?>, Runnable>,
+					ComputableParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, HardwareFeatures {
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
@@ -435,7 +437,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	public static class Runner implements Runnable, OperationInfo {
+	public static class Runner implements Runnable, OperationInfo, ConsoleFeatures {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
@@ -468,6 +470,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				} else {
 					for (int i = 0; i < run.size(); i++) {
+						log("Running " + OperationInfo.display(run.get(i)));
 						timingListener.recordDuration(getMetadata(), run.get(i));
 					}
 				}
@@ -482,5 +485,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		public String describe() {
 			return getMetadata().getShortDescription();
 		}
+
+		@Override
+		public Console console() { return Hardware.console; }
 	}
 }
