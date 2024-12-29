@@ -23,7 +23,7 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;

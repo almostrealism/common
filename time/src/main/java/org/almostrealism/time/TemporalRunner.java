@@ -21,12 +21,11 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.cycle.Setup;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collection;

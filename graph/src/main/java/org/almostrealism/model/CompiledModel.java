@@ -18,8 +18,8 @@ package org.almostrealism.model;
 
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;

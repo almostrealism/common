@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
+
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.ParallelismSettings;
 
 import java.util.ArrayList;
 import java.util.Collection;

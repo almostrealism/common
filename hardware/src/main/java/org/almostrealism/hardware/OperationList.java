@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -225,10 +225,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		if (!isComputation()) {
-			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
+			throw new IllegalArgumentException(
+					"OperationList cannot be compiled to a Scope " +
+					"unless all embedded Operations are Computations");
 		}
 
-		Scope scope = new Scope(functionName, getMetadata());
+		Scope<Void> scope = new Scope<>(functionName, getMetadata());
 		scope.setComputeRequirements(getComputeRequirements());
 
 		if (getDepth() > abortableDepth) {

@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
+
+import io.almostrealism.relation.Countable;
 
 import java.util.Optional;
 

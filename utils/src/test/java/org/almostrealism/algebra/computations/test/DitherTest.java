@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -25,7 +24,6 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class DitherTest implements TestFeatures {

@@ -19,7 +19,7 @@ package org.almostrealism.collect;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 
 public interface CollectionProducerParallelProcess<T extends Shape<?>> extends
 			CollectionProducer<T>, ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {

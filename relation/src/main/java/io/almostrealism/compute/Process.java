@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
+
+import io.almostrealism.relation.Node;
+import io.almostrealism.relation.Tree;
 
 import java.util.ArrayList;
 import java.util.Collection;

@@ -16,6 +16,9 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
+
 import java.util.stream.DoubleStream;
 import java.util.stream.Stream;
 

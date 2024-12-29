@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.Execution;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
 import org.almostrealism.hardware.AcceleratedComputationOperation;

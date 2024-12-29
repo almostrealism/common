@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
 
 public class ProcessContextBase implements ProcessContext {
 	private int depth;

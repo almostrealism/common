@@ -16,6 +16,8 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.compute.Process;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Supplier;
