@@ -35,7 +35,7 @@ public class ParallelismSettings {
 		return parallelismValue(parallelism) - memoryCost(size);
 	}
 
-	public static DoubleStream scores(Stream<? extends Process> processes) {
+	public static <T> DoubleStream scores(Stream<T> processes) {
 		return processes.mapToDouble(c -> score(ParallelProcess.parallelism(c), Process.outputSize(c)));
 	}
 }

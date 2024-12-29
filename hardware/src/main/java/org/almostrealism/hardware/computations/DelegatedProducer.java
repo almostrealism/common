@@ -104,7 +104,7 @@ public class DelegatedProducer<T> implements
 	}
 
 	@Override
-	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
+	public Process<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException();
 	}
 

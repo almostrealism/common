@@ -17,10 +17,23 @@
 package io.almostrealism.compute;
 
 public class ProcessContextBase implements ProcessContext {
+	private static ProcessOptimizationStrategy defaultOptimizationStrategy;
+
+	static {
+		defaultOptimizationStrategy = new DefaultOptimizationStrategy();
+	}
+
+	private ProcessOptimizationStrategy optimizationStrategy;
 	private int depth;
 
 	protected ProcessContextBase(int depth) {
+		this.optimizationStrategy = defaultOptimizationStrategy;
 		this.depth = depth;
+	}
+
+	@Override
+	public ProcessOptimizationStrategy getOptimizationStrategy() {
+		return optimizationStrategy;
 	}
 
 	@Override

@@ -83,7 +83,7 @@ public class CollectionProviderProducer<T extends Shape>
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	@Override
-	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
+	public Process<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		return this;
 	}
 

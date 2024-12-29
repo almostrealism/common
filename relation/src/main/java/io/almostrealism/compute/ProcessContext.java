@@ -17,6 +17,8 @@
 package io.almostrealism.compute;
 
 public interface ProcessContext {
+	ProcessOptimizationStrategy getOptimizationStrategy();
+
 	int getDepth();
 
 	static ProcessContext base() {

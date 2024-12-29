@@ -60,10 +60,6 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		return isolate ? isolate(process) : process;
 	}
 
-	default Process<P, T> isolate(Process<P, T> process) {
-		return Process.isolationPermitted(process) ? process.isolate() : process;
-	}
-
 	@Override
 	default boolean isIsolationTarget(ProcessContext context) {
 		if (Process.isExplicitIsolation()) {
@@ -83,11 +79,11 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 	@Override
 	default ParallelProcess<P, T> optimize(ProcessContext ctx) {
-		Collection<? extends Process> children = getChildren();
+		Collection<P> children = getChildren();
 		if (children.isEmpty()) return this;
 
 		ParallelProcessContext context = createContext(ctx);
-		children = children.stream().map(process -> optimize(context, process)).collect(Collectors.toList());
+		children = children.stream().map(process -> (P) optimize(context, (Process) process)).collect(Collectors.toList());
 
 		if (!isolationFlags.isEmpty()) {
 			if (children.stream()
@@ -97,6 +93,14 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 					.anyMatch(v -> v)) {
 				System.out.println("ParallelProcess: Flagged for isolation");
 			}
+		}
+
+		ProcessOptimizationStrategy strategy = context.getOptimizationStrategy();
+
+		if (strategy != null) {
+			return (ParallelProcess)
+					strategy.optimize(context, (Process) this, children,
+							c -> processChildren(c).map(p -> (P) p));
 		}
 
 		long counts[] = processChildren(children).mapToLong(ParallelProcess::parallelism).toArray();
@@ -122,10 +126,6 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 			currentScore++;
 			altScore++;
 		}
-
-//		System.out.println("Current score: " + currentScore +
-//				", alt score: " + altScore +
-//				" ratio = " + (currentScore / altScore));
 
 		boolean isolate = true;
 
@@ -157,7 +157,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		ParallelProcess<P, T> result;
 
 		if (isolate) {
-			result = generate(children.stream().map(c -> (P) isolate(c)).collect(Collectors.toList()));
+			result = generate(children.stream().map(c -> (P) isolate((Process) c)).collect(Collectors.toList()));
 		} else {
 			result = generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}

@@ -42,6 +42,11 @@ import java.util.function.Supplier;
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
 	List<Predicate<Process>> explicitIsolationTargets = new ArrayList<>();
 
+	@Override
+	default Process<P, T> generate(List<P> children) {
+		return (Process<P, T>) Tree.super.generate(children);
+	}
+
 	default Process<P, T> optimize() { return optimize(ProcessContext.base()); }
 
 	default Process<P, T> optimize(ProcessContext context) {
@@ -50,6 +55,10 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 
 	default Process<P, T> isolate() {
 		return Process.of(this);
+	}
+
+	default Process<P, T> isolate(Process<P, T> process) {
+		return Process.isolationPermitted(process) ? process.isolate() : process;
 	}
 
 	default boolean isIsolationTarget(ProcessContext context) {

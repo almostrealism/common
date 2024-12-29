@@ -54,7 +54,7 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	}
 
 	@Override
-	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
+	public Process<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
