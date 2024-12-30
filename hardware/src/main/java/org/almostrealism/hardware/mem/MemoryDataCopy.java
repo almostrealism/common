@@ -4,7 +4,7 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.Collection;
@@ -81,7 +81,7 @@ public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable>, 
 	public Process<Process<?, Runnable>, Runnable> isolate() { return this; }
 
 	@Override
-	public Parent<Process<?, Runnable>> generate(List<Process<?, Runnable>> children) { return this; }
+	public Process<Process<?, Runnable>, Runnable> generate(List<Process<?, Runnable>> children) { return this; }
 
 	@Override
 	public String describe() {

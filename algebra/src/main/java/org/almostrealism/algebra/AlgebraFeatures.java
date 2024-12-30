@@ -21,7 +21,7 @@ import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.calculus.InputStub;

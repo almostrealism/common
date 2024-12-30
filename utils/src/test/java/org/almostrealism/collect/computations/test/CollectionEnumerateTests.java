@@ -2,7 +2,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;

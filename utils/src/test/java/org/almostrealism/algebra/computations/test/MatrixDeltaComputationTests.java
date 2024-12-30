@@ -18,8 +18,8 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;

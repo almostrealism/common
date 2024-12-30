@@ -18,10 +18,10 @@ package io.almostrealism.code;
 
 import io.almostrealism.compute.ComputableProcessContext;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.ParallelProcessContext;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.ParallelProcessContext;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import org.almostrealism.io.Console;
 
 import java.util.ArrayList;

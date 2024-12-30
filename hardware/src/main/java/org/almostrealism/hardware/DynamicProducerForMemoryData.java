@@ -21,7 +21,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.uml.Multiple;
 
 import java.util.Collection;

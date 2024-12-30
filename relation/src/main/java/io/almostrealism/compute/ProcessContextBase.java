@@ -14,15 +14,32 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
 
 public class ProcessContextBase implements ProcessContext {
+	private static ProcessOptimizationStrategy defaultOptimizationStrategy;
+
+	static {
+		defaultOptimizationStrategy = new ParallelismTargetOptimization();
+	}
+
+	private ProcessOptimizationStrategy optimizationStrategy;
 	private int depth;
 
 	protected ProcessContextBase(int depth) {
+		this.optimizationStrategy = defaultOptimizationStrategy;
 		this.depth = depth;
 	}
 
 	@Override
+	public ProcessOptimizationStrategy getOptimizationStrategy() {
+		return optimizationStrategy;
+	}
+
+	@Override
 	public int getDepth() { return depth; }
+
+	public static void setDefaultOptimizationStrategy(ProcessOptimizationStrategy strategy) {
+		defaultOptimizationStrategy = strategy;
+	}
 }

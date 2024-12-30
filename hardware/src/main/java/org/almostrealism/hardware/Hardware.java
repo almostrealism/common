@@ -17,10 +17,14 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.compute.CascadingOptimizationStrategy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.compute.ParallelismTargetOptimization;
+import io.almostrealism.compute.ProcessContextBase;
+import io.almostrealism.compute.TraversableDepthTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.Precision;
@@ -125,6 +129,11 @@ public final class Hardware {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
 		}
+
+		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
+				new TraversableDepthTargetOptimization(),
+				new ParallelismTargetOptimization()
+		));
 
 		local = new Hardware(requirements, location, nioMem);
 	}

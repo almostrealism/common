@@ -22,7 +22,7 @@ import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;

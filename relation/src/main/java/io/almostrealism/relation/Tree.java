@@ -17,6 +17,7 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
@@ -47,5 +48,11 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 
 	default int treeDepth() {
 		return 1 + getChildren().stream().mapToInt(Tree::treeDepth).max().orElse(0);
+	}
+
+	default int treeDepth(Predicate<T> filter) {
+		return 1 + getChildren().stream().filter(filter)
+				.mapToInt(t -> t.treeDepth(filter))
+				.max().orElse(0);
 	}
 }

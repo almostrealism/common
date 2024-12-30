@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
 
 public interface ProcessContext {
+	ProcessOptimizationStrategy getOptimizationStrategy();
+
 	int getDepth();
 
 	static ProcessContext base() {

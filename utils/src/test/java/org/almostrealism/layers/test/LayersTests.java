@@ -16,7 +16,10 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
@@ -34,6 +37,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -161,7 +165,7 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void siluTrain() throws IOException {
-		int size = 21952;
+		int size = 12240; // 16240; // 21952;
 		int steps = 1;
 
 		Model model = new Model(shape(size));
@@ -176,13 +180,22 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
 
-		CompiledModel compiled = model.compile(true, true);
-		ModelOptimizer train = new ModelOptimizer(compiled, data);
-		log("Model compiled");
-
 		try {
+//			Set<Long> ids = Set.of(198L);
+//
+//			ParallelismTargetOptimization.listeners.add(p -> {
+//				OperationMetadata metadata = OperationInfo.metadataForValue(p);
+//
+//				if (metadata != null && ids.contains(metadata.getId())) {
+//					System.out.println("!");
+//				}
+//			});
+
+			CompiledModel compiled = model.compile(true, true);
+			ModelOptimizer train = new ModelOptimizer(compiled, data);
+			log("Model compiled");
 			profile(profile, () -> train.optimize(1))
-					.save("results/siluTrain.xml");
+					.save("results/siluTrain_" + size + ".xml");
 		} finally {
 			logKernelMetrics(profile);
 		}
