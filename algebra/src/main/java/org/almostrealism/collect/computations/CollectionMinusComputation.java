@@ -48,6 +48,10 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+		if (children.size() != 2) {
+			throw new IllegalArgumentException();
+		}
+
 		return (CollectionProducerParallelProcess) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

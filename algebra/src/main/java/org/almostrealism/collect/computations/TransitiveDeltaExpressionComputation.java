@@ -70,7 +70,10 @@ public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
 			return super.getDiagonalScalar(width);
 		}
 
-		return Optional.of(generate(scalars));
+		List<Process<?, ?>> operands = new ArrayList<>();
+		operands.add(null);
+		operands.addAll(scalars);
+		return Optional.of(generate(operands));
 	}
 
 	@Override

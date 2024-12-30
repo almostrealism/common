@@ -188,10 +188,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 			optimized = (ComputationBase<I, O, T>)
 					ComputableParallelProcess.super.optimize(ctx);
 			optimized.setComputeRequirements(getComputeRequirements());
-		} else if (Countable.count(ctx) != Countable.count(optimizationCtx)) {
+		} else if (Countable.countLong(ctx) != Countable.countLong(optimizationCtx)) {
 			warn("Cached optimization may not be ideal for new ProcessContext count of " +
-					Countable.count(ctx) + " compared to " +
-					Countable.count(optimizationCtx) + ")");
+					Countable.countLong(ctx) + " compared to " +
+					Countable.countLong(optimizationCtx) + ")");
 		}
 
 		return optimized;

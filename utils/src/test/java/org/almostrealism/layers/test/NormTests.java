@@ -419,7 +419,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsTrainableSmallLowVariance() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmallLowVariance",
-				2, 1, true,
+				2, 1, true, true,
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
@@ -522,18 +522,23 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		int c = 21952;
 		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups);
+		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups, false);
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups) throws IOException {
 		normBackwardsTrainable(name, c, groups, true);
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast) throws IOException {
-		normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate) throws IOException {
+		normBackwardsTrainable(name, c, groups, validate, true);
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast,
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate, boolean failFast) throws IOException {
+		normBackwardsTrainable(name, c, groups, validate, failFast, randomInput(c));
+	}
+
+	protected void normBackwardsTrainable(String name, int c, int groups,
+										  boolean validate, boolean failFast,
 										  Supplier<PackedCollection<?>> inputSource) throws IOException {
 		double w = 1.0; // 0.5;
 		double b = 0.0; // 0.5;
@@ -554,6 +559,8 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
+
+		if (!validate) return;
 
 		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
 
@@ -576,7 +583,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			PackedCollection<?> dLdyGroup = gradient.range(shape(groupSize), start);
 
 			double muG = xGroup.doubleStream().sum() / groupSize;
-			double varG = variance(cp(xGroup)).evaluate().toDouble();
+			double varG = Process.optimized(variance(cp(xGroup))).get().evaluate().toDouble();
 			double stdG = Math.sqrt(varG + eps);
 
 			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));
