@@ -21,11 +21,11 @@ import io.almostrealism.relation.ParallelismSettings;
 
 import java.util.Collection;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
-public class DefaultOptimizationStrategy implements ProcessOptimizationStrategy {
+public class ParallelismTargetOptimization implements ProcessOptimizationStrategy {
+
 	boolean enableNarrowMax = true;
 	boolean enableContextualCount = false;
 	int minCount = 1 << 8;
@@ -36,6 +36,8 @@ public class DefaultOptimizationStrategy implements ProcessOptimizationStrategy 
 															   Process<P, T> parent,
 															   Collection<P> children,
 															   Function<Collection<P>, Stream<P>> childProcessor) {
+		listeners.forEach(l -> l.accept(parent));
+
 		ParallelProcessContext context = ParallelProcessContext.of(ctx);
 
 		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
@@ -89,18 +91,9 @@ public class DefaultOptimizationStrategy implements ProcessOptimizationStrategy 
 			isolate = false;
 		}
 
-		Process<P, T> result;
-
-		if (isolate) {
-			result = parent.generate(children.stream()
-					.map(c -> (P) parent.isolate((Process) c))
-					.collect(Collectors.toList()));
-		} else {
-			result = parent.generate(children.stream()
-					.map(c -> (P) c)
-					.collect(Collectors.toList()));
-		}
-
-		return result;
+		// TODO  It is preferable to return null if no isolation,
+		// TODO  so that this strategy can cascade to another if
+		// TODO  it is not the last one in the chain
+		return generate(parent, children, isolate);
 	}
 }

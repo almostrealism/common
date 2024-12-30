@@ -103,66 +103,68 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 							c -> processChildren(c).map(p -> (P) p));
 		}
 
-		long counts[] = processChildren(children).mapToLong(ParallelProcess::parallelism).toArray();
-		long cn = getCountLong();
-		long p = counts.length;
-		long tot = LongStream.of(counts).sum();
-		long max = LongStream.of(counts).max().orElse(0);
+		throw new UnsupportedOperationException();
 
-		long memory[] = processChildren(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
-		long mem = getOutputSize();
-		long maxMem = LongStream.of(memory).max().orElse(0);
-
-		double currentScore = ParallelismSettings.score(cn, mem);
-		double altScore = ParallelismSettings
-				.scores(processChildren(children))
-				.max().orElse(Integer.MIN_VALUE);
-
-		double min = Math.min(currentScore, altScore);
-		if (min < 0) {
-			min = Math.abs(min);
-			currentScore += min;
-			altScore += min;
-			currentScore++;
-			altScore++;
-		}
-
-		boolean isolate = true;
-
-		if ((p <= 1 && tot == cn) || cn >= max) {
-			isolate = false;
-		} else if (enableContextualCount && max <= context.getCountLong()) {
-			isolate = false;
-		} else if (max > maxCount) {
-			if (cn < minCount && context.getCountLong() < minCount) {
-				System.out.println("WARN: Count " + max + " is too high to isolate, " +
-						"but the resulting process will have a count of only " + cn +
-						" (ctx " + context.getCountLong() + ")");
-			}
-
-			isolate = false;
-		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
-			isolate = false;
-		} else if (altScore < currentScore) {
-			System.out.println("Skipping isolation to avoid score " +
-					altScore + " (" + currentScore + " current)");
-			isolate = false;
-		}
-
-		if (isolate && currentScore / altScore > 4 && explicitIsolationTargets.isEmpty()) {
-			System.out.println("Isolation is " + (currentScore / altScore) + " times worse - skipping");
-			isolate = false;
-		}
-
-		ParallelProcess<P, T> result;
-
-		if (isolate) {
-			result = generate(children.stream().map(c -> (P) isolate((Process) c)).collect(Collectors.toList()));
-		} else {
-			result = generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
-		}
-
-		return result;
+//		long counts[] = processChildren(children).mapToLong(ParallelProcess::parallelism).toArray();
+//		long cn = getCountLong();
+//		long p = counts.length;
+//		long tot = LongStream.of(counts).sum();
+//		long max = LongStream.of(counts).max().orElse(0);
+//
+//		long memory[] = processChildren(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
+//		long mem = getOutputSize();
+//		long maxMem = LongStream.of(memory).max().orElse(0);
+//
+//		double currentScore = ParallelismSettings.score(cn, mem);
+//		double altScore = ParallelismSettings
+//				.scores(processChildren(children))
+//				.max().orElse(Integer.MIN_VALUE);
+//
+//		double min = Math.min(currentScore, altScore);
+//		if (min < 0) {
+//			min = Math.abs(min);
+//			currentScore += min;
+//			altScore += min;
+//			currentScore++;
+//			altScore++;
+//		}
+//
+//		boolean isolate = true;
+//
+//		if ((p <= 1 && tot == cn) || cn >= max) {
+//			isolate = false;
+//		} else if (enableContextualCount && max <= context.getCountLong()) {
+//			isolate = false;
+//		} else if (max > maxCount) {
+//			if (cn < minCount && context.getCountLong() < minCount) {
+//				System.out.println("WARN: Count " + max + " is too high to isolate, " +
+//						"but the resulting process will have a count of only " + cn +
+//						" (ctx " + context.getCountLong() + ")");
+//			}
+//
+//			isolate = false;
+//		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
+//			isolate = false;
+//		} else if (altScore < currentScore) {
+//			System.out.println("Skipping isolation to avoid score " +
+//					altScore + " (" + currentScore + " current)");
+//			isolate = false;
+//		}
+//
+//		if (isolate && currentScore / altScore > 4 && explicitIsolationTargets.isEmpty()) {
+//			System.out.println("Isolation is " + (currentScore / altScore) + " times worse - skipping");
+//			isolate = false;
+//		}
+//
+//		ParallelProcess<P, T> result;
+//
+//		if (isolate) {
+//			result = generate(children.stream().map(c -> (P) isolate((Process) c)).collect(Collectors.toList()));
+//		} else {
+//			result = generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+//		}
+//
+//		return result;
 	}
 
 	default long getParallelism() {

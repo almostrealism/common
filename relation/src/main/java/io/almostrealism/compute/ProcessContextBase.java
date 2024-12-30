@@ -20,7 +20,7 @@ public class ProcessContextBase implements ProcessContext {
 	private static ProcessOptimizationStrategy defaultOptimizationStrategy;
 
 	static {
-		defaultOptimizationStrategy = new DefaultOptimizationStrategy();
+		defaultOptimizationStrategy = new ParallelismTargetOptimization();
 	}
 
 	private ProcessOptimizationStrategy optimizationStrategy;
@@ -38,4 +38,8 @@ public class ProcessContextBase implements ProcessContext {
 
 	@Override
 	public int getDepth() { return depth; }
+
+	public static void setDefaultOptimizationStrategy(ProcessOptimizationStrategy strategy) {
+		defaultOptimizationStrategy = strategy;
+	}
 }

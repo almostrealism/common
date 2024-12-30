@@ -16,11 +16,32 @@
 
 package io.almostrealism.compute;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public interface ProcessOptimizationStrategy {
+	List<Consumer<Process<?, ?>>> listeners = new ArrayList<>();
+
+	default <P extends Process<?, ?>, T> Process<P, T> generate(
+											Process<P, T> parent,
+										  	Collection<P> children,
+											boolean isolateChildren) {
+		if (isolateChildren) {
+			return parent.generate(children.stream()
+					.map(c -> (P) parent.isolate((Process) c))
+					.collect(Collectors.toList()));
+		} else {
+			return parent.generate(children.stream()
+					.map(c -> (P) c)
+					.collect(Collectors.toList()));
+		}
+	}
+
 	<P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 														Process<P, T> parent,
 														Collection<P> children,

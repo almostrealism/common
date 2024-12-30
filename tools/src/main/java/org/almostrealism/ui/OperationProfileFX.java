@@ -203,6 +203,10 @@ public class OperationProfileFX extends Application {
 		this.infoArea = new TextArea();
 		this.sourceArea = new TextArea();
 		this.idField = new TextField();
+		this.infoArea.setEditable(false);
+		this.sourceArea.setEditable(false);
+		this.idField.setEditable(false);
+
 		this.compiledTree = createTree(root, ProfileTreeFeatures.TreeStructure.COMPILED_ONLY, true, true);
 		this.detailTree = createTree(root, ProfileTreeFeatures.TreeStructure.STOP_AT_COMPILED, true, false);
 		this.scopeTree = createTree(root, ProfileTreeFeatures.TreeStructure.SCOPE_INPUTS, false, false);
@@ -247,7 +251,9 @@ public class OperationProfileFX extends Application {
 			tabPane.getTabs().addAll(infoTab, sourceTab);
 		}
 
-		SplitPane infoPane = new SplitPane(createScrollPane(scopeTree), tabPane);
+		VBox scopeBox = new VBox(new Label("Scope Inputs"),
+								createScrollPane(scopeTree));
+		SplitPane infoPane = new SplitPane(scopeBox, tabPane);
 		infoPane.setDividerPositions(0.3);
 
 		SplitPane rootPane = new SplitPane(treesPane, infoPane);
