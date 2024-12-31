@@ -35,12 +35,11 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
+public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
-												   Function<TraversableExpression[], CollectionExpression> expression,
 									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, expression, arguments);
+		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
 	}
 
 	@Override

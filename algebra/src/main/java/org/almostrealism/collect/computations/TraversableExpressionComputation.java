@@ -34,7 +34,6 @@ import java.util.function.Supplier;
 public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableChainRule = true;
 
 	private final MultiTermDeltaStrategy deltaStrategy;
 
@@ -62,9 +61,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	}
 
 	@Override
-	public boolean isChainRuleSupported() {
-		return enableChainRule || super.isChainRuleSupported();
-	}
+	public boolean isChainRuleSupported() { return true; }
 
 	@Override
 	public MultiTermDeltaStrategy getDeltaStrategy() { return deltaStrategy; }

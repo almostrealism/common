@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -43,10 +44,12 @@ public class CollectionSumComputation<T extends PackedCollection<?>> extends Tra
 
 	protected CollectionSumComputation(String name, TraversalPolicy shape,
 										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape,
-				args ->
-						ExpressionFeatures.getInstance().sum(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				arguments);
+		super(name, shape, arguments);
+	}
+
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return sum(getShape(), Stream.of(args).skip(1).toArray(TraversableExpression[]::new));
 	}
 
 	@Override

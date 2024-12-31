@@ -18,6 +18,7 @@ package org.almostrealism.calculus;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -27,6 +28,7 @@ import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
@@ -206,6 +208,20 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		return (ComputationBase<T, T, Evaluable<T>>) producer.generate(newInputs);
+	}
+
+	// TODO  It seems like this should be something that is just
+	// TODO  part of MatrixFeatures, or even an option for matmul
+	default <V extends PackedCollection<?>> CollectionProducer<V> expandAndMultiply(
+			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
+		if (vector.getShape().getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+			return diagonal(vector);
+		} else {
+			CollectionProducer<V> expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			return multiply(expanded, matrix);
+		}
 	}
 
 	enum MultiTermDeltaStrategy {

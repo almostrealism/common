@@ -55,6 +55,7 @@ import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
@@ -880,9 +881,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
-		return compute("pow", shape -> (args) ->
-				CollectionExpression.create(shape, index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(List<String> args) -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
+		return compute((shape, args) ->
+						new CollectionExponentComputation<>(shape, args.get(0), args.get(1)),
+				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
 				null, base, exp);
 	}
 

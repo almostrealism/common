@@ -16,7 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -40,10 +41,12 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
 									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape,
-				args ->
-						ExpressionFeatures.getInstance().minus(shape, args[1]),
-				arguments);
+		super(name, shape, arguments);
+	}
+
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return minus(getShape(), args[1]);
 	}
 
 	@Override
