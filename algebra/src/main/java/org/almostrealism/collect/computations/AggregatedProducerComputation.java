@@ -238,7 +238,8 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			int inLength = shape(target).getTotalSize();
 
 			if (AlgebraFeatures.match(getInputs().get(1), target)) {
-				delta = identity(shape(inLength, outLength)).traverse(0);
+				delta = identity(shape(inLength, outLength))
+						.reshape(inLength, outLength, 1).traverse(0);
 			} else {
 				delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 				delta = delta.reshape(outLength, inLength);
@@ -253,7 +254,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		} else {
 			delta = super.delta(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
-				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
+				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
 						getInputs().stream().skip(1).toArray(Supplier[]::new));
 				traversable.addDependentLifecycle(this);

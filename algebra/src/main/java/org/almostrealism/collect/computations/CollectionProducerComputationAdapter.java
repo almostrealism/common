@@ -90,7 +90,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		CollectionProducer<O> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
-		delta = TraversableDeltaComputation.create(getShape(), shape(target),
+		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 				(Supplier) this)
 				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");

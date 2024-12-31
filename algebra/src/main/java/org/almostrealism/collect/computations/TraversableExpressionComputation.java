@@ -75,7 +75,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(
-				getShape(), shape(target),
+				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,
 				getInputs().stream().skip(1).toArray(Supplier[]::new));
 		return delta;

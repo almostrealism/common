@@ -173,7 +173,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
-			return TraversableDeltaComputation.create(getShape(), shape(target),
+			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 					(Supplier) this).addDependentLifecycle(this);
 		}
@@ -191,7 +191,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		Producer<?> stub = func(inShape, args -> null);
 
-		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create(shape(outSize), shape(inSize),
+		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
 				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
 		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))

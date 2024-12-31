@@ -74,7 +74,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	public CollectionProducer<T> delta(Producer<?> target) {
 		if (enableChainDelta) {
 			TraversableDeltaComputation<T> delta =
-					TraversableDeltaComputation.create(getShape(), shape(target),
+					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
 							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
