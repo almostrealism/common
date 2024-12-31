@@ -158,6 +158,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		};
 	}
 
+	static <T extends Shape<?>> boolean isIsolationPermitted(CollectionProducer<T> op) {
+		return Process.isolationPermitted(op) &&
+				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
+	}
+
 	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
 
 		public IsolatedProcess(CollectionProducer<T> op) {

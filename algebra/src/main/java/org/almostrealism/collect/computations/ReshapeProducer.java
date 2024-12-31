@@ -54,7 +54,7 @@ public class ReshapeProducer<T extends Shape<T>>
 					TraversableExpression<Double>,
 					ScopeLifecycle, DescribableParent<Process<?, ?>> {
 	public static boolean enableTraversalDelegateIsolation = true;
-	public static boolean enableShapeDelegateIsolation = false;
+	public static boolean enableShapeDelegateIsolation = true;
 
 	private OperationMetadata metadata;
 	private TraversalPolicy shape;
@@ -231,7 +231,7 @@ public class ReshapeProducer<T extends Shape<T>>
 				}
 			}
 
-			return Process.isolationPermitted(this) ?
+			return CollectionProducerComputation.isIsolationPermitted(this) ?
 					new CollectionProducerComputation.IsolatedProcess(this) :
 					this;
 		} else {

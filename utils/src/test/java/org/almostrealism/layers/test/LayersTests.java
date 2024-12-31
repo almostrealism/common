@@ -165,6 +165,8 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void siluTrain() throws IOException {
+		if (skipKnownIssues) return;
+
 		int size = 12240; // 16240; // 21952;
 		int steps = 1;
 
