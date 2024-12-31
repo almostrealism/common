@@ -16,11 +16,13 @@
 
 package io.almostrealism.compute;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.collect.TraversableExpression;
 
 import java.util.Collection;
-import java.util.OptionalInt;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
 
 public class TraversableDepthTargetOptimization implements ProcessOptimizationStrategy {
@@ -39,8 +41,11 @@ public class TraversableDepthTargetOptimization implements ProcessOptimizationSt
 															   Function<Collection<P>, Stream<P>> childProcessor) {
 		listeners.forEach(l -> l.accept(parent));
 
+		ToIntFunction count = p -> p instanceof Computation ? 1 : 0;
+		Predicate filter = p -> p instanceof TraversableExpression;
+
 		int maxDepth = childProcessor.apply(children)
-				.mapToInt(t -> t.treeDepth(p -> p instanceof TraversableExpression))
+				.mapToInt(t -> t.countDepth(count, filter))
 				.max().orElse(0) + 1;
 
 		if (maxDepth > limit) {
