@@ -165,9 +165,8 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void siluTrain() throws IOException {
-		if (skipKnownIssues) return;
+		if (testDepth < 3) return;
 
-//		int size = 16240;
 		int size = 21952;
 		int steps = 1;
 
@@ -184,19 +183,10 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 				.collect(Collectors.toList()));
 
 		try {
-//			Set<Long> ids = Set.of(198L);
-//
-//			ParallelismTargetOptimization.listeners.add(p -> {
-//				OperationMetadata metadata = OperationInfo.metadataForValue(p);
-//
-//				if (metadata != null && ids.contains(metadata.getId())) {
-//					System.out.println("!");
-//				}
-//			});
-
 			CompiledModel compiled = model.compile(true, true);
-			ModelOptimizer train = new ModelOptimizer(compiled, data);
 			log("Model compiled");
+
+			ModelOptimizer train = new ModelOptimizer(compiled, data);
 			profile(profile, () -> train.optimize(1))
 					.save("results/siluTrain_" + size + ".xml");
 		} finally {

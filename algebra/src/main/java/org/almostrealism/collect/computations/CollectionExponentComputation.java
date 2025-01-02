@@ -35,7 +35,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class CollectionExponentComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
-	public static boolean enableCustomDelta = false;
+	public static boolean enableCustomDelta = true;
 
 	public CollectionExponentComputation(TraversalPolicy shape,
 										 Producer<? extends PackedCollection<?>> base,
