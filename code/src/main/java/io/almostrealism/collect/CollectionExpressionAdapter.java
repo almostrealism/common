@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 
 public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
@@ -49,6 +50,14 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 	@Override
 	public String describe() {
 		return name + " " + super.describe();
+	}
+
+	public static <T> Expression<?> simplify(int threshold, Expression<T> e) {
+		if (e.countNodes() > threshold) {
+			return e.simplify();
+		}
+
+		return e;
 	}
 
 	public static DefaultIndex generateTemporaryIndex() {
