@@ -532,12 +532,14 @@ public abstract class Expression<T> implements
 	}
 
 	public Expression eqZero() { return eq(0.0); }
-	public Expression eq(double operand) { return Equals.of(this, new DoubleConstant(operand)); };
+	public Expression eq(int operand) { return eq(new IntegerConstant(operand)); };
+	public Expression eq(long operand) { return eq(ExpressionFeatures.getInstance().e(operand)); };
+	public Expression eq(double operand) { return eq(new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
-		return Conditional.of((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
+		return Conditional.of((Expression<Boolean>) this, positive, negative);
 	}
 
 	public Expression<Boolean> greaterThan(Expression<?> operand) { return Greater.of(this, operand); };

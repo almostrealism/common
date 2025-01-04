@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,14 +19,15 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Equals extends Comparison {
+	public static boolean enableBoundedComparison = true;
 	public static boolean enableExpandQuotient = false;
 
 	protected Equals(Expression<?> left, Expression<?> right) {
@@ -100,6 +101,14 @@ public class Equals extends Comparison {
 			return new BooleanConstant(true);
 		}
 
+		if (enableBoundedComparison) {
+			Expression<?> result = checkBounds(left, right);
+			if (result != null) return result;
+
+			result = checkBounds(right, left);
+			if (result != null) return result;
+		}
+
 		if (left instanceof Mask && right.doubleValue().isPresent()) {
 			OptionalDouble masked = ((Mask) left).getMaskedValue().doubleValue();
 			if (masked.isPresent() && masked.getAsDouble() == right.doubleValue().getAsDouble()) {
@@ -117,5 +126,22 @@ public class Equals extends Comparison {
 		}
 
 		return new Equals(left, right);
+	}
+
+	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {
+		OptionalLong a = anchor.longValue();
+		if (!a.isPresent()) return null;
+
+		OptionalLong high = value.upperBound();
+		if (high.isPresent() && high.getAsLong() < a.getAsLong()) {
+			return new BooleanConstant(false);
+		}
+
+		OptionalLong low = value.lowerBound();
+		if (low.isPresent() && low.getAsLong() > a.getAsLong()) {
+			return new BooleanConstant(false);
+		}
+
+		return null;
 	}
 }

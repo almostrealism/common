@@ -34,6 +34,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableInnerSumSimplify = true;
 	public static boolean enableRedundantModReplacement = true;
 	public static boolean enableRemoveMultiples = true;
+	public static boolean enableSpanUpperBound = true;
 
 	private boolean fp;
 
@@ -115,7 +116,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong m = getRight().longValue();
 
 		if (!isFP() && m.isPresent()) {
-			if (lower.isPresent() && upper.isPresent()) {
+			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()) {
 				long span = upper.getAsLong() - lower.getAsLong();
 				long ml = m.getAsLong();
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,7 +141,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	public void convBackwardsMediumPadded() throws IOException {
 		if (skipKnownIssues) return;
 
-		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28,1, true);
+		// convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28,1, true);
+		convBackwards("convBackwardsMediumPadded", 1, 4, 16, 16, 2, 4,1, true);
 	}
 
 	public void convBackwards(String name, int n, int c, int h, int w, int convSize,

@@ -95,6 +95,15 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
+				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
+	}
+
+	@Override
 	public Optional<Boolean> isMultiple(Expression<?> e) {
 		if (isFP() || e.isFP()) return Optional.empty();
 

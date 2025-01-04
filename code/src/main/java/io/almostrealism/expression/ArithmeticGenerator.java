@@ -84,4 +84,10 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 
 		return new Quotient<>(List.of(this, operand));
 	}
+
+	@Override
+	public Expression eq(Expression<?> operand) {
+		// TODO Optimization
+		return super.eq(operand);
+	}
 }

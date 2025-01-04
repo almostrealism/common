@@ -101,6 +101,33 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		OptionalLong l = getChildren().get(0).lowerBound(context);
+
+		if (l.isPresent()) {
+			OptionalLong r = getChildren().get(1).longValue();
+
+			if (r.isPresent()) {
+				if (isFP()) {
+					return OptionalLong.of((long) Math.floor(l.getAsLong() / (double) r.getAsLong()));
+				} else {
+					return OptionalLong.of(l.getAsLong() / r.getAsLong());
+				}
+			}
+
+			r = getChildren().get(1).upperBound(context);
+			if (r.isPresent()) {
+				return OptionalLong.of((long) Math.floor(l.getAsLong() / (double) r.getAsLong()));
+			}
+		}
+
+		return OptionalLong.empty();
+	}
+
+	@Override
 	public Number evaluate(Number... children) {
 		if (getType() == Integer.class) {
 			int value = children[0].intValue();
