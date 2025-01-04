@@ -66,7 +66,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 		int size = getShape().getSize();
 
-		Expression<Integer> outputPosition = kernel(context).multiply(e(size));
+		Expression outputPosition = kernel(context).multiply(e(size));
 
 		ArrayVariable<Double> output = getArgument(0, e(getShape().getTotalSize()));
 		ArrayVariable<Double> input = getArgument(1, e(getShape().getTotalSize()));
