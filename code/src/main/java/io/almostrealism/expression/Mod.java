@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -111,15 +110,45 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
-		if (!isFP()) {
-			OptionalLong u = getChildren().get(1).longValue();
+		OptionalLong lower = getLeft().lowerBound(context);
+		OptionalLong upper = getLeft().upperBound(context);
+		OptionalLong m = getRight().longValue();
 
-			if (u.isPresent()) {
-				return OptionalLong.of(u.getAsLong() - 1);
+		if (!isFP() && m.isPresent()) {
+			if (lower.isPresent() && upper.isPresent()) {
+				long span = upper.getAsLong() - lower.getAsLong();
+				long ml = m.getAsLong();
+
+				if (span < ml) {
+					return OptionalLong.of(Math.max(lower.getAsLong() % ml, upper.getAsLong() % ml));
+				}
 			}
+
+			return OptionalLong.of(m.getAsLong() - 1);
 		}
 
 		return getChildren().get(1).upperBound(context);
+	}
+
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		if (isFP() || getLeft().isPossiblyNegative() || getRight().isPossiblyNegative())
+			return super.lowerBound(context);
+
+		OptionalLong lower = getLeft().lowerBound(context);
+		OptionalLong upper = getLeft().upperBound(context);
+		OptionalLong m = getRight().longValue();
+
+		if (lower.isPresent() && upper.isPresent() && m.isPresent()) {
+			long span = upper.getAsLong() - lower.getAsLong();
+			long ml = m.getAsLong();
+
+			if (span < ml) {
+				return OptionalLong.of(Math.min(lower.getAsLong() % ml, upper.getAsLong() % ml));
+			}
+		}
+
+		return OptionalLong.of(0);
 	}
 
 	@Override
@@ -236,10 +265,16 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 							false);
 				}
 			}
-		} else if (enableRemoveMultiples && input instanceof Sum && !input.isFP()) {
-			input = Sum.of(input.getChildren().stream()
-					.filter(e -> !e.isMultiple(mod).orElse(false))
-					.toArray(Expression[]::new));
+		} else if (enableRemoveMultiples) {
+			int count = input.countNodes();
+
+			w: while (input instanceof Sum && !input.isFP()) {
+				input = Sum.of(input.getChildren().stream()
+						.filter(e -> !e.isMultiple(mod).orElse(false))
+						.toArray(Expression[]::new));
+				if (input.countNodes() == count) break w;
+				count = input.countNodes();
+			}
 		}
 
 		OptionalLong u = input.upperBound();

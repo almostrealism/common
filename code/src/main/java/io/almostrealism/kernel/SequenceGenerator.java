@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,17 +25,14 @@ public interface SequenceGenerator {
 		return OptionalLong.of(upperBound.getAsLong() + 1);
 	}
 
-	default OptionalLong upperBound() {
-		return upperBound(null);
-	}
+	default OptionalLong upperBound() { return upperBound(null); }
+	default OptionalLong lowerBound() { return lowerBound(null); }
 
 	OptionalLong upperBound(KernelStructureContext context);
+	OptionalLong lowerBound(KernelStructureContext context);
 
 	Number value(IndexValues indexValues);
 
-	default IndexSequence sequence(Index index, long len) {
-		return sequence(index, len, len);
-	}
-
+	default IndexSequence sequence(Index index, long len) { return sequence(index, len, len); }
 	IndexSequence sequence(Index index, long len, long limit);
 }

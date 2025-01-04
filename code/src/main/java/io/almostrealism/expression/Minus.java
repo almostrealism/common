@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -108,7 +108,14 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	protected static Expression<?> create(Expression<?> value) {
-		if (value instanceof Minus) {
+		OptionalLong v = value.longValue();
+
+		if (v.isPresent()) {
+			if (v.getAsLong() == 0)
+				return value;
+
+			return ExpressionFeatures.getInstance().e(-1 * v.getAsLong());
+		} else if (value instanceof Minus) {
 			return value.getChildren().get(0);
 		} else if (enableDistributive && value instanceof Product) {
 			int c = IntStream.range(0, value.getChildren().size())

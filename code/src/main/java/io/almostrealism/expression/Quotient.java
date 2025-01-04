@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,13 +33,14 @@ import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableDistributiveSum = true;
-	public static boolean enableConstantReplacement = true;
 	public static boolean enableFpDivisorReplacement = true;
 	public static boolean enableExpandedDistributiveSum = true;
 	public static boolean enableProductModSimplify = true;
 	public static boolean enableDenominatorCollapse = true;
 	public static boolean enableRequireNonNegative = true;
 	public static boolean enableBoundedNumeratorReplace = true;
+	public static boolean enableLowerBoundedNumeratorReplace = true;
+	public static boolean enableArithmeticGenerator = true;
 
 	public static long maxCombinedDenominator = Integer.MAX_VALUE;
 
@@ -276,18 +276,32 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (operands.size() == 1) return operands.get(0);
 		if (operands.size() > 2) return new Quotient(operands);
 
+		if (values[0] instanceof ArithmeticGenerator) {
+			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
+		}
+
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
 
 		OptionalLong d = denominator.longValue();
 
+		OptionalLong lower = numerator.lowerBound();
+		OptionalLong upper = numerator.upperBound();
+
 		if (enableBoundedNumeratorReplace && !numerator.isPossiblyNegative() && d.isPresent() &&
 				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
+		} else if (enableLowerBoundedNumeratorReplace && !fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
+			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());
+			double high = Math.floor(lower.getAsLong() / (double) d.getAsLong());
+
+			if (low == high) {
+				return ExpressionFeatures.getInstance().e((long) low);
+			}
 		}
 
 		if (enableDenominatorCollapse && numerator instanceof Quotient && d.isPresent()) {
-			if (denominator.longValue().isPresent() && numerator.getChildren().size() == 2) {
+			if (numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
 				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
 					return numerator.getChildren().get(0).divide(
@@ -368,9 +382,16 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 							.toArray(Expression[]::new));
 				}
 			}
+		} else if (enableArithmeticGenerator && !fp && numerator instanceof Mod) {
+			Expression<?> u = ((BinaryExpression) numerator).getLeft();
+			OptionalLong m = ((BinaryExpression) numerator).getRight().longValue();
+
+			if (u instanceof Index && m.isPresent()) {
+				return new ArithmeticGenerator<>(u, 1, d.getAsLong(), m.getAsLong());
+			}
 		}
 
-		if (enableConstantReplacement && numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
+		if (numerator.doubleValue().isPresent() && denominator.doubleValue().isPresent()) {
 			double r = numerator.doubleValue().getAsDouble() / denominator.doubleValue().getAsDouble();
 			return fp ? new DoubleConstant(r) : ExpressionFeatures.getInstance().e((long) r);
 		}

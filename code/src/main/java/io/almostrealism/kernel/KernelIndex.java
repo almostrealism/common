@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -65,6 +65,12 @@ public class KernelIndex extends DefaultIndex {
 		if (context == null) context = this.context;
 		if (context == null) return OptionalLong.empty();
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
+	}
+
+	/** @return  zero */
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		return OptionalLong.of(0);
 	}
 
 	@Override

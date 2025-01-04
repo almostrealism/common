@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -256,8 +256,19 @@ public abstract class Expression<T> implements
 		return OptionalLong.empty();
 	}
 
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		OptionalInt i = intValue();
+		if (i.isPresent()) return OptionalLong.of(i.getAsInt());
+
+		OptionalDouble d = doubleValue();
+		if (d.isPresent()) return OptionalLong.of((long) Math.floor(d.getAsDouble()));
+
+		return OptionalLong.empty();
+	}
+
 	public boolean isPossiblyNegative() {
-		return doubleValue().orElse(-1.0) < 0.0;
+		return lowerBound(null).orElse(-1) < 0;
 	}
 
 	public Optional<Boolean> isMultiple(Expression<?> e) {
@@ -447,29 +458,26 @@ public abstract class Expression<T> implements
 	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }
 
 	public Expression<? extends Number> multiply(int operand) {
-		return operand == 1 ? (Expression) this : (Expression) Product.of(this, new IntegerConstant(operand));
+		return operand == 1 ? (Expression) this : multiply(new IntegerConstant(operand));
 	}
 	public Expression<? extends Number> multiply(long operand) {
-		return operand == 1.0 ? (Expression) this :
-				(Expression) Product.of(this, ExpressionFeatures.getInstance().e(operand));
+		return operand == 1.0 ? (Expression) this : multiply(ExpressionFeatures.getInstance().e(operand));
 	}
 	public Expression<? extends Number> multiply(double operand) {
-		return operand == 1.0 ? (Expression) this :
-				(Expression) Product.of(this, Constant.of(operand));
+		return operand == 1.0 ? (Expression) this : multiply(Constant.of(operand));
 	}
-	public Expression<T> multiply(Expression<?> operand) {
+	public Expression<? extends Number> multiply(Expression<?> operand) {
 		return (Expression) Product.of(this, operand);
 	}
 
 	public Expression<? extends Number> divide(int operand) {
-		return operand == 1 ? (Expression) this : (Expression) Quotient.of(this, new IntegerConstant(operand));
+		return operand == 1 ? (Expression) this : divide(new IntegerConstant(operand));
 	}
 	public Expression<? extends Number> divide(long operand) {
-		return operand == 1 ? (Expression) this :
-				(Expression) Quotient.of(this, ExpressionFeatures.getInstance().e(operand));
+		return operand == 1 ? (Expression) this : divide(ExpressionFeatures.getInstance().e(operand));
 	}
 	public Expression<? extends Number> divide(double operand) {
-		return operand == 1.0 ? (Expression) this : (Expression) Quotient.of(this, Constant.of(operand));
+		return operand == 1.0 ? (Expression) this : divide(Constant.of(operand));
 	}
 	public Expression<? extends Number> divide(Expression<?> operand) {
 		return (Expression)Quotient.of(this, operand);
