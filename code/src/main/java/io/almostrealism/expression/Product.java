@@ -91,7 +91,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
+		long v = values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b);
+
+		// Some of the children may have negative upper bounds, but that does not
+		// guarantee that the resulting product will have a negative upper bound
+		return OptionalLong.of(Math.abs(v));
 	}
 
 	@Override
@@ -100,7 +104,17 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
+		long v = values.stream()
+				.map(o -> o.getAsLong())
+				.reduce(1L, (a, b) -> a * b);
+
+		if (v > 0 && getChildren().stream().anyMatch(Expression::isPossiblyNegative)) {
+			// If any of the children can be negative, the resulting product could
+			// be negative, so a more conservative lower bound should be negative
+			return OptionalLong.of(-v);
+		}
+
+		return OptionalLong.of(v);
 	}
 
 	@Override

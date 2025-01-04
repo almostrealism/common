@@ -82,18 +82,25 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		if (l.isPresent()) {
 			OptionalLong r = getChildren().get(1).longValue();
+			boolean ceil = isFP();
 
-			if (r.isPresent()) {
-				if (isFP()) {
-					return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
-				} else {
-					return OptionalLong.of(l.getAsLong() / r.getAsLong());
-				}
+			if (!r.isPresent()) {
+				r = getChildren().get(1).lowerBound(context);
+				ceil = true;
 			}
 
-			r = getChildren().get(1).upperBound(context);
 			if (r.isPresent()) {
-				return OptionalLong.of((long) Math.ceil(l.getAsLong() / (double) r.getAsLong()));
+				long v;
+
+				if (ceil) {
+					v = (long) Math.ceil(l.getAsLong() / (double) r.getAsLong());
+				} else {
+					v = l.getAsLong() / r.getAsLong();
+				}
+
+				// Some of the children may have negative bounds, but that does not
+				// guarantee that the resulting quotient will have a negative upper bound
+				return OptionalLong.of(Math.abs(v));
 			}
 		}
 
@@ -109,18 +116,32 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		if (l.isPresent()) {
 			OptionalLong r = getChildren().get(1).longValue();
-
-			if (r.isPresent()) {
-				if (isFP()) {
-					return OptionalLong.of((long) Math.floor(l.getAsLong() / (double) r.getAsLong()));
-				} else {
-					return OptionalLong.of(l.getAsLong() / r.getAsLong());
-				}
+			boolean floor = isFP();
+			if (!r.isPresent()) {
+				r = getChildren().get(1).upperBound(context);
 			}
 
-			r = getChildren().get(1).upperBound(context);
 			if (r.isPresent()) {
-				return OptionalLong.of((long) Math.floor(l.getAsLong() / (double) r.getAsLong()));
+				long v;
+
+				if (floor) {
+					v = (long) Math.floor(l.getAsLong() / (double) r.getAsLong());
+				} else {
+					v = l.getAsLong() / r.getAsLong();
+				}
+
+				if (getChildren().stream().anyMatch(Expression::isPossiblyNegative)) {
+					// If any of the children can be negative, the resulting quotient could be
+					// negative, so a more conservative lower bound should be negative
+					return OptionalLong.of(-Math.abs(v));
+				} else {
+					if (v < 0) {
+						// The result should never be negative if none of the children can be negative
+						throw new UnsupportedOperationException();
+					}
+
+					return OptionalLong.of(Math.abs(v));
+				}
 			}
 		}
 
