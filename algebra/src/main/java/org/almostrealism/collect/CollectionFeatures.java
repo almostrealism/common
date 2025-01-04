@@ -103,6 +103,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableScalarMatrixDetection = true;
 
 	// Should be flipped and removed
+	boolean enableExponentComputation = false;
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 
@@ -881,10 +882,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
-		return compute((shape, args) ->
-						new CollectionExponentComputation<>(shape, args.get(0), args.get(1)),
-				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
-				null, base, exp);
+		if (enableExponentComputation) {
+			return compute((shape, args) ->
+							new CollectionExponentComputation<>(shape, args.get(0), args.get(1)),
+					args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
+					null, base, exp);
+		} else {
+			return compute("pow", shape -> (args) ->
+							CollectionExpression.create(shape, index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(List<String> args) -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
+					null, base, exp);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
