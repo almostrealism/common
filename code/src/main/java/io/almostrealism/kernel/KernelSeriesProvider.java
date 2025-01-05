@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,10 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.io.TimingMetric;
 
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -108,10 +105,10 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		} finally {
 			if (ScopeSettings.timing != null) {
 				boolean isPos = result != null;
+				String stage = "kernelSeries [" + exp.treeDepth() +
+						"/" + exp.countNodes() + ", " + isPos + "]";
 				ScopeSettings.timing.recordDuration(getMetadata(),
-						"kernelSeries [" + exp.treeDepth() +
-								"/" + exp.countNodes() + ", " + isPos + "]",
-						System.nanoTime() - start);
+						stage, System.nanoTime() - start);
 			}
 		}
 

@@ -64,7 +64,9 @@ public class ScopeSettings {
 		String sd = "1.0";
 		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", sd);
 
-		if (simplify.equalsIgnoreCase("tiered")) {
+		if (simplify.equalsIgnoreCase("disabled")) {
+			simplification = SimplificationSettings.none();
+		} else if (simplify.equalsIgnoreCase("tiered")) {
 			simplification = new TieredSimplificationSettings();
 		} else {
 			if (!Objects.equals(sd, simplify))

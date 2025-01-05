@@ -23,4 +23,18 @@ public interface SimplificationSettings {
 	boolean isSeriesSimplificationTarget(Expression<?> expression, int depth);
 
 	String shortDesc();
+
+	static SimplificationSettings none() {
+		return new SimplificationSettings() {
+			@Override
+			public boolean isSeriesSimplificationTarget(Expression<?> expression, int depth) {
+				return false;
+			}
+
+			@Override
+			public String shortDesc() {
+				return "none";
+			}
+		};
+	}
 }

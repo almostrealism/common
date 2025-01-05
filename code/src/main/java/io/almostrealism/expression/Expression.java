@@ -452,7 +452,7 @@ public abstract class Expression<T> implements
 
 	public Expression minus() { return Minus.of(this); }
 
-	public Expression<? extends Number> add(int operand) { return Sum.of(this, new IntegerConstant(operand)); }
+	public Expression<? extends Number> add(int operand) { return add(new IntegerConstant(operand)); }
 	public Expression<? extends Number> add(Expression<?> operand) { return Sum.of(this, operand); }
 	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
 	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }

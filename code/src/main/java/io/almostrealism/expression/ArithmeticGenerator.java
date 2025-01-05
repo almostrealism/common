@@ -56,6 +56,21 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	}
 
 	@Override
+	public Expression<? extends Number> add(Expression<?> operand) {
+		if (operand instanceof ArithmeticGenerator) {
+			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operand;
+
+			if (Objects.equals(getIndex(), ag.getIndex()) &&
+					getGranularity() == ag.getGranularity() &&
+					getMod() == ag.getMod()) {
+				return new ArithmeticGenerator<>(getIndex(), getScale() + ag.getScale(), getGranularity(), getMod());
+			}
+		}
+
+		return new Sum(List.of(this, operand));
+	}
+
+	@Override
 	public Expression<? extends Number> multiply(Expression<?> operand) {
 		OptionalLong d = operand.longValue();
 

@@ -654,6 +654,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 
 	@Test
 	public void kernelSumMod10() {
+		// (((kernel0 % 1024) / 256) * 256) + (((kernel0 % 256) / 16) * 16) + -17408
+		KernelIndex kernel = kernel();
+		Expression<?> e = Sum.of(
+						kernel.imod(1024).divide(256).multiply(256),
+						kernel.imod(256).divide(16).multiply(16),
+						e(-17408));
+		log(e.getExpression(lang));
+		Assert.assertEquals("(((kernel0 % 1024) / 16) * 16) + -17408", e.getExpression(lang));
+	}
+
+	@Test
+	public void kernelSumMod11() {
 		DefaultKernelStructureContext ctx = new DefaultKernelStructureContext(1183744);
 		KernelIndex kernel = kernel(ctx);
 		Expression<?> e = kernel.divide(1024)

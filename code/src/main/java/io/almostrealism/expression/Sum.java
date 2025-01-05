@@ -45,6 +45,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableConstantExtraction = true;
 	public static boolean enableCoefficientExtraction = true;
 	public static boolean enableModDetection = true;
+	public static boolean enableSort = true;
 
 	public static boolean enableFlattenRepeatedSumAlways = false;
 	public static boolean enableFlattenRepeatedSumConstants = true;
@@ -202,6 +203,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
+		if (enableSort)
+			children = children.stream().sorted(depthOrder()).collect(Collectors.toList());
+
 		if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 
 		if (context.getTraversalProvider() != null &&
@@ -265,8 +269,14 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	protected static <T> Expression<T> checkRepeated(Expression<?>... values) {
 		if (values.length != 2) return null;
 
-		if (enableFlattenRepeatedSumAlways ||
-				(enableFlattenRepeatedSumConstants && values[1].longValue().isPresent())) {
+		boolean allowed = enableFlattenRepeatedSumAlways;
+		if (!allowed && enableFlattenRepeatedSumConstants) {
+			allowed = values[1].longValue().isPresent() ||
+					(values[0].getChildren().size() == 2 &&
+							values[0].getChildren().get(1).longValue().isPresent());
+		}
+
+		if (allowed) {
 			List<Expression<?>> args = new ArrayList<>();
 			boolean containsSum = false;
 
@@ -291,9 +301,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	protected static <T> Expression<T> create(Expression<?>... values) {
-		if (values.length == 2 &&
+		if (values.length >= 2 &&
 				values[0] instanceof ArithmeticGenerator &&
 				values[1] instanceof ArithmeticGenerator) {
+			// TODO  Move this to ArithmeticGenerator
 			ArithmeticGenerator a = (ArithmeticGenerator) values[0];
 			ArithmeticGenerator b = (ArithmeticGenerator) values[1];
 
@@ -302,10 +313,19 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 					b.getMod() == a.getScale() &&
 					a.getScale() == a.getGranularity() &&
 					b.getScale() == b.getGranularity()) {
-				return a.getIndex().imod(a.getMod())
+				List<Expression<?>> operands = new ArrayList<>();
+				operands.add(a.getIndex().imod(a.getMod())
 						.divide(b.getGranularity())
-						.multiply(b.getScale());
+						.multiply(b.getScale()));
+				Stream.of(values).skip(2).forEach(operands::add);
+				return Sum.of(operands.toArray(new Expression[0]));
 			}
+		}
+
+		if (values.length == 2 && values[0] instanceof ArithmeticGenerator) {
+			return (Expression) values[0].add(values[1]);
+		} else if (values.length == 2 && values[1] instanceof ArithmeticGenerator) {
+			return (Expression) values[1].add(values[0]);
 		}
 
 		Expression<T> repeated = checkRepeated(values);
@@ -425,7 +445,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
-		return operands.size() == 1 ? (Expression) operands.get(0) : (Expression) new Sum(operands);
+		if (operands.size() == 1) return (Expression) operands.get(0);
+
+		if (enableSort) {
+			return (Expression) new Sum(operands.stream().sorted(depthOrder()).collect(Collectors.toList()));
+		} else {
+			return (Expression) new Sum(operands);
+		}
 	}
 
 	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {
