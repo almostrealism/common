@@ -101,6 +101,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableTraversableRepeated = true;
 	boolean enableQuotientExpression = true;
 	boolean enableScalarMatrixDetection = true;
+	boolean enableGradientMultiplyEach = true;
 
 	// Should be flipped and removed
 	boolean enableExponentComputation = false;
@@ -1133,6 +1134,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 																		   Producer<T> trueValue, Producer<T> falseValue,
 																		   boolean includeEqual) {
 		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> combineGradient(
+			CollectionProducer<T> func,
+			Producer<T> input, Producer<T> gradient) {
+		int inSize = shape(input).getTotalSize();
+		int outSize = shape(gradient).getTotalSize();
+		return multiplyGradient(func.delta(input).reshape(outSize, inSize)
+				.traverse(1), gradient, inSize)
+				.traverse(0)
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(inSize))
+				.each();
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> multiplyGradient(
+			CollectionProducer<T> p, Producer<T> gradient, int inSize) {
+		int outSize = shape(gradient).getTotalSize();
+
+		if (enableGradientMultiplyEach) {
+			return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize));
+		} else {
+			return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize).traverse(1));
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation) {

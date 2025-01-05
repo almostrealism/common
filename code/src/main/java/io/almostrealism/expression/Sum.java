@@ -304,19 +304,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		if (values.length >= 2 &&
 				values[0] instanceof ArithmeticGenerator &&
 				values[1] instanceof ArithmeticGenerator) {
-			// TODO  Move this to ArithmeticGenerator
 			ArithmeticGenerator a = (ArithmeticGenerator) values[0];
 			ArithmeticGenerator b = (ArithmeticGenerator) values[1];
 
-			if (Objects.equals(a.getIndex(), b.getIndex()) &&
-					a.getMod() % b.getMod() == 0 &&
-					b.getMod() == a.getScale() &&
-					a.getScale() == a.getGranularity() &&
-					b.getScale() == b.getGranularity()) {
+			Expression<?> r = a.add(b);
+			if (!(r instanceof Sum)) {
 				List<Expression<?>> operands = new ArrayList<>();
-				operands.add(a.getIndex().imod(a.getMod())
-						.divide(b.getGranularity())
-						.multiply(b.getScale()));
+				operands.add(r);
 				Stream.of(values).skip(2).forEach(operands::add);
 				return Sum.of(operands.toArray(new Expression[0]));
 			}

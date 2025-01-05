@@ -23,9 +23,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -48,7 +50,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	public void convSingleChannel(int h, int w, int convSize, int filterCount) {
 		TraversalPolicy inputShape = shape(h, w);
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, filterCount, convSize, false);
+		CellularLayer conv = (CellularLayer) convolution2d(inputShape, filterCount, convSize, false);
 
 		model.add(conv);
 
@@ -87,7 +89,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);
 
-		CellularLayer conv = convolution2d(inputShape, filterCount, convSize, false);
+		CellularLayer conv = (CellularLayer) convolution2d(inputShape, filterCount, convSize, false);
 		model.add(conv);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape).randFill();
@@ -107,12 +109,12 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 	@Test
 	public void convBackwardsSmallAtom() throws IOException {
-		convBackwards("convBackwardsSmallAtom", 1, 3, 4, 4, 1, 3,0, true);
+		convBackwards("convBackwardsSmallAtom", 1, 3, 4, 4, 1, 3, 0, true);
 	}
 
 	@Test
 	public void convBackwardsMediumAtom() throws IOException {
-		convBackwards("convBackwardsMediumAtom", 1, 28, 28, 28, 1, 28,0, true);
+		convBackwards("convBackwardsMediumAtom", 1, 28, 28, 28, 1, 28, 0, true);
 	}
 
 	@Test
@@ -129,20 +131,19 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 	@Test
 	public void convBackwardsSmallPadded() throws IOException {
-		convBackwards("convBackwardsSmallPadded", 1, 3, 4, 4, 2, 3,1, true);
+		convBackwards("convBackwardsSmallPadded", 1, 3, 4, 4, 2, 3, 1, true);
 	}
 
 	@Test
 	public void convBackwardsMedium() throws IOException {
-		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28,0, true);
+		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28, 0, true);
 	}
 
 	@Test
 	public void convBackwardsMediumPadded() throws IOException {
 		if (skipKnownIssues) return;
 
-		// convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28,1, true);
-		convBackwards("convBackwardsMediumPadded", 1, 4, 16, 16, 2, 4,1, true);
+		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28, 1, true);
 	}
 
 	public void convBackwards(String name, int n, int c, int h, int w, int convSize,
@@ -150,7 +151,9 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);
 
-		CellularLayer conv = convolution2d(c, filterCount, convSize, padding, bias).apply(inputShape);
+		Block conv = convolution2d(c, filterCount, convSize, padding, bias).apply(inputShape);
+		CellularLayer layer = conv instanceof SequentialBlock ?
+				(CellularLayer) ((SequentialBlock) conv).getBlocks().get(1) : (CellularLayer) conv;
 		model.add(conv);
 
 		OperationProfileNode profile = new OperationProfileNode(name);
@@ -162,7 +165,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 			CompiledModel compiled = model.compile(profile);
 			profile(profile, () -> compiled.backward(gradient));
 
-			PackedCollection<?> filter = conv.getWeights().get(0);
+			PackedCollection<?> filter = layer.getWeights().get(0);
 			TraversalPolicy filterShape = filter.getShape();
 			Assert.assertEquals(filterCount, filterShape.length(0));
 			Assert.assertEquals(c, filterShape.length(1));

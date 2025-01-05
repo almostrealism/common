@@ -60,10 +60,13 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 		if (operand instanceof ArithmeticGenerator) {
 			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operand;
 
-			if (Objects.equals(getIndex(), ag.getIndex()) &&
-					getGranularity() == ag.getGranularity() &&
-					getMod() == ag.getMod()) {
-				return new ArithmeticGenerator<>(getIndex(), getScale() + ag.getScale(), getGranularity(), getMod());
+			if (Objects.equals(getIndex(), ag.getIndex())) {
+				if (getGranularity() == ag.getGranularity() && getMod() == ag.getMod()) {
+					return new ArithmeticGenerator<>(getIndex(), getScale() + ag.getScale(), getGranularity(), getMod());
+				} else if (getMod() % ag.getMod() == 0 && ag.getMod() == getScale() &&
+						getScale() == getGranularity() && ag.getScale() == ag.getGranularity()) {
+					return new ArithmeticGenerator<>(getIndex(), ag.getScale(), ag.getGranularity(), getMod());
+				}
 			}
 		}
 

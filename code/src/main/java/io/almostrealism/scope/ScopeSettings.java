@@ -39,7 +39,7 @@ public class ScopeSettings {
 	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
-	public static int maxDepth = 1024;
+	public static int maxDepth = 512;
 	public static int maxNodeCount = 1 << 23;
 
 	public static boolean enableExpressionWarnings =
@@ -61,15 +61,16 @@ public class ScopeSettings {
 	private static CachingSettings caching;
 
 	static {
-		String sd = "1.0";
-		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", sd);
+		String defaultSimplify = "1.0";
+		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "enabled");
+		simplify = "enabled".equalsIgnoreCase(simplify) ? defaultSimplify : simplify;
 
 		if (simplify.equalsIgnoreCase("disabled")) {
 			simplification = SimplificationSettings.none();
 		} else if (simplify.equalsIgnoreCase("tiered")) {
 			simplification = new TieredSimplificationSettings();
 		} else {
-			if (!Objects.equals(sd, simplify))
+			if (!Objects.equals(defaultSimplify, simplify))
 				System.out.println("SpectrumSimplification[" + simplify + "]");
 
 			simplification = new SpectrumSimplification(Double.parseDouble(simplify));

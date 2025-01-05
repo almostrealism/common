@@ -27,7 +27,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
-import org.almostrealism.gradient.GradientFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
@@ -36,7 +35,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.function.Supplier;
 
-public class RepeatedDeltaComputationTests implements GradientFeatures, TestFeatures {
+public class RepeatedDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void repeatProduct() {

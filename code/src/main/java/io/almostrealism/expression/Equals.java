@@ -16,10 +16,12 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
@@ -28,6 +30,7 @@ import java.util.OptionalLong;
 
 public class Equals extends Comparison {
 	public static boolean enableBoundedComparison = true;
+	public static boolean enableConsolidateConstants = true;
 	public static boolean enableExpandQuotient = false;
 
 	protected Equals(Expression<?> left, Expression<?> right) {
@@ -125,7 +128,50 @@ public class Equals extends Comparison {
 			}
 		}
 
+		if (enableConsolidateConstants) {
+			List<Expression<?>> lTerms = extractTerms(left);
+			List<Expression<?>> rTerms = extractTerms(right);
+
+			List<Expression<?>> terms = new ArrayList<>();
+			long constant = 0;
+
+			for (Expression<?> term : lTerms) {
+				OptionalLong v = term.longValue();
+
+				if (v.isPresent()) {
+					// Move constants to the right
+					constant -= term.longValue().getAsLong();
+				} else {
+					// Keep non-constants on the left
+					terms.add(term);
+				}
+			}
+
+			for (Expression<?> term : rTerms) {
+				OptionalLong v = term.longValue();
+
+				if (v.isPresent()) {
+					// Keep constants on the right
+					constant += term.longValue().getAsLong();
+				} else {
+					// Move non-constants to the left
+					terms.add(term.minus());
+				}
+			}
+
+			return new Equals(Sum.of(terms.toArray(Expression[]::new)),
+							ExpressionFeatures.getInstance().e(constant));
+		}
+
 		return new Equals(left, right);
+	}
+
+	protected static List<Expression<?>> extractTerms(Expression<?> exp) {
+		if (exp instanceof Sum) {
+			return ((Sum) exp).getChildren();
+		} else {
+			return List.of(exp);
+		}
 	}
 
 	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {

@@ -251,11 +251,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return variance(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> variance() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> variance() {
 		return variance((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sigmoid() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sigmoid() {
 		return sigmoid((Producer) this);
 	}
 
@@ -268,6 +268,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		if (delta != null) return delta;
 
 		throw new UnsupportedOperationException();
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> grad(Producer<?> target, Producer<T> gradient) {
+		return combineGradient((CollectionProducer) this, (Producer) target, (Producer) gradient);
 	}
 
 	default MultiTermDeltaStrategy getDeltaStrategy() {

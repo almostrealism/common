@@ -41,6 +41,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
+import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -292,16 +293,26 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		return new DefaultBlock(inputShape, subsetShape,
-				Cell.of((in, next) -> next.push(subset(subsetShape, in, pos))),
-				Cell.of((in, next) -> next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
+				Cell.of((in, next) ->
+						next.push(subset(subsetShape, in, pos))),
+				Cell.of((in, next) ->
+						next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+	default Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape, int... pos) {
+			return new DefaultBlock(inputShape, paddedShape,
+				Cell.of((in, next) ->
+						next.push(pad(paddedShape, in, pos))),
+				Cell.of((in, next) ->
+						next.push(subset(inputShape, in, pos))));
+	}
+
+	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
 		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
@@ -318,25 +329,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return shape -> convolution2d(shape, filterCount, size, padding, bias, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
+	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
 		return convolution2d(filterCount, size, 0, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
+	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
 		return shape -> convolution2d(shape, filterCount, size, padding, true, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, true, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, boolean bias, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, bias, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, int padding,
 										boolean bias, ComputeRequirement... requirements) {
 		inputShape = padDimensions(inputShape, 2, 4);
@@ -368,16 +379,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		if (enableWeightedSum && WeightedSumExpression.enableCollectionExpression) {
 			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in;
-
-				if (padding > 0) {
-					in = c(input)
-							.reshape(-1, channels, h, w)
-							.pad(0, 0, padding, padding);
-				} else {
-					in = c(input);
-				}
-
+				CollectionProducer<PackedCollection<?>> in = c(input);
 				CollectionProducer<PackedCollection<?>> conv =
 						in.reshape(-1, 1, channels, height, width);
 				CollectionProducer<PackedCollection<?>> filter =
@@ -413,16 +415,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			};
 		} else {
 			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in;
-
-				if (padding > 0) {
-					in = c(input)
-							.reshape(-1, channels, h, w)
-							.pad(0, 0, padding, padding);
-				} else {
-					in = c(input);
-				}
-
+				CollectionProducer<PackedCollection<?>> in = c(input);
 				CollectionProducer<PackedCollection<?>> conv =
 						in.reshape(-1, channels, height * width)
 								.traverse(1).enumerate(2, 1)
@@ -470,9 +463,19 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
 		}
 
-		return layer("convolution2d", inputShape, outputShape, operator,
+		TraversalPolicy convInputShape = shape(batch, channels, height, width);
+		CellularLayer layer = layer("convolution2d", convInputShape, outputShape, operator,
 				biases == null ? List.of(filters) : List.of(filters, biases),
 				setup, requirements);
+
+		if (padding > 0) {
+			SequentialBlock block = new SequentialBlock(inputShape);
+			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
+			block.add(layer);
+			return block;
+		} else {
+			return layer;
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {

@@ -735,6 +735,19 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelConditionalSum4() {
+		// ((((kernel0 % 295936) / 17408) * 18) + ((kernel0 % 17408) / 1024) + 1) == 18
+		DefaultKernelStructureContext ctx = new DefaultKernelStructureContext(1183744);
+		KernelIndex kernel = kernel(ctx);
+		Expression<?> e = kernel.imod(295936).divide(17408).multiply(18)
+				.add(kernel.imod(17408).divide(1024))
+				.add(1).eq(18);
+		log(e.getExpression(lang));
+
+		Assert.assertEquals("((((kernel0 % 295936) / 17408) * 18) + ((kernel0 % 17408) / 1024)) == 17", e.getExpression(lang));
+	}
+
+	@Test
 	public void redundantQuotientProduct1() {
 		// ((((((kernel0 % 20) / 5) * 5) + 1) / 5) * 5) % 20
 		Expression e = kernel().withLimit(400)
