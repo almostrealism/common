@@ -95,10 +95,6 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy deltaShape = shape.append(targetShape);
 
-		// Using the parent implementation of attemptDelta may unnecessarily apply the chain rule
-		CollectionProducer<T> result = MatrixFeatures.getInstance().attemptDelta((Producer) in, target);
-		if (result != null) return result;
-
 		if (!(in instanceof CollectionProducer)) {
 			throw new UnsupportedOperationException();
 		}
@@ -108,6 +104,6 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			position = position.appendDimension(0);
 		}
 
-		return new PackedCollectionPad<>(deltaShape, position, ((CollectionProducer) in).delta(target));
+		return new PackedCollectionPad<>(deltaShape, position, delta((Producer) in, target));
 	}
 }

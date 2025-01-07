@@ -40,8 +40,10 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableKernelLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
-	public static boolean enableInstructionSetMonitoring = false;
-	public static boolean enableLargeInstructionSetMonitoring = false;
+	public static boolean enableInstructionSetMonitoring =
+			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("always");
+	public static boolean enableLargeInstructionSetMonitoring =
+			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("enabled");
 
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;

@@ -34,7 +34,6 @@ import java.util.function.Supplier;
 
 public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableExpressionComputation<T> {
-	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
@@ -76,11 +75,6 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return expression.apply(args);
-	}
-
-	@Override
-	public boolean isChainRuleSupported() {
-		return enableChainRule || super.isChainRuleSupported();
 	}
 
 	@Override

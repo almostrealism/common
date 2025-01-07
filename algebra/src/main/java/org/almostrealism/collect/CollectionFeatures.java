@@ -50,6 +50,7 @@ import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.util.DescribableParent;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
@@ -1134,6 +1135,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 																		   Producer<T> trueValue, Producer<T> falseValue,
 																		   boolean includeEqual) {
 		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
+	}
+
+	default <T extends Shape<?>> CollectionProducer<T> delta(Producer<T> producer, Producer<?> target) {
+		CollectionProducer<T> result = MatrixFeatures.getInstance().attemptDelta(producer, target);
+		if (result != null) return result;
+
+		return (CollectionProducer) c(producer).delta(target);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> combineGradient(
