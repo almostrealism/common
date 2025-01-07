@@ -73,22 +73,11 @@ public interface DeltaFeatures extends MatrixFeatures {
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
-		if (producer instanceof DeltaAlternate) {
-			CollectionProducer<T> alt = ((DeltaAlternate) producer).getDeltaAlternate();
-			if (alt != null) return alt.delta(target);
-		}
+		CollectionProducer<T> result = MatrixFeatures.super.attemptDelta(producer, target);
+		if (result != null) return result;
 
-		TraversalPolicy shape = producer.getShape();
+		TraversalPolicy shape = shape(producer);
 		TraversalPolicy targetShape = shape(target);
-
-		if (AlgebraFeatures.cannotMatch(producer, target)) {
-			return (CollectionProducer)
-					zeros(shape.append(targetShape));
-		} else if (AlgebraFeatures.match(producer, target)) {
-			return (CollectionProducer)
-						identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-								.reshape(shape.append(targetShape));
-		}
 
 		if (isChainRuleSupported()) {
 			if (!producer.isFixedCount()) {

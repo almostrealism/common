@@ -102,9 +102,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableQuotientExpression = true;
 	boolean enableScalarMatrixDetection = true;
 	boolean enableGradientMultiplyEach = true;
+	boolean enableExponentComputation = true;
 
 	// Should be flipped and removed
-	boolean enableExponentComputation = false;
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 
@@ -885,7 +885,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
 		if (enableExponentComputation) {
 			return compute((shape, args) ->
-							new CollectionExponentComputation<>(shape, args.get(0), args.get(1)),
+							new CollectionExponentComputation<>(largestTotalSize(args), args.get(0), args.get(1)),
 					args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
 					null, base, exp);
 		} else {

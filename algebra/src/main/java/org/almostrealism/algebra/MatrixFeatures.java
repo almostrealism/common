@@ -17,12 +17,14 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
 import org.almostrealism.algebra.computations.IdentityMatrixComputation;
+import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -161,6 +163,29 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				.reshape(p, m, n).sum(2)
 				.enumerate(1, 1)
 				.reshape(m, p);
+	}
+
+
+	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(Producer<T> producer,
+																	Producer<?> target) {
+		if (producer instanceof DeltaAlternate) {
+			CollectionProducer<T> alt = ((DeltaAlternate) producer).getDeltaAlternate();
+			if (alt != null) return alt.delta(target);
+		}
+
+		TraversalPolicy shape = shape(producer);
+		TraversalPolicy targetShape = shape(target);
+
+		if (AlgebraFeatures.cannotMatch(producer, target)) {
+			return (CollectionProducer)
+					zeros(shape.append(targetShape));
+		} else if (AlgebraFeatures.match(producer, target)) {
+			return (CollectionProducer)
+					identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
+							.reshape(shape.append(targetShape));
+		}
+
+		return null;
 	}
 
 	static MatrixFeatures getInstance() {

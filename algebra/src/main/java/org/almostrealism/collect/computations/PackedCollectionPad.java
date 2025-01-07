@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -95,9 +95,9 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy deltaShape = shape.append(targetShape);
 
-		if (AlgebraFeatures.cannotMatch(in, target)) {
-			return zeros(deltaShape);
-		}
+		// Using the parent implementation of attemptDelta may unnecessarily apply the chain rule
+		CollectionProducer<T> result = MatrixFeatures.getInstance().attemptDelta((Producer) in, target);
+		if (result != null) return result;
 
 		if (!(in instanceof CollectionProducer)) {
 			throw new UnsupportedOperationException();

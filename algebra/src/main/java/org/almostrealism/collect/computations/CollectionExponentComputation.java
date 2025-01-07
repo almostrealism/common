@@ -63,8 +63,8 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		return (CollectionProductComputation<T>) new CollectionProductComputation(getName(), getShape(),
-				children.stream().skip(1).toArray(Supplier[]::new))
+		return new CollectionExponentComputation<>(getName(), getShape(),
+				(Supplier) children.get(1), (Supplier) children.get(2))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
