@@ -16,6 +16,9 @@
 
 package org.almostrealism.io;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.OptionalInt;
 
@@ -71,6 +74,57 @@ public class SystemUtils {
 			return Optional.of(false);
 		} else {
 			return Optional.empty();
+		}
+	}
+
+	public static String getHome() {
+		return System.getProperty("user.home");
+	}
+
+	public static Optional<String> getMacApp() {
+		if (!isMacOS()) return Optional.empty();
+		return Optional.ofNullable(getProperty("AR_MAC_APP"));
+	}
+
+	public static String getLocalDestination(String file) {
+		return getLocalDestination().resolve(file).toString();
+	}
+
+	public static Path getLocalDestination() {
+		return getMacApp().map(SystemUtils::getAppSupportPath)
+				.orElse(Path.of("."));
+	}
+
+	public static Path getExtensionsPath() {
+		if (!isMacOS()) return null;
+
+		return getMacApp().map(SystemUtils::getCachesPath)
+				.map(p -> p.resolve("Extensions"))
+				.orElse(Path.of(getHome())
+						.resolve("Library")
+						.resolve("Java")
+						.resolve("Extensions"));
+	}
+
+	public static Path getAppSupportPath(String appName) {
+		Path path = Paths.get(getHome(), "Library", "Application Support", appName);
+		ensureDirectoryExists(path);
+		return path;
+	}
+
+	public static Path getCachesPath(String appName) {
+		Path path = Paths.get(getHome(), "Library", "Caches", appName);
+		ensureDirectoryExists(path);
+		return path;
+	}
+
+	private static void ensureDirectoryExists(Path path) {
+		try {
+			if (!Files.exists(path)) {
+				Files.createDirectories(path);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to create directory: " + path, e);
 		}
 	}
 }
