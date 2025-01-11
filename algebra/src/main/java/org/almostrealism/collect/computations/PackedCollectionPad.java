@@ -95,10 +95,6 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy deltaShape = shape.append(targetShape);
 
-		if (!(in instanceof CollectionProducer)) {
-			throw new UnsupportedOperationException();
-		}
-
 		TraversalPolicy position = this.position;
 		while (position.getDimensions() < deltaShape.getDimensions()) {
 			position = position.appendDimension(0);

@@ -44,6 +44,9 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("always");
 	public static boolean enableLargeInstructionSetMonitoring =
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("enabled");
+	public static boolean enableFailedInstructionSetMonitoring =
+			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
+					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
 
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;

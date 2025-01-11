@@ -49,11 +49,8 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 
 	@Override
 	public boolean isDiagonal(int width) {
-		if (getChildren().stream().skip(1)
-				.allMatch(p -> Algebraic.isDiagonal(width, p)))
-			return true;
-
-		return super.isDiagonal(width);
+		return isIdentity(width) || getChildren().stream().skip(1)
+				.allMatch(p -> Algebraic.isDiagonal(width, p));
 	}
 
 	@Override
