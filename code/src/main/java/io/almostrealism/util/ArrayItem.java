@@ -136,7 +136,7 @@ public class ArrayItem<T> implements Sequence<T> {
 		return values;
 	}
 
-	public int getMod() { return mod; }
+	public long getMod() { return mod; }
 
 	@Override
 	public long lengthLong() { return len; }

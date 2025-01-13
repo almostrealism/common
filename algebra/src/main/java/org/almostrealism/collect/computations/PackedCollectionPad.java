@@ -24,8 +24,8 @@ import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
@@ -83,8 +83,8 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	}
 
 	@Override
-	public PackedCollectionPad<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionPad<>(getShape(), position, (Producer<?>) children.get(1));
+	public CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return pad(getShape(), position, (Producer<?>) children.get(1));
 	}
 
 	@Override
@@ -100,6 +100,6 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			position = position.appendDimension(0);
 		}
 
-		return new PackedCollectionPad<>(deltaShape, position, delta((Producer) in, target));
+		return pad(deltaShape, position, delta((Producer) in, target));
 	}
 }

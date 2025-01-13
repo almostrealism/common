@@ -288,7 +288,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c(p(value));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducer<V> zeros(TraversalPolicy shape) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> zeros(TraversalPolicy shape) {
 		return new DefaultTraversableExpressionComputation<>("zeros", shape,
 					ExpressionFeatures.getInstance().constantZero(shape)) {
 			@Override
@@ -630,6 +630,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
 																				 TraversalPolicy position,
 																				 Producer<?> collection) {
+		if (Algebraic.isZero(collection)) {
+			return zeros(shape);
+		}
+
 		return new PackedCollectionPad<>(shape, position, collection);
 	}
 
