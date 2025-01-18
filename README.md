@@ -104,7 +104,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.65</version>
+            <version>0.66</version>
         </dependency>
 
 ### Enabling Your Application

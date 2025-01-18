@@ -175,6 +175,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return 1;
 		} else if (depth > dims.length) {
 			throw new IllegalArgumentException("Depth is greater than the number of dimensions");
+		} else if (dims[depth] == 0) {
+			return 0;
 		} else {
 			long s = sizeLong(depth + 1, input);
 			if (s <= 0) {
