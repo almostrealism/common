@@ -25,11 +25,11 @@ import java.util.function.BiFunction;
 import io.almostrealism.code.Memory;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.algebra.Defaults;
 import org.almostrealism.hardware.NoOpMemoryData;
 
 /**
@@ -444,9 +444,9 @@ public class RGB extends PackedCollection<RGB> implements Externalizable, Clonea
 	 * @return  A String representation of this RGB object.
 	 */
 	public String toString() {
-		String value = "[" + Defaults.displayFormat.format(this.getRed())  +
-						", " + Defaults.displayFormat.format(this.getGreen()) +
-						", " + Defaults.displayFormat.format(this.getBlue()) + "]";
+		String value = "[" + NumberFormats.formatNumber(this.getRed())  +
+						", " + NumberFormats.formatNumber(this.getGreen()) +
+						", " + NumberFormats.formatNumber(this.getBlue()) + "]";
 		
 		return value;
 	}

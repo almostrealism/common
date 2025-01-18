@@ -146,7 +146,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			metadata = new OperationMetadata("Unknown", null);
 		}
 
-		metadata.setChildren(getChildren().stream().map(Scope::getMetadata).collect(Collectors.toList()));
+		// It might be useful for the metadata to include the children of this Scope,
+		// but this will hide the children of the operation which produced the Scope
+		// metadata.setChildren(getChildren().stream().map(Scope::getMetadata).collect(Collectors.toList()));
 		return metadata;
 	}
 

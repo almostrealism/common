@@ -20,12 +20,14 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.io.Describable;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 public class DelegatedProducer<T> implements
 		Process<Process<?, ?>, Evaluable<? extends T>>,
@@ -33,6 +35,7 @@ public class DelegatedProducer<T> implements
 		OperationInfo {
 	protected Producer<T> op;
 	protected boolean direct;
+	protected OperationMetadata metadata;
 
 	public DelegatedProducer(Producer<T> op) {
 		this(op, true);
@@ -41,16 +44,36 @@ public class DelegatedProducer<T> implements
 	public DelegatedProducer(Producer<T> op, boolean directDelegate) {
 		this.op = op;
 		this.direct = directDelegate;
+		prepareMetadata();
+	}
+
+	protected String extendDescription(String description, boolean brief) {
+		if (brief) {
+			return "delegate(" + description + ")";
+		} else {
+			return getClass().getSimpleName() + "(" + description + ")";
+		}
+	}
+
+	protected void prepareMetadata() {
+		if (op instanceof OperationInfo) {
+			OperationMetadata child = ((OperationInfo) op).getMetadata();
+			this.metadata = new OperationMetadata(
+									extendDescription(child.getDisplayName(), true),
+									extendDescription(child.getShortDescription(), false));
+			this.metadata.setChildren(List.of(child));
+		} else {
+			this.metadata = new OperationMetadata("delegate",
+									getClass().getSimpleName());
+		}
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {
-		return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
-	}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
-		return op instanceof Process ? ((Process) op).getChildren() : Collections.emptyList();
+		return op instanceof Process ? List.of((Process<?, ?>) op) : Collections.emptyList();
 	}
 
 	@Override
@@ -77,6 +100,11 @@ public class DelegatedProducer<T> implements
 
 	@Override
 	public long getOutputSize() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException();
 	}
 

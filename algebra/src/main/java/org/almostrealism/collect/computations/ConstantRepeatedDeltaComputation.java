@@ -56,7 +56,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Producer<?> target,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
-		super(deltaShape.append(targetShape), size, count, null, null, inputs);
+		super(null, deltaShape.append(targetShape), size, count, null, null, inputs);
 		this.deltaShape	= deltaShape;
 		this.targetShape = targetShape;
 		this.expression = expression;

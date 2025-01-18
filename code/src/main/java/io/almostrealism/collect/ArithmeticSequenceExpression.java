@@ -35,7 +35,7 @@ public class ArithmeticSequenceExpression extends CollectionExpressionAdapter {
 	}
 
 	public ArithmeticSequenceExpression(TraversalPolicy shape, double initial, double rate) {
-		super(shape);
+		super(null, shape);
 		this.initial = initial;
 		this.rate = rate;
 	}

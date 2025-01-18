@@ -21,9 +21,9 @@ import io.almostrealism.expression.Expression;
 import java.util.function.Function;
 
 public abstract class UniformConditionalExpression extends UniformCollectionExpression {
-	public UniformConditionalExpression(TraversalPolicy shape,
+	public UniformConditionalExpression(String name, TraversalPolicy shape,
 										Function<Expression[], Expression<?>> operation,
 										TraversableExpression... operands) {
-		super(shape, operation, operands);
+		super(name, shape, operation, operands);
 	}
 }

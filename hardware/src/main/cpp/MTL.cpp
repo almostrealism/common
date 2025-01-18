@@ -3,7 +3,16 @@
 #define MTL_PRIVATE_IMPLEMENTATION
 
 #include <string>
+#include <stdio.h>
+#include <errno.h>
 #include <jni.h>
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
@@ -213,6 +222,78 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createBuffer32
 }
 
 extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createSharedBuffer32(
+    JNIEnv* env, jclass, jlong devicePtr, jstring jFilePath, jfloatArray data, jint len) {
+
+    MTL::Device* device = reinterpret_cast<MTL::Device*>(devicePtr);
+    size_t bufferSize = len * sizeof(float);
+
+    // Check if len and bufferSize are valid
+    if (len <= 0 || bufferSize == 0) {
+        fprintf(stderr, "Invalid length: len = %d, bufferSize = %zu\n", len, bufferSize);
+        return 0;
+    }
+
+    // Convert jstring to C-style string
+    const char* filePath = env->GetStringUTFChars(jFilePath, nullptr);
+    if (!filePath) {
+        fprintf(stderr, "Failed to convert jstring to C string.\n");
+        return 0;
+    }
+
+    // Use the provided file path
+    int fd = open(filePath, O_CREAT | O_RDWR, 0666);
+    if (fd == -1) {
+        int errsv = errno;
+        fprintf(stderr, "open failed: %s\n", strerror(errsv));
+        env->ReleaseStringUTFChars(jFilePath, filePath);
+        return 0;
+    }
+
+    // Set the size of the file
+    if (ftruncate(fd, bufferSize) == -1) {
+        int errsv = errno;
+        fprintf(stderr, "ftruncate failed: %s\n", strerror(errsv));
+        close(fd);
+        env->ReleaseStringUTFChars(jFilePath, filePath);
+        return 0;
+    }
+
+    // Map the file into memory
+    void* sharedMemory = mmap(NULL, bufferSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (sharedMemory == MAP_FAILED) {
+        int errsv = errno;
+        fprintf(stderr, "mmap failed: %s\n", strerror(errsv));
+        close(fd);
+        env->ReleaseStringUTFChars(jFilePath, filePath);
+        return 0;
+    }
+
+    close(fd); // Close the file descriptor
+
+    // Write data to the shared memory
+    if (data != nullptr) {
+        jfloat* dataPtr = env->GetFloatArrayElements(data, nullptr);
+        memcpy(sharedMemory, dataPtr, bufferSize);
+        env->ReleaseFloatArrayElements(data, dataPtr, JNI_ABORT);
+    }
+
+    // Create a Metal buffer using the shared memory
+    MTL::Buffer* buffer = device->newBuffer(sharedMemory, bufferSize, MTL::ResourceStorageModeShared);
+    if (!buffer) {
+        fprintf(stderr, "Failed to create Metal buffer.\n");
+        munmap(sharedMemory, bufferSize);
+        env->ReleaseStringUTFChars(jFilePath, filePath);
+        return 0;
+    }
+
+    // Release the file path string
+    env->ReleaseStringUTFChars(jFilePath, filePath);
+
+    return reinterpret_cast<jlong>(buffer);
+}
+
+extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_getContentPointer(JNIEnv* env, jclass, jlong buffer) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();
@@ -255,11 +336,24 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_getBufferConten
 }
 
 extern "C"
-JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data,
+                                                                                        jint offset, jint length, jboolean sync) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();
     memcpy(contents + (4 * offset), env->GetDirectBufferAddress(data), (size_t) (4 * length));
     buf->didModifyRange(NS::Range(4 * offset, 4 * length));
+
+    if (sync) {
+        void* sharedMemory = reinterpret_cast<void*>(contents);
+
+        // Synchronize changes back to the file
+        if (msync(sharedMemory, length * sizeof(float), MS_SYNC) == -1) {
+            int errsv = errno;
+            fprintf(stderr, "msync failed: %s\n", strerror(errsv));
+        } else {
+            fprintf(stderr, "msync succeeded\n");
+        }
+    }
 }
 
 extern "C"

@@ -17,8 +17,16 @@
 package io.almostrealism.profile;
 
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
+
+import java.util.List;
 
 @FunctionalInterface
 public interface CompilationTimingListener {
-	void recordCompilation(OperationMetadata metadata, String code, long nanos);
+	default void recordCompilation(Scope<?> scope, String source, long nanos) {
+		recordCompilation(scope.getMetadata(), scope.getArgumentVariables(), source, nanos);
+	}
+
+	void recordCompilation(OperationMetadata metadata, List<ArrayVariable<?>> arguments, String code, long nanos);
 }

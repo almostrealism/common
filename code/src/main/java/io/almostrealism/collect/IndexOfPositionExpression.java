@@ -18,6 +18,6 @@ package io.almostrealism.collect;
 public class IndexOfPositionExpression extends UniformCollectionExpression {
 	public IndexOfPositionExpression(TraversalPolicy shape, TraversalPolicy shapeOf,
 									 TraversableExpression... operands) {
-		super(shape, shapeOf::index, operands);
+		super("index", shape, shapeOf::index, operands);
 	}
 }

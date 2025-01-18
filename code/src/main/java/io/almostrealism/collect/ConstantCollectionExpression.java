@@ -24,7 +24,7 @@ public class ConstantCollectionExpression extends CollectionExpressionAdapter {
 	private final Expression<?> value;
 
 	public ConstantCollectionExpression(TraversalPolicy shape, Expression<?> value) {
-		super(shape);
+		super(null, shape);
 		this.value = value;
 	}
 

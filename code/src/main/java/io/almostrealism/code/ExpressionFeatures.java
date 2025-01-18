@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.IdentityCollectionExpression;
 import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -126,7 +127,15 @@ public interface ExpressionFeatures {
 	}
 
 	default Expression conditional(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
-		return Conditional.of(condition, (Expression) positive, (Expression) negative);
+		return Conditional.of(condition, positive, negative);
+	}
+
+	default CollectionExpression ident(TraversalPolicy shape) {
+		if (shape.getTotalSizeLong() == 1) {
+			return new ConstantCollectionExpression(shape, new IntegerConstant(1));
+		} else {
+			return new IdentityCollectionExpression(shape);
+		}
 	}
 
 	default CollectionExpression sum(TraversalPolicy shape, Collection<? extends TraversableExpression<Double>> expressions) {
@@ -134,7 +143,7 @@ public interface ExpressionFeatures {
 	}
 
 	default CollectionExpression sum(TraversalPolicy shape, TraversableExpression... expressions) {
-		UniformCollectionExpression sum = new UniformCollectionExpression(shape, Sum::of, expressions);
+		UniformCollectionExpression sum = new UniformCollectionExpression("sum", shape, Sum::of, expressions);
 		sum.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
 		return sum;
 	}
@@ -144,7 +153,7 @@ public interface ExpressionFeatures {
 	}
 
 	default CollectionExpression difference(TraversalPolicy shape, TraversableExpression... expressions) {
-		UniformCollectionExpression difference = new UniformCollectionExpression(shape, Difference::of, expressions);
+		UniformCollectionExpression difference = new UniformCollectionExpression("difference", shape, Difference::of, expressions);
 		difference.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.EXCLUSIVE);
 		return difference;
 	}
@@ -163,41 +172,41 @@ public interface ExpressionFeatures {
 	}
 
 	default CollectionExpression quotient(TraversalPolicy shape, TraversableExpression... expressions) {
-		UniformCollectionExpression quotient = new UniformCollectionExpression(shape, Quotient::of, expressions);
+		UniformCollectionExpression quotient = new UniformCollectionExpression("quotient", shape, Quotient::of, expressions);
 		quotient.setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 		return quotient;
 	}
 
 	default CollectionExpression reciprocal(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape, args -> args[0].reciprocal(), input);
+		return new UniformCollectionExpression("reciprocal", shape, args -> args[0].reciprocal(), input);
 	}
 
 	default CollectionExpression minus(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape, args -> Minus.of(args[0]), input);
+		return new UniformCollectionExpression("minus", shape, args -> Minus.of(args[0]), input);
 	}
 
 	default CollectionExpression mod(TraversalPolicy shape, TraversableExpression in, TraversableExpression mod) {
-		return new UniformCollectionExpression(shape, Mod::of, in, mod);
+		return new UniformCollectionExpression("mod", shape, Mod::of, in, mod);
 	}
 
 	default CollectionExpression sin(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape, args -> new Sine(args[0]), input);
+		return new UniformCollectionExpression("sin", shape, args -> new Sine(args[0]), input);
 	}
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape,  args -> new Cosine(args[0]), input);
+		return new UniformCollectionExpression("cos", shape, args -> new Cosine(args[0]), input);
 	}
 
 	default CollectionExpression tan(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0]), input);
+		return new UniformCollectionExpression("tan", shape, args -> new Tangent(args[0]), input);
 	}
 
 	default CollectionExpression tanh(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape,  args -> new Tangent(args[0], true), input);
+		return new UniformCollectionExpression("tanh", shape, args -> new Tangent(args[0], true), input);
 	}
 
 	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression(shape, args -> Rectify.of(args[0]), input);
+		return new UniformCollectionExpression("rectify", shape, args -> Rectify.of(args[0]), input);
 	}
 
 	default TraversableExpression<Boolean> equals(TraversalPolicy shape,
@@ -217,7 +226,7 @@ public interface ExpressionFeatures {
 					.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
 	}
 
-	default CollectionExpression zeros(TraversalPolicy shape) {
+	default CollectionExpression constantZero(TraversalPolicy shape) {
 		return new ConstantCollectionExpression(shape, new IntegerConstant(0));
 	}
 

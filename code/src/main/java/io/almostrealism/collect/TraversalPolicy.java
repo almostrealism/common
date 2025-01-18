@@ -175,6 +175,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return 1;
 		} else if (depth > dims.length) {
 			throw new IllegalArgumentException("Depth is greater than the number of dimensions");
+		} else if (dims[depth] == 0) {
+			return 0;
 		} else {
 			long s = sizeLong(depth + 1, input);
 			if (s <= 0) {
@@ -551,7 +553,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return this + "[axis=" + getTraversalAxis() + "]";
 		}
 
-		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSize() + "]";
+		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSizeLong() + "]";
 	}
 
 	@Override
@@ -601,7 +603,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 											  boolean requireIdenticalTotalSize, BiFunction<Integer, V, V> traversalFunction,
 											  BiFunction<Integer, V, V> expandFunction,
 											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
-		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
+		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSizeLong));
 		sortedShapes.addAll(shapes);
 
 		s: for (TraversalPolicy shape : sortedShapes) {

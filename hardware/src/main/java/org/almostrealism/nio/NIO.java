@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -50,4 +51,8 @@ public class NIO {
 	}
 
 	public static native long pointerForBuffer(Buffer b);
+
+	public static native ByteBuffer mapSharedMemory(String filePath, int length);
+	public static native void syncSharedMemory(ByteBuffer buffer, int length);
+	public static native void unmapSharedMemory(ByteBuffer buffer, int length);
 }

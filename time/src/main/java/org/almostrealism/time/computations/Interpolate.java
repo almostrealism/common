@@ -90,9 +90,9 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
-		String bankl_time = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
+		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
 		String bankl_value = getArgument(1).referenceRelative(left).getSimpleExpression(getLanguage());
-		String bankr_time = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
+		String bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
 		String bankr_value = getArgument(1).referenceRelative(right).getSimpleExpression(getLanguage());
 		String cursor = getArgument(2).referenceRelative(e(0)).getSimpleExpression(getLanguage());
 
@@ -116,7 +116,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 
 		if (enableScanning) {
 			Expression i = new StaticReference(Integer.class, "i");
-			String banki = Product.of(new Exponent(rate, e(-1.0)), timeForIndex.apply(i)).getSimpleExpression(getLanguage());
+			String banki = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(i)).getSimpleExpression(getLanguage());
 
 			code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
 			code.accept("	if (" + banki + " >= " + cursor + ") {\n");

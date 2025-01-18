@@ -19,6 +19,8 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
+import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -28,7 +30,8 @@ import org.almostrealism.io.Describable;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
-public class MemoryDataDestinationProducer<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<Countable> {
+public class MemoryDataDestinationProducer<T extends MemoryData> extends DynamicProducerForMemoryData<T>
+												implements Delegated<Countable>, DescribableParent<Process<?, ?>> {
 	public static boolean enableThreadLocalProvider = true;
 
 	private final Countable process;
@@ -98,5 +101,10 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 		return getDelegate() instanceof Describable ?
 				((Describable) getDelegate()).describe() :
 				getDelegate().getClass().getSimpleName();
+	}
+
+	@Override
+	public String description() {
+		return "";
 	}
 }

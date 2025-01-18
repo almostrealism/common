@@ -25,7 +25,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -50,7 +49,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+		super("repeat" + repeat, shape(collection).replace(shape.prependDimension(repeat)).traverse(),
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
@@ -64,7 +63,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape,
 								   TraversalPolicy sliceShape, Producer<?> collection) {
-		super(shape, null, collection);
+		super("repeat", shape, null, collection);
 		this.subsetShape = subsetShape;
 		this.sliceShape = sliceShape;
 	}
@@ -179,6 +178,11 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				generateReplacement(List.of((Process) getInputs().get(0), isolate((Process) getInputs().get(1))));
 
 		return enableIsolation ? (Process) Process.isolated(isolated) : isolated;
+	}
+
+	@Override
+	public String description(List<String> children) {
+		return children.size() == 1 ? children.get(0) : super.description(children);
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

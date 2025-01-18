@@ -25,6 +25,8 @@ import java.util.function.Consumer;
 public class CachedValue<T> extends SuppliedValue<T> implements Evaluable<T> {
 	private Producer<T> source;
 	private Evaluable<T> eval;
+	private boolean allowNull;
+	private boolean available;
 
 	public CachedValue(Producer<T> source) {
 		this.source = source;
@@ -37,6 +39,19 @@ public class CachedValue<T> extends SuppliedValue<T> implements Evaluable<T> {
 	public CachedValue(Evaluable<T> source, Consumer<T> clear) {
 		setEvaluable(source);
 		setClear(clear);
+	}
+
+	public boolean isAllowNull() {
+		return allowNull;
+	}
+
+	public void setAllowNull(boolean allowNull) {
+		this.allowNull = allowNull;
+	}
+
+	@Override
+	public boolean isAvailable() {
+		return available || super.isAvailable();
 	}
 
 	@Override
@@ -55,7 +70,11 @@ public class CachedValue<T> extends SuppliedValue<T> implements Evaluable<T> {
 
 	@Override
 	public T evaluate(Object... args) {
-		if (!isAvailable()) value = createValue(args);
+		if (!isAvailable()) {
+			value = createValue(args);
+			if (value == null && isAllowNull()) available = true;
+		}
+
 		return getValue();
 	}
 }

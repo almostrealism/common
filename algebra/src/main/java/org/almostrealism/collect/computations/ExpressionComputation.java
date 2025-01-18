@@ -22,6 +22,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -105,7 +106,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public ExpressionComputation<T> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return new ExpressionComputation<>(getShape(), expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}

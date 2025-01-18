@@ -24,14 +24,12 @@ import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.Describable;
 
 @FunctionalInterface
-public interface TraversableExpression<T> extends IndexSet, Computable, ExpressionFeatures, ConsoleFeatures {
+public interface TraversableExpression<T> extends IndexSet, Algebraic, ExpressionFeatures, ConsoleFeatures {
 
 	default Expression<T> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();
@@ -68,7 +66,8 @@ public interface TraversableExpression<T> extends IndexSet, Computable, Expressi
 		Expression<?> column[] = indices.allColumnsMatch();
 		if (column != null) {
 			// TODO
-			throw new RuntimeException("localIndex is irrelevant");
+			// throw new RuntimeException("localIndex is irrelevant");
+			warn("localIndex is irrelevant");
 		}
 
 		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {

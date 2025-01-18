@@ -22,6 +22,10 @@ import io.almostrealism.code.OperationMetadata;
 @FunctionalInterface
 public interface OperationTimingListener {
 	default long recordDuration(Runnable r) {
+		return recordDuration(null, r);
+	}
+
+	default long recordDuration(OperationMetadata requester, Runnable r) {
 		long start = System.nanoTime();
 		r.run();
 		long end = System.nanoTime();
@@ -39,9 +43,9 @@ public interface OperationTimingListener {
 			metadata = new OperationMetadata(r.getClass().getSimpleName(), r.getClass().getSimpleName());
 		}
 
-		recordDuration(metadata, end - start);
+		recordDuration(requester, metadata, end - start);
 		return end - start;
 	}
 
-	void recordDuration(OperationMetadata metadata, long nanos);
+	void recordDuration(OperationMetadata requesterMetadata, OperationMetadata operationMetadata, long nanos);
 }

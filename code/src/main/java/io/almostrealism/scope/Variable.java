@@ -135,6 +135,12 @@ public class Variable<T, V extends Variable<T, ?>>
 
 	@Override
 	public String describe() {
+		Supplier<?> p = getProducer();
+
+		if (p instanceof Describable) {
+			return getName() + " " + ((Describable) p).describe();
+		}
+
 		return getClass().getSimpleName() + " " + getName();
 	}
 

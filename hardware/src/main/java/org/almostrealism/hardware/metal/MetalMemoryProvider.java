@@ -17,15 +17,13 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
-import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -34,7 +32,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public static boolean enableLargeAllocationLogging = false;
 	public static int largeAllocationSize = 20 * 1024 * 1024 + 2;
 
@@ -44,15 +42,22 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 	private final MetalDataContext context;
 	private final int numberSize;
 	private final long memoryMax;
+	private final boolean shared;
 	private long memoryUsed;
 
 	private List<MetalMemory> allocated;
 	private List<RAM> deallocating;
 
+
 	public MetalMemoryProvider(MetalDataContext context, int numberSize, long memoryMax) {
+		this(context, numberSize, memoryMax, false);
+	}
+
+	protected MetalMemoryProvider(MetalDataContext context, int numberSize, long memoryMax, boolean shared) {
 		this.context = context;
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
+		this.shared = shared;
 		this.allocated = new ArrayList<>();
 		this.deallocating = new ArrayList<>();
 	}
@@ -111,9 +116,20 @@ public class MetalMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures
 			throw new HardwareException("Memory Max Reached");
 		}
 
-		MTLBuffer mem = getContext().getPrecision() == Precision.FP16 ?
-				getContext().getDevice().newBuffer16(len) :
-				getContext().getDevice().newBuffer32(len);
+		MTLBuffer mem;
+
+		if (shared) {
+			if (getContext().getPrecision() != Precision.FP32) {
+				throw new HardwareException("Shared memory must be " + Precision.FP32.name());
+			}
+
+			mem = getContext().getDevice().newSharedBuffer32(getMemoryName().apply(len), len);
+		} else {
+			mem = getContext().getPrecision() == Precision.FP16 ?
+					getContext().getDevice().newBuffer16(len) :
+					getContext().getDevice().newBuffer32(len);
+		}
+
 		memoryUsed = memoryUsed + sizeOf;
 		return mem;
 	}

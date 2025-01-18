@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
@@ -47,6 +48,7 @@ import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.Describable;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
@@ -62,6 +64,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
 	private KernelTraversalOperationGenerator traversalGenerator;
+	private OptionalLong kernelMaximum;
 	private boolean kernelStructureSupported;
 
 	private Scope<T> scope;
@@ -129,7 +132,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public OptionalLong getKernelMaximum() {
-		return isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
+		if (kernelMaximum == null) {
+			kernelMaximum = isFixedCount() ? OptionalLong.of(getCountLong()) : OptionalLong.empty();
+		}
+
+		return kernelMaximum;
 	}
 
 	@Override
@@ -209,6 +216,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public void resetArguments() {
 		super.resetArguments();
 		getComputation().resetArguments();
+		this.kernelMaximum = null;
 	}
 
 	protected void setupOutputVariable() {
@@ -235,38 +243,42 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (verboseCompile) log("Compiling " + getFunctionName());
 
-		return new ExpressionCache().use(getMetadata(), () -> {
-			prepareScope();
-			setupOutputVariable();
+		try {
+			return new ExpressionCache().use(getMetadata(), () -> {
+				prepareScope();
+				setupOutputVariable();
 
-			Computation<T> c = getComputation();
+				Computation<T> c = getComputation();
 
-			long start = System.nanoTime();
+				long start = System.nanoTime();
 
-			scope = c.getScope(this);
-			if (timing != null) {
-				timing.recordDuration(getMetadata(), scope.getMetadata(),
-						"getScope", System.nanoTime() - start);
-			}
+				scope = c.getScope(this);
+				if (timing != null) {
+					timing.recordDuration(getMetadata(), scope.getMetadata(),
+							"getScope", System.nanoTime() - start);
+				}
 
-			if (!enablePostConversionSimplify)
-				scope = scope.simplify(this);
+				if (!enablePostConversionSimplify)
+					scope = scope.simplify(this);
 
-			start = System.nanoTime();
-			scope.convertArgumentsToRequiredScopes(this);
-			if (timing != null) {
-				timing.recordDuration(getMetadata(), scope.getMetadata(),
-						"convertRequired", System.nanoTime() - start);
-			}
+				start = System.nanoTime();
+				scope.convertArgumentsToRequiredScopes(this);
+				if (timing != null) {
+					timing.recordDuration(getMetadata(), scope.getMetadata(),
+							"convertRequired", System.nanoTime() - start);
+				}
 
-			if (enablePostConversionSimplify)
-				scope = scope.simplify(this);
+				if (enablePostConversionSimplify)
+					scope = scope.simplify(this);
 
-			postCompile();
+				postCompile();
 
-			if (verboseCompile) log("Done compiling " + getFunctionName());
-			return scope;
-		});
+				if (verboseCompile) log("Done compiling " + getFunctionName());
+				return scope;
+			});
+		} catch (Exception e) {
+			throw new HardwareException("Cannot compile " + getName(), e);
+		}
 	}
 
 	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
@@ -281,7 +293,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		outputVariable = getComputation().getOutputVariable();
 
 		if (getComputation() instanceof Shape) {
-			scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+			TraversalPolicy shape = scope.getMetadata().getShape();
+
+			if (shape == null) {
+				warn("Missing TraversalPolicy for Scope metadata");
+				scope.setMetadata(scope.getMetadata().withShape(((Shape<?>) getComputation()).getShape()));
+			} else if (!shape.equals(((Shape<?>) getComputation()).getShape())) {
+				throw new IllegalArgumentException("Shape mismatch between Scope metadata and Computation");
+			}
 		}
 
 		// kernelSeriesCache.destroy();
@@ -311,6 +330,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public boolean isAggregatedInput() { return true; }
+
+	@Override
+	public String describe() {
+		if (getComputation() instanceof Describable) {
+			return ((Describable) getComputation()).describe();
+		} else {
+			return super.describe();
+		}
+	}
 
 	@Override
 	public void destroy() {

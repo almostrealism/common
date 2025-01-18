@@ -45,7 +45,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public static boolean enableOutputCount = true;
 	public static boolean enableKernelDestination = true;
 	public static boolean enableConstantCache = true;
-	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
+	public static boolean enableKernelSizeWarnings =
+			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
 	private boolean kernel;
 	private boolean fixedCount;
@@ -279,24 +280,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		return new AcceleratedProcessDetails(kernelArgs, target, tempFactory, size);
-	}
-
-	@Deprecated
-	private void reviewDestination(Evaluable e) {
-		MemoryDataDestination dest = null;
-
-		if (e instanceof MemoryDataDestination) {
-			dest = (MemoryDataDestination) e;
-		} else if (e instanceof HardwareEvaluable) {
-			Evaluable d = ((HardwareEvaluable<?>) e).getDestination();
-			if (d instanceof MemoryDataDestination) {
-				dest = (MemoryDataDestination) d;
-			}
-		}
-
-		if (dest == null) {
-			throw new UnsupportedOperationException();
-		}
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {

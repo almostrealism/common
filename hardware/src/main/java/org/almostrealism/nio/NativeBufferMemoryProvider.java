@@ -17,13 +17,10 @@
 package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
@@ -32,27 +29,36 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> {
+public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
 	private static Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
 	private static Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
 	private final Precision precision;
 	private final long memoryMax;
+	private final boolean shared;
+
 	private long memoryUsed;
 
 	private List<NativeBuffer> allocated;
 
 	public NativeBufferMemoryProvider(Precision precision, long memoryMax) {
+		this(precision, memoryMax, true);
+	}
+
+	public NativeBufferMemoryProvider(Precision precision, long memoryMax, boolean shared) {
 		this.precision = precision;
 		this.memoryMax = memoryMax;
+		this.shared = shared;
 		this.allocated = new ArrayList<>();
 	}
 
 	@Override
 	public String getName() { return "NIO"; }
 
+	public Precision getPrecision() { return precision; }
+
 	@Override
-	public int getNumberSize() { return precision.bytes(); }
+	public int getNumberSize() { return getPrecision().bytes(); }
 
 	@Override
 	public synchronized NativeBuffer allocate(int size) {
@@ -60,7 +66,8 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 			throw new HardwareException("Memory max reached");
 		} else {
 			memoryUsed += (long) getNumberSize() * size;
-			NativeBuffer mem = new NativeBuffer(this, buffer(size));
+			NativeBuffer mem = NativeBuffer.create(this, size,
+					shared ? getMemoryName().apply(size) : null);
 			allocated.add(mem);
 			return mem;
 		}
@@ -110,6 +117,8 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 			} else {
 				throw new HardwareException("Unsupported precision");
 			}
+
+			mem.sync();
 		} else if (writeAdapters.containsKey(source.getClass())) {
 			writeAdapters.get(source.getClass()).setMem(mem, offset, source, srcOffset, length);
 		} else {
@@ -139,6 +148,8 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 		} else {
 			throw new HardwareException("Unsupported precision");
 		}
+
+		mem.sync();
 	}
 
 
@@ -162,6 +173,8 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 		} else {
 			throw new HardwareException("Unsupported precision");
 		}
+
+		mem.sync();
 	}
 
 	@Override
@@ -212,19 +225,6 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 	public synchronized void destroy() {
 		allocated.clear();
 		memoryUsed = 0;
-	}
-
-	private Buffer buffer(int len) {
-		if (precision == Precision.FP16) {
-			ByteBuffer bufferByte = ByteBuffer.allocateDirect(len * 2).order(ByteOrder.nativeOrder());
-			return bufferByte.asShortBuffer();
-		} else if (precision == Precision.FP32) {
-			return ByteBuffer.allocateDirect(len * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-		} else if (precision == Precision.FP64) {
-			return ByteBuffer.allocateDirect(len * 8).order(ByteOrder.nativeOrder()).asDoubleBuffer();
-		} else {
-			throw new HardwareException("Unsupported precision");
-		}
 	}
 
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferAllocator<T> allocator) {

@@ -27,7 +27,7 @@ public class IndexProjectionExpression extends OperandCollectionExpression {
 	public IndexProjectionExpression(TraversalPolicy shape,
 									 UnaryOperator<Expression<?>> indexProjection,
 									 TraversableExpression<Double> input) {
-		super(shape, input);
+		super(null, shape, input);
 		this.indexProjection = indexProjection;
 	}
 

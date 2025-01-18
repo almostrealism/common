@@ -37,7 +37,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 
 	protected void recordCompilation(Scope<?> scope, Supplier<String> source, long nanos) {
 		if (compilationTimingListener != null) {
-			compilationTimingListener.recordCompilation(scope.getMetadata(), source.get(), nanos);
+			compilationTimingListener.recordCompilation(scope, source.get(), nanos);
 		}
 	}
 }

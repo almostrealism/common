@@ -26,7 +26,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.MemoryBank;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -41,7 +40,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super(shape, null, collection);
+		super(null, shape, null, collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
@@ -52,7 +51,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super(shape, null, collection);
+		super(null, shape, null, collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 

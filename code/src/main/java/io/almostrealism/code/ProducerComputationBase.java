@@ -17,7 +17,12 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.util.DescribableParent;
+
+import java.util.Collection;
+import java.util.stream.Collectors;
 
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
 	public static boolean enableOutputVariableDestination = false;
@@ -36,5 +41,15 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 		} else {
 			return (Evaluable<O>) getInputs().get(0).get();
 		}
+	}
+
+	@Override
+	public String description() {
+		Collection<Process<?, ?>> children = getChildren();
+		if (children == null) return super.description();
+
+		// The first child is normally the destination and not useful to include
+		return description(children.stream().map(DescribableParent::description)
+				.skip(1).collect(Collectors.toList()));
 	}
 }

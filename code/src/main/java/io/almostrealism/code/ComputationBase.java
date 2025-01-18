@@ -20,6 +20,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.ProcessContext;
 import io.almostrealism.scope.Argument;
@@ -39,6 +40,9 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T> {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
+
+	private ProcessContext optimizationCtx;
+	protected ComputationBase<I, O, T> optimized;
 
 	public ComputationBase() {
 		super(new Supplier[0]);
@@ -71,13 +75,16 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public boolean isFixedCount() {
-		return getInputs().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
+		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		if (inputs == null) return false;
+
+		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
 	}
 
 	@Override
 	public Scope compile() {
-		System.out.println("WARN: Attempting to compile a Computation, " +
-							"rather than an Evaluable container for one");
+		warn("Attempting to compile a Computation, " +
+			"rather than an Evaluable container for one");
 		return null;
 	}
 
@@ -141,7 +148,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
-		return getInputs().stream()
+		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		if (inputs == null) return null;
+
+		return inputs.stream()
 				.map(in -> in instanceof Process<?, ?> ? (Process<?, ?>) in : Process.of(in))
 				.collect(Collectors.toList());
 	}
@@ -152,6 +162,10 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
+		if (optimized != null & optimized != this) {
+			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
+		}
+
 		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
 		if (getComputeRequirements() != null) {
 			scope.setComputeRequirements(getComputeRequirements());
@@ -169,10 +183,18 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	 */
 	@Override
 	public ComputationBase<I, O, T> optimize(ProcessContext ctx) {
-		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ComputableParallelProcess.super.optimize(ctx);
-		replacement.setComputeRequirements(getComputeRequirements());
-		return replacement;
+		if (optimized == null) {
+			optimizationCtx = ctx;
+			optimized = (ComputationBase<I, O, T>)
+					ComputableParallelProcess.super.optimize(ctx);
+			optimized.setComputeRequirements(getComputeRequirements());
+		} else if (Countable.count(ctx) != Countable.count(optimizationCtx)) {
+			warn("Cached optimization may not be ideal for new ProcessContext count of " +
+					Countable.count(ctx) + " compared to " +
+					Countable.count(optimizationCtx) + ")");
+		}
+
+		return optimized;
 	}
 
 	/**
@@ -190,7 +212,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	public String describe() {
-		return getMetadata().getShortDescription() + " " +
+		return super.describe() + " | " +
 				getCountLong() + "x" +
 				(isFixedCount() ? " (fixed)" : " (variable)");
 	}

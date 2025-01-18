@@ -148,14 +148,16 @@ public class NativeCompiler implements ConsoleFeatures {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 
-		libraryGenerator.generateLibrary(getInputFile(name), getOutputFile(name, lib), runner(name));
+		String result = getOutputFile(name, lib);
+		libraryGenerator.generateLibrary(getInputFile(name), result, runner(name));
 
 		if (enableVerbose) log("Native code compiled for " + name);
-		return name;
+		return result;
 	}
 
 	public void compileAndLoad(Class target, String code) {
-		if (HardwareOperator.enableInstructionSetMonitoring || (HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
+		if (HardwareOperator.enableInstructionSetMonitoring ||
+				(HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
 			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
@@ -173,7 +175,7 @@ public class NativeCompiler implements ConsoleFeatures {
 		try {
 			String name = compile(target, code);
 			if (enableVerbose) log("Loading native library " + name);
-			System.loadLibrary(name);
+			System.load(name);
 			if (enableVerbose) log("Loaded native library " + name);
 		} finally {
 			compileTime.addEntry(System.nanoTime() - start);
@@ -214,11 +216,7 @@ public class NativeCompiler implements ConsoleFeatures {
 			boolean localToolchain = libCompiler == null || !libCompiler.contains("/");
 
 			if (libDir == null && SystemUtils.isMacOS()) {
-				if (localToolchain) {
-					libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
-				} else {
-					libDir = "Extensions";
-				}
+				libDir = SystemUtils.getExtensionsPath().toFile().getPath();
 			}
 
 			File ld = new File(libDir);
@@ -248,6 +246,12 @@ public class NativeCompiler implements ConsoleFeatures {
 										libDir, libFormat, data, cl);
 		};
 	}
+
+	/**
+	 * The total number of {@link NativeInstructionSet}s that have been compiled
+	 * by instances of {@link NativeCompiler}.
+	 */
+	public static long getTotalInstructionSets() { return runnableCount; }
 
 	@Override
 	public Console console() { return Hardware.console; }

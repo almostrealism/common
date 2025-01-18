@@ -29,8 +29,6 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.algebra.DeltaAlternate;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -38,31 +36,29 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> implements DeltaAlternate<T> {
+public class RepeatedProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
 	protected BiFunction<TraversableExpression[], Expression, Expression> expression;
 	private int memLength;
 
-	private CollectionProducer<T> deltaAlternate;
-
 	@SafeVarargs
-	public RepeatedProducerComputation(TraversalPolicy shape,
+	public RepeatedProducerComputation(String name, TraversalPolicy shape,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
 									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(shape, 1, initial, condition, expression, args);
+		this(name, shape, 1, initial, condition, expression, args);
 	}
 
 	@SafeVarargs
-	public RepeatedProducerComputation(TraversalPolicy shape, int size,
+	public RepeatedProducerComputation(String name, TraversalPolicy shape, int size,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
 									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(null, shape, (Supplier[]) args);
+		super(name, shape, (Supplier[]) args);
 		this.initial = initial;
 		this.condition = condition;
 		this.expression = expression;
@@ -75,19 +71,6 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 
 	protected void setCondition(BiFunction<TraversableExpression[], Expression, Expression> condition) {
 		this.condition = condition;
-	}
-
-	protected void setExpression(BiFunction<TraversableExpression[], Expression, Expression> expression) {
-		this.expression = expression;
-	}
-
-	@Override
-	public CollectionProducer<T> getDeltaAlternate() {
-		return deltaAlternate;
-	}
-
-	public void setDeltaAlternate(CollectionProducer<T> deltaAlternate) {
-		this.deltaAlternate = deltaAlternate;
 	}
 
 	@Override
@@ -161,7 +144,7 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	@Override
 	public RepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new RepeatedProducerComputation<>(
-				getShape(), getMemLength(),
+				null, getShape(), getMemLength(),
 				initial, condition, expression,
 				children.stream().skip(1).toArray(Supplier[]::new));
 	}

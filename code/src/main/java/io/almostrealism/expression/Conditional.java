@@ -147,7 +147,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	public static Expression of(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {
-		return ExpressionCache.match(create(condition, positive, negative));
+		return Expression.process(create(condition, positive, negative));
 	}
 
 	public static Expression create(Expression<Boolean> condition, Expression<?> positive, Expression<?> negative) {

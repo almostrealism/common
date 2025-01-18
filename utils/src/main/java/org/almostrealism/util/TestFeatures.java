@@ -164,39 +164,37 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 			PackedCollection<?> output = outputRef.get();
 
-			System.out.println("TestFeatures: Running kernel operation...");
+			log("Running kernel operation...");
 			OperationList op = new OperationList();
 			op.add(output.getAtomicMemLength(), supply.get(), p(output));
 			profile(profile, op);
-			System.out.println("TestFeatures: Validating kernel output...");
+			log("Validating kernel output...");
 			validate.accept(output);
 		}
 
 		if (optimized) {
 			outputRef.get().clear();
 
-			verboseLog(() -> {
-				PackedCollection<?> output = outputRef.get();
-				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
+			PackedCollection<?> output = outputRef.get();
+			PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 
-				System.out.println("TestFeatures: Running optimized kernel operation...");
-				OperationList op = new OperationList();
-				op.add(output.getAtomicMemLength(), supply.get(), p(output));
-				op.add(copy(p(output), p(dest), output.getMemLength()));
+			log("Running optimized kernel operation...");
+			OperationList op = new OperationList();
+			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.add(copy(p(output), p(dest), output.getMemLength()));
 
-				ParallelProcess<?, Runnable> p = op.optimize();
-				profile(profile, p);
-				System.out.println("TestFeatures: Validating optimized kernel output...");
-				validate.accept(output);
-				validate.accept(dest);
-			});
+			ParallelProcess<?, Runnable> p = op.optimize();
+			profile(profile, p);
+			log("Validating optimized kernel output...");
+			validate.accept(output);
+			validate.accept(dest);
 		}
 
 		return profile;
 	}
 
 	default void initKernelMetrics() {
-		initKernelMetrics(new OperationProfile("HardwareOperator",
+		initKernelMetrics(new OperationProfile(null, "HardwareOperator",
 				OperationProfile.appendContext(OperationMetadata::getDisplayName)));
 	}
 
@@ -220,7 +218,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 				" expressions | " + KernelSeriesCache.defaultMaxEntries + " entries | "
 				+ (KernelSeriesCache.enableCache ? "on" : "off"));
 		log("Expression kernelSeq cache is " + (ScopeSettings.enableKernelSeqCache ? "on" : "off"));
-		log("TraversableRepeatedProducerComputation isolation count threshold = " + TraversableRepeatedProducerComputation.isolationCountThreshold);
+		log("TraversableRepeatedProducerComputation isolation count threshold = " +
+				TraversableRepeatedProducerComputation.isolationCountThreshold);
 	}
 
 	default void verboseLog(Runnable r) {

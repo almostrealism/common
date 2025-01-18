@@ -17,7 +17,9 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.layers.CellularLayer;
@@ -99,6 +101,46 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		validateConv(input, filter, output, convSize);
+	}
+
+	@Test
+	public void convBackwardsSmall() {
+		if (skipKnownIssues) return;
+
+		convBackwards(1, 3, 4, 4, 1, 3,0, true);
+	}
+
+	@Test
+	public void convBackwardsMedium() {
+		if (skipKnownIssues) return;
+
+		convBackwards(1, 28, 28, 28, 1, 28,0, true);
+	}
+
+	public void convBackwards(int n, int c, int h, int w, int convSize, int filterCount, int padding, boolean bias) {
+		TraversalPolicy inputShape = shape(n, c, h, w);
+		Model model = new Model(inputShape);
+
+		CellularLayer conv = convolution2d(c, filterCount, convSize, padding, bias).apply(inputShape);
+		model.add(conv);
+
+		PackedCollection<?> gradient = new PackedCollection<>(model.getInputShape()).randFill();
+
+		model.compile()
+				.backward(gradient)
+		;
+
+//		Producer<PackedCollection<?>> p = (Producer<PackedCollection<?>>)
+//						CollectionFeatures.console.getSamples("matmul_matrices").get(0);
+//
+//		p.evaluate();
+
+		PackedCollection<?> filter = conv.getWeights().get(0);
+		TraversalPolicy filterShape = filter.getShape();
+		Assert.assertEquals(filterCount, filterShape.length(0));
+		Assert.assertEquals(c, filterShape.length(1));
+		Assert.assertEquals(convSize, filterShape.length(2));
+		Assert.assertEquals(convSize, filterShape.length(3));
 	}
 
 	protected void validateConv(PackedCollection<?> input, PackedCollection<?> filter, PackedCollection<?> output, int convSize) {

@@ -25,6 +25,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.ctx.HardwareDataContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
 
@@ -34,30 +35,24 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class MetalDataContext implements DataContext<MemoryData> {
+public class MetalDataContext extends HardwareDataContext {
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
-	private final String name;
-	private final long maxReservation;
 	private final int offHeapSize;
 
 	private MTLDevice mainDevice;
-	private MetalDeviceInfo mainDeviceInfo;
 
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
 
 	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
-	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
 	private Runnable start;
 
 	public MetalDataContext(String name, long maxReservation, int offHeapSize) {
-		this.name = name;
-		this.maxReservation = maxReservation;
+		super(name, maxReservation);
 		this.offHeapSize = offHeapSize;
 		this.computeContext = new ThreadLocal<>();
-		this.memoryProvider = new ThreadLocal<>();
 	}
 
 	@Override
@@ -70,14 +65,14 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
-		mainDeviceInfo = deviceInfo(mainDevice);
 	}
 
 	private void start() {
-		if (mainDeviceInfo != null) return;
+		if (mainDevice != null) return;
 
 		identifyDevices();
-		mainRam = new MetalMemoryProvider(this, getPrecision().bytes(), maxReservation * getPrecision().bytes());
+		mainRam = new MetalMemoryProvider(this, getPrecision().bytes(),
+				getMaxReservation() * getPrecision().bytes());
 		start = null;
 	}
 
@@ -99,9 +94,6 @@ public class MetalDataContext implements DataContext<MemoryData> {
 	}
 
 	@Override
-	public String getName() { return name; }
-
-	@Override
 	public Precision getPrecision() { return fp16 ? Precision.FP16 : Precision.FP32; }
 
 	public MTLDevice getDevice() {
@@ -109,11 +101,16 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		return mainDevice;
 	}
 
-	public MetalDeviceInfo getDeviceInfo() { return mainDeviceInfo; }
-
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
 		return List.of(mainRam);
+	}
+
+	@Override
+	protected MemoryProvider<RAM> getSharedMemoryProvider() {
+		return Optional.ofNullable(super.getSharedMemoryProvider())
+				.orElseGet(() -> new MetalMemoryProvider(this, getPrecision().bytes(),
+						getMaxReservation() * getPrecision().bytes(), true));
 	}
 
 	public MemoryProvider<RAM> getMemoryProvider() {
@@ -130,7 +127,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 
 	@Override
 	public MemoryProvider<?> getMemoryProvider(int size) {
-		IntFunction<MemoryProvider<?>> supply = memoryProvider.get();
+		IntFunction<MemoryProvider<?>> supply = getMemoryProviderSupply();
 		if (supply == null) {
 			return size < offHeapSize ? getAltMemoryProvider() : getMemoryProvider();
 		} else {
@@ -141,7 +138,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContext.get() == null) {
-			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContext.set(createContext());
 		}
 
@@ -202,28 +199,5 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		if (altRam != null) altRam.destroy();
 		if (mainDevice != null) mainDevice.release();
 		mainDevice = null;
-	}
-
-	protected MetalDeviceInfo deviceInfo(MTLDevice device) {
-		MetalDeviceInfo info = new MetalDeviceInfo(device);
-
-		double kb = 1024.0;
-		double mb = kb * kb;
-		double gb = mb * kb;
-
-//		long cores = info.getCores();
-//		String clock = info.getClockMhz() / 1000.0 + "GHz";
-//		String work = info.getMaxWorkItemDimensions() + "D work support and " +
-//				info.getWorkGroupSize() / kb + "kb work size";
-//		String memory = info.getLocalMem() / kb + "kb local / " +
-//				info.getGlobalMem() / gb + "gb global (" +
-//				info.getMaxAlloc() / gb + "gb allocation limit)";
-//
-//		System.out.println("Hardware[" + getName() + "]: " + cores + " cores @ " + clock);
-//		System.out.println("Hardware[" + getName() + "]: " + work);
-//		System.out.println("Hardware[" + getName() + "]: " + memory);
-//		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Max args " + info.getMaxConstantArgs());
-
-		return info;
 	}
 }

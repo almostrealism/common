@@ -104,7 +104,7 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?> value) {
-		return ExpressionCache.match(create(value));
+		return Expression.process(create(value));
 	}
 
 	protected static Expression<?> create(Expression<?> value) {

@@ -27,7 +27,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 	public static boolean enableDiagonalDelta = true;
 
 	public ProductCollectionExpression(TraversalPolicy shape, TraversableExpression... operands) {
-		super(shape, Product::of, operands);
+		super("product", shape, Product::of, operands);
 		setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 	}
 

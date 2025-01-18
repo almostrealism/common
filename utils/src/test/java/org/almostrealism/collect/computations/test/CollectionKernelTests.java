@@ -58,7 +58,7 @@ public class CollectionKernelTests implements TestFeatures {
 				c(v2).get().evaluate(args));
 
 		verboseLog(() -> {
-			CollectionProducerComputation<PackedCollection<?>> c = relativeMultiply(shape(2, 5).traverse(1), a.traverse(1), b.traverse(0), null);
+			CollectionProducer<PackedCollection<?>> c = multiply(a.traverse(1), b.traverse(0));
 			Evaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
 

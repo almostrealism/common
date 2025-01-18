@@ -42,7 +42,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 												  CollectionExpression compareTo,
 												  CollectionExpression positive,
 												  CollectionExpression negative) {
-		super(reference.getShape());
+		super("match", reference.getShape());
 		this.reference = reference;
 		this.compareTo = compareTo;
 		this.positive = positive;
@@ -104,7 +104,12 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 		if (a instanceof InstanceReference) {
 			InstanceReference ra = (InstanceReference) a;
 			InstanceReference rb = (InstanceReference) b;
-			if (Objects.equals(ra.getReferent().getName(), rb.getReferent().getName())) {
+
+			boolean eq = Objects.equals(ra.getReferent().getName(), rb.getReferent().getName());
+			eq = eq || (ra.getReferent() instanceof Algebraic && rb.getReferent() instanceof Algebraic &&
+					((Algebraic) ra.getReferent()).matches((Algebraic) rb.getReferent()));
+
+			if (eq) {
 				return ra.getIndex().eq(rb.getIndex());
 			}
 		} else if (a.getChildren().size() == b.getChildren().size()) {

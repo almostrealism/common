@@ -90,7 +90,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	}
 
 	@Override
-	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection<?>>> generate(List<Process<?, ?>> children) {
+	public FourierTransform generate(List<Process<?, ?>> children) {
 		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 

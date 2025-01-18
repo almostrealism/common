@@ -48,6 +48,16 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		super((Class<T>) type(values), "/", values);
 	}
 
+	public Expression<?> getNumerator() { return getChildren().get(0); }
+
+	public Expression<?> getDenominator() {
+		// TODO  This should be supported
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		return getChildren().get(1);
+	}
+
 	@Override
 	public KernelSeries kernelSeries() {
 		if (getChildren().size() > 2)
@@ -243,7 +253,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
-		return ExpressionCache.match(create(values));
+		return Expression.process(create(values));
 	}
 
 	protected static Expression<?> create(Expression<?>... values) {

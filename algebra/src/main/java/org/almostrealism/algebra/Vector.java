@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
@@ -288,11 +289,11 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		StringBuffer value = new StringBuffer();
 
 		value.append("[");
-		value.append(Defaults.displayFormat.format(getX()));
+		value.append(NumberFormats.formatNumber(getX()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(getY()));
+		value.append(NumberFormats.formatNumber(getY()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(getZ()));
+		value.append(NumberFormats.formatNumber(getZ()));
 		value.append("]");
 
 
