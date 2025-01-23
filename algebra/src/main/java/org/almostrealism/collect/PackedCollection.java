@@ -51,6 +51,7 @@ import java.util.function.DoubleSupplier;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -179,6 +180,18 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		super.setDelegate(m, offset, order);
 	}
 
+	public DoubleStream doubleStream() {
+		return doubleStream(0, getShape().getTotalSize());
+	}
+
+	public DoubleStream doubleStream(int offset, int length) {
+		if (getDelegateOrdering() == null && getShape().isRegular()) {
+			return DoubleStream.of(toArray(offset, length));
+		} else {
+			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
+		}
+	}
+
 	public double toDouble() {
 		if (getShape().getTotalSizeLong() != 1) {
 			throw new UnsupportedOperationException();
@@ -189,8 +202,8 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	@Override
 	public double toDouble(int index) {
-		if (getShape().getOrder() == null) return super.toDouble(index);
-		return super.toDouble(getShape().getOrder().indexOf(index));
+		if (getShape().isRegular()) return super.toDouble(index);
+		return super.toDouble(getShape().inputIndex(index));
 	}
 
 	public Stream<T> stream() {
@@ -301,7 +314,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public double valueAt(int... pos) {
-		return toDouble(getShape().index(pos));
+		return toDouble(getShape().extentShape().index(pos));
 	}
 
 	// TODO  Accelerated version

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -377,7 +377,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		Factor<PackedCollection<?>> operator;
 
-		if (enableWeightedSum && WeightedSumExpression.enableCollectionExpression) {
+		if (WeightedSumExpression.enableCollectionExpression) {
 			operator = input -> {
 				CollectionProducer<PackedCollection<?>> in = c(input);
 				CollectionProducer<PackedCollection<?>> conv =
@@ -691,6 +691,89 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return compose("product", shape, aux,
 					(input, auxValue) -> multiply(traverseEach(input), traverseEach(auxValue)),
 				requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> similarity(
+			Block k, int c, int s1, int s2) {
+		if (k.getOutputShape().getDimensions() != 4 ||
+				k.getOutputShape().length(1) != c ||
+				k.getOutputShape().length(3) != s2) {
+			throw new IllegalArgumentException();
+		}
+
+		int batchSize = k.getOutputShape().length(0);
+		int dim = k.getOutputShape().length(2);
+
+		if (enableWeightedSum) {
+			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {
+				TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
+				TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
+
+				TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
+				TraversalPolicy leftPosition = leftShape.repeat(4, s2);
+				TraversalPolicy rightPosition = rightShape.repeat(3, s1);
+				TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
+
+				return weightedSum("similarity",
+								resultShape,
+								leftPosition, rightPosition,
+								groupShape, groupShape,
+								reshape(leftShape, c(a)),
+								reshape(rightShape, c(b)))
+						.reshape(batchSize, c, s1, s2);
+			});
+		} else {
+			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {
+				CollectionProducer<PackedCollection<?>> pa = c(a)
+						.traverse(2)
+						.enumerate(3, 1)
+						.traverse(3)
+						.repeat(s2);
+				CollectionProducer<PackedCollection<?>> pb = c(b)
+						.traverse(2)
+						.enumerate(3, 1)
+						.repeat(s1);
+
+				if (!shape(pa).equalsIgnoreAxis(shape(pb))) {
+					throw new IllegalArgumentException();
+				}
+
+				return multiply(pa, pb).sum(4);
+			});
+		}
+	}
+
+	default Function<TraversalPolicy, CellularLayer> weightedSum(
+			Block v, int heads, int dimHead, int size) {
+		if (v.getOutputShape().getDimensions() != 4 ||
+				v.getOutputShape().length(1) != heads ||
+				v.getOutputShape().length(2) != dimHead ||
+				v.getOutputShape().length(3) != size) {
+			throw new IllegalArgumentException();
+		}
+
+		int batchSize = v.getOutputShape().length(0);
+
+		if (enableWeightedSum) {
+			return null;
+		} else {
+			return compose("weightedSum", v, shape(batchSize, heads, size, dimHead),
+					(a, b) -> {
+						CollectionProducer<PackedCollection<?>> pa = c(a)
+								.traverse(4)
+								.repeat(dimHead);
+						CollectionProducer<PackedCollection<?>> pb = c(b)
+								.traverse(2)
+								.enumerate(3, 1)
+								.traverse(2)
+								.repeat(size);
+						return multiply(pa, pb)
+								.reshape(batchSize, heads, size, size, dimHead)
+								.traverse(3)
+								.enumerate(4, 1)
+								.sum(4);
+					});
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> scale(double scale, ComputeRequirement... requirements) {

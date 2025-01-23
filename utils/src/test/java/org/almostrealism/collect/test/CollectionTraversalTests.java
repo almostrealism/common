@@ -148,12 +148,70 @@ public class CollectionTraversalTests implements TestFeatures {
 
 		PackedCollection<?> strided = root.range(policy);
 
+		double values[] = strided.doubleStream().toArray();
+		int idx = 0;
+
 		for (int i = 0; i < m; i++) {
 			for (int j = 0; j < p; j++) {
 				log("index = " + policy.index(i, j));
 				log(root.valueAt(i, 0) + " vs " + strided.valueAt(i, j));
 				assertEquals(root.valueAt(i, 0), strided.valueAt(i, j));
+				assertEquals(strided.valueAt(i, j), values[idx++]);
 			}
 		}
+	}
+
+	@Test
+	public void stride7() {
+		TraversalPolicy left = shape(2, 1)
+				.repeat(1, 2);
+		TraversalPolicy right = shape(1, 2)
+				.repeat(0, 2);
+
+		log("left = " + left.inputShape());
+		log("right = " + right.inputShape());
+
+		left.inputPositions()
+				.map(Arrays::toString)
+				.forEach(System.out::println);
+		log("---");
+		right.inputPositions()
+				.map(Arrays::toString)
+				.forEach(System.out::println);
+	}
+
+	@Test
+	public void stride8() {
+		TraversalPolicy policy = shape(2, 4)
+				.withRate(0, 3, 2)
+				.withRate(1, 2, 4);
+
+		log("inputShape = " + policy.inputShape());
+
+		log("index = " + policy.index(1, 0));
+		log(Arrays.toString(policy.position(4)));
+
+		policy.inputPositions()
+				.map(Arrays::toString)
+				.forEach(System.out::println);
+	}
+
+	@Test
+	public void stride9() {
+		int bs = 1;
+		int r = 3;
+		int c1 = 2;
+		int c2 = 3;
+
+		PackedCollection<?> root = new PackedCollection<>(shape(bs, r, c1)).randFill();
+
+		TraversalPolicy policy = shape(bs, c1, c2)
+				.withRate(2, 1, c2)
+				;
+
+		policy.indices()
+				.mapToObj(root.getShape()::position)
+				.map(Arrays::toString)
+				.forEach(System.out::println);
 	}
 }

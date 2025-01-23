@@ -183,7 +183,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 				throw new UnsupportedOperationException();
 			}
 
-			long d = input  ? inputLengthLong(depth) : lengthLong(depth);
+			long d = input ? inputLengthLong(depth) : lengthLong(depth);
 			if (d <= 0) {
 				throw new UnsupportedOperationException();
 			}
@@ -192,6 +192,9 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 	}
 
+	/**
+	 * Return the raw dimensions of the output space.
+	 */
 	public int[] extent() {
 		int[] ext = new int[dims.length];
 		for (int i = 0; i < dims.length; i++) {
@@ -200,6 +203,9 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return ext;
 	}
 
+	/**
+	 * Return the raw dimensions of the output space.
+	 */
 	public long[] extentLong() {
 		long[] ext = new long[dims.length];
 		for (int i = 0; i < dims.length; i++) {
@@ -208,6 +214,30 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return ext;
 	}
 
+	/**
+	 * Return the raw shape of the output space.
+	 */
+	public TraversalPolicy extentShape() {
+		return new TraversalPolicy(extentLong())
+				.traverse(traversalAxis);
+	}
+
+	/**
+	 * Return the raw shape of the input space.
+	 */
+	public TraversalPolicy inputShape() {
+		long newDims[] = new long[dims.length];
+		for (int i = 0; i < dims.length; i++) {
+			newDims[i] = inputLengthLong(i);
+		}
+		return new TraversalPolicy(order, true, newDims)
+				.traverse(traversalAxis);
+	}
+
+	/**
+	 * Given a position in the output space,
+	 * return an index in the input space.
+	 */
 	public int index(int... pos) {
 		int index = 0;
 		for (int i = 0; i < pos.length; i++) {
@@ -216,6 +246,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return index;
 	}
 
+	/**
+	 * Given a position in the output space,
+	 * return an index in the input space.
+	 */
 	public Expression index(Expression... pos) {
 		if (pos.length != getDimensions()) {
 			throw new IllegalArgumentException();
@@ -235,7 +269,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return index;
 	}
 
+	/**
+	 * Given an index in the input space,
+	 * return a position in the output space.
+	 */
 	public int[] position(int index) {
+		if (index > getTotalInputSize()) {
+			throw new IllegalArgumentException();
+		}
+
 		int pos[] = new int[getDimensions()];
 
 		int remaining = index;
@@ -248,6 +290,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return pos;
 	}
 
+	/**
+	 * Given an index in the input space,
+	 * return a position in the output space.
+	 */
 	public Expression[] position(Expression index) {
 		Expression pos[] = new Expression[getDimensions()];
 
@@ -259,6 +305,11 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 
 		return pos;
+	}
+
+	public int inputIndex(int index) {
+		if (isRegular()) return index;
+		return index(new TraversalPolicy(dims).position(index));
 	}
 
 	public Expression subset(TraversalPolicy shape, int index, int... loc) {
@@ -322,7 +373,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 				.traverse(traversalAxis);
 	}
 
-	public TraversalPolicy withRate(int axis, int numerator, int denominator) {
+	public TraversalPolicy withRate(int axis, int numerator, long denominator) {
 		if (axis >= dims.length) {
 			throw new IllegalArgumentException();
 		}
@@ -339,6 +390,33 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 				order, true, true,
 				dims, newNumerator, newDenominator)
 				.traverse(traversalAxis);
+	}
+
+	public TraversalPolicy withInput(int... dims) {
+		if (dims.length != getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy result = this;
+
+		for (int i = 0; i < dims.length; i++) {
+			result = result.withRate(i, dims[i], length(i));
+		}
+
+		return result;
+	}
+
+	public TraversalPolicy repeat(int count) {
+		return repeat(getTraversalAxis(), count);
+	}
+
+	public TraversalPolicy repeat(int axis, long count) {
+		if (axis >= dims.length) {
+			throw new IllegalArgumentException();
+		}
+
+		return replaceDimension(axis, count * length(axis))
+				.withRate(axis, 1, count);
 	}
 
 	public TraversalPolicy prependDimension(int size) {
@@ -381,7 +459,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return replaceDimension(getTraversalAxis(), size);
 	}
 
-	public TraversalPolicy replaceDimension(int axis, int size) {
+	public TraversalPolicy replaceDimension(int axis, long size) {
 		long newDims[] = new long[getDimensions()];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == axis ? size : lengthLong(i);
 
@@ -505,8 +583,35 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	public int getDimensions() { return dims.length; }
 
+	public boolean isRegular() {
+		return getOrder() == null && inputShape().equalsIgnoreAxis(this);
+	}
+
+	// TODO  Rename to positions
 	public Stream<int[]> stream() {
-		return IntStream.range(0, getTotalSize()).mapToObj(this::position);
+		if (isRegular()) {
+			return IntStream.range(0, getTotalSize()).mapToObj(this::position);
+		}
+
+		return new TraversalPolicy(dims).stream();
+	}
+
+	public Stream<int[]> inputPositions() {
+		if (isRegular()) {
+			return stream();
+		}
+
+		return IntStream.range(0, getTotalSize())
+				.map(this::inputIndex)
+				.mapToObj(this::position);
+	}
+
+	public IntStream indices() {
+		if (isRegular()) {
+			return IntStream.range(0, getTotalSize());
+		}
+
+		return stream().mapToInt(this::index);
 	}
 
 	public void store(DataOutputStream dos) throws IOException {
