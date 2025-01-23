@@ -69,6 +69,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, true);
 	}
 
+	default void assertEquals(int a, int b) {
+		if (a != b) {
+			throw new AssertionError();
+		}
+	}
+
 	default void assertNotEquals(Scalar a, Scalar b) {
 		assertNotEquals(a.getValue(), b.getValue());
 	}

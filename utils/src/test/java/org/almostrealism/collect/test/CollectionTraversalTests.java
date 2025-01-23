@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,10 @@ package org.almostrealism.collect.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
 
 public class CollectionTraversalTests implements TestFeatures {
 	@Test
@@ -171,13 +174,21 @@ public class CollectionTraversalTests implements TestFeatures {
 		log("left = " + left.inputShape());
 		log("right = " + right.inputShape());
 
+		StringBuilder result = new StringBuilder();
+
 		left.inputPositions()
 				.map(Arrays::toString)
-				.forEach(System.out::println);
+				.forEach(result::append);
+		log(result);
 		log("---");
+		Assert.assertEquals("[0, 0][0, 0][1, 0][1, 0]", result.toString());
+
+		result = new StringBuilder();
 		right.inputPositions()
 				.map(Arrays::toString)
-				.forEach(System.out::println);
+				.forEach(result::append);
+		log(result);
+		Assert.assertEquals("[0, 0][0, 1][0, 0][0, 1]", result.toString());
 	}
 
 	@Test
@@ -187,8 +198,10 @@ public class CollectionTraversalTests implements TestFeatures {
 				.withRate(1, 2, 4);
 
 		log("inputShape = " + policy.inputShape());
+		assertEquals(3, policy.inputLength(0));
+		assertEquals(2, policy.inputLength(1));
 
-		log("index = " + policy.index(1, 0));
+		log("index = " + policy.index(2, 0));
 		log(Arrays.toString(policy.position(4)));
 
 		policy.inputPositions()
@@ -206,12 +219,14 @@ public class CollectionTraversalTests implements TestFeatures {
 		PackedCollection<?> root = new PackedCollection<>(shape(bs, r, c1)).randFill();
 
 		TraversalPolicy policy = shape(bs, c1, c2)
-				.withRate(2, 1, c2)
-				;
+							.withRate(2, 1, c2);
 
+		StringBuilder result = new StringBuilder();
 		policy.indices()
 				.mapToObj(root.getShape()::position)
 				.map(Arrays::toString)
-				.forEach(System.out::println);
+				.forEach(result::append);
+		log(result);
+		Assert.assertEquals("[0, 0, 0][0, 0, 0][0, 0, 0][0, 0, 1][0, 0, 1][0, 0, 1]", result.toString());
 	}
 }
