@@ -31,6 +31,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -46,6 +47,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+
+		if (memLength > ScopeSettings.maxStatements) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -113,7 +118,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				v = o.assign(value);
 			}
 
-			scope.getVariables().add(v);
+			scope.getStatements().add(v);
 		}
 
 		return scope;

@@ -39,6 +39,9 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	}
 
 	@Override
+	CollectionProducer<T> reshape(TraversalPolicy shape);
+
+	@Override
 	CollectionProducer<T> traverse(int axis);
 
 	@Override

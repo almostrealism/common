@@ -704,8 +704,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int batchSize = k.getOutputShape().length(0);
 		int dim = k.getOutputShape().length(2);
 
+		TraversalPolicy outputShape = shape(batchSize, c, s1, s2).traverseEach();
+
 		if (enableWeightedSum) {
-			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {
+			return compose("similarity", k, outputShape, (a, b) -> {
 				TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
 				TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
 
@@ -720,7 +722,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								groupShape, groupShape,
 								reshape(leftShape, c(a)),
 								reshape(rightShape, c(b)))
-						.reshape(batchSize, c, s1, s2);
+						.reshape(outputShape);
 			});
 		} else {
 			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {

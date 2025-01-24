@@ -566,7 +566,7 @@ public abstract class Expression<T> implements
 	}
 
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException(getClass().getSimpleName());
 	}
 
 	@Override

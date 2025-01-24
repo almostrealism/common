@@ -39,8 +39,26 @@ public class ScopeSettings {
 	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
+
+	/**
+	 * The maximum depth of any {@link Expression} as
+	 * measured by {@link Expression#treeDepth()}.
+	 */
 	public static int maxDepth = 512;
+
+	/**
+	 * The maximum total number of nodes allowed in any
+	 * {@link Expression} as measured by
+	 * {@link Expression#countNodes()}.
+	 */
 	public static int maxNodeCount = 1 << 23;
+
+	/**
+	 * Maximum number of statements allow in a {@link Scope}.
+	 *
+	 * @see Scope#getStatements()
+	 */
+	public static int maxStatements = 1 << 16;
 
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);

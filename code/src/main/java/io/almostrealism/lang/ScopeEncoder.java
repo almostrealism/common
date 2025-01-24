@@ -19,6 +19,7 @@ package io.almostrealism.lang;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
@@ -57,6 +58,8 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	public String apply(Scope scope) {
 		if (functionsWritten.contains(scope.getName())) {
 			return null;
+		} else if (scope.getStatements().size() > ScopeSettings.maxStatements) {
+			throw new IllegalArgumentException();
 		}
 
 		functionsWritten.add(scope.getName());
