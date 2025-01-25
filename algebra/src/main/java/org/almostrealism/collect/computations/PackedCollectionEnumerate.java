@@ -103,7 +103,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		// Starting over from the beginning for each new block
 		Expression<?> slice;
 
-		if (subsetShape.getTotalSize() == 1) {
+		if (subsetShape.getTotalSizeLong() == 1) {
 			slice = index;
 		} else if (!index.isFP()) {
 			slice = index.divide(e(subsetShape.getTotalSizeLong()));
