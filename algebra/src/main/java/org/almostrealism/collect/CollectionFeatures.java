@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import io.almostrealism.collect.ArithmeticSequenceExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
-import io.almostrealism.collect.ConditionalFilterExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -31,7 +30,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Absolute;
 import io.almostrealism.expression.Difference;
-import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -57,6 +55,7 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
+import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
@@ -903,24 +902,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		TraversalPolicy shape = shape(value);
-		return new DefaultTraversableExpressionComputation<>(
-				"exp", shape,
-				args -> new UniformCollectionExpression("exp", shape, in -> Exp.of(in[0]), args[1]),
-				(Supplier) value);
+		return new CollectionExponentialComputation<>(shape(value), false, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		TraversalPolicy shape = shape(value);
-
-		return new DefaultTraversableExpressionComputation<>(
-				"expIgnoreZero", shape,
-				args ->
-						new ConditionalFilterExpression("expIgnoreZero", shape,
-								Expression::eqZero, Exp::of,
-								false, args[1]),
-				(Supplier) value);
+		return new CollectionExponentialComputation<>(shape(value), true, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(

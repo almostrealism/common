@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,5 +32,14 @@ public class ConditionalFilterExpression extends UniformConditionalExpression {
 						positive ? filter.apply(args[0]) : args[0],
 						positive ? args[0] : filter.apply(args[0])),
 				input);
+	}
+
+	@Override
+	public CollectionExpression delta(CollectionExpression target) {
+		// TODO  This should return a ConditionalFilterExpression
+		// TODO  that chooses between the delta of the filtered input
+		// TODO  and the delta of the unfiltered input based on
+		// TODO  the same condition as is used by this expression
+		return super.delta(target);
 	}
 }
