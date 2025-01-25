@@ -243,7 +243,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			} else {
 				delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 				delta = delta.reshape(outLength, inLength);
-				delta = delta.enumerate(1, 1);
+				delta = delta.transpose();
 			}
 
 			delta = delta.enumerate(1, count).traverse(2);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -58,7 +59,17 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
-		CollectionProducerComputation<V> result = enumerate(shape(this).getTraversalAxis() + 1, 1);
+		TraversalPolicy shape = shape(this);
+
+		if (shape.getTraversalAxis() == 0 && shape.getDimensions() == 2 &&
+				shape.length(0) == shape.length(1) &&
+				Algebraic.isDiagonal(shape.length(0), this)) {
+			// Square, diagonal, 2D matrices are symmetric
+			// and do not require any transformation
+			return (CollectionProducer<V>) this;
+		}
+
+		CollectionProducerComputation<V> result = enumerate(shape.getTraversalAxis() + 1, 1);
 		return (CollectionProducer<V>) reshape(shape(result).trim(), result);
 	}
 
