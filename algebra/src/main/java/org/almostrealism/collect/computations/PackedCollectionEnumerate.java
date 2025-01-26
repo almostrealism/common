@@ -182,7 +182,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression<?> idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
 		if (idx != null && !idx.isValue(IndexValues.of(g))) return null;
 
-		return idx.withIndex(g, (Expression<?>) globalOut).imod(subsetShape.getSizeLong());
+		return idx == null ? null : idx.withIndex(g, (Expression<?>) globalOut).imod(subsetShape.getSizeLong());
 	}
 
 	@Override
