@@ -76,6 +76,7 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	public Number value(IndexValues indexValues) {
 		Number v = getChildren().get(0).value(indexValues);
 		if (v instanceof Integer) return -1 * (Integer) v;
+		if (v instanceof Long) return -1 * (Long) v;
 		return -1.0 * (Double) v;
 	}
 

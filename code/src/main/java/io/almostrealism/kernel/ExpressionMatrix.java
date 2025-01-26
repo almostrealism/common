@@ -80,6 +80,9 @@ public abstract class ExpressionMatrix<T> implements ConsoleFeatures {
 	public IndexSequence columnSequence() { return null; }
 
 	public Expression[] allColumnsMatch() {
+		if ((long) rowCount * colCount > MAX_SEQUENCE_LENGTH)
+			return null;
+
 		Expression[] result = new Expression[rowCount];
 
 		for (int i = 0; i < rowCount; i++) {

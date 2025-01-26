@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,10 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Exponent;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -36,6 +39,7 @@ import java.util.stream.Collectors;
 
 public class CollectionExponentComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	public static boolean enableCustomDelta = true;
+	public static boolean enableUniqueNonZeroOffset = false;
 
 	public CollectionExponentComputation(TraversalPolicy shape,
 										 Producer<? extends PackedCollection<?>> base,
@@ -57,8 +61,18 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
-		return CollectionExpression.create(getShape(),
-				index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index)));
+		return new UniformCollectionExpression("pow", getShape(),
+				op -> Exponent.of(op[0], op[1]),
+				args[1], args[2]) {
+			@Override
+			public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+				if (enableUniqueNonZeroOffset) {
+					return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+				}
+
+				return null;
+			}
+		};
 	}
 
 	@Override

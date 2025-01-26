@@ -81,14 +81,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			if (var == null) return null;
 
 			return var.getValueRelative(projectIndex(var, index));
-		} else {
-//			TraversableExpression<Double> var = getCollectionArgumentVariable(1);
-//			if (var == null) return null;
-//
-//			return var.getValueAt(projectIndex(var, index));
-
-			return super.getValueAt(index);
 		}
+
+		return super.getValueAt(index);
 	}
 
 	@Override
@@ -98,14 +93,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			if (var == null) return null;
 
 			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
-		} else {
-//			TraversableExpression var = getCollectionArgumentVariable(1);
-//			if (var == null) return null;
-//
-//			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
-
-			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {

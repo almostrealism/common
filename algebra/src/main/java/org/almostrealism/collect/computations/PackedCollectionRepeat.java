@@ -126,7 +126,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (idx == null) return idx;
 		if (!idx.isValue(IndexValues.of(g))) return null;
 
-		// return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
 		return idx.withIndex(g, ((Expression<?>) globalIndex).imod(limit));
 	}
 

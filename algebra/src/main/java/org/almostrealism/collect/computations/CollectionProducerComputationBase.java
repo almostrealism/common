@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -307,11 +307,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return vars;
 	}
 
-	public CollectionVariable getCollectionArgumentVariable(int argIndex) {
+	public CollectionVariable<?> getCollectionArgumentVariable(int argIndex) {
 		ArrayVariable<?> arg = getArgumentForInput(getInputs().get(argIndex));
 
 		if (arg instanceof CollectionVariable) {
-			return (CollectionVariable) arg;
+			return (CollectionVariable<?>) arg;
 		} else {
 			return null;
 		}

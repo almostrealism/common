@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -152,6 +153,33 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		for (int i = 0; i < result.length; i++) {
 			Assert.assertEquals(expected[i], result[i], 1e-5);
 		}
+	}
+
+	@Test
+	public void softmaxBackwardsLarge() {
+		TraversalPolicy shape = shape(1, 4, 25088);
+
+		PackedCollection<?> input = new PackedCollection(shape);
+		IntStream.range(0, shape.getTotalSize()).forEach(i -> input.setMem(i, i + 1.0));
+
+		PackedCollection<?> gradient = new PackedCollection<>(shape);
+		gradient.setMem(100, 1.0);
+
+		double result[] = new double[shape.getTotalSize()];
+
+		CellularLayer layer = softmax(shape, false);
+		layer.getBackward().setReceptor(grad -> () -> {
+			Evaluable<PackedCollection<?>> gr = grad.get();
+
+			return () -> {
+				PackedCollection<?> out = gr.evaluate();
+				// System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+
+				out.getMem(0, result, 0, result.length);
+			};
+		});
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
+		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
 	}
 
 	@Test

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.compute.Process;
@@ -35,6 +38,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	public static boolean enablePreferIsolation = true;
 	public static boolean enableDetectTraversalDepth = true;
 	public static boolean enablePositionSimplification = true;
+	public static boolean enableUniqueIndexOptimization = true;
 
 	private TraversalPolicy inputShape;
 	private int traversalDepth;
@@ -83,6 +87,27 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		}
 
 		return false;
+	}
+
+	/**
+	 * Returns true if this enumeration is a one-to-one mapping of the input collection,
+	 * where each element in the input collection is mapped to exactly one element in
+	 * the output collection, false otherwise.
+	 */
+	public boolean isOneToOne() {
+		for (int i = 0; i < subsetShape.getDimensions(); i++) {
+			boolean match;
+
+			if (strideShape.length(i) == 0) {
+				match = subsetShape.length(i) == inputShape.length(i);
+			} else {
+				match = subsetShape.length(i) == strideShape.length(i);
+			}
+
+			if (!match) return false;
+		}
+
+		return true;
 	}
 
 	@Override
@@ -135,6 +160,29 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 		Expression blockOffset = inputShape.subset(subsetShape, offset, p);
 		return block.multiply(inputShape.getTotalSizeLong()).add(blockOffset);
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		Expression<?> idx = uniqueNonZeroOffsetMapped(globalIndex, localIndex);
+		if (idx != null) return idx;
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	protected Expression<?> uniqueNonZeroOffsetMapped(Index globalOut, Index localOut) {
+		if (!enableUniqueIndexOptimization || !isOneToOne()) return null;
+		if (localOut.getLimit().isEmpty() || globalOut.getLimit().isEmpty()) return null;
+		if (subsetShape.getSizeLong() != localOut.getLimit().getAsLong()) return null;
+
+		long limit = subsetShape.getCountLong();
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", inputShape.getTotalSizeLong() / limit);
+
+		Expression<?> idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
+		if (idx != null && !idx.isValue(IndexValues.of(g))) return null;
+
+		return idx.withIndex(g, (Expression<?>) globalOut).imod(subsetShape.getSizeLong());
 	}
 
 	@Override
