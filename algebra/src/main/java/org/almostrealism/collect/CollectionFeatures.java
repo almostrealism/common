@@ -62,6 +62,7 @@ import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.CollectionSumComputation;
+import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
@@ -288,11 +289,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> zeros(TraversalPolicy shape) {
-		return new DefaultTraversableExpressionComputation<>("zeros", shape,
-					ExpressionFeatures.getInstance().constantZero(shape)) {
-			@Override
-			public boolean isZero() { return true; }
-		};
+		return new CollectionZerosComputation<>(shape);
 	}
 
 	default <T extends MemoryData> Assignment<T> a(String shortDescription, Producer<T> result, Producer<T> value) {
@@ -579,12 +576,27 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return result;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, Producer<?> collection) {
-		return new PackedCollectionEnumerate<>(shape, collection);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
+																					   Producer<?> collection) {
+		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate<>(shape, collection);
+
+		if (Algebraic.isZero(enumerate)) {
+			return zeros(enumerate.getShape());
+		}
+
+		return enumerate;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
-		return new PackedCollectionEnumerate<>(shape, stride, collection);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
+																					   TraversalPolicy stride,
+																					   Producer<?> collection) {
+		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate<>(shape, stride, collection);
+
+		if (Algebraic.isZero(enumerate)) {
+			return zeros(enumerate.getShape());
+		}
+
+		return enumerate;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {

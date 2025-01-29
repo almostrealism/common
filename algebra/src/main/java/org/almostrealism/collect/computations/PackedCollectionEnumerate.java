@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
@@ -111,6 +112,11 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public boolean isZero() {
+		return Algebraic.isZero(getInputs().get(1));
+	}
+
+	@Override
 	protected Expression<?> projectIndex(Expression<?> index) {
 		Expression block;
 		long blockSize = getShape().sizeLong(traversalDepth);
@@ -200,7 +206,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
+	public static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
 												Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 		TraversalPolicy itemShape = superShape.traverse(traversalDepth).item();
