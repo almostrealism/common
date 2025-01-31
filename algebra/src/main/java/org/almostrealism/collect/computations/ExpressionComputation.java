@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,7 +44,6 @@ import java.util.stream.Stream;
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends RelativeTraversableProducerComputation<T, T> {
 
-	public static boolean enableTraversableFixed = true;
 	public static boolean enableInferShape = false;
 	public static boolean enableWarnings = false;
 

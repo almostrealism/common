@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -637,7 +637,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), (args, idx) -> {
+		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(null, shape(2), (args, idx) -> {
 			Expression<?> result = null;
 
 			for (int i = 0; i < shape.getSize(); i++) {

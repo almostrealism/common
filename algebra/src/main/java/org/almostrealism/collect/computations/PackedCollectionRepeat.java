@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,6 +53,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
+
+		if (collection instanceof CollectionConstantComputation) {
+			warn("Repeating a constant");
+		}
 
 		if (!enableLargeSlice &&
 				(!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) &&
@@ -189,5 +193,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Repeat cannot be performed without a TraversalPolicy");
 
 		return ((Shape) collection).getShape();
+	}
+
+	public static TraversalPolicy shape(int repeat, TraversalPolicy inputShape) {
+		TraversalPolicy shape = inputShape.item();
+		return inputShape.replace(shape.prependDimension(repeat)).traverse();
 	}
 }

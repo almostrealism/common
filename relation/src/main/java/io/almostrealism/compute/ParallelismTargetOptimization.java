@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,11 @@ import java.util.stream.Stream;
 
 public class ParallelismTargetOptimization implements ProcessOptimizationStrategy {
 
-	boolean enableNarrowMax = true;
-	boolean enableContextualCount = false;
-	int minCount = 1 << 8;
-	int targetCount = 1 << 17;
-	int maxCount = 1 << 20;
+	public static boolean enableNarrowMax = true;
+	public static boolean enableContextualCount = false;
+	public static int minCount = 1 << 8;
+	public static int targetCount = 1 << 17;
+	public static int maxCount = 1 << 20;
 
 	public <P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 															   Process<P, T> parent,

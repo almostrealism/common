@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
@@ -36,7 +37,7 @@ import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	public static boolean enablePreferIsolation = true;
+	public static boolean enablePreferIsolation = false;
 	public static boolean enableDetectTraversalDepth = true;
 	public static boolean enablePositionSimplification = true;
 	public static boolean enableUniqueIndexOptimization = true;
@@ -82,7 +83,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		if (super.isIsolationTarget(context)) return true;
 
 		if (enablePreferIsolation &&
-				getParallelism() > minCount &&
+				getParallelism() > ParallelismTargetOptimization.minCount &&
 				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
 			return true;
 		}

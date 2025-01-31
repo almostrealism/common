@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
@@ -23,7 +24,6 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
@@ -70,7 +70,7 @@ public class ScopeSettings {
 	public static long unsimplifiedChildren = 0;
 	public static long cacheCount = 0;
 
-	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
+	public static int maxKernelSeriesCount = ParallelismTargetOptimization.maxCount << 2;
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
 	public static ScopeTimingListener timing;

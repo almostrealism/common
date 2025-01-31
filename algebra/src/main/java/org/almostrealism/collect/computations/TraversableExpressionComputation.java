@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,6 +49,10 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(name, shape, validateArgs(args));
 		this.deltaStrategy = deltaStrategy;
+
+		if (name == null) {
+			warn("Name is null for " + getClass().getSimpleName());
+		}
 	}
 
 	protected abstract CollectionExpression getExpression(TraversableExpression... args);

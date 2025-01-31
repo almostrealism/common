@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -118,13 +118,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducer<Scalar> value(Scalar value) {
-		if (ExpressionComputation.enableTraversableFixed) {
-			return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
-		} else {
-			Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-			IntStream.range(0, 2).forEach(i -> comp[i] = args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]));
-			return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp)).setPostprocessor(Scalar.postprocessor());
-		}
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {

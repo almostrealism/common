@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,6 +38,10 @@ public class ScalarMatrixComputation<T extends PackedCollection<?>> extends Matr
 
 	public ScalarMatrixComputation(String name, TraversalPolicy shape, Producer<? extends PackedCollection<?>> scalar) {
 		super(name, shape, scalar);
+
+		if (shape.getTotalSizeLong() == 1) {
+			warn("ScalarMatrixComputation will be identical to input");
+		}
 
 		if (shape(scalar).getTotalSize() != 1) {
 			throw new IllegalArgumentException();

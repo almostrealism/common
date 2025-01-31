@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
@@ -31,11 +29,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
+												extends TraversableExpressionComputation<T> {
 
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
 									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
@@ -72,6 +70,10 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 		return Optional.of(generate(operands));
 	}
 
+	protected boolean isTransitiveArgumentIndex(int index) {
+		return index > 0;
+	}
+
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		CollectionProducer<T> delta = attemptDelta(target);
@@ -100,8 +102,12 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 		List<Process<?, ?>> deltas = new ArrayList<>();
 		deltas.add(null);
 
-		for (CollectionProducer<PackedCollection<?>> operand : operands) {
-			deltas.add((Process) operand.delta(target));
+		for (int i = 0; i < operands.size(); i++) {
+			if (isTransitiveArgumentIndex(i + 1)) {
+				deltas.add((Process) operands.get(i).delta(target));
+			} else {
+				deltas.add((Process) operands.get(i));
+			}
 		}
 
 		return generate(deltas).reshape(getShape().append(targetShape));

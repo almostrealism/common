@@ -342,7 +342,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			this.evaluable = new HardwareEvaluable<>(
 					this::getEvaluable,
 					getDestination(),
-					shortCircuit, true);
+					getShortCircuit(), true);
 			this.evaluable.setDestinationProcessor(destination -> {
 				if (destination instanceof Shape) {
 					Shape out = (Shape) destination;

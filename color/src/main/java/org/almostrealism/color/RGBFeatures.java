@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface RGBFeatures extends ScalarFeatures {
+	boolean enableTraversableFixed = true;
 
 	default CollectionProducer<RGB> v(RGB value) { return value(value); }
 
@@ -57,6 +59,10 @@ public interface RGBFeatures extends ScalarFeatures {
 	default CollectionProducer<RGB> black() { return rgb(0.0, 0.0, 0.0); }
 
 	default CollectionProducer<RGB> value(RGB value) {
+		if (enableTraversableFixed) {
+			return DefaultTraversableExpressionComputation.fixed(value, RGB.postprocessor());
+		}
+
 		return ExpressionComputation.fixed(value, RGB.postprocessor());
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,24 +17,16 @@
 package io.almostrealism.compute;
 
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelismSettings;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
 	List<Predicate<Process>> isolationFlags = new ArrayList<>();
-
-	boolean enableNarrowMax = true;
-	boolean enableContextualCount = false;
-	int minCount = 1 << 8;
-	int targetCount = 1 << 17;
-	int maxCount = 1 << 20;
 
 	@Override
 	default ParallelProcess<P, T> generate(List<P> children) {
