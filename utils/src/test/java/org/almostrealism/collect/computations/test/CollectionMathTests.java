@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -133,6 +133,15 @@ public class CollectionMathTests implements TestFeatures {
 
 					assertEquals(expected, output.valueAt(0));
 				}, false, false, true);
+	}
+
+	@Test
+	public void linear() {
+		PackedCollection<?> out = linear(0, 5, 10).evaluate();
+		Assert.assertEquals(10, out.getShape().length(0));
+		assertEquals(0.0, out.valueAt(0));
+		assertEquals(10.0 / 3.0, out.valueAt(6));
+		assertEquals(5.0, out.valueAt(9));
 	}
 
 	@Test

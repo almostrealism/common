@@ -171,8 +171,10 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		Expression<?> idx = uniqueNonZeroOffsetMapped(globalIndex, localIndex);
-		if (idx != null) return idx;
+		if (Index.child(globalIndex, localIndex).equals(targetIndex)) {
+			Expression<?> idx = uniqueNonZeroOffsetMapped(globalIndex, localIndex);
+			if (idx != null) return idx;
+		}
 
 		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}

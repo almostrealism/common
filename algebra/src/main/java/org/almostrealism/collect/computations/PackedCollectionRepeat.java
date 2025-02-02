@@ -119,8 +119,16 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (!enableUniqueIndexOptimization || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong())
 			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 
+		if (!Index.child(globalIndex, localIndex).equals(targetIndex)) {
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		}
+
 		if (localIndex.getLimit().isEmpty() || globalIndex.getLimit().isEmpty()) return null;
 		if (subsetShape.getTotalSizeLong() % localIndex.getLimit().getAsLong() != 0) return null;
+
+		if (globalIndex.getLimit().getAsLong() == 0) {
+			throw new UnsupportedOperationException();
+		}
 
 		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
 		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);

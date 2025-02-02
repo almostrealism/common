@@ -449,6 +449,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
+																			   Producer<PackedCollection<?>>... pos) {
+		return c(collection, shape(collection), pos);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
 																			   TraversalPolicy collectionShape,
 																			   Producer<PackedCollection<?>>... pos) {
 		return c(shape(pos[0]), collection, collectionShape, pos);
@@ -481,6 +486,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
 		return new DynamicCollectionProducer(shape, function, kernel);
+	}
+
+	default DynamicCollectionProducer func(TraversalPolicy shape,
+										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
+										   Producer[] args) {
+		return new DynamicCollectionProducer(shape, function, false, true, args);
+	}
+
+	default DynamicCollectionProducer func(TraversalPolicy shape,
+										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
+										   Producer<?> argument, Producer<?>... args) {
+		return new DynamicCollectionProducer(shape, function, false, true, argument, args);
 	}
 
 	default <T, P extends Producer<T>> Producer<T> alignTraversalAxes(
@@ -668,24 +685,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new PackedCollectionMap<>(collection, (Function) mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection,
+																				 Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return new PackedCollectionMap<>(shape(collection).replace(itemShape), collection, (Function) mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection,
+																					Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
 		return map(shape(1), collection, (Function) mapper);
 	}
 
-	/**
-	 * @deprecated Use {@link #repeat(int, Producer)}
-	 */
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducer<T> expand(int repeat, Producer<?> collection) {
-		// return expand(repeat, collection, v -> v.repeat(repeat));
-		return (CollectionProducer) repeat(repeat, collection).consolidate();
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection,
+																					Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
 		return map(shape(collection).item().prependDimension(repeat), collection, mapper);
 	}
 
@@ -766,13 +777,21 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		};
 	}
 
-
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
 
 		return new DefaultTraversableExpressionComputation<>("integers", shape,
 				args -> new ArithmeticSequenceExpression(shape, from, 1));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> linear(double start, double end, int steps) {
+		if (steps < 2) {
+			throw new IllegalArgumentException();
+		}
+
+		double step = (end - start) / (steps - 1);
+		return integers(0, steps).multiply(c(step));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
