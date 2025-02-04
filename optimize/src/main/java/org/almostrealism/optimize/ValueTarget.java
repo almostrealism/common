@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ import org.almostrealism.hardware.MemoryData;
 
 public interface ValueTarget<T extends MemoryData> {
 	PackedCollection<T> getInput();
+
+	default PackedCollection<?>[] getArguments() {
+		return new PackedCollection[0];
+	}
 
 	PackedCollection<T> getExpectedOutput();
 

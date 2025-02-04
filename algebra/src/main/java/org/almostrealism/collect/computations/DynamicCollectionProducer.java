@@ -75,7 +75,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 
 	@Override
 	protected Function<Object[], T> getFunction() {
-		if (args.length > 0) {
+		if (args != null && args.length > 0) {
 			Evaluable eval[] = Stream.of(args).map(Producer::get).toArray(Evaluable[]::new);
 			return args -> {
 				PackedCollection[] inputs = Stream.of(eval)

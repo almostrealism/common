@@ -134,9 +134,8 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return add((Producer) this, c(value));
 	}
 
-	@Deprecated
-	default <V extends PackedCollection<?>> CollectionProducerComputationBase<V, V> relativeAdd(Producer<V> value) {
-		return relativeAdd((Producer) this, value);
+	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(double value) {
+		return subtract((Producer) this, c(value));
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> subtract(Producer<V> value) {
@@ -145,11 +144,6 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subtractIgnoreZero(Producer<T> value) {
 		return subtractIgnoreZero((Producer) this, value);
-	}
-
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> value) {
-		return relativeSubtract((Producer) this, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> mul(double value) {

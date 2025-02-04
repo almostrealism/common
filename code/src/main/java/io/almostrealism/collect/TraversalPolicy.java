@@ -104,6 +104,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 					throw new IllegalArgumentException();
 				}
 			}
+		} else if (!tolerateZero) {
+			throw new IllegalArgumentException();
 		}
 	}
 
@@ -493,8 +495,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	public TraversalPolicy item() {
-		if (traversalAxis == dims.length) return new TraversalPolicy(order);
-		return new TraversalPolicy(IntStream.range(traversalAxis, dims.length).mapToLong(i -> dims[i]).toArray());
+		if (traversalAxis == dims.length) return new TraversalPolicy(order, true);
+		return new TraversalPolicy(Arrays.stream(dims, traversalAxis, dims.length).toArray());
 	}
 
 	public TraversalPolicy replace(TraversalPolicy itemShape) {
@@ -748,6 +750,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
 				int repeat;
+
+				if (shapes.get(i).getTotalSize() == 0) {
+					throw new IllegalArgumentException();
+				}
 
 				if (enableDivisibleSizes && shape.getTotalSize() % shapes.get(i).getTotalSize() != 0) {
 					repeat = 0;

@@ -76,16 +76,18 @@ public interface RGBFeatures extends ScalarFeatures {
 		return saveImage(file, format, false, values);
 	}
 
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveChannels(String file, CollectionProducer<T> values) {
+	default <T extends PackedCollection<?>> Supplier<Runnable> saveChannels(String file, Producer<T> values) {
 		return saveImage(file, true, values);
 	}
 
 	default <T extends PackedCollection<?>> Supplier<Runnable> saveChannels(File file, String format,
-																			CollectionProducer<T> values) {
+																			Producer<T> values) {
 		return saveImage(file, format, true, values);
 	}
 
-	default <T extends PackedCollection<?>> Supplier<Runnable> saveImage(String file, boolean channelsFirst, CollectionProducer<T> values) {
+	default <T extends PackedCollection<?>> Supplier<Runnable> saveImage(String file,
+																		 boolean channelsFirst,
+																		 Producer<T> values) {
 		if (file.endsWith("png")) {
 			return saveImage(new File(file), "png", channelsFirst, values);
 		} else if (file.endsWith("jpg")) {
@@ -105,7 +107,7 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default <T extends PackedCollection<?>> Supplier<Runnable> saveImage(File file, String format,
 																		 boolean channelsFirst,
-																		 CollectionProducer<T> values) {
+																		 Producer<T> values) {
 		return () -> {
 			Evaluable<T> ev = values.get();
 

@@ -60,6 +60,12 @@ public class ScopeSettings {
 	 */
 	public static int maxStatements = 1 << 16;
 
+	/**
+	 * Maximum number of nested conditions for any {@link Expression}
+	 * in a {@link Scope}.
+	 */
+	public static int maxConditionSize = 32;
+
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
 

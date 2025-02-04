@@ -145,6 +145,28 @@ public class CollectionMathTests implements TestFeatures {
 	}
 
 	@Test
+	public void cumulativeProduct() {
+		int steps = 300;
+		double betaStart = 0.0001;
+		double betaEnd = 0.02;
+		CollectionProducer<PackedCollection<?>> inputs = linear(betaStart, betaEnd, steps);
+		CollectionProducer<PackedCollection<?>> products =
+				cumulativeProduct(c(1.0).subtract(inputs), false);
+
+		double in[] = products.evaluate().toArray();
+		double ad[] = sqrt(products).evaluate().toArray();
+		double bd[] = sqrt(c(1.0).subtract(products)).evaluate().toArray();
+
+		Assert.assertEquals(in.length, ad.length);
+		Assert.assertEquals(in.length, bd.length);
+
+		for (int i = 0; i < in.length; i++) {
+			assertEquals(Math.sqrt(in[i]), ad[i]);
+			assertEquals(Math.sqrt(1.0 - in[i]), bd[i]);
+		}
+	}
+
+	@Test
 	public void squares() {
 		int size = 768;
 
