@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,15 @@
 
 package org.almostrealism.optimize;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
 
 public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> {
-	static <T extends MemoryData> Dataset<T> of(Iterable<ValueTarget<T>> targets) {
-		return () -> targets.iterator();
-	}
 
 	default List<Dataset<T>> split(double ratio) {
 		List<ValueTarget<T>> a = new ArrayList<>();
@@ -39,5 +39,16 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 		});
 
 		return List.of(of(a), of(b));
+	}
+
+	static <T extends MemoryData> Dataset<T> of(Iterable<ValueTarget<T>> targets) {
+		return () -> targets.iterator();
+	}
+
+	static <T extends PackedCollection<?>> FunctionalDataset<T> of(Iterable<PackedCollection<?>> inputs,
+														  Function<PackedCollection<?>, Collection<ValueTarget<T>>> function) {
+		List<PackedCollection<?>> list = new ArrayList<>();
+		inputs.forEach(list::add);
+		return new FunctionalDataset(list, function);
 	}
 }

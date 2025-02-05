@@ -111,10 +111,15 @@ public class ModelOptimizer implements CodeFeatures {
 			int count = 0;
 
 			for (ValueTarget<?> target : data) {
+				// Input
 				PackedCollection<?> input = target.getInput();
+				PackedCollection<?>[] arguments = target.getArguments();
 
+				// Target
 				PackedCollection<?> valid = target.getExpectedOutput();
-				PackedCollection<?> out = model.forward(input);
+
+				// Forward pass and loss
+				PackedCollection<?> out = model.forward(input, arguments);
 				PackedCollection<?> grad = dloss.evaluate(out, valid);
 
 				double ls = loss.apply(out, valid);

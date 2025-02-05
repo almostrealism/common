@@ -17,26 +17,29 @@
 package org.almostrealism.optimize;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 
-public class FunctionalDataset<T extends MemoryData> implements Dataset<T> {
+public class FunctionalDataset<T extends PackedCollection<?>> implements Dataset<T> {
 	private List<PackedCollection<?>> inputs;
-	private Function<PackedCollection<?>, ValueTarget<T>> function;
+	private Function<PackedCollection<?>, Collection<ValueTarget<T>>> function;
 
 	public FunctionalDataset(List<PackedCollection<?>> inputs,
-							 Function<PackedCollection<?>, ValueTarget<T>> function) {
+							 Function<PackedCollection<?>, Collection<ValueTarget<T>>> function) {
 		this.inputs = inputs;
 		this.function = function;
 	}
 
 	@Override
 	public Iterator<ValueTarget<T>> iterator() {
-		return inputs.stream().map(function).iterator();
+		return inputs.stream()
+				.map(function)
+				.flatMap(Collection::stream)
+				.iterator();
 	}
 
 	@Override
