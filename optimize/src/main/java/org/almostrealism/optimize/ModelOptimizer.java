@@ -120,7 +120,7 @@ public class ModelOptimizer implements CodeFeatures {
 			double totalLoss = 0.0;
 			int count = 0;
 
-			for (ValueTarget<?> target : data) {
+			v: for (ValueTarget<?> target : data) {
 				// Input
 				PackedCollection<?> input = target.getInput();
 				PackedCollection<?>[] arguments = target.getArguments();
@@ -133,6 +133,8 @@ public class ModelOptimizer implements CodeFeatures {
 				PackedCollection<?> grad = dloss.evaluate(out, valid);
 
 				double ls = loss.apply(out, valid);
+				if (Double.isNaN(ls)) continue v;
+
 				totalLoss += ls;
 				count++;
 
@@ -151,6 +153,10 @@ public class ModelOptimizer implements CodeFeatures {
 
 					first = false;
 				}
+			}
+
+			if (count == 0) {
+				throw new RuntimeException("No members of the dataset produced valid results");
 			}
 
 			totalIterations++;
