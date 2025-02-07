@@ -27,6 +27,7 @@ import org.almostrealism.model.Model;
 
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class ModelOptimizer implements CodeFeatures {
@@ -34,6 +35,7 @@ public class ModelOptimizer implements CodeFeatures {
 	private Supplier<Dataset<?>> dataset;
 	private Receptor<Double> receptor;
 	private int logFrequency;
+	private Consumer<String> log;
 
 	private Evaluable<PackedCollection<?>> dloss;
 	private BiFunction<PackedCollection<?>, PackedCollection<?>, Double> loss;
@@ -88,6 +90,14 @@ public class ModelOptimizer implements CodeFeatures {
 		this.logFrequency = logFrequency;
 	}
 
+	public Consumer<String> getLogConsumer() {
+		return log;
+	}
+
+	public void setLogConsumer(Consumer<String> log) {
+		this.log = log;
+	}
+
 	public void setLossTarget(double lossTarget) {
 		this.lossTarget = lossTarget;
 	}
@@ -132,7 +142,7 @@ public class ModelOptimizer implements CodeFeatures {
 				model.backward(grad);
 
 				if (first) {
-					out = model.forward(input);
+					out = model.forward(input, arguments);
 					updatedLoss = loss.apply(out, valid);
 
 					if ((ls - updatedLoss) < 0.0) {
@@ -181,6 +191,15 @@ public class ModelOptimizer implements CodeFeatures {
 		}
 
 		return success / (double) count;
+	}
+
+	@Override
+	public void log(String message) {
+		if (getLogConsumer() == null) {
+			CodeFeatures.super.log(message);
+		} else {
+			getLogConsumer().accept(message);
+		}
 	}
 
 	@Override

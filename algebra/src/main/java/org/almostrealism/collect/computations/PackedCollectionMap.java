@@ -125,7 +125,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionVariable input = (CollectionVariable) arg;
 
 		TraversalPolicy sliceShape = inputShape.item();
-		TraversalPolicy traversalShape = new TraversalPolicy();
+		TraversalPolicy traversalShape = new TraversalPolicy(true);
 		int traversalDimensions = inputShape.getDimensions() - sliceShape.getDimensions();
 		for (int i = 0; i < traversalDimensions; i++) {
 			sliceShape = sliceShape.prependDimension(1);
