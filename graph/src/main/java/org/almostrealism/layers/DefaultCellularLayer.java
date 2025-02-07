@@ -121,6 +121,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 				OperationList op = new OperationList(getName() + " layer (Entry)");
 				op.add(into(getName() + " layer (Input Record)", in, p(input),
 						enableMemoryDataCopy, getComputeRequirements()));
+				if (LayerFeatures.enableMonitor) {
+					op.add(new MonitorReceptor(getName() + " layer (Input Monitor)",
+							getInputShape(), getOutputShape())
+							.push(p(input)));
+				}
+
 				op.add(next.push(p(input)));
 				return op;
 			}

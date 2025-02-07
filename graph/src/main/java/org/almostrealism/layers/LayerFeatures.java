@@ -53,6 +53,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	boolean allowNonComposites = false;
 	boolean enableWeightedSum = true;
+	boolean enableMonitor = true;
 
 	Console console = CollectionFeatures.console.child();
 
@@ -108,6 +109,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
+		if (enableMonitor)
+			layer.setMonitor(new MonitorReceptor(name, inputShape, outputShape));
+
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
 	}
@@ -540,7 +544,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		Factor<PackedCollection<?>> operator = input ->
 				bias ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
 
-		OperationList setup = new OperationList();
+		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
 			Random randn = randn(weightShape);
 			setup.add(() -> randn::refresh);
