@@ -728,14 +728,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return resultProcessor.apply(shape, vals);
 		}
 
-		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSize).reversed());
+		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSizeLong).reversed());
 		sortedShapes.addAll(shapes);
 
-		int largest = sortedShapes.iterator().next().getTotalSize();
+		long largest = sortedShapes.iterator().next().getTotalSizeLong();
 		int depth = sortedShapes.iterator().next().getDimensions();
 
 		s: for (TraversalPolicy shape : sortedShapes) {
-			if (shape.getTotalSize() < largest) {
+			if (shape.getTotalSizeLong() < largest) {
 				break s;
 			}
 
@@ -749,21 +749,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 			List<V> vals = new ArrayList<>();
 			for (int i = 0; i < values.size(); i++) {
-				int repeat;
+				long repeat;
 
-				if (shapes.get(i).getTotalSize() == 0) {
+				if (shapes.get(i).getTotalSizeLong() == 0) {
 					throw new IllegalArgumentException();
 				}
 
-				if (enableDivisibleSizes && shape.getTotalSize() % shapes.get(i).getTotalSize() != 0) {
+				if (enableDivisibleSizes && shape.getTotalSizeLong() % shapes.get(i).getTotalSizeLong() != 0) {
 					repeat = 0;
 				} else {
-					repeat = shape.getTotalSize() / shapes.get(i).getTotalSize();
+					repeat = shape.getTotalSizeLong() / shapes.get(i).getTotalSizeLong();
 				}
 
+				if (repeat > Integer.MAX_VALUE) {
+					throw new UnsupportedOperationException();
+				}
 
 				V v = traversalFunction.apply(matchDepths[i], values.get(i));
-				if (repeat > 1) v = expandFunction.apply(repeat, v);
+				if (repeat > 1) v = expandFunction.apply(Math.toIntExact(repeat), v);
 				vals.add(v);
 			}
 

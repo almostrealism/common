@@ -225,12 +225,12 @@ public interface AttentionFeatures extends RotationFeatures {
 		Block q = qkv.get(0)
 //				.andThen(scale(scale))
 				.reshape(batchSize, heads, dimHead * size)
-				.andThen(softmax(false))
+				.andThen(softmax(true))
 				.andThen(scale(scale))
 				.reshape(batchSize, heads, dimHead, size);
 		Block v = qkv.get(2);
 
-		attention.add(softmax(false));
+		attention.add(softmax(true));
 		attention.add(context(v, batchSize, heads, dimHead, size));
 		attention.add(similarity(q, heads, dimHead, size));
 		attention.reshape(batchSize, hiddenDim, rows, cols);

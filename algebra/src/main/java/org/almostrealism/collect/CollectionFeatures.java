@@ -943,10 +943,16 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			} else if (a instanceof SingleConstantComputation && b instanceof SingleConstantComputation) {
 				double value = ((SingleConstantComputation) a).getConstantValue() * ((SingleConstantComputation) b).getConstantValue();
 				return constant(outputShape(a, b), value);
-			} else if (a instanceof SingleConstantComputation && b.isConstant()) {
-				return multiply(((SingleConstantComputation) a).getConstantValue(), b);
-			} else if (b instanceof SingleConstantComputation && a.isConstant()) {
-				return multiply(((SingleConstantComputation) b).getConstantValue(), a);
+			}
+
+			if (a instanceof SingleConstantComputation) {
+				CollectionProducer<T> result = multiply(((SingleConstantComputation) a).getConstantValue(), b);
+				if (result != null) return result;
+			}
+
+			if (b instanceof SingleConstantComputation) {
+				CollectionProducer<T> result = multiply(((SingleConstantComputation) b).getConstantValue(), a);
+				if (result != null) return result;
 			}
 		}
 
@@ -967,9 +973,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			return c(a);
 		} else if (scale == -1.0) {
 			return minus(a);
+		} else if (a.isConstant()) {
+			return multiply(shape(a), scale, a.get());
+		} else {
+			return null;
 		}
-
-		return multiply(shape(a), scale, a.get());
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(TraversalPolicy shape, double scale, Evaluable<T> a) {
