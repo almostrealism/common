@@ -48,6 +48,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default Block reshape(TraversalPolicy shape) {
+		if (getOutputShape().getTotalSize() != shape.getTotalSize()) {
+			throw new IllegalArgumentException();
+		}
+
 		return andThen(reshape(getOutputShape(), shape));
 	}
 

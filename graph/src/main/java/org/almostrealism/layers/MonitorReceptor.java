@@ -67,9 +67,9 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 						" layer (" + inputShape + " -> " + outputShape + ")");
 			}
 
-			if (name != null && name.contains("softmax")) {
+			if (name != null && name.equals("softmax2d")) {
 				double total = out.doubleStream().sum();
-				if (Math.abs(total - 1.0) > 1e-5) {
+				if (total < 0.9) {
 					warn("Softmax layer (" + inputShape + " -> " + outputShape + ") sum is " + total);
 				}
 			}
