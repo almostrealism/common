@@ -22,18 +22,34 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFeatures {
 	private String name;
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
+	private Consumer<PackedCollection<?>> op;
 	private PackedCollection<?> data[];
 
+	public MonitorReceptor(Consumer<PackedCollection<?>> op) {
+		this("monitor", null, null, op);
+	}
+
+	public MonitorReceptor(String name, Consumer<PackedCollection<?>> op) {
+		this(name, null, null, op);
+	}
+
 	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape, PackedCollection<?>... data) {
+		this(name, inputShape, outputShape, null, data);
+	}
+
+	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
+							Consumer<PackedCollection<?>> op, PackedCollection<?>... data) {
 		this.name = name;
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
+		this.op = op;
 		this.data = data;
 	}
 
@@ -49,6 +65,17 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 			} else if (isZero) {
 				warn("Identified Zero from " + name +
 						" layer (" + inputShape + " -> " + outputShape + ")");
+			}
+
+			if (name != null && name.contains("softmax")) {
+				double total = out.doubleStream().sum();
+				if (Math.abs(total - 1.0) > 1e-5) {
+					warn("Softmax layer (" + inputShape + " -> " + outputShape + ") sum is " + total);
+				}
+			}
+
+			if (op != null) {
+				op.accept(out);
 			}
 		};
 	}

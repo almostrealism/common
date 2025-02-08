@@ -25,6 +25,9 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
+import java.util.List;
+import java.util.function.Function;
+
 public interface AttentionFeatures extends RotationFeatures {
 
 	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
@@ -166,6 +169,79 @@ public interface AttentionFeatures extends RotationFeatures {
 				position, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
 		return transformer;
+	}
+
+	default Function<TraversalPolicy, CellularLayer> context(Block v, int batchSize, int heads, int dimHead, int size) {
+		if (v.getOutputShape().getDimensions() != 4 ||
+				v.getOutputShape().length(1) != heads ||
+				v.getOutputShape().length(2) != dimHead ||
+				v.getOutputShape().length(3) != size) {
+			throw new IllegalArgumentException();
+		}
+
+		return compose("context", v, shape(batchSize, heads, dimHead, dimHead), (a, b) -> {
+			CollectionProducer<PackedCollection<?>> pa = c(a)
+					.traverse(3)
+					.repeat(dimHead);
+			CollectionProducer<PackedCollection<?>> pb = c(b)
+					.traverse(2)
+					.repeat(dimHead);
+			return multiply(pa, pb).sum(4);
+		});
+	}
+
+	default Function<TraversalPolicy, Block> linearAttention(int dim) {
+		return shape -> {
+			int batchSize = shape.length(0);
+			int inputChannels = shape.length(1);
+			int rows = shape.length(2);
+			int cols = shape.length(3);
+			return linearAttention(batchSize, dim, inputChannels, rows, cols);
+		};
+	}
+
+	default Block linearAttention(int batchSize, int dim, int inputChannels, int rows, int cols) {
+		return linearAttention(batchSize, dim, 4, 32, inputChannels, rows, cols);
+	}
+
+	default Block linearAttention(int batchSize, int dim, int heads, int dimHead,
+								 int inputChannels, int rows, int cols) {
+		double scale = 1.0 / Math.sqrt(dimHead);
+		int hiddenDim = dimHead * heads;
+		int size = rows * cols;
+
+		TraversalPolicy shape = shape(batchSize, inputChannels, rows, cols);
+		TraversalPolicy componentShape = shape(batchSize, heads, dimHead, size);
+
+		SequentialBlock attention = new SequentialBlock(shape);
+		attention.add(convolution2d(dim, hiddenDim * 3, 1, 0, false));
+
+		attention
+				.reshape(batchSize, 3, hiddenDim * size)
+				.enumerate(shape(batchSize, 1, hiddenDim * size))
+				.reshape(3, batchSize, heads, dimHead, size);
+
+		List<Block> qkv = attention.split(componentShape, 1);
+		Block q = qkv.get(0)
+//				.andThen(scale(scale))
+				.reshape(batchSize, heads, dimHead * size)
+				.andThen(softmax(false))
+				.andThen(scale(scale))
+				.reshape(batchSize, heads, dimHead, size);
+		Block v = qkv.get(2);
+
+		attention.add(softmax(false));
+		attention.add(context(v, batchSize, heads, dimHead, size));
+		attention.add(similarity(q, heads, dimHead, size));
+		attention.reshape(batchSize, hiddenDim, rows, cols);
+		attention.add(convolution2d(hiddenDim, dim, 1, 0));
+		attention.add(norm());
+
+		if (!attention.getOutputShape().equalsIgnoreAxis(shape)) {
+			throw new IllegalArgumentException();
+		}
+
+		return attention;
 	}
 
 	static AttentionFeatures getInstance() {
