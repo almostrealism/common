@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Factor;
@@ -110,7 +111,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		layer.init(inputShape, Layer.ioTracking, true);
 		if (enableMonitor)
-			layer.setMonitor(new MonitorReceptor(name, inputShape, outputShape));
+			layer.setMonitor(new MonitorReceptor(
+					name, inputShape, outputShape,
+					weights.toArray(PackedCollection[]::new)));
 
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
@@ -184,11 +187,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		Cell.CaptureReceptor<PackedCollection<?>> auxReceptor = new Cell.CaptureReceptor<>();
 		auxExit.setReceptor(auxReceptor);
 
+		Supplier<Runnable> setup = new OperationList();
+		if (aux instanceof Setup) {
+			setup = ((Setup) aux).setup();
+		}
+
 		// Create a layer that composes its input with whatever was received for aux
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
 				Cell.of((input, next) -> next == null ? new OperationList() :
 						next.push(operator.compose(input, auxReceptor.getReceipt()))),
-				null);
+				null, Collections.emptyList(), setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
@@ -582,6 +590,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		int axis = shape.getDimensions() - 1;
 		int seqLen = shape.length(axis);
+		double eps = 1e-5;
 
 		return layer("softmax2d", shape, shape, input -> {
 			CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
@@ -593,7 +602,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			}
 
 			o = o.expIgnoreZero().traverse(axis);
-			o = o.divide(o.sum().expand(seqLen));
+			o = o.divide(o.sum().add(eps).expand(seqLen));
 
 			return o;
 		}, requirements);

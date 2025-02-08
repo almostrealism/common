@@ -28,11 +28,13 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 	private String name;
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
+	private PackedCollection<?> data[];
 
-	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape) {
+	public MonitorReceptor(String name, TraversalPolicy inputShape, TraversalPolicy outputShape, PackedCollection<?>... data) {
 		this.name = name;
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
+		this.data = data;
 	}
 
 	@Override
