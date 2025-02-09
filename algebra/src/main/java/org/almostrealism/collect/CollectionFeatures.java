@@ -57,6 +57,7 @@ import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
+import org.almostrealism.collect.computations.CollectionLogarithmComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
@@ -1067,11 +1068,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		TraversalPolicy shape = shape(value);
-		return new DefaultTraversableExpressionComputation<>(
-				"log", shape,
-				args -> new UniformCollectionExpression("log", shape, in -> Logarithm.of(in[0]), args[1]),
-				(Supplier) value);
+		return new CollectionLogarithmComputation<>(shape(value), value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> sq(Producer<T> value) {

@@ -73,7 +73,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException(getClass().getName());
 	}
 
 	@Override
