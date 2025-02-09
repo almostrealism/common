@@ -602,7 +602,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			}
 
 			o = o.expIgnoreZero().traverse(axis);
-			o = o.divide(o.sum().add(eps).expand(seqLen));
+			o = o.divide(o.sum().expand(seqLen));
 
 			return o;
 		}, requirements);

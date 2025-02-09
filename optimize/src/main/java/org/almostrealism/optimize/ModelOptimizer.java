@@ -64,7 +64,7 @@ public class ModelOptimizer implements CodeFeatures {
 		this.averageLoss = -1;
 
 		setDataset(dataset);
-		setLossFunction(new MeanSquaredError(model.getOutputShape()));
+		setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
 	}
 
 	public void setLossFunction(LossProvider lossFunction) {
@@ -130,9 +130,9 @@ public class ModelOptimizer implements CodeFeatures {
 
 				// Forward pass and loss
 				PackedCollection<?> out = model.forward(input, arguments);
-				PackedCollection<?> grad = dloss.evaluate(out, valid);
+				PackedCollection<?> grad = dloss.evaluate(out.each(), valid.each());
 
-				double ls = loss.apply(out, valid);
+				double ls = loss.apply(out.each(), valid.each());
 				if (Double.isNaN(ls)) continue v;
 
 				totalLoss += ls;

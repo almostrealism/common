@@ -172,6 +172,8 @@ public class CompiledModel implements CodeFeatures {
 		public void accept(PackedCollection<?> input) {
 			if (input == null) {
 				warn("null input");
+			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
+				throw new IllegalArgumentException();
 			}
 
 			this.input = input;
