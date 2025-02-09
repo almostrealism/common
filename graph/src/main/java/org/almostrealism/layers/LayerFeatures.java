@@ -57,6 +57,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	boolean enableMonitor = true;
 
 	boolean enableIgnoreZero = false;
+	boolean enableLogStability = true;
 
 	Console console = CollectionFeatures.console.child();
 
@@ -594,31 +595,46 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int seqLen = shape.length(axis);
 		double eps = 1e-5;
 
-		return layer("softmax2d", shape, shape, input -> {
-			CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
+		if (shape.equalsIgnoreAxis(shape(1, 4, 1568))) {
+			System.out.println("!");
+		}
 
-			if (subtractMax) {
-				if (enableIgnoreZero) {
-					o = o.max();
-					o = o.expand(seqLen);
-					o = traverse(axis + 1, input).subtractIgnoreZero(o);
-				} else {
-					o = o.max().add(eps);
-					o = o.expand(seqLen);
-					o = traverse(axis + 1, input).subtract(o);
+		if (enableLogStability) {
+			return layer("softmax2d", shape, shape, input -> {
+				CollectionProducer<PackedCollection<?>> max = traverse(axis, input).max();
+				CollectionProducer<PackedCollection<?>> stable =
+						traverse(axis + 1, input).subtract(max.expand(seqLen));
+				CollectionProducer<PackedCollection<?>> logSum =
+						stable.exp().traverse(axis).sum().log().expand(seqLen);
+				return stable.subtract(logSum).exp();
+			}, requirements);
+		} else {
+			return layer("softmax2d", shape, shape, input -> {
+				CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
+
+				if (subtractMax) {
+					if (enableIgnoreZero) {
+						o = o.max();
+						o = o.expand(seqLen);
+						o = traverse(axis + 1, input).subtractIgnoreZero(o);
+					} else {
+						o = o.max().add(eps);
+						o = o.expand(seqLen);
+						o = traverse(axis + 1, input).subtract(o);
+					}
 				}
-			}
 
-			o = o.expIgnoreZero().traverse(axis);
+				o = o.expIgnoreZero().traverse(axis);
 
-			if (subtractMax) {
-				o = o.divide(o.sum().expand(seqLen));
-			} else {
-				o = o.divide(o.sum().add(eps).expand(seqLen));
-			}
+				if (subtractMax && enableIgnoreZero) {
+					o = o.divide(o.sum().expand(seqLen));
+				} else {
+					o = o.divide(o.sum().add(eps).expand(seqLen));
+				}
 
-			return o;
-		}, requirements);
+				return o;
+			}, requirements);
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
