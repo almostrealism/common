@@ -595,10 +595,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int seqLen = shape.length(axis);
 		double eps = 1e-5;
 
-		if (shape.equalsIgnoreAxis(shape(1, 4, 1568))) {
-			System.out.println("!");
-		}
-
 		if (enableLogStability) {
 			return layer("softmax2d", shape, shape, input -> {
 				CollectionProducer<PackedCollection<?>> max = traverse(axis, input).max();

@@ -135,6 +135,9 @@ public class ModelOptimizer implements CodeFeatures {
 				double ls = loss.apply(out.each(), valid.each());
 				if (Double.isNaN(ls)) continue v;
 
+				if (first && logIteration(totalIterations + 1))
+					log("loss = " + ls);
+
 				totalLoss += ls;
 				count++;
 
@@ -148,7 +151,7 @@ public class ModelOptimizer implements CodeFeatures {
 					updatedLoss = loss.apply(out, valid);
 
 					if ((ls - updatedLoss) < 0.0) {
-						throw new RuntimeException("Loss increased");
+						throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
 					}
 
 					first = false;
@@ -164,13 +167,17 @@ public class ModelOptimizer implements CodeFeatures {
 			double previousLoss = averageLoss;
 			averageLoss = totalLoss / count;
 
-			if (logFrequency > 0 && totalIterations % logFrequency == 0)
+			if (logIteration(totalIterations))
 				log("Average Loss = " + averageLoss);
 
 			if (averageLoss < lossTarget || averageLoss == previousLoss) {
 				return;
 			}
 		}
+	}
+
+	protected boolean logIteration(int iteration) {
+		return logFrequency > 0 && iteration % logFrequency == 0;
 	}
 
 	public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator) {
