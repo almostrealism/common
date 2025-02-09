@@ -56,6 +56,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	boolean enableWeightedSum = true;
 	boolean enableMonitor = true;
 
+	boolean enableIgnoreZero = false;
+
 	Console console = CollectionFeatures.console.child();
 
 	@Deprecated
@@ -596,13 +598,24 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
 
 			if (subtractMax) {
-				o = o.max();
-				o = o.expand(seqLen);
-				o = traverse(axis + 1, input).subtractIgnoreZero(o);
+				if (enableIgnoreZero) {
+					o = o.max();
+					o = o.expand(seqLen);
+					o = traverse(axis + 1, input).subtractIgnoreZero(o);
+				} else {
+					o = o.max().add(eps);
+					o = o.expand(seqLen);
+					o = traverse(axis + 1, input).subtract(o);
+				}
 			}
 
 			o = o.expIgnoreZero().traverse(axis);
-			o = o.divide(o.sum().expand(seqLen));
+
+			if (subtractMax) {
+				o = o.divide(o.sum().expand(seqLen));
+			} else {
+				o = o.divide(o.sum().add(eps).expand(seqLen));
+			}
 
 			return o;
 		}, requirements);
