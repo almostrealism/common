@@ -473,9 +473,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		OperationList setup = new OperationList();
 		Random randn = randn(filterShape);
 		setup.add(() -> randn::refresh);
-		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
 		if (biases != null) {
-			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
 		}
 
 		TraversalPolicy convInputShape = shape(batch, channels, height, width);

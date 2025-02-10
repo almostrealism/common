@@ -57,14 +57,29 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
 		return () -> () -> {
 			PackedCollection<?> out = in.get().evaluate();
+
+			if (op != null) {
+				op.accept(out);
+			}
+
 			boolean isNaN = out.doubleStream().anyMatch(Double::isNaN);
 			boolean isZero = out.doubleStream().allMatch(d -> d == 0.0);
 			if (isNaN) {
 				warn("Identified NaN from " + name +
 						" layer (" + inputShape + " -> " + outputShape + ")");
+				return;
 			} else if (isZero) {
 				warn("Identified Zero from " + name +
 						" layer (" + inputShape + " -> " + outputShape + ")");
+				return;
+			}
+
+			boolean isLarge = out.doubleStream().map(Math::abs).sum() > 1e6 ||
+					out.doubleStream().map(Math::abs).max().getAsDouble() > 1e9;
+			if (isLarge) {
+				warn("Identified large output from " + name +
+						" layer (" + inputShape + " -> " + outputShape + ")");
+				return;
 			}
 
 			if (name != null && name.equals("softmax2d")) {
@@ -72,10 +87,6 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 				if (total < 0.9) {
 					warn("Softmax layer (" + inputShape + " -> " + outputShape + ") sum is " + total);
 				}
-			}
-
-			if (op != null) {
-				op.accept(out);
 			}
 		};
 	}
