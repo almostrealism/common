@@ -54,7 +54,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	boolean allowNonComposites = false;
 	boolean enableWeightedSum = true;
-	boolean enableMonitor = true;
+	boolean enableMonitor = false;
 
 	boolean enableIgnoreZero = false;
 	boolean enableLogStability = true;
