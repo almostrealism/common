@@ -135,7 +135,7 @@ public class ModelOptimizer implements CodeFeatures {
 				double ls = loss.apply(out.each(), valid.each());
 				if (Double.isNaN(ls)) continue v;
 
-				if (first && logIteration(totalIterations + 1))
+				if (i == 0 && count == 0 && logIteration(totalIterations + 1))
 					log("loss = " + ls);
 
 				totalLoss += ls;
