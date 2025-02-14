@@ -205,6 +205,11 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	public static TraversalPolicy shape(int repeat, TraversalPolicy inputShape) {
 		TraversalPolicy shape = inputShape.item();
+
+		if (inputShape.getTotalSizeLong() == 1 && inputShape.getDimensions() == 1 && shape.getDimensions() == 0) {
+			return new TraversalPolicy(repeat).traverse();
+		}
+
 		return inputShape.replace(shape.prependDimension(repeat)).traverse();
 	}
 }

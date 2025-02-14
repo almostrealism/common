@@ -245,5 +245,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		public boolean isFixedCount() {
 			return false;
 		}
+
+		@Override
+		public boolean isConstant() { return false; }
 	}
 }

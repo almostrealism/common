@@ -56,7 +56,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	boolean enableWeightedSum = true;
 	boolean enableMonitor = false;
 
-	boolean enableIgnoreZero = false;
+	boolean enableIgnoreZero = true;
 	boolean enableLogStability = true;
 
 	Console console = CollectionFeatures.console.child();
