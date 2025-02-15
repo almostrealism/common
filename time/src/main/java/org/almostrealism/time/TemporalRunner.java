@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +48,10 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 		this(((Setup) o).setup(), o.tick(), iter);
 	}
 
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick) {
+		this(setup, tick, 1);
+	}
+
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
 		if (enableFlatten && tick instanceof OperationList) {
 			tick = ((OperationList) tick).flatten();
@@ -57,7 +61,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 			tick = Process.isolated(tick);
 		}
 
-		this.run = loop(tick, iter);
+		this.run = iter == 1 ? tick : loop(tick, iter);
 
 		if (enableOptimization) {
 			run = Process.optimized(run);
