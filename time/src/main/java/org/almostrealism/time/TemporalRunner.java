@@ -52,7 +52,15 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 		this(setup, tick, 1);
 	}
 
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, boolean optimize) {
+		this(setup, tick, 1, optimize);
+	}
+
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
+		this(setup, tick, iter, enableOptimization);
+	}
+
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter, boolean optimize) {
 		if (enableFlatten && tick instanceof OperationList) {
 			tick = ((OperationList) tick).flatten();
 		}
@@ -63,7 +71,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 
 		this.run = iter == 1 ? tick : loop(tick, iter);
 
-		if (enableOptimization) {
+		if (optimize) {
 			run = Process.optimized(run);
 		}
 
@@ -71,7 +79,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 			setup = ((OperationList) setup).flatten();
 		}
 
-		this.setup = enableOptimization ? Process.optimized(setup) : setup;
+		this.setup = optimize ? Process.optimized(setup) : setup;
 	}
 
 	public OperationProfile getProfile() {
