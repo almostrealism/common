@@ -54,7 +54,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		weights = weights == null ? null : weights.reshape(groups, groupSize, v);
 		biases = biases == null ? null : biases.reshape(groups, groupSize, v);
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		for (int i = 0; i < groups; i++) {
 			double sum = 0;
@@ -108,7 +108,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	public void normComputation(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -143,7 +143,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	public void normComputationDelta(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -231,7 +231,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		log("Total native programs after run = " + NativeCompiler.getTotalInstructionSets());
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		int groupSize = c / groups;
 
@@ -562,7 +562,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		if (!validate) return;
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		double loss = 0.0;
 

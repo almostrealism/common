@@ -62,6 +62,8 @@ public final class Hardware {
 
 	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 
+	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
+
 	private static final Hardware local;
 
 	static {
@@ -321,6 +323,16 @@ public final class Hardware {
 	public DefaultComputer getComputer() { return computer; }
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
+
+	public double epsilon() {
+		double eps = getPrecision().epsilon();
+
+		if (!epsilon64 && eps < Precision.FP32.epsilon()) {
+			eps = Precision.FP32.epsilon();
+		}
+
+		return eps;
+	}
 
 	public void assignProfile(OperationProfile profile) {
 		if (profile == null) {

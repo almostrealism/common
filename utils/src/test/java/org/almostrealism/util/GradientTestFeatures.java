@@ -86,7 +86,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 											  PackedCollection<?> gradient,
 											  PackedCollection<?> weights,
 											  PackedCollection<?> bias) {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 		int groupSize = xGroup.getShape().getTotalSize();
 
 		double muG = xGroup.doubleStream().sum() / groupSize;

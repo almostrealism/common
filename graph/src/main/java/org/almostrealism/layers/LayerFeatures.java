@@ -930,7 +930,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		return layer("norm", shape, shape, input -> {
-			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+			double eps = Hardware.getLocalHardware().epsilon();
 
 			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
