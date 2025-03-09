@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.io;
 
 import java.util.Comparator;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 public class TimingMetric extends DistributionMetric {
@@ -28,6 +29,19 @@ public class TimingMetric extends DistributionMetric {
 
 	public TimingMetric(String name) {
 		super(name, 1e9);
+	}
+
+	public <T> T measure(String key, Supplier<T> supplier) {
+		long start = System.nanoTime();
+		T result = supplier.get();
+		addEntry(key, System.nanoTime() - start);
+		return result;
+	}
+
+	public void measure(String key, Runnable runnable) {
+		long start = System.nanoTime();
+		runnable.run();
+		addEntry(key, System.nanoTime() - start);
 	}
 
 	@Override
