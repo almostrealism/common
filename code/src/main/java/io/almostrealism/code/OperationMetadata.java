@@ -62,14 +62,14 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 		this(++opIndex, displayName, shortDescription, longDescription);
 	}
 
-	protected OperationMetadata(long id, String displayName, String shortDescription, String longDescription) {
+	private OperationMetadata(long id, String displayName, String shortDescription, String longDescription) {
 		this();
 		setId(id);
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
 		setLongDescription(longDescription);
 
-		if (id < opIndex || displayName == null) {
+		if (displayName == null) {
 			throw new IllegalArgumentException();
 		}
 	}
