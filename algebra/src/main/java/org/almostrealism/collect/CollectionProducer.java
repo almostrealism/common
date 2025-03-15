@@ -206,8 +206,12 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return log((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sq() {
 		return sq((Producer) this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> abs() {
+		return abs((Producer) this);
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {

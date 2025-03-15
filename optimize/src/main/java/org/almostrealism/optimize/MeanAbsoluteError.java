@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,13 +22,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 
-public class MeanSquaredError implements LossProvider, CodeFeatures {
+public class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	private TraversalPolicy outputShape;
 	private Evaluable<PackedCollection<?>> loss;
 
-	public MeanSquaredError(TraversalPolicy outputShape) {
+	public MeanAbsoluteError(TraversalPolicy outputShape) {
 		this.outputShape = outputShape;
-		this.loss = cv(outputShape, 0).subtract(cv(outputShape, 1)).pow(2.0).get();
+		this.loss = cv(outputShape, 0).subtract(cv(outputShape, 1)).abs().get();
 	}
 
 	@Override
@@ -39,7 +39,7 @@ public class MeanSquaredError implements LossProvider, CodeFeatures {
 	@Override
 	public Producer<PackedCollection<?>> gradient(Producer<PackedCollection<?>> output,
 												  Producer<PackedCollection<?>> target) {
-		return c(2.0 / outputShape.getTotalSize())
-				.multiply(c(output).subtract(c(target)));
+		double f = 1.0 / outputShape.getTotalSize();
+		return c(output).greaterThan(c(target), c(f), c(-f));
 	}
 }

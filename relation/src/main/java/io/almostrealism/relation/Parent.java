@@ -28,6 +28,6 @@ public interface Parent<T> {
 	Collection<T> getChildren();
 
 	default Parent<T> generate(List<T> children) {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException(getClass().getSimpleName());
 	}
 }

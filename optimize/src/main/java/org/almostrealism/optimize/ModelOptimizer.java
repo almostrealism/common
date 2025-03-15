@@ -70,8 +70,8 @@ public class ModelOptimizer implements CodeFeatures {
 	public void setLossFunction(LossProvider lossFunction) {
 		this.loss = (out, valid) -> lossFunction.loss(out, valid);
 		this.dloss = lossFunction.gradient(
-								cv(model.getOutputShape(), 0),
-								cv(model.getOutputShape(), 1)).get();
+								cv(model.getOutputShape().traverseEach(), 0),
+								cv(model.getOutputShape().traverseEach(), 1)).get();
 	}
 
 	public void setDataset(Supplier<Dataset<?>> dataset) {
