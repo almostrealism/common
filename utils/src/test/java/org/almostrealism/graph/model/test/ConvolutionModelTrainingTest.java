@@ -24,6 +24,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
@@ -145,7 +146,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		Model model = convolution2dModel(
 				rows, cols, 3, 6, large ? 3 : 2,
 				4, 4, true);
-		model.setLearningRate(0.001);
+		model.setParameterUpdate(ParameterUpdate.scaled(c(0.001)));
 		TraversalPolicy outShape = model.lastBlock().getOutputShape();
 
 		List<ValueTarget<PackedCollection<?>>> data;

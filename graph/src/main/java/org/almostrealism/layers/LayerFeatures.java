@@ -100,7 +100,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, Cell.of(operator),
-				new DefaultGradientPropagation(operator, weights.stream().map(this::cp)),
+				DefaultGradientPropagation.create(name, operator, weights.stream().map(this::cp)),
 				weights, setup, requirements);
 	}
 
@@ -205,23 +205,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		layer.init(inputShape, Layer.ioTracking, true);
 
 		// Create gradient propagation for the main input
-		BackPropagationCell mainBackward = new BackPropagationCell(name + " main",
-				new DefaultGradientPropagation(in -> operator.compose(in, p(auxInput))));
+		String mainName = name + " main";
+		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
+				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
 		mainBackward.setForwardInput(layer.getInput());
 
 		// Create gradient propagation for the aux input
 		// and direct its output to the aux backward Cell
-		BackPropagationCell auxBackward = new BackPropagationCell(name + " aux",
-				new DefaultGradientPropagation(in -> operator.compose(p(layer.getInput()), in)));
+		String auxName = name + " aux";
+		BackPropagationCell auxBackward = new BackPropagationCell(auxName,
+				DefaultGradientPropagation.create(auxName, in -> operator.compose(p(layer.getInput()), in)));
 		auxBackward.setForwardInput(auxInput);
 		auxBackward.setReceptor(aux.getBackward());
 
 		// Combine both backpropagation steps and attach the result to the layer
 		layer.setBackward(new LearningCell() {
 			@Override
-			public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+			public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
 				if (aux instanceof Learning) {
-					((Learning) aux).setLearningRate(learningRate);
+					((Learning) aux).setParameterUpdate(update);
 				}
 			}
 
@@ -383,6 +385,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int outHeight = height - diff;
 		int outWidth = width - diff;
 		TraversalPolicy outputShape = shape(batch, filterCount, outHeight, outWidth);
+
+		System.out.println("convolution2d: " + inputShape + " -> " + outputShape + " " + bias + " " + padding + " " + size);
 
 		TraversalPolicy filterShape = shape(filterCount, channels, size, size);
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);

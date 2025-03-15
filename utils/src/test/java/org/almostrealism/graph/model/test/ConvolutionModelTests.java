@@ -140,6 +140,11 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	}
 
 	@Test
+	public void convBackwardsLarge() throws IOException {
+		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
+	}
+
+	@Test
 	public void convBackwardsMediumPadded() throws IOException {
 		if (skipKnownIssues) return;
 

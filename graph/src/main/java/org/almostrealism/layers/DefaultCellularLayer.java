@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -200,9 +200,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public List<PackedCollection<?>> getWeights() { return weights; }
 
 	@Override
-	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
-		if (forward instanceof Learning) ((Learning) forward).setLearningRate(learningRate);
-		if (backward instanceof Learning) ((Learning) backward).setLearningRate(learningRate);
+	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+		if (forward instanceof Learning) ((Learning) forward).setParameterUpdate(update);
+		if (backward instanceof Learning) ((Learning) backward).setParameterUpdate(update);
 	}
 
 	@Override

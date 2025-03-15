@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,14 @@ package org.almostrealism.model;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.Learning;
+import org.almostrealism.layers.ParameterUpdate;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,7 +40,7 @@ public class Model implements Setup, CodeFeatures {
 	private SequentialBlock blocks;
 	private List<Block> inputs;
 
-	private PackedCollection<?> learningRate;
+	private ParameterUpdate<PackedCollection<?>> parameterUpdate;
 
 	public Model() {
 		this(null);
@@ -49,19 +51,18 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model(TraversalPolicy shape, double learningRate) {
+		this(shape, ParameterUpdate.scaled(CollectionFeatures.getInstance().c(learningRate)));
+	}
+
+	public Model(TraversalPolicy shape, ParameterUpdate<PackedCollection<?>> parameterUpdate) {
 		this.blocks = new SequentialBlock(shape);
 		this.inputs = new ArrayList<>();
-		this.learningRate = new PackedCollection<>(1);
-		setLearningRate(learningRate);
+		setParameterUpdate(parameterUpdate);
 	}
 
-	public void setLearningRate(double rate) {
-		learningRate.setMem(0, rate);
-		blocks.setLearningRate(p(learningRate));
-	}
-
-	public double getLearningRate() {
-		return learningRate.toDouble(0);
+	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+		this.parameterUpdate = update;
+		blocks.setParameterUpdate(update);
 	}
 
 	public List<Block> getBlocks() {
@@ -80,7 +81,7 @@ public class Model implements Setup, CodeFeatures {
 
 	public Model addInput(Block b) {
 		if (b instanceof Learning) {
-			((Learning) b).setLearningRate(p(learningRate));
+			((Learning) b).setParameterUpdate(parameterUpdate);
 		}
 
 		inputs.add(b);

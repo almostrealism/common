@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,10 +31,11 @@ import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class DefaultGradientPropagation implements BackPropagation, Nameable, CodeFeatures {
+public class DefaultGradientPropagation implements BackPropagation, Learning, Nameable, CodeFeatures {
 
 	public static boolean verbose = false;
 	public static boolean enableOptimizedDiagnostics = false;
@@ -42,20 +43,23 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 	public static boolean enableDiagnosticWeight = false;
 
 	private final Factor<PackedCollection<?>> operator;
+	private final ParameterUpdate<PackedCollection<?>>[] updates;
 	private final Producer<PackedCollection<?>>[] weights;
 
 	private String name;
 
-	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
-									  Stream<Producer<PackedCollection<?>>> weights) {
+	protected DefaultGradientPropagation(String name,
+										 Factor<PackedCollection<?>> operator,
+									     ParameterUpdate<PackedCollection<?>>[] updates,
+									     Producer<PackedCollection<?>>[] weights) {
+		setName(name);
 		this.operator = operator;
-		this.weights = weights.toArray(Producer[]::new);
-	}
-
-	public DefaultGradientPropagation(Factor<PackedCollection<?>> operator,
-									  Producer<PackedCollection<?>>... weights) {
-		this.operator = operator;
+		this.updates = updates;
 		this.weights = weights;
+
+		if (updates.length != weights.length) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -65,12 +69,22 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 	public void setName(String name) { this.name = name; }
 
 	@Override
-	public Supplier<Runnable> propagate(Producer<PackedCollection<?>> learningRate,
-										Producer<PackedCollection<?>> gradient,
+	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+		Arrays.fill(updates, update);
+	}
+
+	public void setParameterUpdate(int index, ParameterUpdate<PackedCollection<?>> update) {
+		updates[index] = update;
+	}
+
+	@Override
+	public Supplier<Runnable> propagate(Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
-		if (weights.length > 0 && learningRate == null) {
-			throw new IllegalArgumentException("Learning rate is required");
+		for (int i = 0; i < weights.length; i++) {
+			if (updates[i] == null) {
+				throw new IllegalArgumentException("No ParameterUpdate for weights");
+			}
 		}
 
 		if (next == null && verbose) {
@@ -129,9 +143,7 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 					.reshape(shape(weightSize))
 					.each();
 
-			Supplier<Runnable> weightUpdateAssignment =
-					a(getName() + " (\u0394 weights)", each(weightFlat),
-							subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
+			Supplier<Runnable> weightUpdateAssignment = updates[i].apply(getName(), weightFlat, deltaOutDeltaWeight);
 
 			if (enableDiagnosticWeight) {
 				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " weights " + i, getName() + " (\u0394 weights)"),() -> {
@@ -148,5 +160,27 @@ public class DefaultGradientPropagation implements BackPropagation, Nameable, Co
 
 		if (next != null) op.add(next.push(p(gradOut)));
 		return op;
+	}
+
+	public static DefaultGradientPropagation create(String name,
+													Factor<PackedCollection<?>> operator,
+												    Stream<Producer<PackedCollection<?>>> weights) {
+		return create(name, operator, weights.toArray(Producer[]::new));
+	}
+
+	public static DefaultGradientPropagation create(String name,
+													Factor<PackedCollection<?>> operator,
+													Producer<PackedCollection<?>>... weights) {
+		return create(name, operator, null, weights);
+	}
+
+	public static DefaultGradientPropagation create(String name,
+													Factor<PackedCollection<?>> operator,
+													ParameterUpdate<PackedCollection<?>> update,
+												    Producer<PackedCollection<?>>... weights) {
+		ParameterUpdate<PackedCollection<?>>[] updates = new ParameterUpdate[weights.length];
+		Arrays.fill(updates, update);
+
+		return new DefaultGradientPropagation(name, operator, updates, weights);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.Component;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.Learning;
+import org.almostrealism.layers.ParameterUpdate;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,6 +55,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private Receptor<PackedCollection<?>> upstream;
 
 	private Producer<PackedCollection<?>> learningRate;
+	private ParameterUpdate<PackedCollection<?>> parameterUpdate;
 
 	public SequentialBlock(TraversalPolicy inputShape) {
 		this.inputShape = inputShape;
@@ -73,12 +75,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
-		this.learningRate = learningRate;
+	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+		this.parameterUpdate = update;
 
 		blocks.forEach(b -> {
 			if (b instanceof Learning)
-				((Learning) b).setLearningRate(learningRate);
+				((Learning) b).setParameterUpdate(update);
 		});
 	}
 
@@ -118,7 +120,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 
 		blocks.add(block);
-		updateLearningRate(block);
+		applyParameterUpdate(block);
 		lastBlock().getForward().setReceptor(push);
 		return block;
 	}
@@ -245,9 +247,9 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return this;
 	}
 
-	protected void updateLearningRate(Component block) {
+	protected void applyParameterUpdate(Component block) {
 		if (block instanceof Learning) {
-			((Learning) block).setLearningRate(learningRate);
+			((Learning) block).setParameterUpdate(parameterUpdate);
 		}
 	}
 

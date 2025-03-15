@@ -30,6 +30,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.BackPropagationCell;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.GradientTestFeatures;
@@ -222,7 +223,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(shape(c), groups, false);
-		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setParameterUpdate(ParameterUpdate.scaled(cp(lr)));
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 
@@ -376,7 +377,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, null, biases);
-		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setParameterUpdate(ParameterUpdate.scaled(cp(lr)));
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
@@ -555,7 +556,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		PackedCollection<?> result = new PackedCollection<>(shape(c));
 
 		CellularLayer layer = norm(groups, weights, biases);
-		((BackPropagationCell) layer.getBackward()).setLearningRate(cp(lr));
+		((BackPropagationCell) layer.getBackward()).setParameterUpdate(ParameterUpdate.scaled(cp(lr)));
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
