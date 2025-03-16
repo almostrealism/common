@@ -156,6 +156,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return s.getShape().getSize();
 	}
 
+	default TraversalPolicy padDimensions(TraversalPolicy shape, int target) {
+		return padDimensions(shape, 1, target);
+	}
 
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target) {
 		return padDimensions(shape, min, target, false);

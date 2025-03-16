@@ -81,60 +81,40 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		int n = shape.length(1);
 
 		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
-			if (WeightedSumExpression.enableCollectionExpression) {
-				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
-				int p = weightShape.length(1);
+			TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
+			int p = weightShape.length(1);
 
-				if (Algebraic.isIdentity(vshape.length(0), matrix)) {
-					return c(vector);
-				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
-					return c(matrix);
-				}
-
-				// Is the matrix just a scalar transform?
-				Optional<Computable> scalar =
-						Algebraic.getDiagonalScalar(vshape.length(0), matrix);
-				if (scalar.isPresent() && scalar.get() instanceof Producer) {
-					return multiply(c(vector), (Producer) scalar.get());
-				}
-
-				// Is the vector just a scalar transform?
-				scalar =
-						Algebraic.getDiagonalScalar(shape.length(0), vector);
-				if (scalar.isPresent() && scalar.get() instanceof Producer) {
-					return multiply(c(matrix), (Producer) scalar.get());
-				}
-
-				if (Algebraic.isDiagonal(vshape.length(0), matrix) ||
-						Algebraic.isDiagonal(shape.length(0), vector)) {
-					console.features(MatrixFeatures.class)
-							.log("Matrix multiplication by diagonal matrix");
-				}
-
-				return weightedSum("matmul",
-						shape(m, p).withRate(1, n, p),
-						shape(1, p),
-						shape(1, n), shape(n, 1),
-						matrix, reshape(weightShape, vector));
+			if (Algebraic.isIdentity(vshape.length(0), matrix)) {
+				return c(vector);
+			} else if (Algebraic.isIdentity(shape.length(0), vector)) {
+				return c(matrix);
 			}
 
-			// warn("Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+			// Is the matrix just a scalar transform?
+			Optional<Computable> scalar =
+					Algebraic.getDiagonalScalar(vshape.length(0), matrix);
+			if (scalar.isPresent() && scalar.get() instanceof Producer) {
+				return multiply(c(vector), (Producer) scalar.get());
+			}
 
-			int p = vshape.length(1);
+			// Is the vector just a scalar transform?
+			scalar =
+					Algebraic.getDiagonalScalar(shape.length(0), vector);
+			if (scalar.isPresent() && scalar.get() instanceof Producer) {
+				return multiply(c(matrix), (Producer) scalar.get());
+			}
 
-			a = c(matrix).repeat(p);
-			b = c(vector).enumerate(1, 1)
-					.reshape(p, n)
-					.traverse(1)
-					.repeat(m)
-					.reshape(p, m, n)
-					.traverse(1);
-			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
-			return (CollectionProducer) product
-					.reshape(p, m, n).sum(2)
-					.traverse(0)
-					.enumerate(1, 1)
-					.reshape(m, p);
+			if (Algebraic.isDiagonal(vshape.length(0), matrix) ||
+					Algebraic.isDiagonal(shape.length(0), vector)) {
+				console.features(MatrixFeatures.class)
+						.log("Matrix multiplication by diagonal matrix");
+			}
+
+			return weightedSum("matmul",
+					shape(m, p).withRate(1, n, p),
+					shape(1, p),
+					shape(1, n), shape(n, 1),
+					matrix, reshape(weightShape, vector));
 		} else {
 			a = c(matrix);
 			b = repeat(m, vector);
