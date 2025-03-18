@@ -68,7 +68,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 		int nodes = 10;
 
 		Model model = new Model(shape(size));
-		CellularLayer dense = dense(size, nodes);
+		CellularLayer dense = dense(size, nodes).apply(shape(size));
 		CellularLayer softmax = softmax(nodes);
 		model.add(dense);
 		model.add(softmax);

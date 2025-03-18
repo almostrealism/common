@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 public interface ModelTestFeatures extends TestFeatures {
 	int datasetSize = 500;
@@ -75,5 +76,39 @@ public interface ModelTestFeatures extends TestFeatures {
 			optimizer.optimize(epochs);
 			log("Completed " + optimizer.getTotalIterations() + " epochs");
 		}
+	}
+
+	// TODO  Merge with above method
+	default void train(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
+								double lossTarget, double minLoss) throws FileNotFoundException {
+		i: for (int i = 0; i < 6; i++) {
+			ModelOptimizer optimizer = new ModelOptimizer(model.compile(), data);
+
+			try (CSVReceptor<Double> receptor = new CSVReceptor<>(new FileOutputStream("results/" + name + ".csv"), steps)) {
+				optimizer.setReceptor(receptor);
+				optimizer.setLogFrequency(2);
+
+				optimizer.setLossTarget(lossTarget);
+				optimizer.optimize(epochs);
+				log("Completed " + optimizer.getTotalIterations() + " epochs");
+
+				if (optimizer.getTotalIterations() < 5) {
+					optimizer.setLossTarget(minLoss);
+					optimizer.optimize(epochs);
+					log("Completed " + optimizer.getTotalIterations() + " epochs");
+				}
+
+				if (optimizer.getTotalIterations() < 5) {
+					continue i;
+				}
+
+				if (optimizer.getLoss() <= 0.0 || optimizer.getLoss() > optimizer.getLossTarget())
+					throw new RuntimeException();
+
+				return;
+			}
+		}
+
+		throw new RuntimeException();
 	}
 }

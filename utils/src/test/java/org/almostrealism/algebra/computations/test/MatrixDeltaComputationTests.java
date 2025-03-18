@@ -302,7 +302,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> c = matmul(p(w), p(v));
 
 		Producer<PackedCollection<?>> cdy = c.delta(p(w))
-				.reshape(count, dim * dim)
+				.reshape(count * dim, dim * dim)
 				.enumerate(1, 1)
 				.sum(1)
 				.reshape(3, 3);
