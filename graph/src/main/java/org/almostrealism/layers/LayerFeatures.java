@@ -259,12 +259,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		op.setComputeRequirements(requirements);
 
 		if (!copy || shape.getCountLong() > 1) {
-			int axis = shape.getTraversalAxis();
-			long count = Countable.countLong(in);
-
-			while (shape.traverse(axis).getCountLong() < count && axis < shape.getDimensions()) {
-				axis++;
-			}
+			int axis = alignCount(shape, Countable.countLong(in)).getTraversalAxis();
 
 			if (shape.equalsIgnoreAxis(shape(out))) {
 				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
@@ -879,12 +874,12 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			if (b != null) setup.add(a(p(b.each()), c(0.0)));
 		}
 
-		return layer("norm", shape, shape, input -> {
+		return layer("norm", shape.traverse(1), shape.traverse(1), input -> {
 			double eps = Hardware.getLocalHardware().epsilon();
 
 			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
-			out = out.reshape(-1, Math.toIntExact(size));
+			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));

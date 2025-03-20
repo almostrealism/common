@@ -176,6 +176,20 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return shape;
 	}
 
+	default TraversalPolicy alignCount(TraversalPolicy shape, long count) {
+		int axis = shape.getTraversalAxis();
+
+		while (shape.traverse(axis).getCountLong() < count && axis < shape.getDimensions()) {
+			axis++;
+		}
+
+		if (shape.getTraversalAxis() != axis) {
+			return shape.traverse(axis);
+		} else {
+			return shape;
+		}
+	}
+
 	default PackedCollection<?> pack(double... values) {
 		return PackedCollection.of(values);
 	}

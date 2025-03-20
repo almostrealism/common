@@ -86,6 +86,15 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		if (each || onlyColumns || singleRow) {
 			if (onlyColumns) {
 				vShape = vShape.trim();
+				vector = reshape(vShape, vector);
+			}
+
+			if (vShape.length(0) == 1) {
+				vShape = shape(vShape.length(1));
+				vector = reshape(vShape, vector);
+			}
+
+			if (vShape.getTraversalAxis() != vShape.getDimensions() - 1) {
 				vShape = vShape.traverse(vShape.getDimensions() - 1);
 				vector = reshape(vShape, vector);
 			}
