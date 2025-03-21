@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
@@ -27,18 +27,27 @@ import org.junit.Test;
 
 import java.io.FileNotFoundException;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DenseLayerTests implements ModelTestFeatures {
 	private double coeff[] = { 0.24, -0.1, 0.36 };
 
-	private UnaryOperator<PackedCollection<?>> func3x3 =
-			in -> pack(
-					coeff[0] * in.valueAt(0),
-					coeff[1] * in.valueAt(1),
-					coeff[2] * in.valueAt(2));
+	public PackedCollection<?> func3x3(PackedCollection<?> input) {
+		TraversalPolicy shape = padDimensions(input.getShape(), 2);
+		input = input.reshape(shape);
+
+		PackedCollection<?> result = new PackedCollection<>(shape);
+
+		for (int n = 0; n < shape.length(0); n++) {
+			result.range(shape(3), n * 3).setMem(
+					coeff[0] * input.valueAt(n, 0),
+					coeff[1] * input.valueAt(n, 1),
+					coeff[2] * input.valueAt(n, 2));
+		}
+
+		return result;
+	}
 
 	@Test
 	public void denseBatch() throws FileNotFoundException {
@@ -54,11 +63,11 @@ public class DenseLayerTests implements ModelTestFeatures {
 		int steps = 260;
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
-				.mapToObj(i -> new PackedCollection<>(shape(3)))
+				.mapToObj(i -> new PackedCollection<>(shape(bs, 3)))
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
-				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
+				.map(input -> ValueTarget.of(input, func3x3(input)))
 				.collect(Collectors.toList()));
 
-		train("denseBatch", model, data, epochs, steps, 1.75, 0.775);
+		train("denseBatch", model, data, epochs, steps, 0.6, 0.2);
 	}
 }

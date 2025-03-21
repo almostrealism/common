@@ -216,6 +216,17 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		}
 	}
 
+	public void product(Function<TraversalPolicy, ? extends Block> a,
+						Function<TraversalPolicy, ? extends Block> b,
+						ComputeRequirement... requirements) {
+		product(a.apply(getOutputShape()), b.apply(getOutputShape()), requirements);
+	}
+
+	public void product(Function<TraversalPolicy, ? extends Block> a, Block b,
+						ComputeRequirement... requirements) {
+		product(a.apply(getOutputShape()), b, requirements);
+	}
+
 	// TODO  Should return 'this'?
 	public void product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
