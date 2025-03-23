@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
+	public static final int MAX_CHARACTERS = 512 * 1024 * 1024;
+
 	private final Function<PrintWriter, CodePrintWriter> generator;
 	private final Accessibility access;
 
@@ -95,11 +97,19 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	public void lessIndent() { indent--; }
 
 	@Override
-	public void print(String s) { result.append(s); }
+	public void print(String s) { append(s); }
 
 	@Override
-	public void println(String s) { result.append(s); println(); }
+	public void println(String s) { append(s); println(); }
 
 	@Override
-	public void println() { result.append("\n"); }
+	public void println() { append("\n"); }
+
+	protected void append(String s) {
+		if (result.length() + s.length() > MAX_CHARACTERS) {
+			throw new IllegalArgumentException("Cannot encode Scope with more than " + MAX_CHARACTERS + " characters");
+		}
+
+		result.append(s);
+	}
 }

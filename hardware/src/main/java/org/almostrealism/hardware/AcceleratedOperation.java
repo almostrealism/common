@@ -332,21 +332,28 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	}
 
 	protected Execution setupOperator(AcceleratedProcessDetails process) {
-		long start = System.nanoTime();
-		Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
-		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
+		try {
+			long start = System.nanoTime();
+			Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
+			retrieveOperatorMetric.addEntry(System.nanoTime() - start);
+			start = System.nanoTime();
 
-		if (!(operator instanceof KernelWork)) {
-			throw new UnsupportedOperationException();
-		} else if (operator.isDestroyed()) {
-			throw new HardwareException("Operator has already been destroyed");
+			if (!(operator instanceof KernelWork)) {
+				throw new UnsupportedOperationException();
+			} else if (operator.isDestroyed()) {
+				throw new HardwareException("Operator has already been destroyed");
+			}
+
+			((KernelWork) operator).setGlobalWorkOffset(0);
+			((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
+			processArgumentsMetric.addEntry(System.nanoTime() - start);
+
+			return operator;
+		} catch (HardwareException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new HardwareException("Could not obtain operator", e);
 		}
-
-		((KernelWork) operator).setGlobalWorkOffset(0);
-		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
-		processArgumentsMetric.addEntry(System.nanoTime() - start);
-
-		return operator;
 	}
 
 	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {

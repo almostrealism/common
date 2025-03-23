@@ -431,9 +431,11 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		TraversalPolicy convInputShape = shape(batch, channels, height, width);
-		CellularLayer layer = layer("convolution2d", convInputShape, outputShape, operator,
-				biases == null ? List.of(filters) : List.of(filters, biases),
-				setup, requirements);
+		CellularLayer layer = layer("convolution2d",
+								convInputShape.traverse(1), outputShape.traverse(1),
+								operator,
+								biases == null ? List.of(filters) : List.of(filters, biases),
+								setup, requirements);
 
 		if (padding > 0) {
 			SequentialBlock block = new SequentialBlock(inputShape);

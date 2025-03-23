@@ -81,7 +81,7 @@ public interface DiffusionFeatures extends LayerFeatures {
 							c(in)
 									.repeat(4, 2)
 									.repeat(3, 2)
-									.reshape(batchSize, inputChannels, h * 2, w * 2)));
+									.reshape(batchSize, inputChannels, h * 2, w * 2).traverse(2)));
 			upsample.add(convolution2d(dim, dimOut, 3, 1));
 			return upsample;
 		};
