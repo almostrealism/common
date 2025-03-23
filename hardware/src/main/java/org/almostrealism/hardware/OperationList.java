@@ -293,6 +293,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return flat;
 	}
 
+	public void run() { get().run(); }
+
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
 		if (!enableSegmenting || size() <= 1 || isUniform()) return ComputableParallelProcess.super.optimize(context);
