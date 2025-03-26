@@ -533,6 +533,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 	}
 
+	public TraversalPolicy alignCount(TraversalPolicy alt) {
+		return alignCount(alt.getCountLong());
+	}
+
+	public TraversalPolicy alignCount(long count) {
+		int axis = getTraversalAxis();
+
+		while (traverse(axis).getCountLong() < count && axis < getDimensions()) {
+			axis++;
+		}
+
+		if (getTraversalAxis() != axis) {
+			return traverse(axis);
+		}
+
+		return this;
+	}
+
 	public int getTraversalAxis() { return traversalAxis; }
 
 	public int getSize() {

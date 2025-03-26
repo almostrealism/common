@@ -18,11 +18,11 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.calculus.InputStub;
 import org.almostrealism.collect.CollectionFeatures;
@@ -30,7 +30,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
-import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -131,16 +130,11 @@ public interface AlgebraFeatures extends CollectionFeatures {
 																			  TraversalPolicy weightGroupShape,
 																			  Producer<T> input,
 																			  Producer<T> weights) {
-		TraversalPolicy inShape = shape(input);
-		TraversalPolicy weightShape = shape(weights);
-
-		return new DefaultTraversableExpressionComputation<>(name, resultShape.traverseEach(),
-				(args) -> new SubsetTraversalWeightedSumExpression(
+		return new WeightedSumComputation<>(
 						resultShape,
 						inputPositions, weightPositions,
-						inShape, weightShape,
 						inputGroupShape, weightGroupShape,
-						args[1], args[2]), (Supplier) input, (Supplier) weights);
+						(Supplier) input, (Supplier) weights);
 	}
 
 	static <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {

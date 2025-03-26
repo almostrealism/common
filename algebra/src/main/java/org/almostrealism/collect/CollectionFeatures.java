@@ -156,14 +156,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return s.getShape().getSize();
 	}
 
+	// TODO  Move to TraversalPolicy
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int target) {
 		return padDimensions(shape, 1, target);
 	}
 
+	// TODO  Move to TraversalPolicy
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target) {
 		return padDimensions(shape, min, target, false);
 	}
 
+	// TODO  Move to TraversalPolicy
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target, boolean post) {
 		if (shape.getDimensions() < min) {
 			return shape;
@@ -174,20 +177,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		return shape;
-	}
-
-	default TraversalPolicy alignCount(TraversalPolicy shape, long count) {
-		int axis = shape.getTraversalAxis();
-
-		while (shape.traverse(axis).getCountLong() < count && axis < shape.getDimensions()) {
-			axis++;
-		}
-
-		if (shape.getTraversalAxis() != axis) {
-			return shape.traverse(axis);
-		} else {
-			return shape;
-		}
 	}
 
 	default PackedCollection<?> pack(double... values) {

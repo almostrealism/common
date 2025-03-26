@@ -198,7 +198,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double result[] = new double[size];
 
-		CellularLayer layer = logSoftmax(size);
+		CellularLayer layer = logSoftmax(shape(size));
 		layer.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
@@ -239,7 +239,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double result[] = new double[10];
 
-		CellularLayer layer = logSoftmax(size);
+		CellularLayer layer = logSoftmax(shape(size));
 		layer.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 

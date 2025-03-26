@@ -55,7 +55,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		}
 
 		if (enableAlignCountReshape) {
-			shape = alignCount(shape, getOutputShape().getCountLong());
+			shape = shape.alignCount(getOutputShape());
 		}
 
 		return andThen(reshape(getOutputShape(), shape));

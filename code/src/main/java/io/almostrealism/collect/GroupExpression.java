@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import io.almostrealism.expression.Expression;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -31,29 +30,29 @@ public class GroupExpression extends OperandCollectionExpression {
 
 	private final Function<List<Expression[]>, Expression> combiner;
 
-	public GroupExpression(TraversalPolicy shape,
-						   List<UnaryOperator<Expression<?>>> memberIndices,
+	public GroupExpression(String name, TraversalPolicy shape,
+						   List<TraversableExpression<?>> memberIndices,
 						   Function<List<Expression[]>, Expression> combiner,
 						   TraversableExpression... operands) {
-		this(shape, memberIndices.size(), memberIndices::get, combiner, operands);
+		this(name, shape, memberIndices.size(), memberIndices::get, combiner, operands);
 	}
 
-	public GroupExpression(TraversalPolicy shape,
+	public GroupExpression(String name, TraversalPolicy shape,
 						   int memberCount,
-						   IntFunction<UnaryOperator<Expression<?>>> memberIndexGenerator,
+						   IntFunction<TraversableExpression<?>> memberIndexGenerator,
 						   Function<List<Expression[]>, Expression> combiner,
 						   TraversableExpression... operands) {
-		this(shape, memberCount, (memberIndex, operandIndex) ->
+		this(name, shape, memberCount, (memberIndex, operandIndex) ->
 						memberIndexGenerator.apply(memberIndex),
 				combiner, operands);
 	}
 
-	public GroupExpression(TraversalPolicy shape,
+	public GroupExpression(String name, TraversalPolicy shape,
 						   int memberCount,
 						   MemberIndexGenerator memberIndexGenerator,
 						   Function<List<Expression[]>, Expression> combiner,
 						   TraversableExpression... operands) {
-		super(null, shape, operands);
+		super(name, shape, operands);
 		this.memberCount = memberCount;
 		this.memberGenerator = memberIndexGenerator;
 		this.combiner = combiner;
@@ -66,7 +65,7 @@ public class GroupExpression extends OperandCollectionExpression {
 
 					for (int memberIndex = 0; memberIndex < memberCount; memberIndex++) {
 						opMembers[memberIndex] = getOperands().get(operand).getValueAt(
-								memberGenerator.indexGenerator(memberIndex, operand).apply(index));
+								memberGenerator.indexGenerator(memberIndex, operand).getValueAt(index));
 					}
 
 					return opMembers;
@@ -80,6 +79,6 @@ public class GroupExpression extends OperandCollectionExpression {
 	}
 
 	public interface MemberIndexGenerator {
-		UnaryOperator<Expression<?>> indexGenerator(int memberIndex, int operandIndex);
+		TraversableExpression<?> indexGenerator(int memberIndex, int operandIndex);
 	}
 }

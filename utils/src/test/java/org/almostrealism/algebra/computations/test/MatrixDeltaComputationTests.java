@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -367,14 +367,12 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		c.delta(p(w)).get().into(sparse.traverse(traversalAxis)).evaluate();
 		print(outSize, weightSize, sparse);
 
-		verboseLog(() -> {
-			c.delta(p(w))
-					.reshape(outSize, weightSize)
-					.traverse(1)
-					.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
-					.enumerate(1, 1)
-					.get().into(sparse.each()).evaluate();
-		});
+		c.delta(p(w))
+				.reshape(outSize, weightSize)
+				.traverse(1)
+				.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
+				.enumerate(1, 1)
+				.get().into(sparse.each()).evaluate();
 		print(outSize, weightSize, sparse);
 
 		Supplier<Runnable> cda;

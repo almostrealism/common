@@ -259,7 +259,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		op.setComputeRequirements(requirements);
 
 		if (!copy || shape.getCountLong() > 1) {
-			int axis = alignCount(shape, Countable.countLong(in)).getTraversalAxis();
+			int axis = shape.alignCount(Countable.countLong(in)).getTraversalAxis();
 
 			if (shape.equalsIgnoreAxis(shape(out))) {
 				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
@@ -284,8 +284,12 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, Block> flattened() {
+		return flattened(true);
+	}
+
+	default Function<TraversalPolicy, Block> flattened(boolean preserveCount) {
 		return shape -> {
-			TraversalPolicy outputShape = shape.flatten();
+			TraversalPolicy outputShape = shape.flatten(preserveCount);
 			return new DefaultBlock(shape, outputShape,
 					Cell.of((in, next) -> next.push(reshape(outputShape, in))),
 					Cell.of((in, next) -> next.push(reshape(shape, in))));
@@ -324,7 +328,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
-																   boolean bias, ComputeRequirement... requirements) {
+														   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
 				shape = padDimensions(shape, 2, 4);
@@ -463,7 +467,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int h = inputShape.length(2);
 		int w = inputShape.length(3);
 
-		TraversalPolicy outputShape = shape(n, c, h / size, w / size);
+		TraversalPolicy outputShape =
+					shape(n, c, h / size, w / size).alignCount(inputShape);
 
 		Factor<PackedCollection<?>> operator = input ->
 				c(input)
@@ -476,7 +481,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
-		return shape -> dense(shape.getTotalSize(), nodes).apply(shape);
+		return shape -> dense(shape.getSize(), nodes).apply(shape);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes) {
@@ -601,14 +606,26 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
-		return shape -> logSoftmax(shape.getTotalSize(), requirements);
+		return shape -> logSoftmax(shape, requirements);
 	}
 
-	default CellularLayer logSoftmax(int size, ComputeRequirement... requirements) {
-		TraversalPolicy shape = shape(size);
+	default Function<TraversalPolicy, CellularLayer> logSoftmax(int size, ComputeRequirement... requirements) {
+		return shape -> {
+			shape = padDimensions(shape, 2);
+			if (shape.length(1) != size) {
+				throw new IllegalArgumentException();
+			}
+
+			return logSoftmax(shape, requirements);
+		};
+	}
+
+	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
+		shape = padDimensions(shape, 2).traverse(1);
+
 		return layer("logSoftmax", shape, shape, input ->
-				c(input).traverse(1).subtract(
-							c(input).traverse(1).exp().traverse(0).sum().log()),
+				c(input).traverse(2).subtract(
+							c(input).traverse(2).exp().traverse(1).sum().log()),
 				requirements);
 	}
 

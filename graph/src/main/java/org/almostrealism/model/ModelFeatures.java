@@ -19,21 +19,22 @@ package org.almostrealism.model;
 import org.almostrealism.CodeFeatures;
 
 public interface ModelFeatures extends CodeFeatures {
-	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+	default Model convolution2dModel(int h, int w, int convSize, int convFilters, int convLayers,
 									 int denseSize) {
-		return convolution2dModel(r, c, convSize, convFilters, convLayers,
+		return convolution2dModel(h, w, convSize, convFilters, convLayers,
 				-1, denseSize);
 	}
 
-	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+	default Model convolution2dModel(int h, int w, int convSize, int convFilters, int convLayers,
 									 int groups, int denseSize) {
-		return convolution2dModel(r, c, convSize, convFilters, convLayers,
+		return convolution2dModel(1, 1, h, w, convSize, convFilters, convLayers,
 				groups, denseSize, false);
 	}
 
-	default Model convolution2dModel(int r, int c, int convSize, int convFilters, int convLayers,
+	default Model convolution2dModel(int batchSize, int channels, int h, int w,
+									 int convSize, int convFilters, int convLayers,
 									 int groups, int denseSize, boolean logSoftmax) {
-		Model model = new Model(shape(r, c));
+		Model model = new Model(shape(batchSize, channels, h, w));
 
 		for (int i = 0; i < convLayers; i++) {
 			model.add(convolution2d(convFilters, convSize));

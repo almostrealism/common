@@ -21,8 +21,11 @@ import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.graph.Cell;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.layers.Learning;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -33,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
 public class ConvolutionModelTests implements ModelFeatures, TestFeatures, KernelAssertions {
 
@@ -140,15 +144,90 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 	}
 
 	@Test
+	public void convBackwardsMediumBatch() throws IOException {
+		if (testDepth < 2) return;
+
+		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
+	}
+
+	@Test
 	public void convBackwardsLarge() throws IOException {
 		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
 	}
 
 	@Test
 	public void convBackwardsMediumPadded() throws IOException {
-		if (skipKnownIssues) return;
-
 		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28, 1, true);
+	}
+
+	@Test
+	public void convGradientSmallest() throws IOException {
+		convGradient("convGradientSmallest", 1, 1, 4, 4, 2, 1, 0, false);
+	}
+
+	@Test
+	public void convGradientSmall() throws IOException {
+		convGradient("convGradientSmallest", 3, 2, 4, 4, 2, 2, 0, false);
+	}
+
+	public void convGradient(String name, int bs, int c, int h, int w, int convSize,
+							 int filterCount, int padding, boolean bias) throws IOException {
+		TraversalPolicy inputShape = shape(bs, c, h, w);
+
+		Block conv = convolution2d(c, filterCount, convSize, padding, bias).apply(inputShape);
+		CellularLayer layer = conv instanceof SequentialBlock ?
+				(CellularLayer) ((SequentialBlock) conv).getBlocks().get(1) : (CellularLayer) conv;
+
+		Cell.CaptureReceptor<PackedCollection<?>> receptor = new Cell.CaptureReceptor<>();
+		layer.getBackward().setReceptor(receptor);
+		((Learning) layer).setParameterUpdate(ParameterUpdate.scaled(0.1));
+		layer.setup().get().run();
+
+		PackedCollection<?> filter = layer.getWeights().get(0);
+		log(filter.getShape()); // (filterCount, c, convSize, convSize)
+
+		PackedCollection<?> inputGradient =
+				new PackedCollection<>(layer.getOutputShape()).randFill();
+
+		Supplier<Runnable> op = layer.getBackward().push(cp(inputGradient));
+		op.get().run();
+
+		PackedCollection<?> outputGradient = receptor.getReceipt().evaluate();
+		log(outputGradient.getShape());
+
+		int outH = layer.getOutputShape().length(2);
+		int outW = layer.getOutputShape().length(3);
+
+		for (int n = 0; n < bs; n++) {
+			for (int inCh = 0; inCh < c; inCh++) {
+				for (int y = 0; y < h; y++) {
+					for (int x = 0; x < w; x++) {
+						double expected = 0.0;
+
+						// Each (y, x) in the input influences some set of (outY, outX) in the output
+						for (int outCh = 0; outCh < filterCount; outCh++) {
+							for (int ky = 0; ky < convSize; ky++) {
+								for (int kx = 0; kx < convSize; kx++) {
+									// Derive which output pixel would have used input pixel (y, x)
+									int outY = (y - ky) + padding;
+									int outX = (x - kx) + padding;
+
+									// Only accumulate if (outY, outX) is valid in the output gradient
+									if (outY >= 0 && outY < outH && outX >= 0 && outX < outW) {
+										double gradVal = inputGradient.valueAt(n, outCh, outY, outX);
+										double filterVal = filter.valueAt(outCh, inCh, ky, kx);
+										expected += gradVal * filterVal;
+									}
+								}
+							}
+						}
+
+						double actual = outputGradient.valueAt(n, inCh, y, x);
+						assertEquals(expected, actual);
+					}
+				}
+			}
+		}
 	}
 
 	public void convBackwards(String name, int n, int c, int h, int w, int convSize,

@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
@@ -32,6 +33,10 @@ public interface ParameterUpdate<T extends PackedCollection<?>> {
 		return (name, weights, gradient) ->
 				Ops.op(o -> o.a(name + " (\u0394 weights)",
 						o.each(weights), o.subtract(o.each(weights), operator.getResultant(gradient))));
+	}
+
+	static ParameterUpdate<PackedCollection<?>> scaled(double learningRate) {
+		return scaled(CollectionFeatures.getInstance().cp(PackedCollection.of(learningRate)));
 	}
 
 	static ParameterUpdate<PackedCollection<?>> scaled(Producer<PackedCollection<?>> learningRate) {

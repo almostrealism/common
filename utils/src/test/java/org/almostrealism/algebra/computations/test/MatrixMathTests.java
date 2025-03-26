@@ -61,6 +61,8 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmulPowers() {
+		if (testDepth < 1) return;
+
 		for (int i = 1; i < 8; i++) {
 			matmul(0, 1 << i, 1 << i, enableOptimization, false);
 		}

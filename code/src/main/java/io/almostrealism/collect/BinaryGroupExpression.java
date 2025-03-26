@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,24 +20,23 @@ import io.almostrealism.expression.Expression;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.UnaryOperator;
 
 public class BinaryGroupExpression extends GroupExpression {
-	public BinaryGroupExpression(TraversalPolicy shape, int memberCount,
+	public BinaryGroupExpression(String name, TraversalPolicy shape, int memberCount,
 								 TraversableExpression a,
 								 TraversableExpression b,
 								 BiFunction<Expression[], Expression[], Expression<?>> combiner,
 								 MemberIndexGenerator memberIndexGenerator) {
-		super(shape, memberCount, memberIndexGenerator,
+		super(name, shape, memberCount, memberIndexGenerator,
 				members -> combiner.apply(members.get(0), members.get(1)), a, b);
 	}
 
-	public BinaryGroupExpression(TraversalPolicy shape,
+	public BinaryGroupExpression(String name, TraversalPolicy shape,
 								 TraversableExpression a,
 								 TraversableExpression b,
-								 List<UnaryOperator<Expression<?>>> memberIndices,
+								 List<TraversableExpression<?>> memberIndices,
 								 BiFunction<Expression[], Expression[], Expression<?>> combiner) {
-		super(shape, memberIndices, members ->
+		super(name, shape, memberIndices, members ->
 				combiner.apply(members.get(0), members.get(1)), a, b);
 	}
 }
