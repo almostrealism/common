@@ -20,39 +20,24 @@ import io.almostrealism.expression.Expression;
 
 import java.util.Arrays;
 
-public class SubsetTraversalIndexMapping implements TraversableExpression<Number> {
+public class SubsetTraversalIndexMapping extends SubsetTraversalExpression implements TraversableExpression<Number> {
 	public static boolean enableLogging = false;
 
-	private final TraversalPolicy resultShape;
-	private final TraversalPolicy operandShape;
-	private final TraversalPolicy groupShape;
-	private final TraversalPolicy positions;
 	private final int groupIndex;
 
 	public SubsetTraversalIndexMapping(
 			TraversalPolicy resultShape, TraversalPolicy operandShape,
 			TraversalPolicy groupShape, TraversalPolicy positions,
 			int groupIndex) {
-		this.resultShape = resultShape;
-		this.operandShape = operandShape;
-		this.groupShape = groupShape;
-		this.positions = positions;
+		super(resultShape, operandShape, groupShape, positions);
 		this.groupIndex = groupIndex;
 	}
 
 	@Override
 	public Expression<Number> getValueAt(Expression<?> outputIndex) {
-		// The position in the output being computed
-		Expression[] outputPosition = resultShape.position(outputIndex.imod(resultShape.getTotalSizeLong()));
-
-		// The output index needs to be projected into the space of the
-		// positions before it can be used with the input (or weights)
-		Expression index = positions.index(outputPosition);
-
-		// The position of this group member and the current subset.
-		// in the space of the input (or weights)
 		int[] groupPosition = groupShape.position(groupIndex);
-		Expression[] subsetPosition = positions.position(index.imod(positions.getTotalInputSizeLong()));
+
+		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
 
 		if (enableLogging) {
 			System.out.println("Operand " + operandShape +

@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
@@ -41,5 +42,9 @@ public interface ParameterUpdate<T extends PackedCollection<?>> {
 
 	static ParameterUpdate<PackedCollection<?>> scaled(Producer<PackedCollection<?>> learningRate) {
 		return of(gradient -> Ops.o().multiply(learningRate, gradient));
+	}
+
+	static ParameterUpdate<PackedCollection<?>> disabled() {
+		return (name, weights, gradient) -> new OperationList();
 	}
 }

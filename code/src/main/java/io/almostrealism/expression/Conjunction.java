@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -75,6 +75,11 @@ public class Conjunction extends NAryExpression<Boolean> {
 			throw new IllegalArgumentException();
 
 		if (values.size() == 1) return (Expression<Boolean>) values.get(0);
+
+		if (values.stream().anyMatch(e -> !e.booleanValue().orElse(true))) {
+			return new BooleanConstant(false);
+		}
+
 		return new Conjunction(values);
 	}
 }

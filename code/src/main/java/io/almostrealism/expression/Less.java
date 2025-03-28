@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 public class Less extends Comparison {
 	private boolean orEqual;
@@ -55,10 +56,22 @@ public class Less extends Comparison {
 	}
 
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right) {
-		return new Less(left, right);
+		return Less.of(left, right, false);
 	}
 
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
+		OptionalDouble ld = left.doubleValue();
+		OptionalDouble rd = right.doubleValue();
+
+		if (ld.isPresent() && rd.isPresent()) {
+			if (orEqual) {
+				return ld.getAsDouble() <= rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
+			} else {
+				return ld.getAsDouble() < rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
+			}
+		}
+
+
 		return new Less(left, right, orEqual);
 	}
 }

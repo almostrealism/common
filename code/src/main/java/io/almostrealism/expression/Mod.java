@@ -251,6 +251,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		long m = mod.longValue().getAsLong();
 		if (!fp && m == 1) return new IntegerConstant(0);
 
+		OptionalLong id = input.longValue();
+		if (id.isPresent()) {
+			return ExpressionFeatures.getInstance().e(id.getAsLong() % m);
+		}
+
 		if (input instanceof Mod && !input.isFP()) {
 			Mod<Long> innerMod = (Mod) input;
 			OptionalLong inMod = innerMod.getChildren().get(1).longValue();

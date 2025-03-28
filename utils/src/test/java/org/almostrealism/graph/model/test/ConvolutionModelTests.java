@@ -180,7 +180,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 		Cell.CaptureReceptor<PackedCollection<?>> receptor = new Cell.CaptureReceptor<>();
 		layer.getBackward().setReceptor(receptor);
-		((Learning) layer).setParameterUpdate(ParameterUpdate.scaled(0.1));
+		((Learning) layer).setParameterUpdate(ParameterUpdate.disabled());
 		layer.setup().get().run();
 
 		PackedCollection<?> filter = layer.getWeights().get(0);
@@ -223,6 +223,7 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 						}
 
 						double actual = outputGradient.valueAt(n, inCh, y, x);
+						log("[" + n + ", " + inCh + ", " + y + ", " + x + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
