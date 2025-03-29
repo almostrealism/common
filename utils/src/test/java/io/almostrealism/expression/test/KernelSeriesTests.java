@@ -290,7 +290,8 @@ public class KernelSeriesTests implements ExpressionFeatures, ConsoleFeatures {
 		int period = series.getPeriod().orElseThrow();
 		log("Reported period = " + period);
 
-		Number[] values = exp.sequence(new KernelIndex(), period * 4L).toArray();
+		Number[] values = exp.sequence(new KernelIndex(), period * 4L)
+							.stream().toArray(Number[]::new);
 
 		if (period < 500) {
 			for (int i = 0; i < 4; i++) {

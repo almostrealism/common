@@ -97,8 +97,8 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	}
 
 	@Override
-	public int getMod() {
-		return Math.toIntExact(mod);
+	public long getMod() {
+		return mod;
 	}
 
 	@Override

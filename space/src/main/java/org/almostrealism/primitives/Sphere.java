@@ -17,7 +17,7 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;

@@ -21,6 +21,7 @@ import io.almostrealism.expression.IntegerConstant;
 
 public class WeightedSumExpression extends BinaryGroupExpression {
 	public static boolean enableCollectionExpression = true;
+	public static int simplifyThreshold = 1 << 16;
 
 	public WeightedSumExpression(TraversalPolicy shape, int memberCount,
 								 TraversableExpression a, TraversableExpression b,
@@ -28,6 +29,9 @@ public class WeightedSumExpression extends BinaryGroupExpression {
 		super(shape, memberCount, a, b, (input, weights) -> {
 			Expression<?> result = new IntegerConstant(0);
 			for (int i = 0; i < input.length; i++) {
+				input[i] = simplify(simplifyThreshold, input[i]);
+				weights[i] = simplify(simplifyThreshold, weights[i]);
+
 				result = result.add(input[i].multiply(weights[i]));
 				result = result.generate(result.flatten());
 			}

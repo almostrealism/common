@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
@@ -307,11 +307,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return vars;
 	}
 
-	public CollectionVariable getCollectionArgumentVariable(int argIndex) {
+	public CollectionVariable<?> getCollectionArgumentVariable(int argIndex) {
 		ArrayVariable<?> arg = getArgumentForInput(getInputs().get(argIndex));
 
 		if (arg instanceof CollectionVariable) {
-			return (CollectionVariable) arg;
+			return (CollectionVariable<?>) arg;
 		} else {
 			return null;
 		}
@@ -342,7 +342,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			this.evaluable = new HardwareEvaluable<>(
 					this::getEvaluable,
 					getDestination(),
-					shortCircuit, true);
+					getShortCircuit(), true);
 			this.evaluable.setDestinationProcessor(destination -> {
 				if (destination instanceof Shape) {
 					Shape out = (Shape) destination;

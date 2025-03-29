@@ -25,7 +25,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
@@ -125,7 +125,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionVariable input = (CollectionVariable) arg;
 
 		TraversalPolicy sliceShape = inputShape.item();
-		TraversalPolicy traversalShape = new TraversalPolicy();
+		TraversalPolicy traversalShape = new TraversalPolicy(true);
 		int traversalDimensions = inputShape.getDimensions() - sliceShape.getDimensions();
 		for (int i = 0; i < traversalDimensions; i++) {
 			sliceShape = sliceShape.prependDimension(1);
@@ -173,7 +173,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
-			return TraversableDeltaComputation.create(getShape(), shape(target),
+			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 					(Supplier) this).addDependentLifecycle(this);
 		}
@@ -191,7 +191,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		Producer<?> stub = func(inShape, args -> null);
 
-		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create(shape(outSize), shape(inSize),
+		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
 				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
 		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
@@ -238,12 +238,15 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-			super(null, shape, expression, args);
+			super("mapItem", shape, expression, args);
 		}
 
 		@Override
 		public boolean isFixedCount() {
 			return false;
 		}
+
+		@Override
+		public boolean isConstant() { return false; }
 	}
 }

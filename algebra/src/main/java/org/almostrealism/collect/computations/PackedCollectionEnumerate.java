@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,11 +17,16 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.collect.Algebraic;
+import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.kernel.Index;
+import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
@@ -32,9 +37,10 @@ import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	public static boolean enablePreferIsolation = true;
+	public static boolean enablePreferIsolation = false;
 	public static boolean enableDetectTraversalDepth = true;
 	public static boolean enablePositionSimplification = true;
+	public static boolean enableUniqueIndexOptimization = true;
 
 	private TraversalPolicy inputShape;
 	private int traversalDepth;
@@ -77,12 +83,38 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		if (super.isIsolationTarget(context)) return true;
 
 		if (enablePreferIsolation &&
-				getParallelism() > minCount &&
+				getParallelism() > ParallelismTargetOptimization.minCount &&
 				getOutputSize() <= MemoryProvider.MAX_RESERVATION) {
 			return true;
 		}
 
 		return false;
+	}
+
+	/**
+	 * Returns true if this enumeration is a one-to-one mapping of the input collection,
+	 * where each element in the input collection is mapped to exactly one element in
+	 * the output collection, false otherwise.
+	 */
+	public boolean isOneToOne() {
+		for (int i = 0; i < subsetShape.getDimensions(); i++) {
+			boolean match;
+
+			if (strideShape.length(i) == 0) {
+				match = subsetShape.length(i) == inputShape.length(i);
+			} else {
+				match = subsetShape.length(i) == strideShape.length(i);
+			}
+
+			if (!match) return false;
+		}
+
+		return true;
+	}
+
+	@Override
+	public boolean isZero() {
+		return Algebraic.isZero(getInputs().get(1));
 	}
 
 	@Override
@@ -103,7 +135,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		// Starting over from the beginning for each new block
 		Expression<?> slice;
 
-		if (subsetShape.getTotalSize() == 1) {
+		if (subsetShape.getTotalSizeLong() == 1) {
 			slice = index;
 		} else if (!index.isFP()) {
 			slice = index.divide(e(subsetShape.getTotalSizeLong()));
@@ -138,6 +170,31 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (Index.child(globalIndex, localIndex).equals(targetIndex)) {
+			Expression<?> idx = uniqueNonZeroOffsetMapped(globalIndex, localIndex);
+			if (idx != null) return idx;
+		}
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	protected Expression<?> uniqueNonZeroOffsetMapped(Index globalOut, Index localOut) {
+		if (!enableUniqueIndexOptimization || !isOneToOne()) return null;
+		if (localOut.getLimit().isEmpty() || globalOut.getLimit().isEmpty()) return null;
+		if (subsetShape.getSizeLong() != localOut.getLimit().getAsLong()) return null;
+
+		long limit = subsetShape.getCountLong();
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", inputShape.getTotalSizeLong() / limit);
+
+		Expression<?> idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
+		if (idx != null && !idx.isValue(IndexValues.of(g))) return null;
+
+		return idx == null ? null : idx.withIndex(g, (Expression<?>) globalOut).imod(subsetShape.getSizeLong());
+	}
+
+	@Override
 	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
 				new PackedCollectionEnumerate<>(subsetShape, strideShape,
@@ -152,7 +209,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
+	public static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
 												Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 		TraversalPolicy itemShape = superShape.traverse(traversalDepth).item();

@@ -31,6 +31,10 @@ public interface LanguageOperations {
 
 	Precision getPrecision();
 
+	default String stringForLong(long value) {
+		return getPrecision().stringForLong(value);
+	}
+
 	String pi();
 
 	String pow(String a, String b);

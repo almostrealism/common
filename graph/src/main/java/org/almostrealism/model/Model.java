@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
@@ -106,7 +107,10 @@ public class Model implements Setup, CodeFeatures {
 
 	@Override
 	public Supplier<Runnable> setup() {
-		return blocks.setup();
+		OperationList setup = new OperationList("Model Setup");
+		inputs.forEach(b -> setup.add(b.setup()));
+		setup.add(blocks.setup());
+		return setup;
 	}
 
 	public List<Cell<PackedCollection<?>>> forward() {
@@ -130,11 +134,15 @@ public class Model implements Setup, CodeFeatures {
 		return CompiledModel.compile(this, backprop, false, null);
 	}
 
+	public CompiledModel compile(boolean backprop, OperationProfile profile) {
+		return CompiledModel.compile(this, backprop, false, profile);
+	}
+
 	public CompiledModel compile(boolean backprop, boolean returnGradient) {
 		return CompiledModel.compile(this, backprop, returnGradient, null);
 	}
 
-	public CompiledModel compile(boolean backprop, OperationProfile profile) {
-		return CompiledModel.compile(this, backprop, false, profile);
+	public CompiledModel compile(boolean backprop, boolean returnGradient, OperationProfile profile) {
+		return CompiledModel.compile(this, backprop, returnGradient, profile);
 	}
 }

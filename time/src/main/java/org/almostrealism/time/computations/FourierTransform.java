@@ -21,9 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
@@ -68,7 +66,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 		int size = getShape().getSize();
 
-		Expression<Integer> outputPosition = kernel(context).multiply(e(size));
+		Expression outputPosition = kernel(context).multiply(e(size));
 
 		ArrayVariable<Double> output = getArgument(0, e(getShape().getTotalSize()));
 		ArrayVariable<Double> input = getArgument(1, e(getShape().getTotalSize()));

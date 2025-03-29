@@ -16,14 +16,17 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.MonitorReceptor;
+import org.almostrealism.model.Block;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -126,5 +129,25 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				assertEquals(vo, out.valueAt(h * headSize + i));
 			}
 		}
+	}
+
+	@Test
+	public void linearAttention() {
+		int batchSize = 1;
+		int dim = 8;
+		int inputChannels = 8;
+		int rows = 4;
+		int cols = 4;
+
+		PackedCollection<?> input =
+				new PackedCollection<>(shape(batchSize, inputChannels, rows, cols)).randnFill();
+
+		Block b = linearAttention(batchSize, dim, inputChannels, rows, cols);
+		b.setup().get().run();
+
+		b.getForward().setReceptor(new MonitorReceptor(out -> {
+			out.print();
+		}));
+		Process.optimized(b.forward(cp(input))).get().run();
 	}
 }

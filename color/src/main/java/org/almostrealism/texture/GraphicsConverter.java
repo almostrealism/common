@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.texture;
 
 import java.awt.Color;
-import java.awt.Graphics;
 import java.awt.Image;
 import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
@@ -28,11 +27,11 @@ import java.io.IOException;
 import java.util.function.Function;
 
 import javax.imageio.ImageIO;
-import javax.swing.ImageIcon;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
@@ -65,24 +64,6 @@ public class GraphicsConverter {
 		return new Color((float)Math.min(1.0, Math.abs(color.getRed())),
 		        		(float)Math.min(1.0, Math.abs(color.getGreen())),
 		        		(float)Math.min(1.0, Math.abs(color.getBlue())));
-	}
-	
-	/**
-	 * Converts the specified AWT Image object to an array of RGB objects.
-	 * The array locations map to pixels in the image. The image will be
-	 * converted to the standard RGB color model if it is not already
-	 * and the alpha channel will be ignored.
-	 */
-	@Deprecated
-	public static RGB[][] convertToRGBArray(Image image) {
-		image = new ImageIcon(image).getImage();
-		BufferedImage bufferedImage = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
-		
-		Graphics gr = bufferedImage.createGraphics();
-		gr.drawImage(image, 0, 0, null);
-		gr.dispose();
-		
-		return GraphicsConverter.convertToRGBArray(bufferedImage);
 	}
 	
 	public static int[] extract32BitImage(RenderedImage im) {
@@ -144,13 +125,6 @@ public class GraphicsConverter {
 		
 		return rgb;
 	}
-
-	@Deprecated
-	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage) {
-		return GraphicsConverter.convertToRGBArray(bufferedImage, 0, 0,
-													bufferedImage.getWidth(),
-													bufferedImage.getHeight());
-	}
 	
 	public static RGB[][] convertToRGBArray(int pixel[], int off, int x, int y, int w, int h, int imageW) {
 		RGB rgb[][] = new RGB[w][h];
@@ -174,45 +148,34 @@ public class GraphicsConverter {
 		return rgb;
 	}
 
-	@Deprecated
-	public static RGB[][] convertToRGBArray(BufferedImage bufferedImage,
-											int xoff, int yoff, int w, int h) {
-		RGB rgbArray[][] = new RGB[w][h];
-		
-		for(int i = 0; i < rgbArray.length; i++) {
-			for(int j = 0; j < rgbArray[i].length; j++) {
-				int color = bufferedImage.getRGB(xoff + i, yoff + j);
-				
-				int rChannel = (color >> 16) & 255;
-				int gChannel = (color >> 8) & 255;
-				int bChannel = color & 255;
-				
-				double r = rChannel / 255d;
-				double g = gChannel / 255d;
-				double b = bChannel / 255d;
-				
-				rgbArray[i][j] = new RGB(r, g, b);
-			}
-		}
-		
-		return rgbArray;
+	public static PackedCollection<RGB> loadRgb(File file) throws IOException {
+		// TODO Delegate to to the PackedCollection, and apply an RGB postprocessor for the elements
+		return (PackedCollection) loadRgb(file, false);
 	}
 
-	public static PackedCollection<RGB> loadRgb(File file) throws IOException {
+	public static PackedCollection<?> loadChannels(File file) throws IOException {
+		return loadRgb(file, true);
+	}
+
+	public static PackedCollection<?> loadRgb(File file, boolean channelsFirst) throws IOException {
 		BufferedImage image = ImageIO.read(file);
 
 		int width = image.getWidth();
 		int height = image.getHeight();
 
-		PackedCollection<RGB> dest = new PackedCollection<>(
-				new TraversalPolicy(height, width, 3).traverse(2));
-		loadRgb(dest, image, 0, 0, width, height);
+		TraversalPolicy shape = channelsFirst ?
+				new TraversalPolicy(3, height, width).traverse(3) :
+				new TraversalPolicy(height, width, 3).traverse(2);
+
+		PackedCollection<?> dest = new PackedCollection<>(shape);
+		loadRgb(dest, image, 0, 0, width, height, channelsFirst);
 		return dest;
 	}
 
-	public static void loadRgb(PackedCollection<RGB> rgbDestination,
+	public static void loadRgb(PackedCollection<?> rgbDestination,
 							   BufferedImage bufferedImage,
-							   int xOff, int yOff, int w, int h) {
+							   int xOff, int yOff, int w, int h,
+							   boolean channelsFirst) {
 		TraversalPolicy destShape = rgbDestination.getShape();
 		if (destShape.getDimensions() != 3) {
 			throw new IllegalArgumentException();
@@ -228,8 +191,14 @@ public class GraphicsConverter {
 				int gChannel = (color >> 8) & 255;
 				int bChannel = color & 255;
 
-				rgbDestination.range(slice, destShape.index(r, c, 0))
-						.set(0, rChannel / 255d, gChannel / 255d, bChannel / 255d);
+				if (channelsFirst) {
+					rgbDestination.set(destShape.index(0, r, c), rChannel / 255d);
+					rgbDestination.set(destShape.index(1, r, c), gChannel / 255d);
+					rgbDestination.set(destShape.index(2, r, c), bChannel / 255d);
+				} else {
+					rgbDestination.range(slice, destShape.index(r, c, 0))
+							.set(0, rChannel / 255d, gChannel / 255d, bChannel / 255d);
+				}
 			}
 		}
 	}
@@ -321,7 +290,9 @@ public class GraphicsConverter {
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][],
+											Function<Pair, Pair> positionForImageIndices,
+											Producer notify) {
 		RGB evaluated[][] = new RGB[image.length][image[0].length];
 
 		boolean wasNull = false;
@@ -333,7 +304,7 @@ public class GraphicsConverter {
 					continue i;
 				}
 
-				evaluated[i][j] = image[i][j].evaluate(new Object[] { positionForImageIndices.apply(new Pair(i, j)) });
+				evaluated[i][j] = image[i][j].evaluate(positionForImageIndices.apply(new Pair(i, j)));
 			}
 
 			if (notify != null) {
@@ -384,7 +355,7 @@ public class GraphicsConverter {
 					continue i;
 				}
 				
-				RGB c = image[i][j].evaluate(new Object[] { positionForImageIndices.apply(new Pair(i, j)) });
+				RGB c = image[i][j].evaluate(positionForImageIndices.apply(new Pair(i, j)));
 				
 				int r = (int)(Math.min(1.0, Math.abs(c.getRed())) * 255);
 				int g = (int)(Math.min(1.0, Math.abs(c.getGreen())) * 255);
@@ -399,10 +370,14 @@ public class GraphicsConverter {
 			}
 		}
 		
-		if (wasNull)
-			System.out.println("GraphicsConverter: Some image data was null.");
+		if (wasNull) {
+			CollectionFeatures.console
+					.features(GraphicsConverter.class)
+					.warn("Some image data was null");
+		}
 		
-		return Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
+		return Toolkit.getDefaultToolkit().createImage(
+				new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
 	}
 
 	/**
@@ -449,9 +424,43 @@ public class GraphicsConverter {
 			}
 		}
 
-		if (wasNull)
-			System.out.println("GraphicsConverter: Some image data was null.");
+		if (wasNull) {
+			CollectionFeatures.console
+					.features(GraphicsConverter.class)
+					.warn("Some image data was null");
+		}
 
-		return Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
+		return Toolkit.getDefaultToolkit().createImage(
+				new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
+	}
+
+	// TODO  Accelerated
+	public static BufferedImage convertToAWTImage(PackedCollection<?> values, boolean channelsFirst) {
+		int axis = channelsFirst ? 1 : 0;
+		int h = values.getShape().length(axis);
+		int w = values.getShape().length(axis + 1);
+
+		int data[] = new int[h * w];
+		int index = 0;
+
+		for (int j = 0; j < h; j++) {
+			i: for (int i = 0; i < w; i++) {
+				double rd = channelsFirst ? values.valueAt(0, j, i) : values.valueAt(j, i, 0);
+				double gd = channelsFirst ? values.valueAt(1, j, i) : values.valueAt(j, i, 1);
+				double bd = channelsFirst ? values.valueAt(2, j, i) : values.valueAt(j, i, 2);
+
+				int a = 255;
+				int r = (int)(Math.min(1.0, Math.abs(rd)) * 255);
+				int g = (int)(Math.min(1.0, Math.abs(gd)) * 255);
+				int b = (int)(Math.min(1.0, Math.abs(bd)) * 255);
+
+				data[index++] = a << 24 | r << 16 | g << 8 | b;
+			}
+		}
+
+		// Create a RenderedImage from the data
+		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		img.setRGB(0, 0, w, h, data, 0, w);
+		return img;
 	}
 }

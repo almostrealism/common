@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -44,7 +44,6 @@ import java.util.stream.Stream;
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends RelativeTraversableProducerComputation<T, T> {
 
-	public static boolean enableTraversableFixed = true;
 	public static boolean enableInferShape = false;
 	public static boolean enableWarnings = false;
 

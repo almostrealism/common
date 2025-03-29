@@ -28,6 +28,7 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
 
+// TODO  It seems like this should actually implement CollectionProducer
 public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
 	private static long seed;
 
@@ -48,6 +49,10 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 		this.random = new java.util.Random();
 		this.shape = shape;
 		this.normal = normal;
+
+		if (shape.getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override

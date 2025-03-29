@@ -23,12 +23,14 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public abstract class DefaultLanguageOperations implements LanguageOperations {
+	boolean int64 = SystemUtils.isEnabled("AR_HARDWARE_INT_64").orElse(false);
 
 	private Precision precision;
 	private boolean enableArrayVariables;
@@ -44,6 +46,15 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 
 	@Override
 	public Precision getPrecision() { return precision; }
+
+	@Override
+	public String stringForLong(long value) {
+		if (int64) {
+			return Precision.FP64.stringForLong(value);
+		}
+
+		return LanguageOperations.super.stringForLong(value);
+	}
 
 	@Override
 	public String pow(String a, String b) { return "pow(" + a + ", " + b + ")"; }

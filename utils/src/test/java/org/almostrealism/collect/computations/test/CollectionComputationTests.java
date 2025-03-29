@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -604,7 +604,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection<?> dest = new PackedCollection(1);
 		CollectionProducer<PackedCollection<?>> max = cp(series.traverse(0)).max();
-		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
+		CollectionProducer<PackedCollection<?>> auto = max.greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
 		verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
@@ -637,7 +637,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		TraversalPolicy shape = shape(in).flatten(true);
 
-		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(shape(2), (args, idx) -> {
+		DynamicIndexProjectionProducerComputation<?> c = new DynamicIndexProjectionProducerComputation<>(null, shape(2), (args, idx) -> {
 			Expression<?> result = null;
 
 			for (int i = 0; i < shape.getSize(); i++) {

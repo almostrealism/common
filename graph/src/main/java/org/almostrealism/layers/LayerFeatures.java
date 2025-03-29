@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Factor;
@@ -41,6 +42,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
+import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,6 +54,10 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	boolean allowNonComposites = false;
 	boolean enableWeightedSum = true;
+	boolean enableMonitor = false;
+
+	boolean enableIgnoreZero = true;
+	boolean enableLogStability = true;
 
 	Console console = CollectionFeatures.console.child();
 
@@ -107,6 +113,11 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
+		if (enableMonitor)
+			layer.setMonitor(new MonitorReceptor(
+					name, inputShape, outputShape,
+					weights.toArray(PackedCollection[]::new)));
+
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
 	}
@@ -179,11 +190,16 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		Cell.CaptureReceptor<PackedCollection<?>> auxReceptor = new Cell.CaptureReceptor<>();
 		auxExit.setReceptor(auxReceptor);
 
+		Supplier<Runnable> setup = new OperationList();
+		if (aux instanceof Setup) {
+			setup = ((Setup) aux).setup();
+		}
+
 		// Create a layer that composes its input with whatever was received for aux
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
 				Cell.of((input, next) -> next == null ? new OperationList() :
 						next.push(operator.compose(input, auxReceptor.getReceipt()))),
-				null);
+				null, Collections.emptyList(), setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
@@ -292,16 +308,26 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		return new DefaultBlock(inputShape, subsetShape,
-				Cell.of((in, next) -> next.push(subset(subsetShape, in, pos))),
-				Cell.of((in, next) -> next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
+				Cell.of((in, next) ->
+						next.push(subset(subsetShape, in, pos))),
+				Cell.of((in, next) ->
+						next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+	default Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape, int... pos) {
+			return new DefaultBlock(inputShape, paddedShape,
+				Cell.of((in, next) ->
+						next.push(pad(paddedShape, in, pos))),
+				Cell.of((in, next) ->
+						next.push(subset(inputShape, in, pos))));
+	}
+
+	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
 		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int inputChannels, int filterCount, int size, int padding,
+	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
@@ -318,25 +344,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return shape -> convolution2d(shape, filterCount, size, padding, bias, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
+	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
 		return convolution2d(filterCount, size, 0, requirements);
 	}
 
-	default Function<TraversalPolicy, CellularLayer> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
+	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
 		return shape -> convolution2d(shape, filterCount, size, padding, true, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, true, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, boolean bias, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, bias, requirements);
 	}
 
-	default CellularLayer convolution2d(TraversalPolicy inputShape, int filterCount,
+	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, int padding,
 										boolean bias, ComputeRequirement... requirements) {
 		inputShape = padDimensions(inputShape, 2, 4);
@@ -366,18 +392,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		Factor<PackedCollection<?>> operator;
 
-		if (enableWeightedSum && WeightedSumExpression.enableCollectionExpression) {
+		if (WeightedSumExpression.enableCollectionExpression) {
 			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in;
-
-				if (padding > 0) {
-					in = c(input)
-							.reshape(-1, channels, h, w)
-							.pad(0, 0, padding, padding);
-				} else {
-					in = c(input);
-				}
-
+				CollectionProducer<PackedCollection<?>> in = c(input);
 				CollectionProducer<PackedCollection<?>> conv =
 						in.reshape(-1, 1, channels, height, width);
 				CollectionProducer<PackedCollection<?>> filter =
@@ -413,16 +430,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			};
 		} else {
 			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in;
-
-				if (padding > 0) {
-					in = c(input)
-							.reshape(-1, channels, h, w)
-							.pad(0, 0, padding, padding);
-				} else {
-					in = c(input);
-				}
-
+				CollectionProducer<PackedCollection<?>> in = c(input);
 				CollectionProducer<PackedCollection<?>> conv =
 						in.reshape(-1, channels, height * width)
 								.traverse(1).enumerate(2, 1)
@@ -465,14 +473,24 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		OperationList setup = new OperationList();
 		Random randn = randn(filterShape);
 		setup.add(() -> randn::refresh);
-		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
 		if (biases != null) {
-			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(size * size).traverse(0))));
+			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
 		}
 
-		return layer("convolution2d", inputShape, outputShape, operator,
+		TraversalPolicy convInputShape = shape(batch, channels, height, width);
+		CellularLayer layer = layer("convolution2d", convInputShape, outputShape, operator,
 				biases == null ? List.of(filters) : List.of(filters, biases),
 				setup, requirements);
+
+		if (padding > 0) {
+			SequentialBlock block = new SequentialBlock(inputShape);
+			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
+			block.add(layer);
+			return block;
+		} else {
+			return layer;
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {
@@ -537,7 +555,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		Factor<PackedCollection<?>> operator = input ->
 				bias ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
 
-		OperationList setup = new OperationList();
+		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
 			Random randn = randn(weightShape);
 			setup.add(() -> randn::refresh);
@@ -575,21 +593,44 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		int axis = shape.getDimensions() - 1;
 		int seqLen = shape.length(axis);
+		double eps = 1e-5;
 
-		return layer("softmax2d", shape, shape, input -> {
-			CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
+		if (enableLogStability) {
+			return layer("softmax2d", shape, shape, input -> {
+				CollectionProducer<PackedCollection<?>> max = traverse(axis, input).max();
+				CollectionProducer<PackedCollection<?>> stable =
+						traverse(axis + 1, input).subtract(max.expand(seqLen));
+				CollectionProducer<PackedCollection<?>> logSum =
+						stable.exp().traverse(axis).sum().log().expand(seqLen);
+				return stable.subtract(logSum).exp();
+			}, requirements);
+		} else {
+			return layer("softmax2d", shape, shape, input -> {
+				CollectionProducer<PackedCollection<?>> o = traverse(axis, input);
 
-			if (subtractMax) {
-				o = o.max();
-				o = o.expand(seqLen);
-				o = traverse(axis + 1, input).subtractIgnoreZero(o);
-			}
+				if (subtractMax) {
+					if (enableIgnoreZero) {
+						o = o.max();
+						o = o.expand(seqLen);
+						o = traverse(axis + 1, input).subtractIgnoreZero(o);
+					} else {
+						o = o.max().add(eps);
+						o = o.expand(seqLen);
+						o = traverse(axis + 1, input).subtract(o);
+					}
+				}
 
-			o = o.expIgnoreZero().traverse(axis);
-			o = o.divide(o.sum().expand(seqLen));
+				o = o.expIgnoreZero().traverse(axis);
 
-			return o;
-		}, requirements);
+				if (subtractMax && enableIgnoreZero) {
+					o = o.divide(o.sum().expand(seqLen));
+				} else {
+					o = o.divide(o.sum().add(eps).expand(seqLen));
+				}
+
+				return o;
+			}, requirements);
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
@@ -688,6 +729,91 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return compose("product", shape, aux,
 					(input, auxValue) -> multiply(traverseEach(input), traverseEach(auxValue)),
 				requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> similarity(
+			Block k, int c, int s1, int s2) {
+		if (k.getOutputShape().getDimensions() != 4 ||
+				k.getOutputShape().length(1) != c ||
+				k.getOutputShape().length(3) != s2) {
+			throw new IllegalArgumentException();
+		}
+
+		int batchSize = k.getOutputShape().length(0);
+		int dim = k.getOutputShape().length(2);
+
+		TraversalPolicy outputShape = shape(batchSize, c, s1, s2).traverseEach();
+
+		if (enableWeightedSum) {
+			return compose("similarity", k, outputShape, (a, b) -> {
+				TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
+				TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
+
+				TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
+				TraversalPolicy leftPosition = leftShape.repeat(4, s2);
+				TraversalPolicy rightPosition = rightShape.repeat(3, s1);
+				TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
+
+				return weightedSum("similarity",
+								resultShape,
+								leftPosition, rightPosition,
+								groupShape, groupShape,
+								reshape(leftShape, c(a)),
+								reshape(rightShape, c(b)))
+						.reshape(outputShape);
+			});
+		} else {
+			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {
+				CollectionProducer<PackedCollection<?>> pa = c(a)
+						.traverse(2)
+						.enumerate(3, 1)
+						.traverse(3)
+						.repeat(s2);
+				CollectionProducer<PackedCollection<?>> pb = c(b)
+						.traverse(2)
+						.enumerate(3, 1)
+						.repeat(s1);
+
+				if (!shape(pa).equalsIgnoreAxis(shape(pb))) {
+					throw new IllegalArgumentException();
+				}
+
+				return multiply(pa, pb).sum(4);
+			});
+		}
+	}
+
+	default Function<TraversalPolicy, CellularLayer> weightedSum(
+			Block v, int heads, int dimHead, int size) {
+		if (v.getOutputShape().getDimensions() != 4 ||
+				v.getOutputShape().length(1) != heads ||
+				v.getOutputShape().length(2) != dimHead ||
+				v.getOutputShape().length(3) != size) {
+			throw new IllegalArgumentException();
+		}
+
+		int batchSize = v.getOutputShape().length(0);
+
+		if (enableWeightedSum) {
+			return null;
+		} else {
+			return compose("weightedSum", v, shape(batchSize, heads, size, dimHead),
+					(a, b) -> {
+						CollectionProducer<PackedCollection<?>> pa = c(a)
+								.traverse(4)
+								.repeat(dimHead);
+						CollectionProducer<PackedCollection<?>> pb = c(b)
+								.traverse(2)
+								.enumerate(3, 1)
+								.traverse(2)
+								.repeat(size);
+						return multiply(pa, pb)
+								.reshape(batchSize, heads, size, size, dimHead)
+								.traverse(3)
+								.enumerate(4, 1)
+								.sum(4);
+					});
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> scale(double scale, ComputeRequirement... requirements) {
@@ -804,7 +930,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		return layer("norm", shape, shape, input -> {
-			double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+			double eps = Hardware.getLocalHardware().epsilon();
 
 			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());

@@ -60,27 +60,36 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 
 	public void compile() {
 		if (HardwareOperator.enableInstructionSetMonitoring || (HardwareOperator.enableLargeInstructionSetMonitoring && src.length() > 10000)) {
-			String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
-
-			try {
-				Files.writeString(Path.of("results/" + name), src);
-			} catch (IOException ex) {
-				throw new RuntimeException(ex);
-			}
-
-			ScopeSettings.printStats();
-			log("Wrote " + name);
+			recordInstructionSet();
 		}
 
 		long start = System.nanoTime();
 
 		try {
 			function = device.newFunction(func, src);
-			if (function.getNativePointer() == 0)
+
+			if (function.getNativePointer() == 0) {
+				if (HardwareOperator.enableFailedInstructionSetMonitoring)
+					recordInstructionSet();
+
 				throw new HardwareException("Failed to compile " + func);
+			}
 		} finally {
 			compileTime.addEntry(System.nanoTime() - start);
 		}
+	}
+
+	protected void recordInstructionSet() {
+		String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
+
+		try {
+			Files.writeString(Path.of("results/" + name), src);
+		} catch (IOException ex) {
+			throw new RuntimeException(ex);
+		}
+
+		ScopeSettings.printStats();
+		log("Wrote " + name);
 	}
 
 	public MTLComputePipelineState newComputePipelineState() {

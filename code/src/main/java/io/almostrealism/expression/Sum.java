@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ExpressionCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,10 +44,16 @@ import java.util.stream.Stream;
 public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableConstantExtraction = true;
 	public static boolean enableCoefficientExtraction = true;
-	public static boolean enableFlattenRepeatedSum = false;
+	public static boolean enableModDetection = true;
+	public static boolean enableSort = true;
+
+	public static boolean enableFlattenRepeatedSumAlways = false;
+	public static boolean enableFlattenRepeatedSumConstants = true;
+
 	public static int maxOppositeDetectionDepth = 10;
 	public static int maxDistinctDetectionWidth = 8;
 	public static int maxCoefficientExtractionWidth = 8;
+	public static int maxModDetectionNodes = 8;
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
@@ -76,6 +81,16 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public OptionalLong upperBound(KernelStructureContext context) {
 		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (values.size() != getChildren().size())
+			return OptionalLong.empty();
+		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(0L, (a, b) -> a + b));
+	}
+
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
+				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size())
 			return OptionalLong.empty();
@@ -188,6 +203,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
+		if (enableSort)
+			children = children.stream().sorted(depthOrder()).collect(Collectors.toList());
+
 		if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
 
 		if (context.getTraversalProvider() != null &&
@@ -248,8 +266,17 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return Expression.process(create(values));
 	}
 
-	protected static <T> Expression<T> create(Expression<?>... values) {
-		if (enableFlattenRepeatedSum && values.length == 2) {
+	protected static <T> Expression<T> checkRepeated(Expression<?>... values) {
+		if (values.length != 2) return null;
+
+		boolean allowed = enableFlattenRepeatedSumAlways;
+		if (!allowed && enableFlattenRepeatedSumConstants) {
+			allowed = values[1].longValue().isPresent() ||
+					(values[0].getChildren().size() == 2 &&
+							values[0].getChildren().get(1).longValue().isPresent());
+		}
+
+		if (allowed) {
 			List<Expression<?>> args = new ArrayList<>();
 			boolean containsSum = false;
 
@@ -269,6 +296,35 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 			if (containsSum) return create(args.toArray(new Expression[0]));
 		}
+
+		return null;
+	}
+
+	protected static <T> Expression<T> create(Expression<?>... values) {
+		if (values.length >= 2 &&
+				values[0] instanceof ArithmeticGenerator &&
+				values[1] instanceof ArithmeticGenerator) {
+			ArithmeticGenerator a = (ArithmeticGenerator) values[0];
+			ArithmeticGenerator b = (ArithmeticGenerator) values[1];
+
+			Expression<?> r = a.add(b);
+			if (!(r instanceof Sum)) {
+				List<Expression<?>> operands = new ArrayList<>();
+				operands.add(r);
+				Stream.of(values).skip(2).forEach(operands::add);
+				return Sum.of(operands.toArray(new Expression[0]));
+			}
+		}
+
+		if (values.length == 2 && values[0] instanceof ArithmeticGenerator) {
+			return (Expression) values[0].add(values[1]);
+		} else if (values.length == 2 && values[1] instanceof ArithmeticGenerator) {
+			return (Expression) values[1].add(values[0]);
+		}
+
+		Expression<T> repeated = checkRepeated(values);
+		if (repeated != null)
+			return repeated;
 
 		double constant = 0.0;
 		List<Expression<?>> operands;
@@ -309,6 +365,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			if (checkOpposite(operands.get(0), operands.get(1))) {
 				return (Expression) new IntegerConstant(0);
 			}
+
+			Expression m = checkMod(operands.get(0), operands.get(1));
+			if (m != null) return m;
+
+			m = checkMod(operands.get(1), operands.get(0));
+			if (m != null) return m;
 
 			// Detect the presence of an index child
 			int index[] = IntStream.range(0, 2).filter(i -> operands.get(i) instanceof DefaultIndex &&
@@ -377,7 +439,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
-		return operands.size() == 1 ? (Expression) operands.get(0) : (Expression) new Sum(operands);
+		if (operands.size() == 1) return (Expression) operands.get(0);
+
+		if (enableSort) {
+			return (Expression) new Sum(operands.stream().sorted(depthOrder()).collect(Collectors.toList()));
+		} else {
+			return (Expression) new Sum(operands);
+		}
 	}
 
 	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {
@@ -436,6 +504,41 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		return Optional.of(new Term(constant, target));
+	}
+
+	/**
+	 * Checks whether a subtraction (denoted as "neg") can be rewritten
+	 * as a modulus operation involving the given positive expression (denoted as "pos").
+	 * <p>
+	 * Example:
+	 * Given pos = x and neg = ((x / y) * -y), this identifies that neg is equivalent
+	 * to x % |y| and returns the modulus expression.
+	 *
+	 * @param pos The positive expression to be checked.
+	 * @param neg The subtraction that may match the modulus pattern.
+	 * @return A new modulus expression if compatible, or {@code null} otherwise.
+	 */
+	private static Expression<?> checkMod(Expression<?> pos, Expression<?> neg) {
+		if (!enableModDetection || pos.countNodes() > maxModDetectionNodes) return null;
+
+		if (neg.countNodes() != pos.countNodes() + 4) return null;
+		if (pos.isFP() || neg.isFP()) return null;
+		if (!(neg instanceof Product)) return null;
+		if (neg.getChildren().size() != 2) return null;
+
+		Expression<?> negLeft = neg.getChildren().get(0);
+		Expression<?> negRight = neg.getChildren().get(1);
+		OptionalLong m = negRight.longValue();
+		if (!(negLeft instanceof Quotient) || negLeft.getChildren().size() != 2) return null;
+		if (m.isEmpty()) return null;
+
+		Expression<?> comp = negLeft.getChildren().get(0);
+		OptionalLong n = negLeft.getChildren().get(1).longValue();
+
+		if (n.isEmpty() || n.getAsLong() != -m.getAsLong()) return null;
+		if (!Objects.equals(pos, comp)) return null;
+
+		return Mod.of(pos, ExpressionFeatures.getInstance().e(Math.abs(n.getAsLong())), false);
 	}
 
 	private static boolean checkOpposite(Expression a, Expression b) {

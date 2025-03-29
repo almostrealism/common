@@ -24,8 +24,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;

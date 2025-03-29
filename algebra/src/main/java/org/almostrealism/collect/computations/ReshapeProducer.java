@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,18 +19,18 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.util.DescribableParent;
@@ -47,13 +47,14 @@ import org.almostrealism.io.Describable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducerParallelProcess<T>,
 					TraversableExpression<Double>,
 					ScopeLifecycle, DescribableParent<Process<?, ?>> {
 	public static boolean enableTraversalDelegateIsolation = true;
-	public static boolean enableShapeDelegateIsolation = false;
+	public static boolean enableShapeDelegateIsolation = true;
 
 	private OperationMetadata metadata;
 	private TraversalPolicy shape;
@@ -78,6 +79,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	protected void init() {
+		if (producer instanceof CollectionConstantComputation) {
+			warn("Reshaping of constant");
+		}
+
 		if (producer instanceof OperationInfo) {
 			OperationMetadata child = ((OperationInfo) producer).getMetadata();
 
@@ -154,6 +159,15 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).getDiagonalScalar(width);
+		}
+
+		return TraversableExpression.super.getDiagonalScalar(width);
+	}
+
+	@Override
 	public long getParallelism() {
 		if (producer instanceof ParallelProcess) {
 			return ((ParallelProcess) producer).getParallelism();
@@ -221,7 +235,7 @@ public class ReshapeProducer<T extends Shape<T>>
 				}
 			}
 
-			return Process.isolationPermitted(this) ?
+			return CollectionProducerComputation.isIsolationPermitted(this) ?
 					new CollectionProducerComputation.IsolatedProcess(this) :
 					this;
 		} else {

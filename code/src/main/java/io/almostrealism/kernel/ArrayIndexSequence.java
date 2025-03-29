@@ -134,7 +134,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	}
 
 	@Override
-	public int getMod() {
+	public long getMod() {
 		long g = granularity;
 		g = g * super.getMod();
 

@@ -21,7 +21,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.io.Describable;
 
@@ -104,7 +104,7 @@ public class DelegatedProducer<T> implements
 	}
 
 	@Override
-	public Parent<Process<?, ?>> generate(List<Process<?, ?>> children) {
+	public Process<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException();
 	}
 

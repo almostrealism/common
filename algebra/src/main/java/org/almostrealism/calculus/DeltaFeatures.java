@@ -18,16 +18,17 @@ package org.almostrealism.calculus;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputationBase;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.Named;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
@@ -72,22 +73,11 @@ public interface DeltaFeatures extends MatrixFeatures {
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(CollectionProducer<T> producer, Producer<?> target) {
-		if (producer instanceof DeltaAlternate) {
-			CollectionProducer<T> alt = ((DeltaAlternate) producer).getDeltaAlternate();
-			if (alt != null) return alt.delta(target);
-		}
+		CollectionProducer<T> result = MatrixFeatures.super.attemptDelta(producer, target);
+		if (result != null) return result;
 
-		TraversalPolicy shape = producer.getShape();
+		TraversalPolicy shape = shape(producer);
 		TraversalPolicy targetShape = shape(target);
-
-		if (AlgebraFeatures.cannotMatch(producer, target)) {
-			return (CollectionProducer)
-					zeros(shape.append(targetShape));
-		} else if (AlgebraFeatures.match(producer, target)) {
-			return (CollectionProducer)
-						identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-								.reshape(shape.append(targetShape));
-		}
 
 		if (isChainRuleSupported()) {
 			if (!producer.isFixedCount()) {
@@ -207,6 +197,20 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 
 		return (ComputationBase<T, T, Evaluable<T>>) producer.generate(newInputs);
+	}
+
+	// TODO  It seems like this should be something that is just
+	// TODO  part of MatrixFeatures, or even an option for matmul
+	default <V extends PackedCollection<?>> CollectionProducer<V> expandAndMultiply(
+			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
+		if (vector.getShape().getDimensions() != 1) {
+			throw new IllegalArgumentException();
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+			return diagonal(vector);
+		} else {
+			CollectionProducer<V> expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			return multiply(expanded, matrix);
+		}
 	}
 
 	enum MultiTermDeltaStrategy {

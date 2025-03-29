@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
@@ -23,7 +24,6 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
@@ -39,8 +39,32 @@ public class ScopeSettings {
 	public static boolean enableSequenceValidation = false;
 	public static int maxCacheItemSize = 16;
 	public static int maxCacheItems = 128;
-	public static int maxDepth = 1024;
+
+	/**
+	 * The maximum depth of any {@link Expression} as
+	 * measured by {@link Expression#treeDepth()}.
+	 */
+	public static int maxDepth = 512;
+
+	/**
+	 * The maximum total number of nodes allowed in any
+	 * {@link Expression} as measured by
+	 * {@link Expression#countNodes()}.
+	 */
 	public static int maxNodeCount = 1 << 23;
+
+	/**
+	 * Maximum number of statements allow in a {@link Scope}.
+	 *
+	 * @see Scope#getStatements()
+	 */
+	public static int maxStatements = 1 << 16;
+
+	/**
+	 * Maximum number of nested conditions for any {@link Expression}
+	 * in a {@link Scope}.
+	 */
+	public static int maxConditionSize = 32;
 
 	public static boolean enableExpressionWarnings =
 			SystemUtils.isEnabled("AR_EXPRESSION_WARNINGS").orElse(true);
@@ -52,7 +76,7 @@ public class ScopeSettings {
 	public static long unsimplifiedChildren = 0;
 	public static long cacheCount = 0;
 
-	public static int maxKernelSeriesCount = ParallelProcess.maxCount << 2;
+	public static int maxKernelSeriesCount = ParallelismTargetOptimization.maxCount << 2;
 	public static int sequenceComputationLimit = maxKernelSeriesCount;
 
 	public static ScopeTimingListener timing;
@@ -61,13 +85,16 @@ public class ScopeSettings {
 	private static CachingSettings caching;
 
 	static {
-		String sd = "1.0";
-		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", sd);
+		String defaultSimplify = "1.0";
+		String simplify = SystemUtils.getProperty("AR_SCOPE_SIMPLIFICATION", "enabled");
+		simplify = "enabled".equalsIgnoreCase(simplify) ? defaultSimplify : simplify;
 
-		if (simplify.equalsIgnoreCase("tiered")) {
+		if (simplify.equalsIgnoreCase("disabled")) {
+			simplification = SimplificationSettings.none();
+		} else if (simplify.equalsIgnoreCase("tiered")) {
 			simplification = new TieredSimplificationSettings();
 		} else {
-			if (!Objects.equals(sd, simplify))
+			if (!Objects.equals(defaultSimplify, simplify))
 				System.out.println("SpectrumSimplification[" + simplify + "]");
 
 			simplification = new SpectrumSimplification(Double.parseDouble(simplify));

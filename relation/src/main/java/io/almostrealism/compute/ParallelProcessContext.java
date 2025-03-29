@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.compute;
+
+import io.almostrealism.relation.Countable;
 
 import java.util.Optional;
 
@@ -33,6 +35,11 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 
 	@Override
 	public boolean isFixedCount() { return fixed; }
+
+	public static ParallelProcessContext of(ProcessContext ctx) {
+		return ctx instanceof ParallelProcessContext ? (ParallelProcessContext) ctx :
+				new ParallelProcessContext(ctx.getDepth(), 1, true);
+	}
 
 	public static ParallelProcessContext of(int depth, ParallelProcess c) {
 		return new ParallelProcessContext(depth, c.getParallelism(), c.isFixedCount());

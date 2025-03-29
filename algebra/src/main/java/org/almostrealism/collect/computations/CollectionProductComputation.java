@@ -16,12 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -31,8 +30,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class CollectionProductComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
-	public static boolean enableAttemptDelta = false;
+public class CollectionProductComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 
 	public CollectionProductComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
 		this("multiply", shape, arguments);
@@ -45,10 +43,12 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
 										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE,
-				args ->
-						ExpressionFeatures.getInstance().product(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				arguments);
+		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+	}
+
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return product(getShape(), Stream.of(args).skip(1).toArray(TraversableExpression[]::new));
 	}
 
 	@Override
@@ -63,11 +63,6 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (enableAttemptDelta) {
-			CollectionProducer<T> delta = attemptDelta(target);
-			if (delta != null) return delta;
-		}
-
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer<PackedCollection<?>>> operands = List.of(
@@ -102,19 +97,5 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
 		return (CollectionProducer) expandAndMultiply(u.flatten(), vDelta)
 				.add(expandAndMultiply(v.flatten(), uDelta)).reshape(shape);
-	}
-
-	// TODO  It seems like this should be something that is just
-	// TODO  part of MatrixFeatures, or even an option for matmul
-	protected <V extends PackedCollection<?>> CollectionProducer<V> expandAndMultiply(
-			CollectionProducer<V> vector, CollectionProducer<V> matrix) {
-		if (vector.getShape().getDimensions() != 1) {
-			throw new IllegalArgumentException();
-		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
-			return diagonal(vector);
-		} else {
-			CollectionProducer<V> expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
-			return multiply(expanded, matrix);
-		}
 	}
 }

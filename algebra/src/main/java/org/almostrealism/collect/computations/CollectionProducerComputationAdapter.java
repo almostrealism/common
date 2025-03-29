@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
@@ -30,6 +31,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -78,11 +80,17 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		if (getShape().getTotalSizeLong() == 1) return Optional.of(this);
+		return TraversableExpression.super.getDiagonalScalar(width);
+	}
+
+	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {
 		CollectionProducer<O> delta = attemptDelta(target);
 		if (delta != null) return delta;
 
-		delta = TraversableDeltaComputation.create(getShape(), shape(target),
+		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 				(Supplier) this)
 				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");

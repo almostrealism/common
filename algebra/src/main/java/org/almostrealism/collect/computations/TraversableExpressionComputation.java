@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,6 @@ import java.util.function.Supplier;
 public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
-	public static boolean enableChainRule = true;
 
 	private final MultiTermDeltaStrategy deltaStrategy;
 
@@ -50,6 +49,10 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(name, shape, validateArgs(args));
 		this.deltaStrategy = deltaStrategy;
+
+		if (name == null) {
+			warn("Name is null for " + getClass().getSimpleName());
+		}
 	}
 
 	protected abstract CollectionExpression getExpression(TraversableExpression... args);
@@ -62,9 +65,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	}
 
 	@Override
-	public boolean isChainRuleSupported() {
-		return enableChainRule || super.isChainRuleSupported();
-	}
+	public boolean isChainRuleSupported() { return true; }
 
 	@Override
 	public MultiTermDeltaStrategy getDeltaStrategy() { return deltaStrategy; }
@@ -75,7 +76,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 		if (delta != null) return delta;
 
 		delta = TraversableDeltaComputation.create(
-				getShape(), shape(target),
+				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,
 				getInputs().stream().skip(1).toArray(Supplier[]::new));
 		return delta;

@@ -101,7 +101,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		}
 
 		if (getMod() == other.getMod()) {
-			return ArrayIndexSequence.of(getType(), IntStream.range(0, getMod())
+			return ArrayIndexSequence.of(getType(), LongStream.range(0, getMod())
 					.parallel()
 					.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
 							Integer.valueOf(1) : Integer.valueOf(0))
@@ -190,7 +190,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 
 	int getGranularity();
 
-	int getMod();
+	long getMod();
 
 	default Expression<? extends Number> getExpression(Index index) {
 		if (index instanceof Expression) {
@@ -256,8 +256,8 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			double initial = doubleAt(0);
 			double delta = doubleAt(granularity) - doubleAt(0);
 			boolean isArithmetic = true;
-			int m = getMod();
-			int end = m;
+			long m = getMod();
+			long end = m;
 			i: for (int i = 2 * granularity; i < m; i += granularity) {
 				double actual = doubleAt(i);
 				double prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
@@ -317,9 +317,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		return Scope.console;
 	}
 
-	static double arithmeticSequenceValue(int index, int mod, int granularity,
+	static double arithmeticSequenceValue(int index, long mod, int granularity,
 										  double initial, double delta) {
-		int position = (index % mod) / granularity;
+		long position = (index % mod) / granularity;
 		return initial + position * delta;
 	}
 

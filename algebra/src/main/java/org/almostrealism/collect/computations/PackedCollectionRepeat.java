@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.PackedCollection;
@@ -53,6 +53,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
+
+		if (collection instanceof CollectionConstantComputation) {
+			warn("Repeating a constant");
+		}
 
 		if (!enableLargeSlice &&
 				(!isFixedCount() || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong()) &&
@@ -115,8 +119,16 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (!enableUniqueIndexOptimization || sliceShape.getTotalSizeLong() < getShape().getTotalSizeLong())
 			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 
+		if (!Index.child(globalIndex, localIndex).equals(targetIndex)) {
+			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		}
+
 		if (localIndex.getLimit().isEmpty() || globalIndex.getLimit().isEmpty()) return null;
 		if (subsetShape.getTotalSizeLong() % localIndex.getLimit().getAsLong() != 0) return null;
+
+		if (globalIndex.getLimit().getAsLong() == 0) {
+			throw new UnsupportedOperationException();
+		}
 
 		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
 		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
@@ -126,7 +138,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (idx == null) return idx;
 		if (!idx.isValue(IndexValues.of(g))) return null;
 
-		// return idx.withIndex(g, ((Expression<?>) globalIndex).divide(sliceShape.getCount()));
 		return idx.withIndex(g, ((Expression<?>) globalIndex).imod(limit));
 	}
 
@@ -190,5 +201,15 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Repeat cannot be performed without a TraversalPolicy");
 
 		return ((Shape) collection).getShape();
+	}
+
+	public static TraversalPolicy shape(int repeat, TraversalPolicy inputShape) {
+		TraversalPolicy shape = inputShape.item();
+
+		if (inputShape.getTotalSizeLong() == 1 && inputShape.getDimensions() == 1 && shape.getDimensions() == 0) {
+			return new TraversalPolicy(repeat).traverse();
+		}
+
+		return inputShape.replace(shape.prependDimension(repeat)).traverse();
 	}
 }

@@ -19,12 +19,13 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.NoOpKernelStructureContext;
+
+import java.util.OptionalLong;
 
 public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 	public static boolean enableIndexSimplification = true;
 	public static boolean enableAutomaticPosition = true;
+	public static boolean enableScalableWidth = true;
 
 	private TraversableExpression<Double> values;
 	private TraversalPolicy positionShape;
@@ -84,9 +85,16 @@ public class DiagonalCollectionExpression extends CollectionExpressionAdapter {
 		if (!Index.child(globalIndex, localIndex).equals(targetIndex))
 			return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 
-		if (localIndex.getLimit().orElse(-1) != getPositionShape().getSizeLong())
+		OptionalLong width = localIndex.getLimit();
+		if (width.isEmpty() || getPositionShape().getSizeLong() % width.getAsLong() != 0)
 			return null;
 
-		return (Expression) globalIndex;
+		long r = getPositionShape().getSizeLong() / width.getAsLong();
+
+		if (r != 1) {
+			return enableScalableWidth ? ((Expression) globalIndex).divide(r) : null;
+		} else {
+			return (Expression) globalIndex;
+		}
 	}
 }

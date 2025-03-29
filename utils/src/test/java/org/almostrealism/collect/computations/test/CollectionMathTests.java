@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -133,6 +133,37 @@ public class CollectionMathTests implements TestFeatures {
 
 					assertEquals(expected, output.valueAt(0));
 				}, false, false, true);
+	}
+
+	@Test
+	public void linear() {
+		PackedCollection<?> out = linear(0, 5, 10).evaluate();
+		Assert.assertEquals(10, out.getShape().length(0));
+		assertEquals(0.0, out.valueAt(0));
+		assertEquals(10.0 / 3.0, out.valueAt(6));
+		assertEquals(5.0, out.valueAt(9));
+	}
+
+	@Test
+	public void cumulativeProduct() {
+		int steps = 300;
+		double betaStart = 0.0001;
+		double betaEnd = 0.02;
+		CollectionProducer<PackedCollection<?>> inputs = linear(betaStart, betaEnd, steps);
+		CollectionProducer<PackedCollection<?>> products =
+				cumulativeProduct(c(1.0).subtract(inputs), false);
+
+		double in[] = products.evaluate().toArray();
+		double ad[] = sqrt(products).evaluate().toArray();
+		double bd[] = sqrt(c(1.0).subtract(products)).evaluate().toArray();
+
+		Assert.assertEquals(in.length, ad.length);
+		Assert.assertEquals(in.length, bd.length);
+
+		for (int i = 0; i < in.length; i++) {
+			assertEquals(Math.sqrt(in[i]), ad[i]);
+			assertEquals(Math.sqrt(1.0 - in[i]), bd[i]);
+		}
 	}
 
 	@Test

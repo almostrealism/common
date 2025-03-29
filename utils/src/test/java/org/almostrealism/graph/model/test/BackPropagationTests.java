@@ -174,7 +174,7 @@ public class BackPropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
+		CellularLayer conv = (CellularLayer) convolution2d(inputShape, 8, convSize, false);
 
 		model.add(conv);
 

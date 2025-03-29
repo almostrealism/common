@@ -18,8 +18,8 @@ package org.almostrealism.model;
 
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
@@ -172,6 +172,8 @@ public class CompiledModel implements CodeFeatures {
 		public void accept(PackedCollection<?> input) {
 			if (input == null) {
 				warn("null input");
+			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
+				throw new IllegalArgumentException();
 			}
 
 			this.input = input;

@@ -16,10 +16,11 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -40,14 +41,20 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
 									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape,
-				args ->
-						ExpressionFeatures.getInstance().minus(shape, args[1]),
-				arguments);
+		super(name, shape, arguments);
+	}
+
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return minus(getShape(), args[1]);
 	}
 
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+		if (children.size() != 2) {
+			throw new IllegalArgumentException();
+		}
+
 		return (CollectionProducerParallelProcess) minus((Producer) children.stream().skip(1).findFirst().orElseThrow());
 	}
 }

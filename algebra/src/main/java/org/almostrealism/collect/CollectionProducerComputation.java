@@ -25,7 +25,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -73,7 +73,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException(getClass().getName());
 	}
 
 	@Override
@@ -156,6 +156,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 						.map(t -> (Process) t).collect(Collectors.toList()));
 			}
 		};
+	}
+
+	static <T extends Shape<?>> boolean isIsolationPermitted(CollectionProducer<T> op) {
+		return Process.isolationPermitted(op) &&
+				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 
 	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {

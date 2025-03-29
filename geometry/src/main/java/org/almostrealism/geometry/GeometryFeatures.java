@@ -42,28 +42,24 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	default <T extends PackedCollection<?>> CollectionProducer<T> sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		// TODO  Add shortcircuit
 		return compute("sin",
-				shape -> args -> sin(shape, args[1]),
-				null, (Producer) input);
+				shape -> args -> sin(shape, args[1]), (Producer) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		// TODO  Add shortcircuit
 		return compute("cos",
-				shape -> args -> cos(shape, args[1]),
-				null, (Producer) input);
+				shape -> args -> cos(shape, args[1]), (Producer) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> tan(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		// TODO  Add shortcircuit
 		return compute("tan",
-				shape -> args -> tan(shape, args[1]),
-				null, (Producer) input);
+				shape -> args -> tan(shape, args[1]), (Producer) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> tanh(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		return compute("tanh",
-				shape -> args -> tanh(shape, args[1]),
-				null, (Producer) input);
+				shape -> args -> tanh(shape, args[1]), (Producer) input);
 	}
 
 

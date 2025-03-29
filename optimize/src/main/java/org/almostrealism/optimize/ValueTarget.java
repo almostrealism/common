@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,32 @@ import org.almostrealism.hardware.MemoryData;
 public interface ValueTarget<T extends MemoryData> {
 	PackedCollection<T> getInput();
 
+	default PackedCollection<?>[] getArguments() {
+		return new PackedCollection[0];
+	}
+
 	PackedCollection<T> getExpectedOutput();
+
+	default <V extends PackedCollection<?>> ValueTarget<V> withArguments(PackedCollection<?>... args) {
+		ValueTarget<T> original = this;
+
+		return new ValueTarget<>() {
+			@Override
+			public PackedCollection<V> getInput() {
+				return (PackedCollection) original.getInput();
+			}
+
+			@Override
+			public PackedCollection<?>[] getArguments() {
+				return args;
+			}
+
+			@Override
+			public PackedCollection<V> getExpectedOutput() {
+				return (PackedCollection) original.getExpectedOutput();
+			}
+		};
+	}
 
 	static <T extends MemoryData> ValueTarget<T> of(PackedCollection<?> input, PackedCollection<?> expectedOutput) {
 		return new ValueTarget<T>() {

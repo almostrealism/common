@@ -43,7 +43,7 @@ public class LongConstant extends Constant<Long> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return lang.getPrecision().stringForLong(value);
+		return lang.stringForLong(value);
 	}
 
 	@Override

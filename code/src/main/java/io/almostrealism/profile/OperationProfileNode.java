@@ -289,12 +289,19 @@ public class OperationProfileNode extends OperationProfile
 		}
 
 		String key = metadataKey(metadata);
-		List<OperationSource> sources = operationSources.getOrDefault(key, new ArrayList<>());
-		sources.add(new OperationSource(code, argKeys, argNames));
-		operationSources.put(key, sources);
+		OperationSource src = new OperationSource(code, argKeys, argNames);
 
-		if (sources.size() > 1) {
-			throw new IllegalArgumentException("Multiple sources for " + key);
+		operationSources.putIfAbsent(key, new ArrayList<>());
+		List<OperationSource> sources = operationSources.get(key);
+
+		if (sources.contains(src)) {
+			warn("Recompilation of " + metadata.getDisplayName() + " (id = " + key + ")");
+		} else {
+			sources.add(new OperationSource(code, argKeys, argNames));
+
+			if (sources.size() > 1) {
+				throw new IllegalArgumentException("Multiple sources for " + key);
+			}
 		}
 
 		OperationProfileNode node = getProfileNode(metadata);

@@ -18,7 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 
 import java.util.Collection;

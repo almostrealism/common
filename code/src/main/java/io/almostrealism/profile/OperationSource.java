@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package io.almostrealism.profile;
 
 import java.util.List;
+import java.util.Objects;
 
 public class OperationSource {
 	private String source;
@@ -53,5 +54,19 @@ public class OperationSource {
 
 	public void setArgumentNames(List<String> argumentNames) {
 		this.argumentNames = argumentNames;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (!(o instanceof OperationSource)) return false;
+		OperationSource that = (OperationSource) o;
+		return Objects.equals(getSource(), that.getSource()) &&
+				Objects.equals(getArgumentKeys(), that.getArgumentKeys()) &&
+				Objects.equals(getArgumentNames(), that.getArgumentNames());
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(getSource(), getArgumentKeys(), getArgumentNames());
 	}
 }

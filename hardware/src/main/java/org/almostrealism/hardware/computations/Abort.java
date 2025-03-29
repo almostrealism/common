@@ -35,6 +35,7 @@ public class Abort extends OperationComputationAdapter<MemoryData> implements Ex
 		abortFallback = new Bytes(1);
 		abortFallback.setMem(0.0);
 	}
+
 	public Abort(MemoryData control) {
 		super(() -> new Provider(control));
 	}

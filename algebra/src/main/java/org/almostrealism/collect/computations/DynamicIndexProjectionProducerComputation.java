@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -36,19 +36,19 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 
-	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,
+	public DynamicIndexProjectionProducerComputation(String name, TraversalPolicy shape,
 													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
 													 Producer<?> collection,
 													 Producer<?>... inputs) {
-		this(shape, indexExpression, false, collection, inputs);
+		this(name, shape, indexExpression, false, collection, inputs);
 	}
 
-	public DynamicIndexProjectionProducerComputation(TraversalPolicy shape,
+	public DynamicIndexProjectionProducerComputation(String name, TraversalPolicy shape,
 													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
 													 boolean relative,
 													 Producer<?> collection,
 													 Producer<?>... inputs) {
-		super(null, shape, null, relative, collection, inputs);
+		super(name, shape, null, relative, collection, inputs);
 		this.indexExpression = indexExpression;
 	}
 
@@ -64,7 +64,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	@Override
 	public DynamicIndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return (DynamicIndexProjectionProducerComputation)
-				new DynamicIndexProjectionProducerComputation<>(getShape(), indexExpression, relative,
+				new DynamicIndexProjectionProducerComputation<>(getName(), getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),
 							children.stream().skip(2).toArray(Producer[]::new))
 						.addAllDependentLifecycles(getDependentLifecycles());
@@ -74,7 +74,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	public CollectionProducer<T> delta(Producer<?> target) {
 		if (enableChainDelta) {
 			TraversableDeltaComputation<T> delta =
-					TraversableDeltaComputation.create(getShape(), shape(target),
+					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
 							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
@@ -104,11 +104,11 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			if (enableDeltaTraverseEach) {
 				return traverse(traversalAxis,
 						new DynamicIndexProjectionProducerComputation(
-								shape.traverseEach(), project, relative, delta,
+								getName() + "DeltaIndex", shape.traverseEach(), project, relative, delta,
 								getInputs().stream().skip(2).toArray(Producer[]::new)));
 			} else {
 				return new DynamicIndexProjectionProducerComputation(
-						shape, project, relative, delta,
+						getName() + "DeltaIndex", shape, project, relative, delta,
 						getInputs().stream().skip(2).toArray(Producer[]::new));
 			}
 		}

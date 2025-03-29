@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
@@ -40,7 +40,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super(null, shape, null, collection);
+		super("subset", shape, null, collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
@@ -51,7 +51,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super(null, shape, null, collection);
+		super("subset", shape, null, collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 

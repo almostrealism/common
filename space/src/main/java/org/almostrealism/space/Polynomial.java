@@ -22,7 +22,7 @@ import java.util.Collections;
 import java.util.List;
 
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import org.almostrealism.algebra.PolynomialTerm;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.geometry.Ray;

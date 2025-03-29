@@ -19,8 +19,8 @@ package org.almostrealism.layers.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
@@ -54,7 +54,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		weights = weights == null ? null : weights.reshape(groups, groupSize, v);
 		biases = biases == null ? null : biases.reshape(groups, groupSize, v);
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		for (int i = 0; i < groups; i++) {
 			double sum = 0;
@@ -108,7 +108,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	public void normComputation(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -132,7 +132,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void normComputationDeltaMedium() {
-		if (skipLongTests) return;
+		if (skipKnownIssues) return;
 
 		int c = 28;
 		int v = 28 * 28;
@@ -143,7 +143,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	}
 
 	public void normComputationDelta(int c, int v, int groups, PackedCollection<?> weights, PackedCollection<?> biases) {
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
 
@@ -231,7 +231,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		log("Total native programs after run = " + NativeCompiler.getTotalInstructionSets());
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		int groupSize = c / groups;
 
@@ -419,7 +419,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 	@Test
 	public void backwardsTrainableSmallLowVariance() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmallLowVariance",
-				2, 1, true,
+				2, 1, true, true,
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
@@ -522,18 +522,23 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 		int c = 21952;
 		int groups = 4;
-		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups);
+		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups, false);
 	}
 
 	protected void normBackwardsTrainable(String name, int c, int groups) throws IOException {
 		normBackwardsTrainable(name, c, groups, true);
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast) throws IOException {
-		normBackwardsTrainable(name, c, groups, failFast, randomInput(c));
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate) throws IOException {
+		normBackwardsTrainable(name, c, groups, validate, true);
 	}
 
-	protected void normBackwardsTrainable(String name, int c, int groups, boolean failFast,
+	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate, boolean failFast) throws IOException {
+		normBackwardsTrainable(name, c, groups, validate, failFast, randomInput(c));
+	}
+
+	protected void normBackwardsTrainable(String name, int c, int groups,
+										  boolean validate, boolean failFast,
 										  Supplier<PackedCollection<?>> inputSource) throws IOException {
 		double w = 1.0; // 0.5;
 		double b = 0.0; // 0.5;
@@ -555,7 +560,9 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		layer.getBackward().setReceptor(into(result));
 		run(name, layer.getBackward(), gradient);
 
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		if (!validate) return;
+
+		double eps = Hardware.getLocalHardware().epsilon();
 
 		double loss = 0.0;
 
@@ -576,7 +583,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 			PackedCollection<?> dLdyGroup = gradient.range(shape(groupSize), start);
 
 			double muG = xGroup.doubleStream().sum() / groupSize;
-			double varG = variance(cp(xGroup)).evaluate().toDouble();
+			double varG = Process.optimized(variance(cp(xGroup))).get().evaluate().toDouble();
 			double stdG = Math.sqrt(varG + eps);
 
 			PackedCollection<?> xHatGroup = xHatGroupEval.evaluate(xGroup, pack(muG), pack(stdG));

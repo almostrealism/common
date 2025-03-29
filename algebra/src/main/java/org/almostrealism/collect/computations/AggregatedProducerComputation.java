@@ -29,7 +29,7 @@ import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.AlgebraFeatures;
@@ -238,11 +238,12 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			int inLength = shape(target).getTotalSize();
 
 			if (AlgebraFeatures.match(getInputs().get(1), target)) {
-				delta = identity(shape(inLength, outLength)).traverse(0);
+				delta = identity(shape(inLength, outLength))
+						.reshape(inLength, outLength, 1).traverse(0);
 			} else {
 				delta = ((CollectionProducer) getInputs().get(1)).delta(target);
 				delta = delta.reshape(outLength, inLength);
-				delta = delta.enumerate(1, 1);
+				delta = delta.transpose();
 			}
 
 			delta = delta.enumerate(1, count).traverse(2);
@@ -253,7 +254,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		} else {
 			delta = super.delta(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
-				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create(getShape(), shape(target),
+				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
 						getInputs().stream().skip(1).toArray(Supplier[]::new));
 				traversable.addDependentLifecycle(this);

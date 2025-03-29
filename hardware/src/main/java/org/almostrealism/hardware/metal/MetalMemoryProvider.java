@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import java.util.List;
 
 public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public static boolean enableLargeAllocationLogging = false;
-	public static int largeAllocationSize = 20 * 1024 * 1024 + 2;
+	public static int largeAllocationSize = 40 * 1024 * 1024;
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("mtlAllocationSizes", 1024 * 1024);
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("mtlDeallocationSizes", 1024 * 1024);

@@ -25,47 +25,58 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.function.Function;
 
 public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
+	private final int maxEntries;
 	private final int entrySize;
-	private final Bytes data;
-	private final ArrayVariable<?> variable;
+	private final Function<MemoryData, ArrayVariable<?>> variableFactory;
 
-	protected MemoryDataCacheManager(int entrySize, Bytes data, ArrayVariable<?> variable) {
+	private Bytes data;
+	private ArrayVariable<?> variable;
+
+	protected MemoryDataCacheManager(int maxEntries, int entrySize,
+									 Function<MemoryData, ArrayVariable<?>> variableFactory) {
+		this.maxEntries = maxEntries;
 		this.entrySize = entrySize;
-		this.data = data;
-		this.variable = variable;
+		this.variableFactory = variableFactory;
 	}
 
 	public int getEntrySize() { return entrySize; }
+	public int getMaxEntries() { return maxEntries; }
 
-	public int getMaxEntries() { return data.getCount(); }
+	protected Bytes getData() {
+		if (data == null) {
+			long total = getMaxEntries() * (long) entrySize;
+			data = new Bytes(Math.toIntExact(total), entrySize);
+			variable = variableFactory.apply(data);
+		}
+
+		return data;
+	}
 
 	public void setValue(int index, double data[]) {
 		if (data.length != entrySize) {
 			throw new IllegalArgumentException();
 		}
 
-		this.data.setMem(entrySize * index, data);
+		getData().setMem(entrySize * index, data);
 	}
 
 	public Expression<?> reference(int entry, Expression<?> index) {
+		if (variable == null) {
+			throw new IllegalArgumentException("Cannot reference series variable when nothing has been cached");
+		}
+
 		return variable.referenceAbsolute(e(entrySize * entry).add(index));
 	}
 
 	@Override
 	public void destroy() {
+		if (data == null) return;
+
 		data.destroy();
 	}
 
 	public static MemoryDataCacheManager create(int entrySize, int maxEntries,
 												Function<MemoryData, ArrayVariable<?>> variableFactory) {
-		long total = entrySize;
-		total *= maxEntries;
-
-		if (total < 0 || total > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException();
-		}
-
-		Bytes data = new Bytes((int) total, entrySize);
-		return new MemoryDataCacheManager(entrySize, data, variableFactory.apply(data));
+		return new MemoryDataCacheManager(maxEntries, entrySize, variableFactory);
 	}
 }

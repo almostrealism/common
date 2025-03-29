@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -39,6 +39,9 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,8 +58,9 @@ import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
-		ComputableParallelProcess<Process<?, ?>, Runnable>,
+					ComputableParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, HardwareFeatures {
+	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
 
@@ -223,10 +227,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		if (!isComputation()) {
-			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
+			throw new IllegalArgumentException(
+					"OperationList cannot be compiled to a Scope " +
+					"unless all embedded Operations are Computations");
 		}
 
-		Scope scope = new Scope(functionName, getMetadata());
+		Scope<Void> scope = new Scope<>(functionName, getMetadata());
 		scope.setComputeRequirements(getComputeRequirements());
 
 		if (getDepth() > abortableDepth) {
@@ -435,7 +441,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	public static class Runner implements Runnable, OperationInfo {
+	public static class Runner implements Runnable, OperationInfo, ConsoleFeatures {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
@@ -468,6 +474,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				} else {
 					for (int i = 0; i < run.size(); i++) {
+						if (enableRunLogging)
+							log("Running " + OperationInfo.display(run.get(i)));
 						timingListener.recordDuration(getMetadata(), run.get(i));
 					}
 				}
@@ -482,5 +490,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		public String describe() {
 			return getMetadata().getShortDescription();
 		}
+
+		@Override
+		public Console console() { return Hardware.console; }
 	}
 }

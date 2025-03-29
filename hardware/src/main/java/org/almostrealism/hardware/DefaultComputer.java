@@ -22,7 +22,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
 import org.almostrealism.hardware.arguments.AcceleratedSubstitutionEvaluable;
@@ -97,7 +97,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		return instructionsCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
 	}
 
-	public <P extends Process<?, ?>, T, V extends io.almostrealism.relation.Process<P, T>, M extends MemoryData>
+	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>
 			Producer<M> createContainer(String key,
 								Function<Producer[], Producer<M>> func,
 								BiFunction<Producer, Producer, ProducerSubstitution> substitution,
@@ -131,7 +131,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		return delegate.apply(container.result, () -> evaluable);
 	}
 
-	public <P extends Process<?, ?>, T, V extends io.almostrealism.relation.Process<P, T>> Process<P, T>
+	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T>
 			applyInstructionsManager(String key, V process) {
 		if (instructionsCache.containsKey(key)) {
 			return getInstructionsManager(key).replaceAll(process);

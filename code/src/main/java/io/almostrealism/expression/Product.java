@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	public static boolean enableConstantExtractionValidation = false;
 	public static boolean enableSort = true;
 
-	protected Product(List<Expression<Double>> values) {
+	protected Product(List<Expression<? extends Number>> values) {
 		this((Class<T>) type(values), (List) values);
 	}
 
@@ -91,7 +91,30 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		return OptionalLong.of(values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b));
+		long v = values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b);
+
+		// Some of the children may have negative upper bounds, but that does not
+		// guarantee that the resulting product will have a negative upper bound
+		return OptionalLong.of(Math.abs(v));
+	}
+
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		List<OptionalLong> values = getChildren().stream()
+				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		long v = values.stream()
+				.map(o -> o.getAsLong())
+				.reduce(1L, (a, b) -> a * b);
+
+		if (v > 0 && getChildren().stream().anyMatch(Expression::isPossiblyNegative)) {
+			// If any of the children can be negative, the resulting product could
+			// be negative, so a more conservative lower bound should be negative
+			return OptionalLong.of(-v);
+		}
+
+		return OptionalLong.of(v);
 	}
 
 	@Override
@@ -335,6 +358,16 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 		if (enableSort)
 			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
+
+		// TODO  When ArithmeticGenerator is present, this should just delegate to ArithmeticGenerator::multiply
+		// TODO  which handles this case, but may include other optimizations
+		if (operands.size() == 2 && operands.get(0) instanceof ArithmeticGenerator && operands.get(1).longValue().isPresent()) {
+			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operands.get(0);
+			return new ArithmeticGenerator(ag.getIndex(),
+					ag.getScale() * operands.get(1).longValue().getAsLong(),
+					ag.getGranularity(), ag.getMod());
+		}
+
 		return fp ? new Product(Double.class, operands) : new Product(operands);
 	}
 }

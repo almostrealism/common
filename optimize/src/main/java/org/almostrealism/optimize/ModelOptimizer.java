@@ -27,6 +27,7 @@ import org.almostrealism.model.Model;
 
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class ModelOptimizer implements CodeFeatures {
@@ -34,6 +35,7 @@ public class ModelOptimizer implements CodeFeatures {
 	private Supplier<Dataset<?>> dataset;
 	private Receptor<Double> receptor;
 	private int logFrequency;
+	private Consumer<String> log;
 
 	private Evaluable<PackedCollection<?>> dloss;
 	private BiFunction<PackedCollection<?>, PackedCollection<?>, Double> loss;
@@ -62,7 +64,7 @@ public class ModelOptimizer implements CodeFeatures {
 		this.averageLoss = -1;
 
 		setDataset(dataset);
-		setLossFunction(new MeanSquaredError(model.getOutputShape()));
+		setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
 	}
 
 	public void setLossFunction(LossProvider lossFunction) {
@@ -88,6 +90,14 @@ public class ModelOptimizer implements CodeFeatures {
 		this.logFrequency = logFrequency;
 	}
 
+	public Consumer<String> getLogConsumer() {
+		return log;
+	}
+
+	public void setLogConsumer(Consumer<String> log) {
+		this.log = log;
+	}
+
 	public void setLossTarget(double lossTarget) {
 		this.lossTarget = lossTarget;
 	}
@@ -110,14 +120,24 @@ public class ModelOptimizer implements CodeFeatures {
 			double totalLoss = 0.0;
 			int count = 0;
 
-			for (ValueTarget<?> target : data) {
+			v: for (ValueTarget<?> target : data) {
+				// Input
 				PackedCollection<?> input = target.getInput();
+				PackedCollection<?>[] arguments = target.getArguments();
 
+				// Target
 				PackedCollection<?> valid = target.getExpectedOutput();
-				PackedCollection<?> out = model.forward(input);
-				PackedCollection<?> grad = dloss.evaluate(out, valid);
 
-				double ls = loss.apply(out, valid);
+				// Forward pass and loss
+				PackedCollection<?> out = model.forward(input, arguments);
+				PackedCollection<?> grad = dloss.evaluate(out.each(), valid.each());
+
+				double ls = loss.apply(out.each(), valid.each());
+				if (Double.isNaN(ls)) continue v;
+
+				if (i == 0 && count == 0 && logIteration(totalIterations + 1))
+					log("loss = " + ls);
+
 				totalLoss += ls;
 				count++;
 
@@ -127,15 +147,19 @@ public class ModelOptimizer implements CodeFeatures {
 				model.backward(grad);
 
 				if (first) {
-					out = model.forward(input);
+					out = model.forward(input, arguments);
 					updatedLoss = loss.apply(out, valid);
 
 					if ((ls - updatedLoss) < 0.0) {
-						throw new RuntimeException("Loss increased");
+						throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
 					}
 
 					first = false;
 				}
+			}
+
+			if (count == 0) {
+				throw new RuntimeException("No members of the dataset produced valid results");
 			}
 
 			totalIterations++;
@@ -143,13 +167,17 @@ public class ModelOptimizer implements CodeFeatures {
 			double previousLoss = averageLoss;
 			averageLoss = totalLoss / count;
 
-			if (logFrequency > 0 && totalIterations % logFrequency == 0)
+			if (logIteration(totalIterations))
 				log("Average Loss = " + averageLoss);
 
 			if (averageLoss < lossTarget || averageLoss == previousLoss) {
 				return;
 			}
 		}
+	}
+
+	protected boolean logIteration(int iteration) {
+		return logFrequency > 0 && iteration % logFrequency == 0;
 	}
 
 	public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator) {
@@ -176,6 +204,15 @@ public class ModelOptimizer implements CodeFeatures {
 		}
 
 		return success / (double) count;
+	}
+
+	@Override
+	public void log(String message) {
+		if (getLogConsumer() == null) {
+			CodeFeatures.super.log(message);
+		} else {
+			getLogConsumer().accept(message);
+		}
 	}
 
 	@Override

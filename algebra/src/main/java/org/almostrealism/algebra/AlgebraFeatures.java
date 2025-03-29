@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.calculus.InputStub;
@@ -46,6 +46,62 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	boolean enableIsolationWarnings = false;
 	boolean enableDeepCannotMatch = true;
 	boolean enableOptionalMatch = true;
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> broadcast(Producer<T> left,
+																			   Producer<T> right) {
+		TraversalPolicy groupShape = TraversalPolicy.uniform(1, shape(left).getDimensions());
+		return broadcastSum("broadcast", groupShape, left, right);
+	}
+
+	/**
+	 * Traverse the provided inputs using the specified group shape. As an example,
+	 * using a group (2, 1, 1) with a left shape of (2, 3, 1) and right shape of
+	 * (2, 1, 2), the left shape will be repeated 2 times along the final axis and
+	 * the right shape will be repeated 3 times along the second to last axis.
+	 * The result will then be a sum over the first axis for a final shape of
+	 * (1, 3, 2).
+	 */
+	default <T extends PackedCollection<?>> CollectionProducer<T> broadcastSum(String name,
+																			   	TraversalPolicy groupShape,
+																				Producer<T> left,
+																				Producer<T> right) {
+		TraversalPolicy leftShape = shape(left);
+		TraversalPolicy rightShape = shape(right);
+		if (leftShape.getDimensions() != groupShape.getDimensions() ||
+				rightShape.getDimensions() != groupShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+
+		long resultDims[] = new long[groupShape.getDimensions()];
+		TraversalPolicy leftPosition = leftShape;
+		TraversalPolicy rightPosition = rightShape;
+
+		for (int i = 0; i < resultDims.length; i++) {
+			// Identify the result length along current axis
+			long len = Math.max(leftShape.length(i), rightShape.length(i));
+
+			// Repeat along current axis, if necessary
+			leftPosition = adjustPosition(leftPosition, i, len);
+			rightPosition = adjustPosition(rightPosition, i, len);
+
+			// Adjust the result length by the length of the sum group
+			resultDims[i] = len / groupShape.length(i);
+		}
+
+		TraversalPolicy resultShape = new TraversalPolicy(resultDims);
+		return weightedSum(name, resultShape, leftPosition, rightPosition,
+							groupShape, groupShape, left, right);
+	}
+
+	default TraversalPolicy adjustPosition(TraversalPolicy position, int axis, long length) {
+		if (position.length(axis) == length) {
+			return position;
+		} else if (position.length(axis) == 1) {
+			return position.repeat(axis, length);
+		} else {
+			throw new IllegalArgumentException();
+		}
+	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> weightedSum(String name,
 																			  TraversalPolicy inputPositions,

@@ -25,12 +25,13 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -46,6 +47,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+
+		if (memLength > ScopeSettings.maxStatements) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override
@@ -113,7 +118,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				v = o.assign(value);
 			}
 
-			scope.getVariables().add(v);
+			scope.getStatements().add(v);
 		}
 
 		return scope;

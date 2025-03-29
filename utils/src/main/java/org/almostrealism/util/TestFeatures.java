@@ -21,8 +21,8 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.ParallelProcess;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
@@ -69,6 +69,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, true);
 	}
 
+	default void assertEquals(int a, int b) {
+		if (a != b) {
+			throw new AssertionError();
+		}
+	}
+
 	default void assertNotEquals(Scalar a, Scalar b) {
 		assertNotEquals(a.getValue(), b.getValue());
 	}
@@ -108,7 +114,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default void assertSimilar(double a, double b, double r) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
-		double eps = Hardware.getLocalHardware().getPrecision().epsilon();
+		double eps = Hardware.getLocalHardware().epsilon();
 		double comp = Math.max(eps, r * gap);
 
 		double c = Math.abs(a - b);

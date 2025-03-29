@@ -26,8 +26,8 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Process;
-import io.almostrealism.relation.ProcessContext;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -55,11 +55,11 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	private CollectionVariable<?> targetVariable;
 
 	@SafeVarargs
-	protected TraversableDeltaComputation(TraversalPolicy shape,
+	protected TraversableDeltaComputation(String name, TraversalPolicy shape,
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
 										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super("delta", shape, validateArgs(args));
+		super(name, shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
 		if (target instanceof ScopeLifecycle) addDependentLifecycle((ScopeLifecycle) target);
@@ -134,7 +134,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
 		TraversableDeltaComputation<T> result =
-				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression, target,
+				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getName(), getShape(), expression, target,
 					children.stream().skip(1).toArray(Supplier[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 		getDependentLifecycles().forEach(result::addDependentLifecycle);
@@ -170,10 +170,10 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	public static <T extends PackedCollection<?>> TraversableDeltaComputation<T> create(
-																TraversalPolicy deltaShape, TraversalPolicy targetShape,
-														  	 	Function<TraversableExpression[], CollectionExpression> expression,
-															  	Producer<?> target,
-														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		return new TraversableDeltaComputation<>(deltaShape.append(targetShape), expression, target, args);
+			String name, TraversalPolicy deltaShape, TraversalPolicy targetShape,
+			Function<TraversableExpression[], CollectionExpression> expression,
+			Producer<?> target,
+			Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		return new TraversableDeltaComputation<>(name, deltaShape.append(targetShape), expression, target, args);
 	}
 }

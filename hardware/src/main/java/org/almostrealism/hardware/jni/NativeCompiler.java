@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class NativeCompiler implements ConsoleFeatures {
-	public static boolean enableVerbose = false;
+	public static boolean enableVerbose = SystemUtils.isEnabled("AR_HARDWARE_COMPILER_LOGGING").orElse(false);
 
 	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
 
@@ -136,8 +136,10 @@ public class NativeCompiler implements ConsoleFeatures {
 	}
 
 	public String compile(String name, String code, boolean lib) {
-		if (enableVerbose) {
+		if (HardwareOperator.enableVerboseLog) {
 			log("Compiling native code for " + name + "\nSource:\n" + code);
+		} else if (enableVerbose) {
+			log("Compiling native code for " + name);
 		}
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
@@ -243,7 +245,7 @@ public class NativeCompiler implements ConsoleFeatures {
 			}
 
 			return new NativeCompiler(precision, new DefaultLinkedLibraryGenerator(commandProvider),
-										libDir, libFormat, data, cl);
+										ld.getAbsolutePath(), libFormat, data, cl);
 		};
 	}
 

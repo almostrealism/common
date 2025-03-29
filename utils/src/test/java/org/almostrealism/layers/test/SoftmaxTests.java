@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -85,7 +86,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			for (int i = 0; i < l; i++) {
 				x[i] /= sum;
 				double actual = output.valueAt(h, i);
-				System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
+				if (verboseLogs)
+					log("[" + h + "] " + x[i] + " vs " + actual);
 				assertEquals(x[i], actual);
 			}
 		}
@@ -152,6 +154,33 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		for (int i = 0; i < result.length; i++) {
 			Assert.assertEquals(expected[i], result[i], 1e-5);
 		}
+	}
+
+	@Test
+	public void softmaxBackwardsLarge() {
+		TraversalPolicy shape = shape(1, 4, 25088);
+
+		PackedCollection<?> input = new PackedCollection(shape);
+		IntStream.range(0, shape.getTotalSize()).forEach(i -> input.setMem(i, i + 1.0));
+
+		PackedCollection<?> gradient = new PackedCollection<>(shape);
+		gradient.setMem(100, 1.0);
+
+		double result[] = new double[shape.getTotalSize()];
+
+		CellularLayer layer = softmax(shape, false);
+		layer.getBackward().setReceptor(grad -> () -> {
+			Evaluable<PackedCollection<?>> gr = grad.get();
+
+			return () -> {
+				PackedCollection<?> out = gr.evaluate();
+				// System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+
+				out.getMem(0, result, 0, result.length);
+			};
+		});
+		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
+		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
 	}
 
 	@Test
@@ -289,6 +318,45 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void softmaxTest() {
+		int seqLen = 20;
+
+		PackedCollection<?> originalInput = new PackedCollection<>(shape(1, seqLen)).randFill();
+		CollectionProducer<PackedCollection<?>> input = cp(copy(originalInput));
+
+		double values[] = originalInput.toArray();
+		softmax(values, 0, seqLen);
+
+		int axis = input.getShape().getDimensions() - 1;
+
+		CollectionProducer<PackedCollection<?>> max = traverse(axis, input).max();
+		CollectionProducer<PackedCollection<?>> stable =
+				traverse(axis + 1, input).subtract(max.expand(seqLen));
+		CollectionProducer<PackedCollection<?>> logSum =
+				stable.exp().traverse(axis).sum().log().expand(seqLen);
+		CollectionProducer<PackedCollection<?>> result = stable.subtract(logSum).exp();
+
+		compare(null, result.evaluate(), values);
+	}
+
+	@Test
+	public void softmaxLayerTest() {
+		int seqLength = 20;
+
+		PackedCollection<?> originalInput = new PackedCollection<>(shape(1, seqLength));
+		originalInput.fill(pos -> Math.random());
+		PackedCollection<?> input = copy(originalInput);
+
+		Producer<PackedCollection<?>> p = softmax(input.getShape(), true).apply(cp(input));
+		PackedCollection<?> destination = p.get().evaluate();
+
+		double values[] = originalInput.toArray();
+		softmax(values, 0, seqLength);
+
+		compare(null, destination, values);
+	}
+
+	@Test
+	public void softmaxSubsetTest() {
 		int heads = 1;
 		int seqLength = 20;
 
@@ -300,7 +368,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> in = traverseEach(p(input));
-			CollectionProducer<PackedCollection<?>> subset = c(subset(shape(1, seqLength), in, h, 0)).traverseEach();
+			CollectionProducer<PackedCollection<?>> subset = c(subset(shape(1, seqLength), in, h, 0));
 
 			Producer<PackedCollection<?>> p = softmax(subset.getShape(), true).apply(subset);
 
@@ -309,7 +377,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			double values[] = originalInput.toArray(0, originalInput.getShape().getTotalSize());
 			softmax(values, h * seqLength, seqLength);
 
-			compare(a(subset, p), input, values);
+			compare(a(subset.each(), p), input, values);
 		});
 	}
 
@@ -322,19 +390,30 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		}
 
 		double sum = 0.0;
+		double stable[] = new double[size];
 
 		for (int i = 0; i < size; i++) {
-			x[i + offset] = Math.exp(x[i + offset] - max);
+			stable[i] = x[i + offset] - max;
+			x[i + offset] = Math.exp(stable[i]);
 			sum += x[i + offset];
 		}
 
-		for (int i = 0; i < size; i++) {
-			x[i + offset] /= sum;
+		if (enableLogStability) {
+			double logSum = Math.log(sum);
+			for (int i = 0; i < size; i++) {
+				x[i + offset] = Math.exp(stable[i] - logSum);
+			}
+		} else {
+			for (int i = 0; i < size; i++) {
+				x[i + offset] /= sum;
+			}
 		}
 	}
 
 	protected void compare(Supplier<Runnable> op, PackedCollection<?> dest, double values[]) {
-		op.get().run();
+		if (op != null) {
+			op.get().run();
+		}
 
 		double out[] = dest.toArray(0, values.length);
 		for (int i = 0; i < values.length; i++) {

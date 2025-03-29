@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,17 +16,21 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 public class Equals extends Comparison {
+	public static boolean enableBoundedComparison = true;
+	public static boolean enableConsolidateConstants = true;
 	public static boolean enableExpandQuotient = false;
 
 	protected Equals(Expression<?> left, Expression<?> right) {
@@ -100,6 +104,14 @@ public class Equals extends Comparison {
 			return new BooleanConstant(true);
 		}
 
+		if (enableBoundedComparison) {
+			Expression<?> result = checkBounds(left, right);
+			if (result != null) return result;
+
+			result = checkBounds(right, left);
+			if (result != null) return result;
+		}
+
 		if (left instanceof Mask && right.doubleValue().isPresent()) {
 			OptionalDouble masked = ((Mask) left).getMaskedValue().doubleValue();
 			if (masked.isPresent() && masked.getAsDouble() == right.doubleValue().getAsDouble()) {
@@ -116,6 +128,66 @@ public class Equals extends Comparison {
 			}
 		}
 
+		if (enableConsolidateConstants) {
+			List<Expression<?>> lTerms = extractTerms(left);
+			List<Expression<?>> rTerms = extractTerms(right);
+
+			List<Expression<?>> terms = new ArrayList<>();
+			long constant = 0;
+
+			for (Expression<?> term : lTerms) {
+				OptionalLong v = term.longValue();
+
+				if (v.isPresent()) {
+					// Move constants to the right
+					constant -= term.longValue().getAsLong();
+				} else {
+					// Keep non-constants on the left
+					terms.add(term);
+				}
+			}
+
+			for (Expression<?> term : rTerms) {
+				OptionalLong v = term.longValue();
+
+				if (v.isPresent()) {
+					// Keep constants on the right
+					constant += term.longValue().getAsLong();
+				} else {
+					// Move non-constants to the left
+					terms.add(term.minus());
+				}
+			}
+
+			return new Equals(Sum.of(terms.toArray(Expression[]::new)),
+							ExpressionFeatures.getInstance().e(constant));
+		}
+
 		return new Equals(left, right);
+	}
+
+	protected static List<Expression<?>> extractTerms(Expression<?> exp) {
+		if (exp instanceof Sum) {
+			return ((Sum) exp).getChildren();
+		} else {
+			return List.of(exp);
+		}
+	}
+
+	protected static Expression<?> checkBounds(Expression<?> value, Expression<?> anchor) {
+		OptionalLong a = anchor.longValue();
+		if (!a.isPresent()) return null;
+
+		OptionalLong high = value.upperBound();
+		if (high.isPresent() && high.getAsLong() < a.getAsLong()) {
+			return new BooleanConstant(false);
+		}
+
+		OptionalLong low = value.lowerBound();
+		if (low.isPresent() && low.getAsLong() > a.getAsLong()) {
+			return new BooleanConstant(false);
+		}
+
+		return null;
 	}
 }

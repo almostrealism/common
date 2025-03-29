@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,12 @@ package org.almostrealism.layers.test;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
@@ -30,6 +33,7 @@ import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -151,6 +155,38 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 		try {
 			train.optimize(1);
+		} finally {
+			logKernelMetrics(profile);
+		}
+	}
+
+	@Test
+	public void siluTrain() throws IOException {
+		if (!CollectionFeatures.enableExponentComputation && skipKnownIssues) return;
+		if (testDepth < 3) return;
+
+		int size = 21952;
+		int steps = 1;
+
+		Model model = new Model(shape(size));
+		model.add(silu());
+
+		initKernelMetrics();
+		OperationProfileNode profile = new OperationProfileNode("Silu Model");
+
+		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
+				.mapToObj(i -> new PackedCollection<>(shape(size)))
+				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+				.map(input -> ValueTarget.of(input, input))
+				.collect(Collectors.toList()));
+
+		try {
+			CompiledModel compiled = model.compile(true, true);
+			log("Model compiled");
+
+			ModelOptimizer train = new ModelOptimizer(compiled, data);
+			profile(profile, () -> train.optimize(1))
+					.save("results/siluTrain_" + size + ".xml");
 		} finally {
 			logKernelMetrics(profile);
 		}

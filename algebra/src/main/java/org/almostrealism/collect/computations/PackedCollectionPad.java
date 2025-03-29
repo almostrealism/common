@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,8 +22,10 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
@@ -81,7 +83,23 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	}
 
 	@Override
-	public PackedCollectionPad<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionPad<>(getShape(), position, (Producer<?>) children.get(1));
+	public CollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return pad(getShape(), position, (Producer<?>) children.get(1));
+	}
+
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		Supplier in = getInputs().get(1);
+
+		TraversalPolicy shape = getShape();
+		TraversalPolicy targetShape = shape(target);
+		TraversalPolicy deltaShape = shape.append(targetShape);
+
+		TraversalPolicy position = this.position;
+		while (position.getDimensions() < deltaShape.getDimensions()) {
+			position = position.appendDimension(0);
+		}
+
+		return pad(deltaShape, position, delta((Producer) in, target));
 	}
 }

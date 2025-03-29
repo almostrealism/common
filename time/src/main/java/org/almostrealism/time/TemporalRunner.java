@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,11 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.cycle.Setup;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collection;
@@ -49,7 +48,19 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 		this(((Setup) o).setup(), o.tick(), iter);
 	}
 
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick) {
+		this(setup, tick, 1);
+	}
+
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, boolean optimize) {
+		this(setup, tick, 1, optimize);
+	}
+
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
+		this(setup, tick, iter, enableOptimization);
+	}
+
+	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter, boolean optimize) {
 		if (enableFlatten && tick instanceof OperationList) {
 			tick = ((OperationList) tick).flatten();
 		}
@@ -58,9 +69,9 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 			tick = Process.isolated(tick);
 		}
 
-		this.run = loop(tick, iter);
+		this.run = iter == 1 ? tick : loop(tick, iter);
 
-		if (enableOptimization) {
+		if (optimize) {
 			run = Process.optimized(run);
 		}
 
@@ -68,7 +79,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 			setup = ((OperationList) setup).flatten();
 		}
 
-		this.setup = enableOptimization ? Process.optimized(setup) : setup;
+		this.setup = optimize ? Process.optimized(setup) : setup;
 	}
 
 	public OperationProfile getProfile() {

@@ -237,6 +237,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		setMem(offset, values, 0, values.length);
 	}
 
+	default void setMem(int offset, float... values) {
+		setMem(offset, values, 0, values.length);
+	}
+
 	default void setMem(float... source) {
 		setMem(0, source, 0, source.length);
 	}

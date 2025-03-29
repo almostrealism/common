@@ -18,7 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -34,7 +34,6 @@ import java.util.function.Supplier;
 
 public class DefaultTraversableExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableExpressionComputation<T> {
-	public static boolean enableChainRule = true;
 
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
@@ -76,11 +75,6 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return expression.apply(args);
-	}
-
-	@Override
-	public boolean isChainRuleSupported() {
-		return enableChainRule || super.isChainRuleSupported();
 	}
 
 	@Override

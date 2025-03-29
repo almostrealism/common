@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,26 +16,62 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
+public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
+												extends TraversableExpressionComputation<T> {
 
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
-												   Function<TraversableExpression[], CollectionExpression> expression,
 									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, expression, arguments);
+		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+	}
+
+	@Override
+	public boolean isZero() {
+		return super.isZero() || getChildren().stream().skip(1).allMatch(Algebraic::isZero);
+	}
+
+	@Override
+	public boolean isDiagonal(int width) {
+		return isIdentity(width) || getChildren().stream().skip(1)
+				.allMatch(p -> Algebraic.isDiagonal(width, p));
+	}
+
+	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		List<Process<?, ?>> scalars = isDiagonal(width) ? getChildren().stream().skip(1)
+				.map(p -> Algebraic.getDiagonalScalar(width, p))
+				.filter(Optional::isPresent)
+				.map(Optional::get)
+				.filter(c -> c instanceof Process)
+				.map(c -> (Process<?, ?>) c)
+				.collect(Collectors.toList()) : Collections.emptyList();
+		if (scalars.size() != getChildren().size() - 1) {
+			return super.getDiagonalScalar(width);
+		}
+
+		List<Process<?, ?>> operands = new ArrayList<>();
+		operands.add(null);
+		operands.addAll(scalars);
+		return Optional.of(generate(operands));
+	}
+
+	protected boolean isTransitiveArgumentIndex(int index) {
+		return index > 0;
 	}
 
 	@Override
@@ -66,8 +102,12 @@ public class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
 		List<Process<?, ?>> deltas = new ArrayList<>();
 		deltas.add(null);
 
-		for (CollectionProducer<PackedCollection<?>> operand : operands) {
-			deltas.add((Process) operand.delta(target));
+		for (int i = 0; i < operands.size(); i++) {
+			if (isTransitiveArgumentIndex(i + 1)) {
+				deltas.add((Process) operands.get(i).delta(target));
+			} else {
+				deltas.add((Process) operands.get(i));
+			}
 		}
 
 		return generate(deltas).reshape(getShape().append(targetShape));

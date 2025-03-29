@@ -118,13 +118,15 @@ public class SystemUtils {
 		return path;
 	}
 
-	private static void ensureDirectoryExists(Path path) {
+	public static Path ensureDirectoryExists(Path path) {
 		try {
 			if (!Files.exists(path)) {
 				Files.createDirectories(path);
 			}
 		} catch (Exception e) {
-			throw new RuntimeException("Failed to create directory: " + path, e);
+			throw new RuntimeException("Failed to create " + path, e);
 		}
+
+		return path;
 	}
 }

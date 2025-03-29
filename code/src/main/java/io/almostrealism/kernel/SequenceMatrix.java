@@ -45,8 +45,12 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 		rowDuplicates = new int[rowCount];
 		rowDuplicates[0] = -1;
 
-		for (int i = 1; i < rowCount; i++) {
+		i: for (int i = 1; i < rowCount; i++) {
 			rowDuplicates[i] = -1;
+			if (seq.lengthLong() > MAX_SEQUENCE_LENGTH) {
+				continue i;
+			}
+
 			boolean duplicate = true;
 
 			if (seq.getMod() > colCount || colCount % seq.getMod() != 0) {
@@ -96,6 +100,10 @@ public class SequenceMatrix<T> extends ExpressionMatrix<T> {
 
 	@Override
 	public IndexSequence columnSequence() {
+		if (seq.lengthLong() > MAX_SEQUENCE_LENGTH) {
+			return null;
+		}
+
 		Number[] result = new Number[rowCount];
 
 		for (int i = 0; i < rowCount; i++) {

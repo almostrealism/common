@@ -17,10 +17,14 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.compute.CascadingOptimizationStrategy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.compute.ParallelismTargetOptimization;
+import io.almostrealism.compute.ProcessContextBase;
+import io.almostrealism.compute.TraversableDepthTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.code.Precision;
@@ -57,6 +61,8 @@ public final class Hardware {
 	protected static final int MEMORY_SCALE;
 
 	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
+
+	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
 
 	private static final Hardware local;
 
@@ -125,6 +131,11 @@ public final class Hardware {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
 		}
+
+		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
+				new TraversableDepthTargetOptimization(),
+				new ParallelismTargetOptimization()
+		));
 
 		local = new Hardware(requirements, location, nioMem);
 	}
@@ -312,6 +323,16 @@ public final class Hardware {
 	public DefaultComputer getComputer() { return computer; }
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
+
+	public double epsilon() {
+		double eps = getPrecision().epsilon();
+
+		if (!epsilon64 && eps < Precision.FP32.epsilon()) {
+			eps = Precision.FP32.epsilon();
+		}
+
+		return eps;
+	}
 
 	public void assignProfile(OperationProfile profile) {
 		if (profile == null) {

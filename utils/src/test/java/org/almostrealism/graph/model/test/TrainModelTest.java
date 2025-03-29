@@ -18,7 +18,7 @@ package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -31,6 +31,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
@@ -127,7 +128,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 
 	@Test
 	public void pool() {
-		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
+		Block conv = convolution2d(inputShape, 8, convSize, false);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
 		Model model = new Model(inputShape);
@@ -148,7 +149,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 	@Test
 	public void convPool() {
 		Model model = new Model(inputShape);
-		CellularLayer conv = convolution2d(inputShape, 8, convSize, false);
+		CellularLayer conv = (CellularLayer) convolution2d(inputShape, 8, convSize, false);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
 		model.add(conv);
@@ -178,7 +179,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 						}
 
 						double actual = output.valueAt(n, p, q, r);
-						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						if (verboseLogs)
+							log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}

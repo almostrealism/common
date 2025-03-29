@@ -17,7 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.relation.Process;
+import io.almostrealism.compute.Process;
 import org.almostrealism.io.Describable;
 
 import java.util.List;
