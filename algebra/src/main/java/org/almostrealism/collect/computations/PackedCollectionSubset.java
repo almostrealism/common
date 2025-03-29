@@ -51,7 +51,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super(null, shape, null, collection);
+		super("subset", shape, null, collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 

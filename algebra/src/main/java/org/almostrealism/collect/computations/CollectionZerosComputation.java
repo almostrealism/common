@@ -24,6 +24,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
@@ -50,6 +51,16 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CollectionProducer<T> traverse(int axis) {
+		return new CollectionZerosComputation<>(getShape().traverse(axis));
+	}
+
+	@Override
+	public CollectionProducerComputation<T> reshape(TraversalPolicy shape) {
+		return new CollectionZerosComputation<>(shape);
 	}
 
 	@Override
