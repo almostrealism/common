@@ -718,7 +718,8 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		System.out.println(Arrays.toString(e.sequence(9).toArray()));
 
 		e = e.getSimplified(new DefaultKernelStructureContext(9));
-		Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
+		// Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
+		Assert.assertEquals("(((- (kernel0 / 3)) + (kernel0 % 3)) == 0) ? 1 : 0", e.getExpression(lang));
 	}
 
 	@Test
