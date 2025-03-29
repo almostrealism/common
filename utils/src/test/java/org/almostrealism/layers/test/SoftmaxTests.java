@@ -86,7 +86,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			for (int i = 0; i < l; i++) {
 				x[i] /= sum;
 				double actual = output.valueAt(h, i);
-				System.out.println("LayerTest[" + h + "] " + x[i] + " vs " + actual);
+				if (verboseLogs)
+					log("[" + h + "] " + x[i] + " vs " + actual);
 				assertEquals(x[i], actual);
 			}
 		}
