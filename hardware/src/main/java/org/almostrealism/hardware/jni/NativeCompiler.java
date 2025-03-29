@@ -245,7 +245,7 @@ public class NativeCompiler implements ConsoleFeatures {
 			}
 
 			return new NativeCompiler(precision, new DefaultLinkedLibraryGenerator(commandProvider),
-										libDir, libFormat, data, cl);
+										ld.getAbsolutePath(), libFormat, data, cl);
 		};
 	}
 
