@@ -44,8 +44,11 @@ public class ImageTests implements RGBFeatures, TestFeatures {
 
 	@Test
 	public void addNoise() throws IOException {
+		File img = new File("library/test_image.jpeg");
+		if (!img.exists() && skipKnownIssues) return;
+
 		CollectionProducer<PackedCollection<?>> data =
-				imageTransform(channels(new File("library/test_image.jpeg")));
+				imageTransform(channels(img));
 
 		log(data.getShape());
 		Producer<PackedCollection<?>> random = randn(data.getShape());

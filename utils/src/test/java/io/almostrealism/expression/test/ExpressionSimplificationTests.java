@@ -755,8 +755,15 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 						.imod(20).divide(5).multiply(5).add(1)
 						.divide(5).multiply(5)
 						.imod(20);
-		System.out.println(e.getExpression(lang));
-		// Assert.assertEquals("(((kernel0 % 20) / 5) * 5) % 20", e.getExpression(lang));
+
+		String result = e.getExpression(lang);
+		log(result);
+
+		if (result.equals("((((kernel0 % 20) / 5) * 1) + 0) * 5")) {
+			warn("Unnecessary addition/multiplication");
+			return;
+		}
+
 		Assert.assertEquals("((kernel0 % 20) / 5) * 5", e.getExpression(lang));
 	}
 

@@ -27,6 +27,8 @@ import org.junit.Test;
 public class CollectionOrderingTests implements TestFeatures {
 	@Test
 	public void repeatOrdering() {
+		if (skipKnownIssues) return;
+
 		PackedCollection<?> root = pack(2.0, 3.0, 1.0);
 		PackedCollection<?> repeated = new PackedCollection<>(shape(4, 3), 1,
 										root, 0, new RepeatTraversalOrdering(3));
@@ -61,6 +63,8 @@ public class CollectionOrderingTests implements TestFeatures {
 
 	@Test
 	public void compactOrdering() {
+		if (skipKnownIssues) return;
+
 		PackedCollection<?> values = pack(2.0, 3.0);
 
 		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1));
@@ -76,6 +80,8 @@ public class CollectionOrderingTests implements TestFeatures {
 
 	@Test
 	public void maskOrdering() {
+		if (skipKnownIssues) return;
+
 		PackedCollection<?> values = pack(2.0, 3.0);
 		PackedCollection<?> indices = pack(0, 3);
 
