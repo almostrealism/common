@@ -159,8 +159,8 @@ public interface PairFeatures extends CollectionFeatures {
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Cosine(args.get(1).getValueRelative(0)));
-		comp.add(args -> new Sine(args.get(1).getValueRelative(0)));
+		comp.add(args -> Cosine.of(args.get(1).getValueRelative(0)));
+		comp.add(args -> Sine.of(args.get(1).getValueRelative(0)));
 		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) angle));
 	}
 

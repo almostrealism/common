@@ -519,10 +519,10 @@ public abstract class Expression<T> implements
 		}
 	}
 
-	public Sine sin() { return new Sine((Expression) this); }
-	public Cosine cos() { return new Cosine((Expression) this); }
-	public Tangent tan() { return new Tangent((Expression) this); }
-	public Tangent tanh() { return new Tangent((Expression) this, true); }
+	public Expression<Double> sin() { return Sine.of((Expression) this); }
+	public Expression<Double> cos() { return Cosine.of((Expression) this); }
+	public Expression<Double> tan() { return Tangent.of((Expression) this); }
+	public Expression<Double> tanh() { return Tangent.of((Expression) this, true); }
 
 	public Negation not() {
 		if (getType() != Boolean.class)
@@ -552,7 +552,7 @@ public abstract class Expression<T> implements
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;
-		return LanguageOperations.toDouble.apply(this);
+		return new Cast<>(Double.class, Cast.FP_NAME, this);
 	}
 
 	public Expression<Integer> toInt() {
@@ -562,7 +562,7 @@ public abstract class Expression<T> implements
 	public Expression<Integer> toInt(boolean requireInt) {
 		boolean cast = requireInt ? getType() != Integer.class : isFP();
 		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
+		return cast ? new Cast(Integer.class, Cast.INT_NAME, this) : (Expression<Integer>) this;
 	}
 
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {

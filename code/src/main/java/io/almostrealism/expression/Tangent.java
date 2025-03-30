@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,15 +19,16 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 public class Tangent extends Expression<Double> {
 	private boolean hyperbolic;
 
-	public Tangent(Expression<Double> input) {
+	protected Tangent(Expression<Double> input) {
 		this(input, false);
 	}
 
-	public Tangent(Expression<Double> input, boolean hyperbolic) {
+	protected Tangent(Expression<Double> input, boolean hyperbolic) {
 		super(Double.class, input);
 		this.hyperbolic = hyperbolic;
 	}
@@ -56,5 +57,19 @@ public class Tangent extends Expression<Double> {
 	@Override
 	public boolean compare(Expression e) {
 		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
+	}
+
+	public static Expression<Double> of(Expression<Double> input) {
+		return of(input, false);
+	}
+
+	public static Expression<Double> of(Expression<Double> input, boolean hyperbolic) {
+		OptionalDouble d = input.doubleValue();
+
+		if (d.isPresent()) {
+			return new DoubleConstant(hyperbolic ? Math.tanh(d.getAsDouble()) : Math.tan(d.getAsDouble()));
+		}
+
+		return new Tangent(input, hyperbolic);
 	}
 }

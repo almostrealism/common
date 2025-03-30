@@ -112,6 +112,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
 
+	static boolean isEnableIndexProjectionDeltaAlt() {
+		return enableIndexProjectionDeltaAlt;
+	}
 
 	Console console = Computation.console.child();
 
@@ -1160,7 +1163,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
 		DynamicIndexProjectionProducerComputation<T> projection =
 				new DynamicIndexProjectionProducerComputation<>("projectMax", shape(input).replace(shape(1)),
-						(args, idx) -> args[2].getValueAt(idx),
+						(args, idx) -> args[2].getValueAt(idx).toInt(),
 						true, input, indexOfMax(input));
 
 		TraversalPolicy shape = shape(input);

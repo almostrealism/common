@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -70,6 +71,11 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	@Override
 	public long getCountLong() {
 		return getShape().traverseEach().getCountLong();
+	}
+
+	@Override
+	protected int getStatementCount(KernelStructureContext context) {
+		return getMemLength();
 	}
 
 	// TODO  This custom destination creation should not be necessary

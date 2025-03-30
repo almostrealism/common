@@ -24,9 +24,9 @@ import java.util.List;
 public class ComputableProcessContext extends ParallelProcessContext {
 	private List<ComputeRequirement> requirements;
 
-	public ComputableProcessContext(int depth, long parallelism, boolean fixed,
-									List<ComputeRequirement> requirements) {
-		super(depth, parallelism, fixed);
+	public ComputableProcessContext(int depth, long parallelism, long aggregationCount,
+									boolean fixed, List<ComputeRequirement> requirements) {
+		super(depth, parallelism, aggregationCount, fixed);
 		this.requirements = requirements;
 	}
 
@@ -35,11 +35,12 @@ public class ComputableProcessContext extends ParallelProcessContext {
 	}
 
 	public static ComputableProcessContext of(ParallelProcessContext c, List<ComputeRequirement> requirements) {
-		return new ComputableProcessContext(c.getDepth(), c.getCountLong(), c.isFixedCount(), requirements);
+		return new ComputableProcessContext(c.getDepth(), c.getCountLong(),
+					c.getAggregationCount(), c.isFixedCount(), requirements);
 	}
 
 	public static ComputableProcessContext of(int depth, ParallelProcess c) {
-		return new ComputableProcessContext(depth, c.getParallelism(), c.isFixedCount(), extractRequirements(c));
+		return new ComputableProcessContext(depth, c.getParallelism(), 1, c.isFixedCount(), extractRequirements(c));
 	}
 
 	public static ComputableProcessContext of(ProcessContext ctx, ParallelProcess c) {

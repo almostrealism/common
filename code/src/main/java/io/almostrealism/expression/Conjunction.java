@@ -78,6 +78,8 @@ public class Conjunction extends NAryExpression<Boolean> {
 
 		if (values.stream().anyMatch(e -> !e.booleanValue().orElse(true))) {
 			return new BooleanConstant(false);
+		} else if (values.stream().allMatch(e -> e.booleanValue().orElse(false))) {
+			return new BooleanConstant(true);
 		}
 
 		return new Conjunction(values);

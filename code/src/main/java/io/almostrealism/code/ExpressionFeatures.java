@@ -190,19 +190,19 @@ public interface ExpressionFeatures {
 	}
 
 	default CollectionExpression sin(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression("sin", shape, args -> new Sine(args[0]), input);
+		return new UniformCollectionExpression("sin", shape, args -> Sine.of(args[0]), input);
 	}
 
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression("cos", shape, args -> new Cosine(args[0]), input);
+		return new UniformCollectionExpression("cos", shape, args -> Cosine.of(args[0]), input);
 	}
 
 	default CollectionExpression tan(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression("tan", shape, args -> new Tangent(args[0]), input);
+		return new UniformCollectionExpression("tan", shape, args -> Tangent.of(args[0]), input);
 	}
 
 	default CollectionExpression tanh(TraversalPolicy shape, TraversableExpression<Double> input) {
-		return new UniformCollectionExpression("tanh", shape, args -> new Tangent(args[0], true), input);
+		return new UniformCollectionExpression("tanh", shape, args -> Tangent.of(args[0], true), input);
 	}
 
 	default CollectionExpression rectify(TraversalPolicy shape, TraversableExpression<Double> input) {

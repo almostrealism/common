@@ -213,8 +213,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 					if (sliceShape.getTotalSize() == 1) {
 						slice = index;
-					} else if (index.getType() == Integer.class ||
-							(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+					} else if (index.getType() == Integer.class) {
 						slice = index.divide(e(sliceShape.getTotalSize()));
 					} else {
 						slice = index.divide(e((double) sliceShape.getTotalSize())).floor();

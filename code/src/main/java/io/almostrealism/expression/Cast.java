@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -26,6 +28,9 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Cast<T> extends UnaryExpression<T> {
+	public static final String FP_NAME = "double";
+	public static final String INT_NAME = "int";
+
 	private String typeName;
 
 	public Cast(Class<T> type, String typeName, Expression<?> operand) {
@@ -37,8 +42,15 @@ public class Cast<T> extends UnaryExpression<T> {
 		}
 	}
 
-	public String getTypeName() {
-		return typeName;
+	public String getTypeName() { return typeName; }
+
+	@Override
+	protected String getOperator(LanguageOperations lang) {
+		if (FP_NAME.equals(getTypeName()) && lang.getPrecision() != Precision.FP64) {
+			return "(float)";
+		}
+
+		return "(" + getTypeName() + ")";
 	}
 
 	@Override

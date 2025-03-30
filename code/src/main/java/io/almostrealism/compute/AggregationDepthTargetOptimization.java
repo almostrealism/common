@@ -16,27 +16,28 @@
 
 package io.almostrealism.compute;
 
-import io.almostrealism.code.Computation;
-import io.almostrealism.collect.TraversableExpression;
-
 import java.util.Collection;
 import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
 
 /**
- * The {@link TraversableDepthTargetOptimization} is a strategy that attempts to prevent
- * a {@link Process} tree becoming too deep. It will isolate the children of a {@link Process}
- * if the maximum depth of the tree below it exceeds a specified limit.
+ * The {@link AggregationDepthTargetOptimization} is a strategy that attempts
+ * to prevent a {@link Process} tree below an aggregation becoming too deep.
+ * When {@link ParallelProcessContext#getAggregationCount()} is above
+ * {@value #AGGREGATION_THRESHOLD}, it will opportunistically isolate the
+ * children of any {@link Process} when the tree depth above it exceeds a
+ * specified limit, so long as every child {@link Process} has sufficient
+ * parallelism that this is unlikely to form a bottleneck.
  */
-public class TraversableDepthTargetOptimization implements ProcessOptimizationStrategy {
+public class AggregationDepthTargetOptimization implements ProcessOptimizationStrategy {
+	public static final long AGGREGATION_THRESHOLD = 64;
+	public static final long PARALLELISM_THRESHOLD = 128;
 
 	private final int limit;
 
-	public TraversableDepthTargetOptimization() { this(8); }
+	public AggregationDepthTargetOptimization() { this(12); }
 
-	public TraversableDepthTargetOptimization(int depthLimit) {
+	public AggregationDepthTargetOptimization(int depthLimit) {
 		this.limit = depthLimit;
 	}
 
@@ -47,14 +48,12 @@ public class TraversableDepthTargetOptimization implements ProcessOptimizationSt
 															   Function<Collection<P>, Stream<P>> childProcessor) {
 		listeners.forEach(l -> l.accept(parent));
 
-		ToIntFunction count = p -> p instanceof Computation ? 1 : 0;
-		Predicate filter = p -> p instanceof TraversableExpression;
+		ParallelProcessContext pctx = ParallelProcessContext.of(ctx);
 
-		int maxDepth = childProcessor.apply(children)
-				.mapToInt(t -> t.countDepth(count, filter))
-				.max().orElse(0) + 1;
+		long c = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism)
+				.filter(p -> p < PARALLELISM_THRESHOLD).count();
 
-		if (maxDepth > limit) {
+		if (c == 0 && pctx.getAggregationCount() > AGGREGATION_THRESHOLD && pctx.getDepth() > limit) {
 			return generate(parent, children, true);
 		}
 

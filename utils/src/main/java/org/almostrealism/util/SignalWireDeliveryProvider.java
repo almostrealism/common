@@ -42,6 +42,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	private String projectId;
 	private String token;
 	private String fromNumber, toNumber;
+	private String alertPrefix;
 
 	public SignalWireDeliveryProvider(String space, String projectId, String apiToken,
 									  String fromNumber, String toNumber) {
@@ -52,6 +53,14 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 		this.toNumber = toNumber;
 	}
 
+	public String getAlertPrefix() {
+		return alertPrefix;
+	}
+
+	public void setAlertPrefix(String alertPrefix) {
+		this.alertPrefix = alertPrefix;
+	}
+
 	@Override
 	public void sendAlert(Alert alert) {
 		if (totalMessages > maxMessages) {
@@ -60,12 +69,15 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 		}
 
 		try {
+			String message = alert.getMessage();
+			if (alertPrefix != null) message = alertPrefix + message;
+
 			int responseCode = sendSms("https://" + space +
 							".signalwire.com/api/laml/2010-04-01/Accounts/" +
 							projectId + "/Messages",
 					projectId + ":" + token,
 					fromNumber, toNumber,
-					alert.getMessage());
+					message);
 
 			if (responseCode == HttpURLConnection.HTTP_OK ||
 					responseCode == HttpURLConnection.HTTP_CREATED) {
@@ -101,6 +113,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 					properties.getProperty("sw.token"),
 					properties.getProperty("sw.from_number"),
 					properties.getProperty("sw.to_number"));
+			defaultProvider.setAlertPrefix(properties.getProperty("alert.message_prefix"));
 
 			Console.root().addAlertDeliveryProvider(defaultProvider);
 		} catch (IOException e) {

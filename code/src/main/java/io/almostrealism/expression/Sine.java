@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,14 +20,13 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Sine extends Expression<Double> {
-	public Sine(Expression<Double> input) {
+	protected Sine(Expression<Double> input) {
 		super(Double.class, input);
 	}
-
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
@@ -51,5 +50,15 @@ public class Sine extends Expression<Double> {
 		}
 
 		return new Sine((Expression<Double>) children.get(0));
+	}
+
+	public static Expression<Double> of(Expression<Double> input) {
+		OptionalDouble d = input.doubleValue();
+
+		if (d.isPresent()) {
+			return new DoubleConstant(Math.sin(d.getAsDouble()));
+		}
+
+		return new Sine(input);
 	}
 }

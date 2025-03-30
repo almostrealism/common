@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 // TODO  because ArrayVariable type T is the type of the member of the array
 // TODO  not the type of the entire array
 public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
 	private Expression<Integer> delegateOffset;
@@ -208,10 +207,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
-		if (!enableContextualKernelIndex) {
-			idx = new KernelIndex(null, idx.getKernelAxis());
-		}
-
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {

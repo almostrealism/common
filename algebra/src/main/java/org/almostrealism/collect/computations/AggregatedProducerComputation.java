@@ -22,6 +22,9 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputableProcessContext;
+import io.almostrealism.compute.ParallelProcessContext;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -226,6 +229,11 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			return null;
 
 		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+	}
+
+	@Override
+	public ParallelProcessContext createContext(ProcessContext ctx) {
+		return ComputableProcessContext.of(ctx, this, count);
 	}
 
 	@Override
