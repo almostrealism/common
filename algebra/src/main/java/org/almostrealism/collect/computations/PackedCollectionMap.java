@@ -237,7 +237,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-			super(null, shape, expression, args);
+			super("mapItem", shape, expression, args);
 		}
 
 		@Override

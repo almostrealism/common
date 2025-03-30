@@ -179,7 +179,8 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 						}
 
 						double actual = output.valueAt(n, p, q, r);
-						log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+						if (verboseLogs)
+							log("[" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
