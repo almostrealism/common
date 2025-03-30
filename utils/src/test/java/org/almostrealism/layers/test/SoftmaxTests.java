@@ -21,6 +21,7 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
@@ -37,6 +38,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.Supplier;
@@ -156,7 +158,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	}
 
 	@Test
-	public void softmaxBackwardsLarge() {
+	public void softmaxBackwardsLarge() throws IOException {
 		TraversalPolicy shape = shape(1, 4, 25088);
 
 		PackedCollection<?> input = new PackedCollection(shape);
@@ -167,7 +169,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		double result[] = new double[shape.getTotalSize()];
 
-		CellularLayer layer = softmax(shape, false);
+		CellularLayer layer = softmax(shape, true);
 		layer.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
@@ -179,7 +181,18 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			};
 		});
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
-		Process.optimized(layer.getBackward().push(p(gradient))).get().run();
+
+		Supplier<Runnable> op = Process.optimized(layer.getBackward().push(p(gradient)));
+		String projection = String.valueOf(CollectionFeatures.isEnableIndexProjectionDeltaAlt());
+		log("enableIndexProjectionDeltaAlt = " + projection);
+		profile("softmaxBackwardsLarge", op)
+				.save(new File("results/softmaxBackwardsLarge-" + projection + ".xml"));
+
+//		Runnable r = op.get();
+//
+//		for (int i = 0; i < 20; i++) {
+//			r.run();
+//		}
 	}
 
 	@Test
