@@ -69,6 +69,9 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
+	protected boolean isOutputRelative() { return false; }
+
+	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return new IndexProjectionExpression(getShape(),
 				idx -> projectIndex(args[1], idx), args[1]);

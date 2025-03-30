@@ -27,5 +27,8 @@ public abstract class CollectionConstantComputation<T extends PackedCollection<?
 	}
 
 	@Override
+	protected boolean isOutputRelative() { return false; }
+
+	@Override
 	protected abstract ConstantCollectionExpression getExpression(TraversableExpression... args);
 }

@@ -171,7 +171,7 @@ public interface VectorFeatures extends CollectionFeatures {
 		return sqrt(_lengthSq(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _lengthSq(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> _lengthSq(Producer<T> value) {
 		return multiply(value, value).sum();
 	}
 

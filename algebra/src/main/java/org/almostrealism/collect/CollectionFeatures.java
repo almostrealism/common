@@ -1202,7 +1202,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(Producer<T> input) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sum(Producer<T> input) {
+		if (Algebraic.isZero(input)) {
+			return zeros(shape(input).replace(shape(1)));
+		}
+
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
