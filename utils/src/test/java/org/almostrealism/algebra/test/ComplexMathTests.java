@@ -76,7 +76,8 @@ public class ComplexMathTests implements TestFeatures {
 				for (int k = 0; k < 2; k++) {
 					double expected = values.valueAt(i, k, j);
 					double actual = out.valueAt(i, j, k);
-					log("ComplexMathTests[" + i + "][" + j + "][" + k + "] " + expected + " vs " + actual);
+					if (verboseLogs)
+						log("ComplexMathTests[" + i + "][" + j + "][" + k + "] " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}

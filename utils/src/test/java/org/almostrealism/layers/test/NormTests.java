@@ -133,7 +133,7 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 
 	@Test
 	public void normComputationDeltaMedium() {
-		if (skipLongTests) return;
+		if (skipKnownIssues) return;
 
 		int c = 28;
 		int v = 28 * 28;
