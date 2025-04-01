@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -33,11 +32,16 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class Switch extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
-	private final List<Computation> choices;
+	private final List<Computation<?>> choices;
 
-	public Switch(Producer<PackedCollection<?>> decision, List<Computation> choices) {
+	public Switch(Producer<PackedCollection<?>> decision, List<Computation<?>> choices) {
 		super(new Producer[] { decision });
 		this.choices = choices;
+	}
+
+	@Override
+	protected List<Computation<?>> getDependentComputations() {
+		return choices;
 	}
 
 	@Override
@@ -63,7 +67,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 		IntStream.range(0, choices.size()).forEach(i -> {
 			double val = (i + 1) * interval;
 			scope.getConditions().add(decisionValue.valueAt(0).lessThanOrEqual(e(val)));
-			scope.getChildren().add(choices.get(i).getScope(context));
+			scope.getChildren().add((Scope) choices.get(i).getScope(context));
 		});
 
 		return scope;

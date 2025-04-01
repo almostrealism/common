@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
@@ -43,62 +42,25 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	public static boolean enableInputIsolate = false;
 
 	private UnaryOperator<Expression<?>> indexProjection;
-	protected boolean relative;
 
 	public IndexProjectionProducerComputation(String name, TraversalPolicy shape,
 											  UnaryOperator<Expression<?>> indexProjection,
 											  Producer<?> collection) {
-		this(name, shape, indexProjection, false, collection, new Producer[0]);
-	}
-
-	public IndexProjectionProducerComputation(String name, TraversalPolicy shape,
-											  UnaryOperator<Expression<?>> indexProjection,
-											  boolean relative,
-											  Producer<?> collection) {
-		this(name, shape, indexProjection, relative, collection, new Producer[0]);
+		this(name, shape, indexProjection, collection, new Producer[0]);
 	}
 
 	protected IndexProjectionProducerComputation(String name, TraversalPolicy shape,
 												 UnaryOperator<Expression<?>> indexProjection,
-												 boolean relative,
 												 Producer<?> collection,
 												 Producer<?>... inputs) {
 		super(name, shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
 		this.indexProjection = indexProjection;
-		this.relative = relative;
 	}
-
-	@Override
-	protected boolean isOutputRelative() { return false; }
 
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return new IndexProjectionExpression(getShape(),
 				idx -> projectIndex(args[1], idx), args[1]);
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		if (relative) {
-			TraversableExpression<Double> var = getTraversableArguments(index)[1];
-			if (var == null) return null;
-
-			return var.getValueRelative(projectIndex(var, index));
-		}
-
-		return super.getValueAt(index);
-	}
-
-	@Override
-	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		if (relative) {
-			TraversableExpression var = getTraversableArguments(targetIndex)[1];
-			if (var == null) return null;
-
-			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
-		}
-
-		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	protected Expression<?> projectIndex(TraversableExpression<?> input, Expression<?> index) {
@@ -161,7 +123,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public IndexProjectionProducerComputation<T> generate(List<Process<?, ?>> children) {
-		return new IndexProjectionProducerComputation<>(getName(), getShape(), indexProjection, relative,
+		return new IndexProjectionProducerComputation<>(getName(), getShape(), indexProjection,
 				(Producer<?>) children.get(1),
 				children.stream().skip(2).toArray(Producer[]::new));
 	}
@@ -208,7 +170,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 			};
 
 			return traverse(traversalAxis,
-					new IndexProjectionProducerComputation<>("projectDelta", shape.traverseEach(), project, false, delta));
+					new IndexProjectionProducerComputation<>("projectDelta", shape.traverseEach(), project, delta));
 		}
 
 		return super.delta(target);

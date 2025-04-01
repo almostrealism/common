@@ -58,6 +58,9 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	protected abstract CollectionExpression getExpression(TraversableExpression... args);
 
 	@Override
+	protected boolean isOutputRelative() { return !isFixedCount(); }
+
+	@Override
 	public boolean isConstant() {
 		return getInputs().stream().skip(1)
 				.map(c -> c instanceof Computable && ((Computable) c).isConstant())
