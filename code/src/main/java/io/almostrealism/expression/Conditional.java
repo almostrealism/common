@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 
 import java.util.List;
@@ -174,6 +174,12 @@ public class Conditional<T extends Number> extends Expression<T> {
 				Scope.console.features(Conditional.class)
 						.warn("Conditional output is equivalent to a branch of the condition");
 			}
+		}
+
+		if (rd.isPresent() && ld.isPresent() && rd.getAsDouble() == ld.getAsDouble()) {
+			boolean fp = positive.isFP() || negative.isFP();
+			return fp ? new DoubleConstant(rd.getAsDouble()) :
+					ExpressionFeatures.getInstance().e((long) rd.getAsDouble());
 		}
 
 		if (rd.isPresent() && rd.getAsDouble() == 0.0) {

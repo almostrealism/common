@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Computable;
@@ -27,6 +28,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -143,6 +145,17 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	public Optional<Computable> getDiagonalScalar(int width) {
 		if (getShape().getTotalSizeLong() == 1) return Optional.of(this);
 		return TraversableExpression.super.getDiagonalScalar(width);
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+		if (getMemLength() > ScopeSettings.maxStatements) {
+			warn("Cannot isolate a ProducerComputation which would produce a Scope with "
+					+ getMemLength() + " statements");
+			return this;
+		}
+
+		return super.isolate();
 	}
 
 	@Override

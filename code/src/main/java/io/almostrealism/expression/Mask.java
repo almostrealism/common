@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -73,6 +73,9 @@ public class Mask<T extends Number> extends Conditional<T> {
 			} else {
 				return (Expression) new IntegerConstant(0);
 			}
+		} else if (value.doubleValue().orElse(1) == 0) {
+			return value.isFP() ? (Expression) new DoubleConstant(0.0) :
+					(Expression) new IntegerConstant(0);
 		} else {
 			return new Mask(mask, value);
 		}

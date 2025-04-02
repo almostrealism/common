@@ -25,6 +25,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -103,7 +104,8 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		if (Process.isExplicitIsolation()) return super.isolate();
+		if (Process.isExplicitIsolation() || getMemLength() > ScopeSettings.maxStatements)
+			return super.isolate();
 
 		if (enableDelegatedIsolate || (enableConstantDelegatedIsolate && isConstant())) {
 			IndexProjectionProducerComputation c;
