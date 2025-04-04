@@ -162,7 +162,6 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 
 	@Test
 	public void siluTrain() throws IOException {
-		if (!CollectionFeatures.enableExponentComputation && skipKnownIssues) return;
 		if (testDepth < 3) return;
 
 		int size = 21952;

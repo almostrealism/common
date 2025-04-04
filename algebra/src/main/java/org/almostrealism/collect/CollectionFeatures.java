@@ -103,10 +103,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	// Should be removed
 	boolean enableTraversableRepeated = true;
-	boolean enableScalarMatrixDetection = true;
 	boolean enableGradientMultiplyEach = true;
-	boolean enableExponentComputation = true;
-	boolean enableComparisonComputation = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
@@ -920,19 +917,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 					" from a collection of size " + shape.getSize());
 		}
 
-		if (enableComparisonComputation) {
-			CollectionProducer difference = equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
-			return (CollectionProducerComputation) equals(a, c(0.0), zeros(shape), difference);
-		} else {
-			return new DefaultTraversableExpressionComputation<>("subtractIgnoreZero", shape,
-					args -> CollectionExpression.create(shape, index -> {
-						Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
-								epsilon(),
-								Difference.of(args[1].getValueAt(index), args[2].getValueAt(index)));
-						return conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), difference);
-					}),
-					(Supplier) a, (Supplier) b);
-		}
+		CollectionProducer difference = equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
+		return (CollectionProducerComputation) equals(a, c(0.0), zeros(shape), difference);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
@@ -1016,7 +1002,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 		if (shape.getTotalSizeLong() == 1 && a.isConstant()) {
 			return new AtomicConstantComputation<>(-a.get().evaluate().toDouble());
-		} else if (enableScalarMatrixDetection && Algebraic.isIdentity(w, a)) {
+		} else if (Algebraic.isIdentity(w, a)) {
 			return (CollectionProducerComputationBase)
 					new ScalarMatrixComputation<>(shape, c(-1))
 						.setDescription(args -> "-" + DescribableParent.description(a));
@@ -1050,17 +1036,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			console.warn("Computing power of constants");
 		}
 
-		if (enableExponentComputation) {
-			return compute((shape, args) ->
-							new CollectionExponentComputation<>(largestTotalSize(args), args.get(0), args.get(1)),
-					args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
-					base, exp);
-		} else {
-			return compute("pow", shape -> (args) ->
-							CollectionExpression.create(shape, index -> Exponent.of(args[1].getValueAt(index), args[2].getValueAt(index))),
-					(List<String> args) -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
-					base, exp);
-		}
+		return compute((shape, args) ->
+						new CollectionExponentComputation<>(largestTotalSize(args), args.get(0), args.get(1)),
+				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
+				base, exp);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
