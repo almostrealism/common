@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -139,11 +139,13 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
 	}
 
+	@Deprecated
 	public Expression<T> referenceRelative(int pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}
 
+	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
 		return referenceRelative(pos, new KernelIndex(null, 0));
 	}

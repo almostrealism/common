@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,16 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -34,6 +36,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class Interpolate extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
+	public static boolean enableAtomicShape = false;
 	public static boolean enableFunctionalPosition = true;
 	public static boolean enableScanning = false;
 
@@ -47,21 +50,40 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
 					   Producer<PackedCollection<?>> rate, Function<Expression, Expression> timeForIndex,
 					   Function<Expression, Expression> indexForTime) {
-		super(null, new TraversalPolicy(1), new Producer[] { series, position, rate });
+		super("interpolate", computeShape(series, position), new Producer[] { series, position, rate });
 		this.timeForIndex = timeForIndex;
 		this.indexForTime = indexForTime;
 	}
 
-	// TODO  Probably unnecessary
-	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(1);
+	protected Expression getArgumentValueRelative(int index, int pos) {
+		return getArgumentValueRelative(index, e(pos));
+	}
+
+	protected Expression getArgumentValueRelative(int index, Expression<?> pos) {
+		ArrayVariable<?> var = getArgument(index);
+
+		if (var instanceof CollectionVariable && isFixedCount()) {
+			CollectionVariable c = (CollectionVariable<?>) var;
+
+			if (c.getShape().getCountLong() == 1) {
+				return ((CollectionVariable<?>) var).getValueAt(pos);
+			} else if (c.getShape().getDimensions() == 1) {
+				if (pos.intValue().orElse(1) != 0) {
+					throw new IllegalArgumentException();
+				}
+
+				return ((CollectionVariable<?>) var).getValue(kernel());
+			} else {
+				return ((CollectionVariable<?>) var).getValue(kernel(), pos);
+			}
+		} else {
+			return var.referenceRelative(pos);
+		}
 	}
 
 	@Override
 	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 
 		Expression idx = new StaticReference(Integer.class, getVariableName(0));
 		Expression left = new StaticReference(Integer.class, getVariableName(1));
@@ -85,26 +107,24 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
-		String res = getArgument(0).referenceRelative(0).getSimpleExpression(getLanguage());
+		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
 		String start = "0";
 		String end = getArgument(1).length().getSimpleExpression(getLanguage());
-		Expression<Double> rate = getArgument(3).valueAt(0);
+		Expression<Double> rate = getArgumentValueRelative(3, 0);
 
 		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
-		String bankl_value = getArgument(1).referenceRelative(left).getSimpleExpression(getLanguage());
+		String bankl_value = getArgumentValueRelative(1, left).getSimpleExpression(getLanguage());
 		String bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
-		String bankr_value = getArgument(1).referenceRelative(right).getSimpleExpression(getLanguage());
-		String cursor = getArgument(2).referenceRelative(e(0)).getSimpleExpression(getLanguage());
+		String bankr_value = getArgumentValueRelative(1, right).getSimpleExpression(getLanguage());
+		String cursor = getArgumentValueRelative(2, e(0)).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 
+		Expression<Double> time = getArgumentValueRelative(2, 0).multiply(rate);
+		Expression index = indexForTime.apply(time);
+
 		if (enableFunctionalPosition) {
-			Expression<Double> time = getArgument(2).referenceRelative(0).multiply(rate);
-			Expression index = indexForTime.apply(time);
-
-//			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : (" + banki + " == " + cursor + " ? " + idx + " : -1);\n");
-
-			code.accept(idx + " = " + index.ceil().toInt().getSimpleExpression(getLanguage()) + " - 1;");
+			code.accept(idx + " = " + index.ceil().toInt().getSimpleExpression(getLanguage()) + " - 1;\n");
 			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : " + idx + ";\n");
 			code.accept(right + " = " + idx + ";\n");
 
@@ -158,8 +178,16 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		code.accept("	} else {\n");
 		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
 		code.accept("	}\n");
-		code.accept("}\n");
+		code.accept("}");
 
 		return scope;
+	}
+
+	protected static TraversalPolicy computeShape(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position) {
+		if (enableAtomicShape) {
+			return new TraversalPolicy(1);
+		}
+
+		return CollectionFeatures.getInstance().shape(position).traverseEach();
 	}
 }
