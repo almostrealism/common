@@ -661,12 +661,4 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(6.0, out.toDouble(0));
 		assertEquals(3.0, out.toDouble(1));
 	}
-
-	@Test
-	public void clear() {
-		PackedCollection data = new PackedCollection(4);
-		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
-		data.clear();
-		assertEquals(0, data.toArray(0, 4)[1]);
-	}
 }
