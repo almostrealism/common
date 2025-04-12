@@ -71,17 +71,17 @@ public class FourierTransformTests implements TestFeatures {
 						sinw(integers(0, bins), c(f1.getWaveLength()), c(0.9)),
 						sinw(integers(0, bins), c(f2.getWaveLength()), c(0.6))))
 				.get().run();
-		log("Total = " + input.doubleStream().map(Math::abs).sum());
+		log("In Total = " + input.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ft = fft(bins, cp(input), requirement);
 		PackedCollection<?> out = ft.get().evaluate();
 		log(out.getShape());
-		log("Total = " + input.doubleStream().map(Math::abs).sum());
+		log("Out Total = " + out.doubleStream().map(Math::abs).sum());
 
 		FourierTransform ift = fft(bins, true, cp(out), requirement);
 		PackedCollection<?> reversed = ift.get().evaluate();
 		log(reversed.getShape());
-		log("Total = " + input.doubleStream().map(Math::abs).sum());
+		log("Reversed Total = " + reversed.doubleStream().map(Math::abs).sum());
 
 		for (int i = 0; i < bins; i++) {
 			double expected = input.valueAt(0, i);

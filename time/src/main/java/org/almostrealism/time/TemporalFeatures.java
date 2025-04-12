@@ -118,7 +118,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,
 									Producer<PackedCollection<?>> time,
 									double sampleRate) {
-		return interpolate(series, time, c(1.0), sampleRate);
+		return new Interpolate(series, time,
+				v -> Product.of(v, e(1.0 / sampleRate)),
+				v -> Product.of(v, e(sampleRate)));
 	}
 
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,
