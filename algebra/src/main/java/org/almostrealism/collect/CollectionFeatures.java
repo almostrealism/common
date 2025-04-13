@@ -24,13 +24,12 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
+import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Absolute;
-import io.almostrealism.expression.Difference;
-import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
 import io.almostrealism.expression.Max;
@@ -464,7 +463,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation<>("valueAtIndex", shape,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
 				(Supplier) collection, index);
-		if (shape.getTotalSize() == 1) {
+		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
 				Evaluable<? extends PackedCollection> c = collection.get();
@@ -511,6 +510,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						(args) ->
 								new IndexOfPositionExpression(shape, shapeOf,
 										Stream.of(args).skip(1).toArray(TraversableExpression[]::new)), pos);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sizeOf(Producer<PackedCollection<?>> collection) {
+		return new DefaultTraversableExpressionComputation<>("sizeOf", shape(1),
+				(args) -> CollectionExpression.create(shape(1),
+						index -> {
+							TraversableExpression value = ((RelativeTraversableExpression) args[1]).getExpression();
+							return ((ArrayVariable) value).length();
+						}), collection);
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
@@ -1000,7 +1008,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy shape = shape(a);
 		int w = shape.length(0);
 
-		if (shape.getTotalSizeLong() == 1 && a.isConstant()) {
+		if (shape.getTotalSizeLong() == 1 && a.isConstant() && Countable.isFixedCount(a)) {
 			return new AtomicConstantComputation<>(-a.get().evaluate().toDouble());
 		} else if (Algebraic.isIdentity(w, a)) {
 			return (CollectionProducerComputationBase)
