@@ -45,7 +45,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public static boolean enableConstantExtraction = true;
 	public static boolean enableCoefficientExtraction = true;
 	public static boolean enableModDetection = true;
-	public static boolean enableSort = true;
+	public static boolean enableGenerateReordering = false;
 
 	public static boolean enableFlattenRepeatedSumAlways = false;
 	public static boolean enableFlattenRepeatedSumConstants = true;
@@ -175,7 +175,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		List<Expression<?>> children = new ArrayList<>();
 
 		simple.flatten().stream()
-				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
+				.filter(e -> e.doubleValue().orElse(-1) != 0.0)
 				.forEach(children::add);
 
 		if (children.size() == 1) return children.get(0);
@@ -203,46 +203,24 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (enableSort)
-			children = children.stream().sorted(depthOrder()).collect(Collectors.toList());
+		if (!removed.isEmpty()) {
+			throw new UnsupportedOperationException();
+		}
 
-		if (!removed.isEmpty()) return Sum.of(children.toArray(Expression[]::new));
+		children = children.stream().sorted(depthOrder()).collect(Collectors.toList());
 
 		if (context.getTraversalProvider() != null &&
 				children.stream().allMatch(e -> e.isSingleIndexMasked())) {
-			return context.getTraversalProvider()
-					.generateReordering(generate(children))
-					.populate(this);
+			if (enableGenerateReordering) {
+				return context.getTraversalProvider()
+						.generateReordering(generate(children))
+						.populate(this);
+			} else {
+				throw new UnsupportedOperationException();
+			}
 		}
 
-		List<Double> values = children.stream()
-				.map(Expression::doubleValue)
-				.filter(d -> d.isPresent())
-				.map(d -> d.getAsDouble())
-				.collect(Collectors.toList());
-
-		if (values.size() <= 1) {
-			return generate(children).populate(this);
-		}
-
-		children = children.stream()
-				.filter(e -> !e.doubleValue().isPresent())
-				.collect(Collectors.toList());
-
-		double sum = values.stream().reduce(0.0, (a, b) -> a + b);
-
-		if (sum == 0.0) {
-			if (children.isEmpty())
-				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-			if (children.size() == 1) return children.get(0);
-			return generate(children).populate(this);
-		} else {
-			List<Expression<?>> newChildren = new ArrayList<>();
-			newChildren.addAll(children);
-			newChildren.add(getType() == Integer.class ? new IntegerConstant((int) sum) : new DoubleConstant(sum));
-			if (newChildren.size() == 1) return newChildren.get(0);
-			return generate(newChildren).populate(this);
-		}
+		return generate(children).populate(this);
 	}
 
 	@Override
@@ -441,11 +419,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
 		if (operands.size() == 1) return (Expression) operands.get(0);
 
-		if (enableSort) {
-			return (Expression) new Sum(operands.stream().sorted(depthOrder()).collect(Collectors.toList()));
-		} else {
-			return (Expression) new Sum(operands);
-		}
+		return (Expression) new Sum(operands.stream().sorted(depthOrder()).collect(Collectors.toList()));
 	}
 
 	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {

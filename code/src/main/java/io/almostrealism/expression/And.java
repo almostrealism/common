@@ -66,12 +66,6 @@ public class And extends BinaryExpression<Integer> {
 	}
 
 	@Override
-	public Expression simplify(KernelStructureContext context, int depth) {
-		Expression<?> flat = super.simplify(context, depth);
-		return flat;
-	}
-
-	@Override
 	public boolean isValue(IndexValues values) {
 		return getChildren().get(0).isValue(values) && getChildren().get(1).isValue(values);
 	}

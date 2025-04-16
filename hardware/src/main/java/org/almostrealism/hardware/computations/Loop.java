@@ -28,6 +28,8 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
+import java.util.List;
+
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
 	public static boolean enableRepeated = true;
@@ -56,6 +58,11 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		atom.prepareScope(manager, context);
+	}
+
+	@Override
+	protected List<Computation<?>> getDependentComputations() {
+		return List.of(atom);
 	}
 
 	@Override

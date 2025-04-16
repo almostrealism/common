@@ -243,53 +243,6 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return children;
 	}
 
-	@Override
-	public Expression simplify(KernelStructureContext context, int depth) {
-		if (getChildren().stream().anyMatch(e -> e.doubleValue().orElse(-1) == 0)) {
-			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-		}
-
-		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Product)) return flat;
-
-		List<Expression<?>> children = flat.flatten().stream().collect(Collectors.toList());
-
-		Mask mask = children.stream()
-				.filter(e -> e instanceof Mask)
-				.map(e -> (Mask) e)
-				.findFirst()
-				.orElse(null);
-
-		if (mask != null) {
-			children = new ArrayList<>(children.stream()
-					.filter(e -> e != mask)
-					.collect(Collectors.toList()));
-			children.add(mask.getMaskedValue());
-		}
-
-		if (children.size() > 1) {
-			children = children.stream()
-					.filter(e -> e.doubleValue().orElse(-1) != 1.0)
-					.collect(Collectors.toList());
-		}
-
-
-		Expression simple = null;
-
-		if (children.size() == 1) {
-			simple = children.get(0);
-		} else if (children.isEmpty()) {
-			simple = getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
-		}
-
-		if (mask == null) {
-			return simple == null ? flat : simple;
-		} else {
-			return Mask.of(mask.getMask(),
-					simple == null ? generate(children) : simple);
-		}
-	}
-
 	public static Expression<?> of(Expression<?>... values) {
 		return Expression.process(create(values));
 	}

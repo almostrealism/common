@@ -72,7 +72,9 @@ public abstract class OperationComputationAdapter<T>
 		p = getDependentComputations().stream()
 				.mapToLong(Countable::countLong).distinct().count();
 
-		if (p == 1) {
+		if (p == 0) {
+			return 1;
+		} else if (p == 1) {
 			return getDependentComputations().stream()
 					.mapToLong(Countable::countLong).distinct().sum();
 		}

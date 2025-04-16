@@ -32,14 +32,8 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public static boolean enableDistributiveSum = true;
-	public static boolean enableFpDivisorReplacement = true;
-	public static boolean enableExpandedDistributiveSum = true;
 	public static boolean enableProductModSimplify = true;
-	public static boolean enableDenominatorCollapse = true;
 	public static boolean enableRequireNonNegative = true;
-	public static boolean enableBoundedNumeratorReplace = true;
-	public static boolean enableLowerBoundedNumeratorReplace = true;
 	public static boolean enableArithmeticGenerator = true;
 
 	public static long maxCombinedDenominator = Integer.MAX_VALUE;
@@ -233,7 +227,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (!(flat instanceof Quotient)) return flat;
 
 		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()
-				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
+				.filter(e -> e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
@@ -336,10 +330,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		OptionalLong lower = numerator.lowerBound();
 		OptionalLong upper = numerator.upperBound();
 
-		if (enableBoundedNumeratorReplace && !numerator.isPossiblyNegative() && d.isPresent() &&
+		if (!numerator.isPossiblyNegative() && d.isPresent() &&
 				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
-		} else if (enableLowerBoundedNumeratorReplace && !fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
+		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
 			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());
 			double high = Math.floor(lower.getAsLong() / (double) d.getAsLong());
 
@@ -348,7 +342,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (enableDenominatorCollapse && numerator instanceof Quotient && d.isPresent()) {
+		if (numerator instanceof Quotient && d.isPresent()) {
 			if (numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
 				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
@@ -369,7 +363,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					return Product.of(numerator.getChildren().stream()
 							.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
 				}
-			} else if (enableFpDivisorReplacement && denominator.doubleValue().isPresent()) {
+			} else if (denominator.doubleValue().isPresent()) {
 				// When dividing a product that includes a floating-point constant value,
 				// the result can be simplified to a product of the remaining values and
 				// the constant value divided by the divisor
@@ -387,7 +381,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		} else if (numerator instanceof Sum) {
 			OptionalLong divisor = denominator.longValue();
 
-			if (enableDistributiveSum && !(numerator instanceof Index) &&
+			if (!(numerator instanceof Index) &&
 					!numerator.isFP() && divisor.isPresent()) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
@@ -424,7 +418,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				// then it is also safe to apply division to each term in the sum (that term
 				// is the only possible source of a remainder, which will be discarded without
 				// the chance to combine with other values to exceed the divisor)
-				if (enableExpandedDistributiveSum && unknown == 1 && total == 0.0) {
+				if (unknown == 1 && total == 0.0) {
 					return Sum.of(numerator.getChildren().stream()
 							.map(e -> e.divide(divisor.getAsLong()))
 							.toArray(Expression[]::new));

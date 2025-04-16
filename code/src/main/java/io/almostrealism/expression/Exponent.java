@@ -28,7 +28,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Exponent extends Expression<Double> {
-	public static boolean enableCollapseConstants = true;
 
 	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, base, exponent);
@@ -88,50 +87,27 @@ public class Exponent extends Expression<Double> {
 		return product(ts, self, sum(ts, term1, term2));
 	}
 
-	@Override
-	public Expression<Double> simplify(KernelStructureContext context, int depth) {
-		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
-
-		Expression base = flat.getChildren().get(0);
-		Expression exponent = flat.getChildren().get(1);
-
-		if (base.doubleValue().isPresent()) {
-			if (base.doubleValue().getAsDouble() == 1.0) {
-				return new DoubleConstant(1.0);
-			} else if (base.doubleValue().getAsDouble() == 0.0) {
-				return new DoubleConstant(0.0);
-			} else if (exponent.doubleValue().isPresent()) {
-				return new DoubleConstant(Math.pow(base.doubleValue().getAsDouble(), exponent.doubleValue().getAsDouble()));
-			}
-		} else if (exponent.doubleValue().isPresent()) {
-			if (exponent.doubleValue().getAsDouble() == 1.0) {
-				return base;
-			} else if (exponent.doubleValue().getAsDouble() == 0.0) {
-				return new DoubleConstant(1.0);
-			}
-		}
-
-		return (Expression<Double>) flat;
-	}
-
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
 		return Expression.process(create(base, exponent));
 	}
 
 	public static Expression<Double> create(Expression<Double> base, Expression<Double> exponent) {
 		OptionalDouble exponentValue = exponent.doubleValue();
+		OptionalDouble baseValue = base.doubleValue();
+
 		if (exponentValue.isPresent()) {
 			if (exponentValue.getAsDouble() == 0.0) {
 				return new DoubleConstant(1.0);
 			} else if (exponentValue.getAsDouble() == 1.0) {
 				return base;
-			}
-
-			OptionalDouble baseValue = base.doubleValue();
-
-			if (enableCollapseConstants && baseValue.isPresent()) {
+			} else if (baseValue.isPresent()) {
 				return new DoubleConstant(Math.pow(baseValue.getAsDouble(), exponentValue.getAsDouble()));
+			}
+		} else if (baseValue.isPresent()) {
+			if (baseValue.getAsDouble() == 0.0) {
+				return new DoubleConstant(0.0);
+			} else if (baseValue.getAsDouble() == 1.0) {
+				return new DoubleConstant(1.0);
 			}
 		}
 

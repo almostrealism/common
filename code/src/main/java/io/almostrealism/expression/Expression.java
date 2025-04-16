@@ -524,11 +524,11 @@ public abstract class Expression<T> implements
 	public Expression<Double> tan() { return Tangent.of((Expression) this); }
 	public Expression<Double> tanh() { return Tangent.of((Expression) this, true); }
 
-	public Negation not() {
+	public Expression not() {
 		if (getType() != Boolean.class)
 			throw new IllegalArgumentException();
 
-		return new Negation((Expression) this);
+		return Negation.of(this);
 	}
 
 	public Expression eqZero() { return eq(0.0); }
@@ -536,7 +536,7 @@ public abstract class Expression<T> implements
 	public Expression eq(long operand) { return eq(ExpressionFeatures.getInstance().e(operand)); };
 	public Expression eq(double operand) { return eq(new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
-	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
+	public Expression and(Expression<Boolean> operand) { return Conjunction.of((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
 		return Conditional.of((Expression<Boolean>) this, positive, negative);
@@ -552,7 +552,7 @@ public abstract class Expression<T> implements
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;
-		return new Cast<>(Double.class, Cast.FP_NAME, this);
+		return Cast.of(Double.class, Cast.FP_NAME, this);
 	}
 
 	public Expression<Integer> toInt() {
@@ -562,7 +562,7 @@ public abstract class Expression<T> implements
 	public Expression<Integer> toInt(boolean requireInt) {
 		boolean cast = requireInt ? getType() != Integer.class : isFP();
 		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return cast ? new Cast(Integer.class, Cast.INT_NAME, this) : (Expression<Integer>) this;
+		return cast ? Cast.of(Integer.class, Cast.INT_NAME, this) : (Expression<Integer>) this;
 	}
 
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {

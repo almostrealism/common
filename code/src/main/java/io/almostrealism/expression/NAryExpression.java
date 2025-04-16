@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
-	public static boolean removeIdentities = true;
-	public static boolean enableSort = false;
 
 	private String operator;
 
@@ -78,7 +76,7 @@ public class NAryExpression<T> extends Expression<T> {
 			Objects.requireNonNull(values[i]);
 		}
 
-		return enableSort ? sort(values) : values;
+		return values;
 	}
 
 	protected static Class<? extends Number> type(Object... values) {

@@ -240,13 +240,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.divide(18 * n);
 		log(e.getExpression(lang));
 
-		if (Quotient.enableLowerBoundedNumeratorReplace) {
-			Assert.assertEquals("54", e.getExpression(lang));
-		} else {
-			e = ctx.getSeriesProvider().getSeries(e);
-			log(e.getExpression(lang));
-			Assert.assertEquals("54", e.getExpression(lang));
-		}
+		Assert.assertEquals("54", e.getExpression(lang));
 	}
 
 	@Test
@@ -259,12 +253,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.divide(18 * n);
 		log(e.getExpression(lang));
 
-		if (Quotient.enableLowerBoundedNumeratorReplace) {
-			Assert.assertEquals("0", e.getExpression(lang));
-		} else {
-			e = ctx.getSeriesProvider().getSeries(e);
-			log(e.getExpression(lang));
-		}
+		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
 	@Test
