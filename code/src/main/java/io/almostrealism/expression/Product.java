@@ -316,7 +316,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		// TODO  which handles this case, but may include other optimizations
 		if (operands.size() == 2 && operands.get(0) instanceof ArithmeticGenerator && operands.get(1).longValue().isPresent()) {
 			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operands.get(0);
-			return new ArithmeticGenerator(ag.getIndex(),
+			return ArithmeticGenerator.create(ag.getIndex(),
 					ag.getScale() * operands.get(1).longValue().getAsLong(),
 					ag.getGranularity(), ag.getMod());
 		}

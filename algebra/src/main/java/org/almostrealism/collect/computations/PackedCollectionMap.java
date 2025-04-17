@@ -92,8 +92,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
+		KernelIndex kernel = new KernelIndex(context);
+
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = new KernelIndex();
+			Expression index = kernel;
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
 			Expression<Double> value = getValueAt(index);
@@ -107,7 +109,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			scope.getVariables().add(output.referenceRelative(i).assign(value));
+			scope.getVariables().add(output.referenceRelative(e(i), kernel).assign(value));
 		}
 
 		return scope;

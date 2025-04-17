@@ -337,7 +337,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		System.out.println(e.getExpression(lang));
 
 		IndexSequence seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.toArray()));
+		System.out.println(Arrays.toString(seq.intValues().toArray()));
 
 		e = e.getSimplified();
 		System.out.println(e.getExpression(lang));

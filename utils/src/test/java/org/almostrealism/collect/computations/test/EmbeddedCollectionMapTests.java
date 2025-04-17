@@ -143,44 +143,36 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 	public void singleEnumerateMax() {
 		if (skipKnownIssues) return;
 
-		boolean kernelSimplification = KernelIndex.enableSimplification;
+		int c = 16;
+		int d = 1;
 
-		try {
-			KernelIndex.enableSimplification = false;
+		PackedCollection<?> input = tensor(shape(1, c, d)).pack();
 
-			int c = 16;
-			int d = 1;
+		for (int i = 0; i < 10; i++) {
+			input.fill(pos -> Math.random());
 
-			PackedCollection<?> input = tensor(shape(1, c, d)).pack();
+			CollectionProducer<PackedCollection<?>> pool =
+					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
+			System.out.println(pool.getShape());
+			input.print();
 
-			for (int i = 0; i < 10; i++) {
-				input.fill(pos -> Math.random());
+			PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
+			System.out.println(output.getShape());
 
-				CollectionProducer<PackedCollection<?>> pool =
-						enumerate(shape(1, c, d), cp(input)).traverse(1).max();
-				System.out.println(pool.getShape());
-				input.print();
+			input.print();
 
-				PackedCollection<?> output = pool.get().evaluate().reshape(d, 1);
-				System.out.println(output.getShape());
+			for (int copy = 0; copy < d; copy++) {
+				double expected = -Math.pow(10, 5);
 
-				input.print();
-
-				for (int copy = 0; copy < d; copy++) {
-					double expected = -Math.pow(10, 5);
-
-					for (int j = 0; j < c; j++) {
-						expected = Math.max(expected, input.valueAt(0, j, copy));
-					}
-
-					double actual = output.valueAt(copy, 0);
-
-					System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+				for (int j = 0; j < c; j++) {
+					expected = Math.max(expected, input.valueAt(0, j, copy));
 				}
+
+				double actual = output.valueAt(copy, 0);
+
+				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
 			}
-		} finally {
-			KernelIndex.enableSimplification = kernelSimplification;
 		}
 	}
 

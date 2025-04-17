@@ -57,6 +57,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	protected Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
+
+		if (values.stream().anyMatch(i -> i.doubleValue().orElse(1.0) == 0.0)) {
+			throw new IllegalArgumentException("Sum cannot contain zero");
+		}
 	}
 
 	protected Sum(Expression<? extends Number>... values) {
@@ -178,33 +182,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				.filter(e -> e.doubleValue().orElse(-1) != 0.0)
 				.forEach(children::add);
 
-		if (children.size() == 1) return children.get(0);
+		if (children.size() == 1)
+			return children.get(0);
 		if (children.size() == 0) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-		}
-
-		Set<Integer> removed = new HashSet<>();
-
-		i: for (int i = 0; i < children.size(); i++) {
-			if (removed.contains(i)) continue i;
-
-			if (children.get(i) instanceof Minus) {
-				j: for (int j = 0; j < children.size(); j++) {
-					if (i == j || removed.contains(j)) continue j;
-
-					if (children.get(j).equals(children.get(i).getChildren().get(0))) {
-						removed.add(i);
-						removed.add(j);
-						children.set(i, new IntegerConstant(0));
-						children.set(j, new IntegerConstant(0));
-						continue i;
-					}
-				}
-			}
-		}
-
-		if (!removed.isEmpty()) {
-			throw new UnsupportedOperationException();
 		}
 
 		children = children.stream().sorted(depthOrder()).collect(Collectors.toList());

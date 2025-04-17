@@ -31,7 +31,7 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	private final long granularity;
 	private final long mod;
 
-	public ArithmeticGenerator(Expression<?> index, long scale, long granularity, long mod) {
+	protected ArithmeticGenerator(Expression<?> index, long scale, long granularity, long mod) {
 		super(List.of(new Quotient(List.of(index.imod(mod),
 						ExpressionFeatures.getInstance().e(granularity))),
 				ExpressionFeatures.getInstance().e(scale)));
@@ -57,15 +57,17 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 
 	@Override
 	public Expression<? extends Number> add(Expression<?> operand) {
-		if (operand instanceof ArithmeticGenerator) {
+		if (operand.intValue().orElse(1) == 0) {
+			return this;
+		} else if (operand instanceof ArithmeticGenerator) {
 			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operand;
 
 			if (Objects.equals(getIndex(), ag.getIndex())) {
 				if (getGranularity() == ag.getGranularity() && getMod() == ag.getMod()) {
-					return new ArithmeticGenerator<>(getIndex(), getScale() + ag.getScale(), getGranularity(), getMod());
+					return ArithmeticGenerator.create(getIndex(), getScale() + ag.getScale(), getGranularity(), getMod());
 				} else if (getMod() % ag.getMod() == 0 && ag.getMod() == getScale() &&
 						getScale() == getGranularity() && ag.getScale() == ag.getGranularity()) {
-					return new ArithmeticGenerator<>(getIndex(), ag.getScale(), ag.getGranularity(), getMod());
+					return ArithmeticGenerator.create(getIndex(), ag.getScale(), ag.getGranularity(), getMod());
 				}
 			}
 		}
@@ -78,7 +80,7 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 		OptionalLong d = operand.longValue();
 
 		if (d.isPresent()) {
-			return new ArithmeticGenerator<>(getIndex(), getScale() * d.getAsLong(), getGranularity(), getMod());
+			return ArithmeticGenerator.create(getIndex(), getScale() * d.getAsLong(), getGranularity(), getMod());
 		}
 
 		return new Product(List.of(this, operand));
@@ -89,10 +91,14 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 		OptionalLong d = operand.longValue();
 
 		if (d.isPresent()) {
-			if (getScale() == 1) {
-				return new ArithmeticGenerator<>(getIndex(), 1, d.getAsLong() * getGranularity(), getMod());
+			long bound = upperBound().orElse(Long.MAX_VALUE);
+
+			if (!isPossiblyNegative() && bound < d.getAsLong()) {
+				return new IntegerConstant(0);
+			} else if (getScale() == 1) {
+				return ArithmeticGenerator.create(getIndex(), 1, d.getAsLong() * getGranularity(), getMod());
 			} else if (getScale() % d.getAsLong() == 0) {
-				return new ArithmeticGenerator<>(getIndex(), getScale() / d.getAsLong(), getGranularity(), getMod());
+				return ArithmeticGenerator.create(getIndex(), getScale() / d.getAsLong(), getGranularity(), getMod());
 			}
 		}
 
@@ -107,5 +113,16 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	public Expression eq(Expression<?> operand) {
 		// TODO Optimization
 		return super.eq(operand);
+	}
+
+	public static Expression<? extends Number> create(Expression<?> index, long scale, long granularity, long mod) {
+		if (!index.isPossiblyNegative() && Math.abs(granularity) >= Math.abs(mod)) {
+			// If the granularity is greater than the modulus, the result would
+			// divide an expression which is always below the denominoator and
+			// hence is always zero
+			return new IntegerConstant(0);
+		}
+
+		return new ArithmeticGenerator<>(index, scale, granularity, mod);
 	}
 }
