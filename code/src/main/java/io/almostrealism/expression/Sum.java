@@ -29,22 +29,17 @@ import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
-	public static boolean enableConstantExtraction = true;
-	public static boolean enableCoefficientExtraction = true;
-	public static boolean enableModDetection = true;
 	public static boolean enableGenerateReordering = false;
 
 	public static boolean enableFlattenRepeatedSumAlways = false;
@@ -176,22 +171,11 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		Expression<?> simple = super.simplify(context, depth);
 		if (!(simple instanceof Sum)) return simple;
 
-		List<Expression<?>> children = new ArrayList<>();
-
-		simple.flatten().stream()
-				.filter(e -> e.doubleValue().orElse(-1) != 0.0)
-				.forEach(children::add);
-
-		if (children.size() == 1)
-			return children.get(0);
-		if (children.size() == 0) {
-			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-		}
-
-		children = children.stream().sorted(depthOrder()).collect(Collectors.toList());
+		List<Expression<?>> children = simple.flatten().stream()
+				.sorted(depthOrder()).collect(Collectors.toList());
 
 		if (context.getTraversalProvider() != null &&
-				children.stream().allMatch(e -> e.isSingleIndexMasked())) {
+				children.stream().allMatch(Expression::isSingleIndexMasked)) {
 			if (enableGenerateReordering) {
 				return context.getTraversalProvider()
 						.generateReordering(generate(children))
@@ -286,33 +270,25 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			return repeated;
 
 		double constant = 0.0;
-		List<Expression<?>> operands;
-
 		boolean fp = false;
+		List<Expression<?>> operands = new ArrayList<>();
 
-		if (enableConstantExtraction) {
-			operands = new ArrayList<>();
+		e: for (Expression e : values) {
+			if (e.isFP()) fp = true;
+			if (e.longValue().orElse(-1) == 0) continue e;
 
-			e: for (Expression e : values) {
-				if (e.isFP()) fp = true;
-				if (e.longValue().orElse(-1) == 0) continue e;
+			OptionalDouble d = e.doubleValue();
 
-				OptionalDouble d = e.doubleValue();
-
-				if (d.isPresent()) {
-					constant += d.getAsDouble();
-				} else {
-					operands.add(e);
-				}
+			if (d.isPresent()) {
+				constant += d.getAsDouble();
+			} else {
+				operands.add(e);
 			}
+		}
 
-			if (constant != 0.0) {
-				Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
-				operands.add(c);
-			}
-		} else {
-			operands = Stream.of(values).filter(v -> v.intValue().orElse(-1) != 0).collect(Collectors.toList());
-			fp = operands.stream().anyMatch(Expression::isFP);
+		if (constant != 0.0) {
+			Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
+			operands.add(c);
 		}
 
 		if (operands.size() > 1 && operands.size() < maxDistinctDetectionWidth && operands.stream().distinct().count() == 1) {
@@ -359,42 +335,27 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.size() > 1) {
-			if (enableCoefficientExtraction) {
-				// Combine any like terms
-				List<Expression<?>> combinedOperands = new ArrayList<>();
+			// Combine any like terms
+			List<Expression<?>> combinedOperands = new ArrayList<>();
 
-				int operandIndex = 0;
+			int operandIndex = 0;
 
-				i: for (int i = 0; i < maxCoefficientExtractionWidth && operandIndex < operands.size(); i++) {
-					Expression<?> t = operands.get(operandIndex);
-					Optional<Term> d = extractCoefficients(t, operandIndex, operands, true);
-
-					if (d.isPresent()) {
-						combinedOperands.add(d.get().result(fp));
-					} else {
-						// The target should always at least match itself
-						throw new UnsupportedOperationException();
-					}
-				}
-
-				// Add all the non-zero terms as operands
-				combinedOperands.stream()
-						.filter(e -> e.doubleValue().orElse(1.0) != 0.0)
-						.forEach(operands::add);
-			} else {
-				// Combine terms if all terms are like the first term
-				Expression<?> t = operands.get(0).getChildren().isEmpty() ?
-						operands.get(0) : operands.get(0).getChildren().get(0);
-				Optional<Term> d = extractCoefficients(t, -1, operands, false);
+			i: for (int i = 0; i < maxCoefficientExtractionWidth && operandIndex < operands.size(); i++) {
+				Expression<?> t = operands.get(operandIndex);
+				Optional<Term> d = extractCoefficients(t, operandIndex, operands, true);
 
 				if (d.isPresent()) {
-					if (fp) {
-						return (Expression) t.multiply(d.get().getCoefficient());
-					} else {
-						return (Expression) t.multiply((long) d.get().getCoefficient());
-					}
+					combinedOperands.add(d.get().result(fp));
+				} else {
+					// The target should always at least match itself
+					throw new UnsupportedOperationException();
 				}
 			}
+
+			// Add all the non-zero terms as operands
+			combinedOperands.stream()
+					.filter(e -> e.doubleValue().orElse(1.0) != 0.0)
+					.forEach(operands::add);
 		}
 
 		if (operands.isEmpty()) return (Expression) new IntegerConstant(0);
@@ -474,7 +435,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @return A new modulus expression if compatible, or {@code null} otherwise.
 	 */
 	private static Expression<?> checkMod(Expression<?> pos, Expression<?> neg) {
-		if (!enableModDetection || pos.countNodes() > maxModDetectionNodes) return null;
+		if (pos.countNodes() > maxModDetectionNodes) return null;
 
 		if (neg.countNodes() != pos.countNodes() + 4) return null;
 		if (pos.isFP() || neg.isFP()) return null;

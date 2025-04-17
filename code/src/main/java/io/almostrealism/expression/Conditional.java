@@ -75,32 +75,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 	@Override
 	public Expression simplify(KernelStructureContext context, int depth) {
 		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Conditional)) return flat;
+		if (!enableSimplification || !(flat instanceof Conditional)) return flat;
 
 		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);
 		Expression<Double> positive = (Expression<Double>) flat.getChildren().get(1);
 		Expression<Double> negative = (Expression<Double>) flat.getChildren().get(2);
 
-		Optional<Boolean> cond = condition.booleanValue();
-		if (cond.isPresent()) {
-			if (cond.get()) {
-				return positive;
-			} else {
-				return negative;
-			}
-		}
-
-		OptionalInt li = positive.intValue();
-		OptionalInt ri = negative.intValue();
-		if (li.isPresent() && ri.isPresent() && li.getAsInt() == ri.getAsInt())
-			return new IntegerConstant(li.getAsInt());
-
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
-		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
-			return new DoubleConstant(ld.getAsDouble());
-
-		if (!enableSimplification) return Conditional.of(condition, positive, negative);
 
 		boolean replaceCondition = false;
 		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
