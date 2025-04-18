@@ -22,14 +22,19 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableProductModSimplify = true;
@@ -64,6 +69,25 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return KernelSeries.infinite();
+	}
+
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		OptionalLong n = getNumerator().getLimit();
+		OptionalLong d = getDenominator().longValue();
+
+		if (n.isEmpty() || d.isEmpty() ||
+				d.getAsLong() > Integer.MAX_VALUE ||
+				n.getAsLong() / d.getAsLong() > ScopeSettings.indexOptionLimit ||
+				!getNumerator().equals(index)) {
+			return super.getIndexOptions(index);
+		}
+
+		int di = Math.toIntExact(d.getAsLong());
+		return Optional.of(IntStream.range(0, Math.toIntExact(n.getAsLong() / di))
+				.map(i -> i * di)
+				.boxed()
+				.collect(Collectors.toSet()));
 	}
 
 	@Override
@@ -255,7 +279,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		OptionalLong upper = numerator.upperBound();
 
 		if (!numerator.isPossiblyNegative() && d.isPresent() &&
-				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
+				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
 		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
 			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());

@@ -269,6 +269,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 				if (simple != null)
 					return simple;
 			}
+
+			if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+				return And.of(input, new IntegerConstant((int) m - 1));
+			}
 		}
 
 		return new Mod(input, mod, fp);

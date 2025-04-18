@@ -58,6 +58,11 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelIndexOptions() {
+		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().size());
+	}
+
+	@Test
 	public void modIndexOptions() {
 		KernelIndex k = kernel();
 		Expression<?> r = k.imod(20);
@@ -65,6 +70,15 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().size());
 		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().size());
 		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
+	}
+
+	@Test
+	public void divideIndexOptions() {
+		KernelIndex k = kernel().withLimit(100);
+		Expression<?> r = k.divide(20);
+		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().size());
+		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
 	}
 
 	@Test

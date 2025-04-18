@@ -227,13 +227,13 @@ public abstract class Expression<T> implements
 				return Optional.of(Collections.emptySet());
 			}
 
-			OptionalLong upperBound = upperBound();
-			if (upperBound.isEmpty() || upperBound.getAsLong() > ScopeSettings.indexOptionLimit) {
+			OptionalLong limit = getLimit();
+			if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
 				return Optional.empty();
 			}
 
 			return Optional.of(
-					IntStream.range(0, Math.toIntExact(upperBound.getAsLong()))
+					IntStream.range(0, Math.toIntExact(limit.getAsLong()))
 						.boxed().collect(Collectors.toSet()));
 		}
 

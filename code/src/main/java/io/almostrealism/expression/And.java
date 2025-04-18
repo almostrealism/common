@@ -79,4 +79,8 @@ public class And extends BinaryExpression<Integer> {
 	public Number evaluate(Number... children) {
 		return children[0].intValue() & children[1].intValue();
 	}
+
+	public static Expression<?> of(Expression<?> a, Expression<?> b) {
+		return new And((Expression) a, (Expression) b);
+	}
 }
