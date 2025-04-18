@@ -23,11 +23,16 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
@@ -107,6 +112,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return KernelSeries.infinite();
+	}
+
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		int m = (int) getRight().longValue().orElse(Integer.MAX_VALUE);
+
+		if (m > ScopeSettings.indexOptionLimit || !getLeft().equals(index)) {
+			return super.getIndexOptions(index);
+		}
+
+		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
 	}
 
 	@Override

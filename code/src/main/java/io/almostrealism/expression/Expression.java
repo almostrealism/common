@@ -212,6 +212,46 @@ public abstract class Expression<T> implements
 		return indices;
 	}
 
+	/**
+	 * Attempt to determine the smallest {@link Set} of distinct {@link Integer}
+	 * values (eg, the domain) for the provided index that would be required to
+	 * generate all possible results (eg, the range) for this expression. Note
+	 * that this may return an empty {@link Optional} even in cases where it is
+	 * possible to determine the domain, if the resulting {@link Set} would
+	 * contain more than {@value ScopeSettings#indexOptionLimit} elements or if
+	 * some members of the {@link Set} would exceed {@link Integer#MAX_VALUE}.
+	 */
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		if (this instanceof Index) {
+			if (!Objects.equals(this, index)) {
+				return Optional.of(Collections.emptySet());
+			}
+
+			OptionalLong upperBound = upperBound();
+			if (upperBound.isEmpty() || upperBound.getAsLong() > ScopeSettings.indexOptionLimit) {
+				return Optional.empty();
+			}
+
+			return Optional.of(
+					IntStream.range(0, Math.toIntExact(upperBound.getAsLong()))
+						.boxed().collect(Collectors.toSet()));
+		}
+
+		Set<Integer> options = new HashSet<>();
+
+		for (Expression<?> e : getChildren()) {
+			Optional<Set<Integer>> o = e.getIndexOptions(index);
+
+			if (o.isPresent() && options.size() < ScopeSettings.indexOptionLimit) {
+				options.addAll(o.get());
+			} else {
+				return Optional.empty();
+			}
+		}
+
+		return options.size() < ScopeSettings.indexOptionLimit ? Optional.of(options) : Optional.empty();
+	}
+
 	public KernelStructureContext getStructureContext() {
 		return getChildren().stream()
 				.map(Expression::getStructureContext)

@@ -58,6 +58,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void modIndexOptions() {
+		KernelIndex k = kernel();
+		Expression<?> r = k.imod(20);
+		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
+	}
+
+	@Test
 	public void productToInt() {
 		Expression a = new IntegerConstant(1);
 		Expression b = new IntegerConstant(2);
