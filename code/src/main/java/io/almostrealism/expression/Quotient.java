@@ -84,7 +84,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		int di = Math.toIntExact(d.getAsLong());
-		return Optional.of(IntStream.range(0, Math.toIntExact(n.getAsLong() / di))
+		int limit = Math.toIntExact(n.getAsLong() / di) +
+						(n.getAsLong() % di == 0 ? 0 : 1);
+		return Optional.of(IntStream.range(0, limit)
 				.map(i -> i * di)
 				.boxed()
 				.collect(Collectors.toSet()));

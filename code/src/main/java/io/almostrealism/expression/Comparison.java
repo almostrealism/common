@@ -22,13 +22,22 @@ import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ScopeSettings;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class Comparison extends BinaryExpression<Boolean> {
+	public static boolean enableIndexOptionSimplification = true;
+
+	public static int indexOptionLimit = ScopeSettings.indexOptionLimit >> 1;
+
 	public Comparison(Expression<?> left, Expression<?> right) {
 		super(Boolean.class, left, right);
 	}
@@ -103,6 +112,25 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		OptionalDouble rd = right.doubleValue();
 		if (ld.isPresent() && rd.isPresent())
 			return new BooleanConstant(compare(ld.getAsDouble(), rd.getAsDouble()));
+
+		Optional<Set<Integer>> options = enableIndexOptionSimplification ?
+				flat.getIndexOptions(kernel(context)) : Optional.empty();
+		if (options.isPresent() && flat.countNodes() > 3) {
+			if (options.get().isEmpty() || options.get().size() > indexOptionLimit ||
+					!flat.isValue(new IndexValues(0))) {
+				return flat;
+			}
+
+			List<Integer> inputs = options.get().stream().sorted().collect(Collectors.toList());
+			List<Boolean> values = inputs.stream()
+					.map(i -> flat.value(new IndexValues(i)).longValue() != 0)
+					.collect(Collectors.toList());
+
+			List<Boolean> distinct = values.stream().distinct().collect(Collectors.toList());
+			if (distinct.size() == 1) {
+				return new BooleanConstant(distinct.get(0));
+			}
+		}
 
 		if (flat.isSeriesSimplificationTarget(depth) && context.getSeriesProvider() != null) {
 			return context.getSeriesProvider().getSeries(flat);

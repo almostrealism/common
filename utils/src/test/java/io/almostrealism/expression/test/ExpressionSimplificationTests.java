@@ -38,7 +38,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
@@ -73,12 +75,22 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
-	public void divideIndexOptions() {
+	public void divideIndexOptions1() {
 		KernelIndex k = kernel().withLimit(100);
 		Expression<?> r = k.divide(20);
 		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().size());
 		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().size());
 		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
+	}
+
+	@Test
+	public void divideIndexOptions2() {
+		KernelIndex k = kernel().withLimit(6);
+		Expression<?> r = k.divide(4);
+
+		Set<Integer> options = r.getIndexOptions(k).orElseThrow();
+		Assert.assertEquals(r.sequence().distinct().length, options.size());
+		Assert.assertTrue(options.contains(4));
 	}
 
 	@Test
@@ -596,6 +608,37 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 						.multiply(-2100);
 
 		Assert.assertEquals("(kernel0 % 2100) * -2100", e.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void kernelSumModOptions1() {
+		// ((kernel0 / 4) * 2) + (kernel0 % 2)
+		KernelIndex kernel = kernel().withLimit(8);
+		Expression<?> e = kernel.divide(4).multiply(2)
+								.add(kernel.imod(2));
+		log(e.getExpression(lang));
+
+		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+
+		// Ideally it would identify 5, but if it cannot
+		// - it should at least be explicitly uncertain
+		Assert.assertTrue(options.isEmpty() || options.get().contains(5));
+	}
+
+	@Test
+	public void kernelSumModOptions2() {
+		// ((((kernel0 % 4) / 2) * 4) + ((kernel0 / 4) * 2) + (kernel0 % 2))
+		KernelIndex kernel = kernel().withLimit(8);
+		Expression<?> e = kernel.imod(4).divide(2).multiply(4)
+				.add(kernel.divide(4).multiply(2))
+				.add(kernel.imod(2));
+		log(e.getExpression(lang));
+
+		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+
+		// Ideally it would identify 7, but if it cannot
+		// - it should at least be explicitly uncertain
+		Assert.assertTrue(options.isEmpty() || options.get().contains(7));
 	}
 
 	@Test

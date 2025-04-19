@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.compute.ParallelProcess;
@@ -55,6 +56,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 		value.reshape(shape(rows, colWidth).traverse()).print();
 		System.out.println("--");
+	}
+
+	default String describeOptions(Expression<?> e) {
+		Set<Integer> options = e.getIndexOptions(kernel()).orElseThrow();
+		return e.getExpression(Expression.defaultLanguage()) + " | " + options;
 	}
 
 	default void assertEquals(Scalar a, Scalar b) {

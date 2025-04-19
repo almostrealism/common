@@ -28,6 +28,7 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +36,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -74,6 +76,27 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		return result;
+	}
+
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		List<Optional<Set<Integer>>> childOptions = getChildren().stream()
+				.map(child -> child.getIndexOptions(index))
+				.collect(Collectors.toList());
+		if (childOptions.stream().anyMatch(Optional::isEmpty)) return Optional.empty();
+
+		List<Set<Integer>> optionValues = childOptions.stream()
+				.filter(Optional::isPresent)
+				.map(Optional::get)
+				.filter(s -> !s.isEmpty())
+				.collect(Collectors.toList());
+
+		if (optionValues.isEmpty())
+			return Optional.of(Collections.emptySet());
+
+		Set<Integer> largest = Collections.max(optionValues, Comparator.comparingInt(Set::size));
+		boolean allContained = optionValues.stream().allMatch(largest::containsAll);
+		return allContained ? Optional.of(largest) : Optional.empty();
 	}
 
 	@Override
