@@ -236,6 +236,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelModQuotient2() {
+		// (kernel0 % 9) / 3
+		Expression e = kernel().imod(9).divide(3);
+		log(e.getExpression(lang));
+
+		e = e.getSimplified(new DefaultKernelStructureContext(9));
+		log(e.getExpression(lang));
+
+		Assert.assertEquals("kernel0 / 3", e.getExpression(lang));
+	}
+
+	@Test
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
@@ -423,16 +435,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	public void sequenceMax1() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.toArray()));
-		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
 	@Test
 	public void sequenceMax2() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.toArray()));
-		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
 	@Test
@@ -536,7 +548,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n).divide(n);
 		compareSimplifiedSequence(e);
 
-		System.out.println(e.getExpression(lang));
+		log(e.getExpression(lang));
 	}
 
 	@Test
@@ -767,11 +779,11 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.add(kernel().divide(9).multiply(9))
 				.divide(3).imod(3)
 				.eq(kernel().divide(3)).conditional(e(1), e(0));
-		System.out.println(e.getExpression(lang));
+		log(e.getExpression(lang));
 
 		e = e.getSimplified();
-		System.out.println(e.getExpression(lang));
-		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+		log(e.getExpression(lang));
+		log(Arrays.toString(e.sequence(9).toArray()));
 
 		e = e.getSimplified(new DefaultKernelStructureContext(9));
 		// Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
@@ -828,11 +840,17 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	protected void compareSequences(Expression a, Expression b) {
-		System.out.println(b.getExpression(lang));
+		log(b.getExpression(lang));
 
 		long seqA[] = a.sequence().longValues().toArray();
 
-		IndexSequence s = b.sequence();
+		IndexSequence s;
+		if (b.getStructureContext() == null || b.getStructureContext().getKernelMaximum().isEmpty()) {
+			s = b.sequence();
+		} else {
+			s = b.sequence(Math.toIntExact(b.getStructureContext().getKernelMaximum().orElseThrow()));
+		}
+
 		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
 		if (seqA.length < 100) {

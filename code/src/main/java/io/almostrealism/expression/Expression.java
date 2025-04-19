@@ -343,7 +343,7 @@ public abstract class Expression<T> implements
 		}
 
 		return sequence(indices.iterator().next(),
-				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);
+				Math.toIntExact(indices.iterator().next().getLimit().orElse(-1)), Integer.MAX_VALUE);
 	}
 
 	public IndexSequence sequence(int len) {
@@ -355,13 +355,11 @@ public abstract class Expression<T> implements
 
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {
-		if (len < 0) throw new IllegalArgumentException();
-
 		if (ScopeSettings.enableArithmeticSequence && equals(index)) {
 			return new ArithmeticIndexSequence(1, 1, len);
 		}
 
-		if (!isValue(new IndexValues().put(index, 0))) {
+		if (len < 0 || !isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
@@ -396,7 +394,14 @@ public abstract class Expression<T> implements
 		return seq;
 	}
 
-	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
+	public Expression<?> getSimplified() {
+		KernelStructureContext context = getStructureContext();
+		if (context != null) {
+			return getSimplified(context);
+		}
+
+		return getSimplified(new NoOpKernelStructureContext());
+	}
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
 		return getSimplified(context, 0);
