@@ -987,6 +987,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
+		if (Algebraic.isZero(b)) {
+			throw new UnsupportedOperationException();
+		} else if (Algebraic.isZero(a)) {
+			return zeros(outputShape(a, b));
+		}
+
 		CollectionProducer<T> p = compute("divide",
 				shape -> (args) ->
 						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
