@@ -86,6 +86,11 @@ public class SystemUtils {
 		return Optional.ofNullable(getProperty("AR_MAC_APP"));
 	}
 
+	public static Optional<String> getAppleTeam() {
+		if (!isMacOS()) return Optional.empty();
+		return Optional.ofNullable(getProperty("AR_APPLE_TEAM"));
+	}
+
 	public static String getLocalDestination(String file) {
 		return getLocalDestination().resolve(file).toString();
 	}
@@ -93,6 +98,16 @@ public class SystemUtils {
 	public static Path getLocalDestination() {
 		return getMacApp().map(SystemUtils::getAppSupportPath)
 				.orElse(Path.of("."));
+	}
+
+	public static String getSharedDestination(String file) {
+		return getSharedDestination().resolve(file).toString();
+	}
+
+	public static Path getSharedDestination() {
+		return getMacApp().map(s -> SystemUtils.getSharedContainer(getAppleTeam()
+						.orElseThrow(() -> new RuntimeException("AR_APPLE_TEAM not set")) + "." + s))
+				.orElseGet(() -> Path.of("."));
 	}
 
 	public static Path getExtensionsPath() {
@@ -108,6 +123,12 @@ public class SystemUtils {
 
 	public static Path getAppSupportPath(String appName) {
 		Path path = Paths.get(getHome(), "Library", "Application Support", appName);
+		ensureDirectoryExists(path);
+		return path;
+	}
+
+	public static Path getSharedContainer(String containerName) {
+		Path path = Paths.get(getHome(), "Library", "Group Containers", containerName);
 		ensureDirectoryExists(path);
 		return path;
 	}
