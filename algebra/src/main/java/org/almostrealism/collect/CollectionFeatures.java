@@ -234,8 +234,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		if (shape != null) {
+			Evaluable ev = actual.get();
 			actual = new DynamicCollectionProducer(new TraversalPolicy(1),
-					actual.get()::evaluate, false, fixedCount);
+					args -> ev.evaluate((Object[]) args), false, fixedCount);
 		}
 
 		return new DelegatedCollectionProducer<>(c(actual), false, false);
@@ -522,11 +523,16 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
-		return new DynamicCollectionProducer(shape, function);
+		return new DynamicCollectionProducer<>(shape, function);
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
-		return new DynamicCollectionProducer(shape, function, kernel);
+		return new DynamicCollectionProducer<>(shape, function, kernel);
+	}
+
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function,
+										   boolean kernel, boolean fixedCount) {
+		return new DynamicCollectionProducer<>(shape, function, kernel, fixedCount);
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape,
