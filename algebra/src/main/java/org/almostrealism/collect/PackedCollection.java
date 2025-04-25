@@ -113,6 +113,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	@Override
+	protected void init() {
+		if (shape.getTotalInputSizeLong() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(String.valueOf(shape.getTotalInputSizeLong()));
+		}
+
+		super.init();
+	}
+
+	@Override
 	public T get(int index) {
 		if (shape.getTraversalAxis() == 1 && supply != null) {
 			return supply.apply(new DelegateSpec(this, shape.size(1) * index));

@@ -239,7 +239,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		throw new UnsupportedOperationException();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> mod) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> mod(double mod) {
+		return mod((Producer) this, c(mod));
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> mod(Producer<V> mod) {
 		return mod((Producer) this, (Producer) mod);
 	}
 
