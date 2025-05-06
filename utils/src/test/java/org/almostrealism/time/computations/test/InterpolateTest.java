@@ -149,21 +149,16 @@ public class InterpolateTest implements TestFeatures {
 		Evaluable<?> eval = interpolate.get();
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 4)));
+		dest.print();
 		assertEquals(12.5, dest.toDouble(0));
 		assertEquals(15, dest.toDouble(3));
 
 		rate.setMem(0, 2.0);
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 4)));
-//		assertEquals(12.5, dest.toDouble(0));
-//		assertEquals(15, dest.toDouble(3));
+		dest.print();
+		assertEquals(9.0, dest.toDouble(0));
+		assertEquals(16.0, dest.toDouble(1));
+		assertEquals(0.0, dest.toDouble(3));
 	}
-
-	// new Interpolate(
-	//						new PassThroughProducer<>(1, 0, -1),
-	//						new PassThroughProducer<>(1, 1),
-	//						new PassThroughProducer<>(2, 2, -1),
-	//						v -> Product.of(v, HardwareFeatures.ops().expressionForDouble(1.0 / OutputLine.sampleRate)))
 }

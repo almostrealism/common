@@ -45,7 +45,8 @@ import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableDirectReallocation = true;
-	public static boolean enableLargeAllocationLogging = false;
+	public static boolean enableLargeAllocationLogging =
+			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("clAllocationSizes", 1024 * 1024);
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("clDeallocationSizes", 1024 * 1024);

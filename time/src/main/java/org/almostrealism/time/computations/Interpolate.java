@@ -95,7 +95,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 
 	protected Expression<Double> getRate() {
 		if (applyRate) {
-			getArgumentValueRelative(3, 0);
+			return getArgumentValueRelative(3, 0);
 		}
 
 		return e(1.0);
@@ -198,8 +198,6 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		code.accept("	} else {\n");
 		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
 		code.accept("	}\n");
-//		code.accept(res + " = " + left + ";\n");
-//		code.accept(res + " = " + bankl_value + ";\n");
 		code.accept("}");
 
 		return scope;
