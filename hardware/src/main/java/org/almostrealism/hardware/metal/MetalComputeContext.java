@@ -42,7 +42,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::log;\n" +
 									"using metal::sin;\n" +
 									"using metal::cos;\n" +
-									"using metal::tan;\n";
+									"using metal::tan;\n" +
+									"using metal::tanh;\n";
 
 	private MTLDevice mainDevice;
 	private MTLCommandQueue queue;

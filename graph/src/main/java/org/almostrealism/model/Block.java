@@ -33,6 +33,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Block extends Component, CellularPropagation<PackedCollection<?>>, Setup, LayerFeatures {
+	boolean enableAlignCountReshape = false;
+
 	TraversalPolicy getInputShape();
 
 	default Runnable forward(PackedCollection<?> input) {
@@ -50,6 +52,10 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	default Block reshape(TraversalPolicy shape) {
 		if (getOutputShape().getTotalSize() != shape.getTotalSize()) {
 			throw new IllegalArgumentException();
+		}
+
+		if (enableAlignCountReshape) {
+			shape = shape.alignCount(getOutputShape());
 		}
 
 		return andThen(reshape(getOutputShape(), shape));

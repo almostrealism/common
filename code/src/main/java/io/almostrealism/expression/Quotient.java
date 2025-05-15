@@ -22,24 +22,22 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public static boolean enableDistributiveSum = true;
-	public static boolean enableFpDivisorReplacement = true;
-	public static boolean enableExpandedDistributiveSum = true;
 	public static boolean enableProductModSimplify = true;
-	public static boolean enableDenominatorCollapse = true;
-	public static boolean enableRequireNonNegative = true;
-	public static boolean enableBoundedNumeratorReplace = true;
-	public static boolean enableLowerBoundedNumeratorReplace = true;
 	public static boolean enableArithmeticGenerator = true;
 
 	public static long maxCombinedDenominator = Integer.MAX_VALUE;
@@ -71,6 +69,27 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return KernelSeries.infinite();
+	}
+
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		OptionalLong n = getNumerator().getLimit();
+		OptionalLong d = getDenominator().longValue();
+
+		if (n.isEmpty() || d.isEmpty() ||
+				d.getAsLong() > Integer.MAX_VALUE ||
+				n.getAsLong() / d.getAsLong() > ScopeSettings.indexOptionLimit ||
+				!getNumerator().equals(index)) {
+			return super.getIndexOptions(index);
+		}
+
+		int di = Math.toIntExact(d.getAsLong());
+		int limit = Math.toIntExact(n.getAsLong() / di) +
+						(n.getAsLong() % di == 0 ? 0 : 1);
+		return Optional.of(IntStream.range(0, limit)
+				.map(i -> i * di)
+				.boxed()
+				.collect(Collectors.toSet()));
 	}
 
 	@Override
@@ -222,82 +241,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				difference(target.getShape(), List.of(term1, term2)); // f'(x)g(x) - f(x)g'(x)
 		CollectionExpression<?> derivativeDenominator =
 				new ConstantCollectionExpression(target.getShape(),
-//						new Product(List.of(denominator, denominator))); // [g(x)]^2
 						Product.of(denominator, denominator)); // [g(x)]^2
 		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
-	}
-
-	@Override
-	public Expression simplify(KernelStructureContext context, int depth) {
-		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Quotient)) return flat;
-
-		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()
-				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
-				.collect(Collectors.toList());
-		children.add(0, flat.getChildren().get(0));
-
-		if (children.isEmpty()) return new IntegerConstant(1);
-		if (children.size() == 1) return children.get(0);
-
-		if (children.size() == 2) {
-			OptionalLong divisor = children.get(1).longValue();
-			OptionalLong max = children.get(0).getLimit();
-
-			if (divisor.isPresent()) {
-				boolean pos = !enableRequireNonNegative || !children.get(0).isPossiblyNegative();
-
-				if (pos && max.isPresent() && max.getAsLong() <= divisor.getAsLong()) {
-					return new IntegerConstant(0);
-				} else if (children.get(0) instanceof Sum) {
-					Expression simple = trySumSimplify((Sum) children.get(0), divisor.getAsLong());
-					if (simple != null) return simple;
-				} else if (children.get(0) instanceof Product) {
-					Expression simple = tryProductSimplify((Product) children.get(0), divisor.getAsLong());
-					if (simple != null) return simple;
-				}
-			}
-		}
-
-		if (children.get(0).intValue().isPresent()) {
-			int numerator = children.get(0).intValue().getAsInt();
-			if (numerator == 0) return new IntegerConstant(0).toInt();
-
-			int i;
-			i: for (i = 1; i < children.size(); i++) {
-				if (children.get(i).intValue().isPresent()) {
-					numerator = numerator / children.get(i).intValue().getAsInt();
-				} else {
-					break i;
-				}
-			}
-
-			if (i == children.size()) return new IntegerConstant(numerator).toInt();
-			List<Expression<?>> newChildren = new ArrayList<>();
-			newChildren.add(new IntegerConstant(numerator).toInt());
-			newChildren.addAll(children.subList(i, children.size()));
-			children = newChildren;
-		} else if (children.get(0).doubleValue().isPresent()) {
-			double numerator = children.get(0).doubleValue().getAsDouble();
-			if (numerator == 0) return new DoubleConstant(0.0);
-
-			int i;
-			i: for (i = 1; i < children.size(); i++) {
-				if (children.get(i).doubleValue().isPresent()) {
-					numerator = numerator / children.get(i).doubleValue().getAsDouble();
-				} else {
-					break i;
-				}
-			}
-
-			if (i == children.size()) return new DoubleConstant(numerator);
-			List<Expression<?>> newChildren = new ArrayList<>();
-			newChildren.add(new DoubleConstant(numerator));
-			newChildren.addAll(children.subList(i, children.size()));
-			children = newChildren;
-		}
-
-		return generate(children).populate(this);
 	}
 
 	public static Expression<?> of(Expression<?>... values) {
@@ -313,12 +258,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		List<Expression<?>> operands = new ArrayList<>();
 		operands.add(values[0]);
 		for (int i = 1; i < values.length; i++) {
-			if (values[i].intValue().orElse(-1) != 1) {
+			if (values[i].doubleValue().orElse(-1) != 1.0) {
 				operands.add(values[i]);
-				fp = values[i].isFP();
-			} else if (values[i].isFP()) {
-				fp = true;
 			}
+
+			fp = values[i].isFP();
 		}
 
 		if (operands.size() == 1) return operands.get(0);
@@ -336,10 +280,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		OptionalLong lower = numerator.lowerBound();
 		OptionalLong upper = numerator.upperBound();
 
-		if (enableBoundedNumeratorReplace && !numerator.isPossiblyNegative() && d.isPresent() &&
-				numerator.upperBound().orElse(Long.MAX_VALUE) < d.getAsLong()) {
+		if (!numerator.isPossiblyNegative() && d.isPresent() &&
+				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
-		} else if (enableLowerBoundedNumeratorReplace && !fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
+		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
 			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());
 			double high = Math.floor(lower.getAsLong() / (double) d.getAsLong());
 
@@ -348,7 +292,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (enableDenominatorCollapse && numerator instanceof Quotient && d.isPresent()) {
+		if (numerator instanceof Sum && d.isPresent()) {
+			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			if (simple != null)
+				return simple;
+		}
+
+		if (numerator instanceof Quotient && d.isPresent()) {
 			if (numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
 				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
@@ -369,7 +319,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					return Product.of(numerator.getChildren().stream()
 							.filter(e -> e.longValue().isEmpty()).toArray(Expression[]::new));
 				}
-			} else if (enableFpDivisorReplacement && denominator.doubleValue().isPresent()) {
+
+				Expression simple = tryProductSimplify((Product) numerator, d.getAsLong());
+				if (simple != null)
+					return simple;
+			} else if (denominator.doubleValue().isPresent()) {
 				// When dividing a product that includes a floating-point constant value,
 				// the result can be simplified to a product of the remaining values and
 				// the constant value divided by the divisor
@@ -384,11 +338,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					return Product.of(args.toArray(Expression[]::new));
 				}
 			}
-		} else if (numerator instanceof Sum) {
-			OptionalLong divisor = denominator.longValue();
-
-			if (enableDistributiveSum && !(numerator instanceof Index) &&
-					!numerator.isFP() && divisor.isPresent()) {
+		} else if (numerator instanceof Sum && d.isPresent()) {
+			if (!(numerator instanceof Index) && !numerator.isFP()) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
 				int unknown = 0;
@@ -402,7 +353,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 					if (child.longValue().isPresent()) {
 						total += child.longValue().getAsLong();
-					} else if (child instanceof Product && findDivisibleTerm(child, divisor.getAsLong()) != null) {
+					} else if (child instanceof Product && findDivisibleTerm(child, d.getAsLong()) != null) {
 						products.add(child);
 					} else {
 						unknown++;
@@ -414,9 +365,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				if (unknown == 0) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
-							.map(e -> e.divide(divisor.getAsLong()))
+							.map(e -> e.divide(d.getAsLong()))
 							.collect(Collectors.toList()));
-					newChildren.add(ExpressionFeatures.getInstance().e(total / divisor.getAsLong()));
+					newChildren.add(ExpressionFeatures.getInstance().e(total / d.getAsLong()));
 					return Sum.of(newChildren.toArray(new Expression[0]));
 				}
 
@@ -424,18 +375,22 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				// then it is also safe to apply division to each term in the sum (that term
 				// is the only possible source of a remainder, which will be discarded without
 				// the chance to combine with other values to exceed the divisor)
-				if (enableExpandedDistributiveSum && unknown == 1 && total == 0.0) {
+				if (unknown == 1 && total == 0.0) {
 					return Sum.of(numerator.getChildren().stream()
-							.map(e -> e.divide(divisor.getAsLong()))
+							.map(e -> e.divide(d.getAsLong()))
 							.toArray(Expression[]::new));
 				}
 			}
+
+			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			if (simple != null)
+				return simple;
 		} else if (enableArithmeticGenerator && !fp && numerator instanceof Mod) {
 			Expression<?> u = ((BinaryExpression) numerator).getLeft();
 			OptionalLong m = ((BinaryExpression) numerator).getRight().longValue();
 
 			if (u instanceof Index && m.isPresent()) {
-				return new ArithmeticGenerator<>(u, 1, d.getAsLong(), m.getAsLong());
+				return ArithmeticGenerator.create(u, 1, d.getAsLong(), m.getAsLong());
 			}
 		}
 

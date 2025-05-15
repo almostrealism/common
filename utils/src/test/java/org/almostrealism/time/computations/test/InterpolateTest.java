@@ -55,7 +55,7 @@ public class InterpolateTest implements TestFeatures {
 	}
 
 	@Test
-	public void interpolateKernel() {
+	public void interpolateKernelPassThrough() {
 		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCountLong() + " series");
@@ -78,6 +78,27 @@ public class InterpolateTest implements TestFeatures {
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(11.5, dest.toArray(0, 1)[0]);
 		assertEquals(10.5, dest.toArray(1, 1)[0]);
+	}
+
+	@Test
+	public void interpolateKernel() {
+		PackedCollection<?> series = new PackedCollection<>(10);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		log(series.traverse(0).getCountLong() + " series");
+
+		PackedCollection<?> cursors = new PackedCollection<>(2, 1);
+		cursors.setMem(0, 5.5, 6.5);
+		log(cursors.traverse(1).getCountLong() + " cursors");
+
+		PackedCollection<?> rate = new PackedCollection<>(2, 1);
+		rate.setMem(0, 1.0, 1.0);
+
+		Interpolate interpolate = new Interpolate(cp(series), traverse(1, cp(cursors)), cp(rate));
+		PackedCollection<?> dest = interpolate.get().evaluate();
+		dest.print();
+
+		assertEquals(11.5, dest.toDouble(0));
+		assertEquals(10.5, dest.toDouble(1));
 	}
 
 	@Test
@@ -128,21 +149,16 @@ public class InterpolateTest implements TestFeatures {
 		Evaluable<?> eval = interpolate.get();
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 4)));
+		dest.print();
 		assertEquals(12.5, dest.toDouble(0));
 		assertEquals(15, dest.toDouble(3));
 
 		rate.setMem(0, 2.0);
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 4)));
-//		assertEquals(12.5, dest.toDouble(0));
-//		assertEquals(15, dest.toDouble(3));
+		dest.print();
+		assertEquals(9.0, dest.toDouble(0));
+		assertEquals(16.0, dest.toDouble(1));
+		assertEquals(0.0, dest.toDouble(3));
 	}
-
-	// new Interpolate(
-	//						new PassThroughProducer<>(1, 0, -1),
-	//						new PassThroughProducer<>(1, 1),
-	//						new PassThroughProducer<>(2, 2, -1),
-	//						v -> Product.of(v, HardwareFeatures.ops().expressionForDouble(1.0 / OutputLine.sampleRate)))
 }

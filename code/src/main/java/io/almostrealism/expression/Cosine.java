@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 public class Cosine extends Expression<Double> {
-	public Cosine(Expression<Double> input) {
+	protected Cosine(Expression<Double> input) {
 		super(Double.class, input);
 	}
 
@@ -49,5 +49,15 @@ public class Cosine extends Expression<Double> {
 		}
 
 		return new Cosine((Expression<Double>) children.get(0));
+	}
+
+	public static Expression<Double> of(Expression<Double> input) {
+		OptionalDouble d = input.doubleValue();
+
+		if (d.isPresent()) {
+			return new DoubleConstant(Math.cos(d.getAsDouble()));
+		}
+
+		return new Cosine(input);
 	}
 }

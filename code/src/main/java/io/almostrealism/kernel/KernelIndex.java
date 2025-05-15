@@ -19,13 +19,13 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 
+import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class KernelIndex extends DefaultIndex {
-	public static boolean enableSimplification = true;
-
 	private static IndexSequence kernelSeq;
 
 	private KernelStructureContext context;
@@ -118,7 +118,8 @@ public class KernelIndex extends DefaultIndex {
 
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {
-		if (!(index instanceof KernelIndex) || len > Integer.MAX_VALUE) {
+		if (ScopeSettings.enableArithmeticSequence ||
+				!(index instanceof KernelIndex) || len > Integer.MAX_VALUE) {
 			return super.sequence(index, len, limit);
 		}
 
@@ -131,8 +132,10 @@ public class KernelIndex extends DefaultIndex {
 
 	@Override
 	public Expression<Integer> simplify(KernelStructureContext context, int depth) {
-		if (enableSimplification && context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
+		if (context.getKernelMaximum().isPresent() && context.getKernelMaximum().getAsLong() == 1) {
 			return new IntegerConstant(0);
+		} else if (!Objects.equals(getStructureContext(), context)) {
+			return new KernelIndex(context);
 		}
 
 		return super.simplify(context, depth);

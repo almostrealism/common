@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.Index;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -35,6 +36,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 	public static boolean enableChainDelta = false;
 
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
+	private boolean relative;
 
 	public DynamicIndexProjectionProducerComputation(String name, TraversalPolicy shape,
 													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
@@ -48,8 +50,36 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 													 boolean relative,
 													 Producer<?> collection,
 													 Producer<?>... inputs) {
-		super(name, shape, null, relative, collection, inputs);
+		super(name, shape, null, collection, inputs);
 		this.indexExpression = indexExpression;
+		this.relative = relative;
+	}
+
+	@Override
+	protected boolean isOutputRelative() { return relative || super.isOutputRelative(); }
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		if (relative) {
+			TraversableExpression<Double> var = getTraversableArguments(index)[1];
+			if (var == null) return null;
+
+			return var.getValueRelative(projectIndex(var, index));
+		}
+
+		return super.getValueAt(index);
+	}
+
+	@Override
+	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
+		if (relative) {
+			TraversableExpression var = getTraversableArguments(targetIndex)[1];
+			if (var == null) return null;
+
+			return var.uniqueNonZeroOffset(globalIndex, localIndex, projectIndex(var, targetIndex));
+		}
+
+		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	@Override

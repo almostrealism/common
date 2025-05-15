@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,24 +32,24 @@ public class ComplexProductExpression extends ConditionalExpressionBase {
 	private static UniformBinaryGroupExpression realPart(TraversalPolicy shape,
 														 TraversableExpression a,
 														 TraversableExpression b) {
-		return new UniformBinaryGroupExpression(shape, a, b, (left, right) -> {
+		return new UniformBinaryGroupExpression("realPart", shape, a, b, (left, right) -> {
 				Expression p = left[0]; Expression q = left[1];
 				Expression r = right[0]; Expression s = right[1];
 				return Sum.of(Product.of(p, r), Minus.of(Product.of(q, s)));
 			},
-				idx -> idx.toInt().divide(2).multiply(2),
-				idx -> idx.toInt().divide(2).multiply(2).add(1));
+				idx -> (Expression) idx.toInt().divide(2).multiply(2),
+				idx -> (Expression) idx.toInt().divide(2).multiply(2).add(1));
 	}
 
 	private static UniformBinaryGroupExpression imagPart(TraversalPolicy shape,
 														 TraversableExpression a,
 														 TraversableExpression b) {
-		return new UniformBinaryGroupExpression(shape, a, b, (left, right) -> {
+		return new UniformBinaryGroupExpression("imagPart", shape, a, b, (left, right) -> {
 				Expression p = left[0]; Expression q = left[1];
 				Expression r = right[0]; Expression s = right[1];
 				return Sum.of(Product.of(p, s), Product.of(q, r));
 			},
-				idx -> idx.toInt().divide(2).multiply(2),
-				idx -> idx.toInt().divide(2).multiply(2).add(1));
+				idx -> (Expression) idx.toInt().divide(2).multiply(2),
+				idx -> (Expression) idx.toInt().divide(2).multiply(2).add(1));
 	}
 }

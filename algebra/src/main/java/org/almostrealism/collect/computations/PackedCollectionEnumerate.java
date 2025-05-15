@@ -66,17 +66,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	}
 
 	@Override
-	protected boolean isOutputRelative() {
-		return false;
-	}
-
-	@Override
-	public int getMemLength() { return 1; }
-
-	@Override
-	public long getCountLong() {
-		return getShape().getTotalSizeLong();
-	}
+	protected boolean isOutputRelative() { return false; }
 
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {

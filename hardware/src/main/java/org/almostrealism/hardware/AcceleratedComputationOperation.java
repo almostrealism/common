@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Shape;
+import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
@@ -97,6 +98,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public long getCountLong() {
+		if (getComputation() instanceof ParallelProcess) {
+			return ((ParallelProcess) getComputation()).getParallelism();
+		}
+
 		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCountLong() : 1;
 	}
 

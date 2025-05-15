@@ -206,8 +206,12 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return log((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> sq() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sq() {
 		return sq((Producer) this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> abs() {
+		return abs((Producer) this);
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducer<V> magnitude() {
@@ -235,35 +239,39 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		throw new UnsupportedOperationException();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mod(Producer<T> mod) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> mod(double mod) {
+		return mod((Producer) this, c(mod));
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducer<V> mod(Producer<V> mod) {
 		return mod((Producer) this, (Producer) mod);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum(int axis) {
 		return sum(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum() {
 		return sum((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mean(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> mean(int axis) {
 		return mean(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> mean() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> mean() {
 		return mean((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> subtractMean(int axis) {
 		return subtractMean(traverse(axis, (Producer) this));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subtractMean() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> subtractMean() {
 		return subtractMean((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> variance(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> variance(int axis) {
 		return variance(traverse(axis, (Producer) this));
 	}
 

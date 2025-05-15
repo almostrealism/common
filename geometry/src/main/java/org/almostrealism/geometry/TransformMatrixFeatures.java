@@ -74,7 +74,7 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 										if (operandIndex == 0) {
 											return e(groupIndex);
 										} else if (operandIndex == 1) {
-											return outputIndex.multiply(4).add(e(groupIndex));
+											return (Expression) outputIndex.multiply(4).add(e(groupIndex));
 										} else {
 											throw new IllegalArgumentException();
 										}

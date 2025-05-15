@@ -25,13 +25,15 @@ import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
-	public static boolean enableLargeAllocationLogging = true;
+	public static boolean enableLargeAllocationLogging =
+			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
 	public static TimingMetric ioTime = Hardware.console.timing("nativeIO");
 

@@ -79,14 +79,14 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	@Deprecated
 	default ExpressionComputation relativeSin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
-				new Sine(args.get(1).getValueRelative(0));
+				Sine.of(args.get(1).getValueRelative(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
 	@Deprecated
 	default ExpressionComputation relativeCos(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
-				new Cosine(args.get(1).getValueRelative(0));
+				Cosine.of(args.get(1).getValueRelative(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 

@@ -50,6 +50,7 @@ public class OperationProfileNode extends OperationProfile
 					Tree<OperationProfileNode>, Nameable {
 
 	public static boolean metadataWarnings = SystemUtils.isEnabled("AR_PROFILE_METADATA_WARNINGS").orElse(false);
+	public static boolean allowMultipleSources = SystemUtils.isEnabled("AR_PROFILE_MULTIPLE_SOURCES").orElse(false);
 
 	private static Function<OperationMetadata, String> metadataDetail =
 			OperationProfile.appendContext(
@@ -296,6 +297,8 @@ public class OperationProfileNode extends OperationProfile
 
 		if (sources.contains(src)) {
 			warn("Recompilation of " + metadata.getDisplayName() + " (id = " + key + ")");
+		} else if (!sources.isEmpty() && allowMultipleSources) {
+			warn("Recompilation of " + metadata.getDisplayName() + " (id = " + key + ") with different source");
 		} else {
 			sources.add(new OperationSource(code, argKeys, argNames));
 

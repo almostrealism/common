@@ -60,6 +60,9 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
 
 	static {
+		// TODO  The use of ContextSpecific as a container for Evaluable
+		// TODO  should no longer be required as HardwareEvaluable does
+		// TODO  this for every operation where it matters
 		clear = new DefaultContextSpecific<>(() ->
 				CollectionFeatures.getInstance().multiply(
 						new PassThroughProducer<>(1, 0),
@@ -107,6 +110,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		this.shape = shape.traverse(order).traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
+	}
+
+	@Override
+	protected void init() {
+		if (shape.getTotalInputSizeLong() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(String.valueOf(shape.getTotalInputSizeLong()));
+		}
+
+		super.init();
 	}
 
 	@Override
@@ -273,6 +285,23 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	public void forEach(Consumer<T> consumer) {
 		stream().forEach(consumer);
+	}
+
+	public PackedCollection<T> transpose() {
+		if (getShape().getDimensions() != 2) {
+			throw new IllegalArgumentException();
+		}
+
+		PackedCollection result = new PackedCollection<>(
+				getShape().length(1),
+				getShape().length(0)).traverse(1);
+		double data[] = toArray();
+		result.setMem(IntStream.range(0, result.getShape().getTotalSize())
+				.mapToObj(result.getShape()::position)
+				.mapToInt(pos -> getShape().index(pos[1], pos[0]))
+				.mapToDouble(i -> data[i])
+				.toArray());
+		return result;
 	}
 
 	public void clear() {

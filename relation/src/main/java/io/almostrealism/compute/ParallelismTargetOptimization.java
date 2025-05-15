@@ -41,10 +41,10 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		ParallelProcessContext context = ParallelProcessContext.of(ctx);
 
 		long counts[] = childProcessor.apply(children).mapToLong(ParallelProcess::parallelism).toArray();
-		long cn = Countable.countLong(parent);
+		long cn = ParallelProcess.parallelism(parent); // Countable.countLong(parent);
 		long p = counts.length;
-		long tot = LongStream.of(counts).sum();
-		long max = LongStream.of(counts).max().orElse(0);
+		long tot = LongStream.of(counts).filter(c -> c > 0).sum();
+		long max = LongStream.of(counts).filter(c -> c > 0).max().orElse(0);
 
 		long memory[] = childProcessor.apply(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
 		long mem = Process.outputSize(parent);

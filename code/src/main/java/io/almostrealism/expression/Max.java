@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,12 +22,11 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.Stream;
 
 public class Max extends BinaryExpression<Double> {
-	public Max(Expression<? extends Number> a, Expression<? extends Number> b) {
+	protected Max(Expression<? extends Number> a, Expression<? extends Number> b) {
 		super(Double.class, a, b);
 	}
 
@@ -91,7 +90,14 @@ public class Max extends BinaryExpression<Double> {
 		if (Stream.of(v).anyMatch(OptionalDouble::isEmpty)) {
 			Expression<Double> result = values[0];
 			for (int i = 1; i < values.length; i++) {
-				result = new Max(result, values[i]);
+				if (result.isFP() != values[i].isFP()) {
+					// Ensure that comparison is of similar type
+					result = result.isFP() ?
+							new Max(result, values[i].toDouble()) :
+							new Max(result.toDouble(), values[i]);
+				} else {
+					result = new Max(result, values[i]);
+				}
 			}
 
 			return result;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.layers;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
@@ -33,7 +32,6 @@ public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning,
 	private final BackPropagation propagation;
 	private PackedCollection<?> input;
 
-	private Producer<PackedCollection<?>> learningRate;
 	private Receptor<PackedCollection<?>> next;
 
 	public BackPropagationCell(String name, BackPropagation propagation) {
@@ -52,24 +50,22 @@ public class BackPropagationCell implements Cell<PackedCollection<?>>, Learning,
 	public void setName(String name) { this.name = name; }
 
 	@Override
+	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
+		if (propagation instanceof Learning) {
+			((Learning) propagation).setParameterUpdate(update);
+		}
+	}
+
+	@Override
 	public Supplier<Runnable> setup() { return new OperationList(); }
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> gradient) {
-		return propagation.propagate(learningRate, gradient, p(input), next);
+		return propagation.propagate(gradient, p(input), next);
 	}
 
 	public void setForwardInput(PackedCollection<?> input) {
 		this.input = input;
-	}
-
-	public Producer<PackedCollection<?>> getLearningRate() {
-		return learningRate;
-	}
-
-	@Override
-	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
-		this.learningRate = learningRate;
 	}
 
 	@Override

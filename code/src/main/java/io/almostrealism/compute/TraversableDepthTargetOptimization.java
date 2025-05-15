@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,13 @@ import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
 
+/**
+ * The {@link TraversableDepthTargetOptimization} is a strategy that attempts to prevent
+ * a {@link Process} tree becoming too deep. It will isolate the children of a {@link Process}
+ * if the maximum depth of the tree below it exceeds a specified limit.
+ */
 public class TraversableDepthTargetOptimization implements ProcessOptimizationStrategy {
+
 	private final int limit;
 
 	public TraversableDepthTargetOptimization() { this(8); }

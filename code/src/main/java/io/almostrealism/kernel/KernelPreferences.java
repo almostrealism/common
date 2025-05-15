@@ -28,10 +28,6 @@ public class KernelPreferences {
 	private static boolean enableSubdivision = true;
 
 	static {
-		if (SystemUtils.isEnabled("AR_HARDWARE_PREFER_LOOPS").orElse(false)) {
-			throw new UnsupportedOperationException();
-		}
-
 		Optional<Boolean> sharedMem = SystemUtils.isEnabled("AR_HARDWARE_SHARED_MEMORY");
 		if (sharedMem.isPresent()) {
 			KernelPreferences.enableSharedMemory = sharedMem.get();

@@ -34,10 +34,16 @@ import java.util.stream.Collectors;
 
 public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
 												extends TraversableExpressionComputation<T> {
+	public static final boolean enableAtomicKernel = true;
 
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
 									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+	}
+
+	@Override
+	public boolean isOutputRelative() {
+		return !enableAtomicKernel || !isFixedCount();
 	}
 
 	@Override

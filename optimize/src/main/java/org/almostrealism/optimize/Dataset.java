@@ -16,6 +16,7 @@
 
 package org.almostrealism.optimize;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
@@ -41,6 +42,10 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 		return List.of(of(a), of(b));
 	}
 
+	default Dataset<PackedCollection<?>> batch(int batchSize) {
+		return batches(batchSize, (Iterable) this);
+	}
+
 	static <T extends MemoryData> Dataset<T> of(Iterable<ValueTarget<T>> targets) {
 		return () -> targets.iterator();
 	}
@@ -50,5 +55,40 @@ public interface Dataset<T extends MemoryData> extends Iterable<ValueTarget<T>> 
 		List<PackedCollection<?>> list = new ArrayList<>();
 		inputs.forEach(list::add);
 		return new FunctionalDataset(list, function);
+	}
+
+	static <T extends PackedCollection<?>> Dataset<PackedCollection<?>> batches(int batchSize, Iterable<ValueTarget<T>> targets) {
+		TraversalPolicy inputItem;
+		TraversalPolicy targetItem;
+		List<ValueTarget<PackedCollection<?>>> data = new ArrayList<>();
+
+		int n = -1;
+		PackedCollection<PackedCollection<?>> currentInput = null;
+		PackedCollection<PackedCollection<?>> currentTarget = null;
+
+		f: for (ValueTarget<T> target : targets) {
+			if (n < 0) {
+				inputItem = target.getInput().getShape();
+				currentInput = new PackedCollection<>(inputItem.prependDimension(batchSize).traverse(1));
+
+				targetItem = target.getExpectedOutput().getShape();
+				currentTarget = new PackedCollection<>(targetItem.prependDimension(batchSize).traverse(1));
+
+				n = 0;
+			}
+
+			currentInput.set(n, target.getInput());
+			currentTarget.set(n, target.getExpectedOutput());
+			n++;
+
+			if (n >= batchSize) {
+				data.add(ValueTarget.of(currentInput, currentTarget));
+				currentInput = new PackedCollection<>(currentInput.getShape());
+				currentTarget = new PackedCollection<>(currentTarget.getShape());
+				n = 0;
+			}
+		}
+
+		return Dataset.of(data);
 	}
 }

@@ -248,6 +248,17 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
+	public long getParallelism() {
+		if (getOutputSize() > MemoryProvider.MAX_RESERVATION) {
+			// This cannot even be independently compiled, so it is
+			// false to claim that it has any level of parallelism
+			return -1;
+		}
+
+		return super.getParallelism();
+	}
+
+	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return CollectionProducerComputation.super.containsIndex(index);
 	}

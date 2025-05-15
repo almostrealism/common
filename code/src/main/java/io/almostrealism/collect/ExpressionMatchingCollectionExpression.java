@@ -121,7 +121,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 				comparisons[i] = compareExpressions(a.getChildren().get(i), b.getChildren().get(i));
 			}
 
-			return new Conjunction(comparisons);
+			return Conjunction.of(comparisons);
 		}
 
 		return new BooleanConstant(false);

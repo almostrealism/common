@@ -71,7 +71,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 
 			Scope<?> body = new Scope<>();
 			{
-				Expression index = body.declareInteger("index", kernel().add(i.subtract(e(filterOrder / 2))));
+				Expression index = body.declareInteger("index", kernel(context).add(i.subtract(e(filterOrder / 2))));
 
 				Expression coeff = coefficients.getShape().getDimensions() == 1 ?
 						coefficients.getValueAt(i) : coefficients.getValue(kernel(), i);
@@ -88,7 +88,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 
 		Scope outScope = new Scope();
 		{
-			outScope.getStatements().add(output.getValueAt(kernel()).assign(result));
+			outScope.getStatements().add(output.getValueAt(kernel(context)).assign(result));
 		}
 
 		scope.add(outScope);

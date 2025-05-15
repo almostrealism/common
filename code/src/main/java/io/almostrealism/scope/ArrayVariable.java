@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 // TODO  because ArrayVariable type T is the type of the member of the array
 // TODO  not the type of the entire array
 public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static boolean enableContextualKernelIndex = true;
 	private final NameProvider names;
 
 	private Expression<Integer> delegateOffset;
@@ -140,11 +139,13 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
 	}
 
+	@Deprecated
 	public Expression<T> referenceRelative(int pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}
 
+	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
 		return referenceRelative(pos, new KernelIndex(null, 0));
 	}
@@ -208,10 +209,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
-		if (!enableContextualKernelIndex) {
-			idx = new KernelIndex(null, idx.getKernelAxis());
-		}
-
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {

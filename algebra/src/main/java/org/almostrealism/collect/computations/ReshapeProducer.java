@@ -329,10 +329,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	public CollectionProducer<T> delta(Producer<?> target) {
 		if (producer instanceof CollectionProducer) {
 			if (shape == null) {
-				return new ReshapeProducer<>(traversalAxis, ((CollectionProducer) producer).delta(target));
+				return traverse(traversalAxis, ((CollectionProducer) producer).delta(target));
 			} else {
 				TraversalPolicy newShape = shape.append(shape(target));
-				return new ReshapeProducer<>(newShape, ((CollectionProducer) producer).delta(target));
+				return (CollectionProducer) reshape(newShape, ((CollectionProducer) producer).delta(target));
 			}
 		}
 

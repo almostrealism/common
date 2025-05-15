@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,10 +20,9 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.ModelFeatures;
@@ -46,9 +45,12 @@ import java.util.stream.IntStream;
 
 public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFeatures {
 	static boolean large = true;
+	static int batchSize;
 	static int rows, cols;
 
 	static {
+		batchSize = 1;
+
 		if (large) {
 			rows = 54;
 			cols = 54;
@@ -58,9 +60,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		}
 
 		if (TestUtils.getTrainTests()) {
-			HardwareOperator.enableLargeInstructionSetMonitoring = true;
-			MetalMemoryProvider.enableLargeAllocationLogging = true;
-
 			Console.root().addListener(OutputFeatures.fileOutput("results/logs/train.out"));
 		}
 	}
@@ -71,7 +70,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 
 		log("Adding circles...");
 		for (int i = 0; i < 500; i++) {
-			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
+			PackedCollection<?> input = new PackedCollection<>(shape(batchSize, rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
 			double r = Math.random() * (rows / 4.0);
@@ -90,7 +89,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 
 		log("Adding squares...");
 		for (int i = 0; i < 500; i++) {
-			PackedCollection<?> input = new PackedCollection<>(shape(rows, cols));
+			PackedCollection<?> input = new PackedCollection<>(shape(batchSize, rows, cols));
 			double x = Math.random() * cols;
 			double y = Math.random() * rows;
 			double r = Math.random() * (rows / 4.0);
@@ -143,20 +142,20 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 		int epochs = 10;
 
 		Model model = convolution2dModel(
-				rows, cols, 3, 6, large ? 3 : 2,
+						batchSize, 1, rows, cols,
+				3, 6, large ? 3 : 2,
 				4, 4, true);
-		model.setLearningRate(0.001);
-		TraversalPolicy outShape = model.lastBlock().getOutputShape();
+		model.setParameterUpdate(ParameterUpdate.scaled(c(0.001)));
 
 		List<ValueTarget<PackedCollection<?>>> data;
 
 		File imagesDir = new File("generated_images");
 		if (!imagesDir.exists()) {
 			log("Generated images not available");
-			data = generateDataset(outShape);
+			data = generateDataset(model.getOutputShape().item());
 		} else {
 			log("Loading generated images...");
-			data = loadDataset(imagesDir, outShape);
+			data = loadDataset(imagesDir, model.getOutputShape().item());
 		}
 
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("CNN " + cols + "x" + rows));
@@ -170,7 +169,7 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 				if (i > 0) compiled.reset();
 
 				Collections.shuffle(data);
-				Dataset<PackedCollection<?>> all = Dataset.of(data);
+				Dataset<PackedCollection<?>> all = Dataset.of(data).batch(batchSize);
 				List<Dataset<PackedCollection<?>>> split = all.split(0.8);
 
 				double accuracy[] =

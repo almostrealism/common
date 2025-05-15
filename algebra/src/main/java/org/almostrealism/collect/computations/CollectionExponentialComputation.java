@@ -35,8 +35,6 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class CollectionExponentialComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
-	public static boolean enableCustomDelta = true;
-
 	private final boolean ignoreZero;
 
 	public CollectionExponentialComputation(TraversalPolicy shape,
@@ -92,10 +90,6 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		if (!enableCustomDelta) {
-			return super.delta(target);
-		}
-
 		CollectionProducer<T> delta = MatrixFeatures.getInstance().attemptDelta(this, target);
 		if (delta != null) {
 			return delta;

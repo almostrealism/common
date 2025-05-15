@@ -63,6 +63,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
+	public static boolean enableNonUniformCompilation = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
@@ -167,12 +168,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 			if (enableAutomaticOptimization && !isUniform()) {
 				return optimize().get();
-			} else if (isComputation()) {
+			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
 				OperationAdapter op = (OperationAdapter) compileRunnable(this);
 				op.setFunctionName(functionName);
 				op.compile();
 				return (Runnable) op;
 			} else {
+				if (isComputation()) {
+					warn("OperationList was not compiled (uniform = " + isUniform() + ")");
+				}
+
 				List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
 				run.stream()
 						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
@@ -294,6 +299,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
 	}
+
+	public void run() { get().run(); }
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {

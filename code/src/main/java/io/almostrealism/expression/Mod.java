@@ -23,11 +23,16 @@ import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableMod2Optimization = false;
@@ -110,6 +115,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		int m = (int) getRight().longValue().orElse(Integer.MAX_VALUE);
+
+		if (m > ScopeSettings.indexOptionLimit || !getLeft().equals(index)) {
+			return super.getIndexOptions(index);
+		}
+
+		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
+	}
+
+	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalLong lower = getLeft().lowerBound(context);
 		OptionalLong upper = getLeft().upperBound(context);
@@ -172,63 +188,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return Mod.of(children.get(0), children.get(1), fp);
 	}
 
-	@Override
-	public Expression simplify(KernelStructureContext context, int depth) {
-		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Mod)) return flat;
-
-		Expression input = flat.getChildren().get(0);
-		Expression mod = flat.getChildren().get(1);
-
-		if (input.intValue().isPresent()) {
-			if (input.intValue().getAsInt() == 0) {
-				return new IntegerConstant(0);
-			} else if (input.intValue().getAsInt() == 1 && !fp) {
-				return mod.intValue().orElse(-1) == 1 ? new IntegerConstant(0) : new IntegerConstant(1);
-			} else if (mod.intValue().isPresent() && !fp) {
-				if (mod.intValue().getAsInt() == 1) {
-					return new IntegerConstant(0);
-				} else if (mod.intValue().getAsInt() != 0) {
-					return new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
-				} else {
-					warn("Modulo zero encountered while simplifying expression");
-				}
-			}
-		} else if (mod.longValue().isPresent()) {
-			long m = mod.longValue().getAsLong();
-			if (m == 1) return new IntegerConstant(0);
-
-			if (!input.isFP()) {
-				if (input instanceof Mod) {
-					Expression simple = tryModSimplify((Mod) input, m);
-					if (simple != null) return simple;
-				} else if (input instanceof Sum) {
-					Expression simple = trySumSimplify((Sum) input, m);
-					if (simple != null) return simple;
-				}
-			}
-
-			OptionalLong u = input.upperBound(context);
-			if (u.isPresent() && u.getAsLong() < m) {
-				return input;
-			} else if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
-				return new And(input, new IntegerConstant((int) m - 1));
-			}
-		} else if (input.doubleValue().isPresent()) {
-			if (input.doubleValue().getAsDouble() == 0.0) {
-				return new DoubleConstant(0.0);
-			} else if (mod.doubleValue().isPresent() && !fp) {
-				return new DoubleConstant(input.doubleValue().getAsDouble() % mod.doubleValue().getAsDouble());
-			}
-		} else if (mod.doubleValue().isPresent()) {
-			if (mod.doubleValue().getAsDouble() == 1.0) {
-				return input;
-			}
-		}
-
-		return flat;
-	}
-
 	public static Expression of(Expression... inputs) {
 		if (inputs.length != 2) {
 			throw new UnsupportedOperationException();
@@ -246,10 +205,27 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
-		if (fp || mod.longValue().isEmpty()) return new Mod(input, mod, fp);
+		if (fp || (input.longValue().isEmpty() && mod.longValue().isEmpty())) {
+			// There are no possible optimizations
+			return new Mod(input, mod, fp);
+		}
+
+		OptionalLong id = input.longValue();
+
+		if (mod.longValue().isEmpty()) {
+			if (id.orElse(1) == 0) {
+				return new IntegerConstant(0);
+			}
+
+			return new Mod(input, mod, fp);
+		}
 
 		long m = mod.longValue().getAsLong();
-		if (!fp && m == 1) return new IntegerConstant(0);
+		if (m == 1) return new IntegerConstant(0);
+
+		if (id.isPresent()) {
+			return ExpressionFeatures.getInstance().e(id.getAsLong() % m);
+		}
 
 		if (input instanceof Mod && !input.isFP()) {
 			Mod<Long> innerMod = (Mod) input;
@@ -281,6 +257,22 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong u = input.upperBound();
 		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
 			return input;
+		}
+
+		if (!input.isFP()) {
+			if (input instanceof Mod) {
+				Expression simple = tryModSimplify((Mod) input, m);
+				if (simple != null)
+					return simple;
+			} else if (input instanceof Sum) {
+				Expression simple = trySumSimplify((Sum) input, m);
+				if (simple != null)
+					return simple;
+			}
+
+			if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+				return And.of(input, new IntegerConstant((int) m - 1));
+			}
 		}
 
 		return new Mod(input, mod, fp);

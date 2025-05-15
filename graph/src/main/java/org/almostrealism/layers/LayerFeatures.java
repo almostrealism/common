@@ -17,7 +17,6 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
@@ -100,7 +99,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, Cell.of(operator),
-				new DefaultGradientPropagation(operator, weights.stream().map(this::cp)),
+				DefaultGradientPropagation.create(name, operator, weights.stream().map(this::cp)),
 				weights, setup, requirements);
 	}
 
@@ -205,23 +204,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		layer.init(inputShape, Layer.ioTracking, true);
 
 		// Create gradient propagation for the main input
-		BackPropagationCell mainBackward = new BackPropagationCell(name + " main",
-				new DefaultGradientPropagation(in -> operator.compose(in, p(auxInput))));
+		String mainName = name + " main";
+		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
+				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
 		mainBackward.setForwardInput(layer.getInput());
 
 		// Create gradient propagation for the aux input
 		// and direct its output to the aux backward Cell
-		BackPropagationCell auxBackward = new BackPropagationCell(name + " aux",
-				new DefaultGradientPropagation(in -> operator.compose(p(layer.getInput()), in)));
+		String auxName = name + " aux";
+		BackPropagationCell auxBackward = new BackPropagationCell(auxName,
+				DefaultGradientPropagation.create(auxName, in -> operator.compose(p(layer.getInput()), in)));
 		auxBackward.setForwardInput(auxInput);
 		auxBackward.setReceptor(aux.getBackward());
 
 		// Combine both backpropagation steps and attach the result to the layer
 		layer.setBackward(new LearningCell() {
 			@Override
-			public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+			public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
 				if (aux instanceof Learning) {
-					((Learning) aux).setLearningRate(learningRate);
+					((Learning) aux).setParameterUpdate(update);
 				}
 			}
 
@@ -258,12 +259,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		op.setComputeRequirements(requirements);
 
 		if (!copy || shape.getCountLong() > 1) {
-			int axis = shape.getTraversalAxis();
-			long count = Countable.countLong(in);
-
-			while (shape.traverse(axis).getCountLong() < count && axis < shape.getDimensions()) {
-				axis++;
-			}
+			int axis = shape.alignCount(Countable.countLong(in)).getTraversalAxis();
 
 			if (shape.equalsIgnoreAxis(shape(out))) {
 				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
@@ -288,8 +284,12 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, Block> flattened() {
+		return flattened(true);
+	}
+
+	default Function<TraversalPolicy, Block> flattened(boolean preserveCount) {
 		return shape -> {
-			TraversalPolicy outputShape = shape.flatten();
+			TraversalPolicy outputShape = shape.flatten(preserveCount);
 			return new DefaultBlock(shape, outputShape,
 					Cell.of((in, next) -> next.push(reshape(outputShape, in))),
 					Cell.of((in, next) -> next.push(reshape(shape, in))));
@@ -328,7 +328,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
-																   boolean bias, ComputeRequirement... requirements) {
+														   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
 			return shape -> {
 				shape = padDimensions(shape, 2, 4);
@@ -363,8 +363,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
-										int size, int padding,
-										boolean bias, ComputeRequirement... requirements) {
+								int size, int padding,
+								boolean bias, ComputeRequirement... requirements) {
 		inputShape = padDimensions(inputShape, 2, 4);
 
 		if (inputShape.getDimensions() != 4) {
@@ -390,85 +390,41 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		TraversalPolicy biasShape = shape(filterCount);
 		PackedCollection<?> biases = bias ? new PackedCollection<>(biasShape) : null;
 
-		Factor<PackedCollection<?>> operator;
+		Factor<PackedCollection<?>> operator = input -> {
+			CollectionProducer<PackedCollection<?>> in = c(input);
+			CollectionProducer<PackedCollection<?>> conv =
+					in.reshape(-1, 1, channels, height, width);
+			CollectionProducer<PackedCollection<?>> filter =
+					cp(filters.reshape(1, filterCount, channels, size, size));
 
-		if (WeightedSumExpression.enableCollectionExpression) {
-			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in = c(input);
-				CollectionProducer<PackedCollection<?>> conv =
-						in.reshape(-1, 1, channels, height, width);
-				CollectionProducer<PackedCollection<?>> filter =
-						cp(filters.reshape(1, filterCount, channels, size, size));
+			int bs = conv.getShape().length(0);
 
-				int bs = conv.getShape().length(0);
+			TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
+			TraversalPolicy inputPositions = resultShape
+					.withRate(1, 1, filterCount)
+					.withRate(2, channels, 1);
+			TraversalPolicy filterPositions = resultShape
+					.withRate(0, 1, batch)
+					.withRate(2, channels, 1)
+					.withRate(3, size, outHeight)
+					.withRate(4, size, outWidth);
+			TraversalPolicy groupShape =
+					shape(1, 1, channels, size, size);
+			CollectionProducer<PackedCollection<?>> result =
+					weightedSum("convolutionFilter",
+							inputPositions, filterPositions,
+							groupShape, conv, filter);
 
-				TraversalPolicy resultShape = shape(batch, filterCount, 1, outHeight, outWidth);
-				TraversalPolicy inputPositions = resultShape
-								.withRate(1, 1, filterCount)
-								.withRate(2, channels, 1);
-				TraversalPolicy filterPositions = resultShape
-						.withRate(0, 1, batch)
-						.withRate(2, channels, 1)
-						.withRate(3, size, outHeight)
-						.withRate(4, size, outWidth);
-				TraversalPolicy groupShape =
-						shape(1, 1, channels, size, size);
-				CollectionProducer<PackedCollection<?>> result =
-						weightedSum("convolutionFilter",
-								inputPositions, filterPositions,
-								groupShape, conv, filter);
+			if (biases != null) {
+				int t = outHeight * outWidth;
+				result = result.reshape(bs, filterCount, t)
+						.add(cp(biases).repeat(bs).traverse(2).repeat(t));
+			}
 
-				if (biases != null) {
-					int t = outHeight * outWidth;
-					result = result.reshape(bs, filterCount, t)
-							.add(cp(biases).repeat(bs).traverse(2).repeat(t));
-				}
-
-				return result
-						.reshape(-1, filterCount, outHeight, outWidth)
-						.traverseEach();
-			};
-		} else {
-			operator = input -> {
-				CollectionProducer<PackedCollection<?>> in = c(input);
-				CollectionProducer<PackedCollection<?>> conv =
-						in.reshape(-1, channels, height * width)
-								.traverse(1).enumerate(2, 1)
-								.reshape(-1, height, width, channels);
-				conv = conv.traverse(1)
-						.enumerate(2, size, 1)
-						.enumerate(2, size, 1)
-						.traverse(1)
-						.repeat(filterCount)
-						.each();
-
-				int bs = conv.getShape().length(0);
-
-				CollectionProducer<PackedCollection<?>> filter =
-						cp(filters.reshape(-1, channels, size * size))
-								.traverse(1).enumerate(2, 1)
-								.reshape(-1, size, size, channels);
-				filter = filter.traverse(1)
-						.repeat(height - diff)
-						.repeat(width - diff)
-						.traverse(0)
-						.repeat(bs)
-						.each();
-
-				CollectionProducer<PackedCollection<?>> result =
-						conv.multiply(filter).sum(4);
-
-				if (biases != null) {
-					int t = (height - diff) * (width - diff);
-					result = result.reshape(bs, filterCount, t)
-							.add(cp(biases).repeat(bs).traverse(2).repeat(t));
-				}
-
-				return result
-						.reshape(-1, filterCount, height - diff, width - diff)
-						.traverseEach();
-			};
-		}
+			return result
+					.reshape(-1, filterCount, outHeight, outWidth)
+					.traverseEach();
+		};
 
 		OperationList setup = new OperationList();
 		Random randn = randn(filterShape);
@@ -479,9 +435,11 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		TraversalPolicy convInputShape = shape(batch, channels, height, width);
-		CellularLayer layer = layer("convolution2d", convInputShape, outputShape, operator,
-				biases == null ? List.of(filters) : List.of(filters, biases),
-				setup, requirements);
+		CellularLayer layer = layer("convolution2d",
+								convInputShape.traverse(1), outputShape.traverse(1),
+								operator,
+								biases == null ? List.of(filters) : List.of(filters, biases),
+								setup, requirements);
 
 		if (padding > 0) {
 			SequentialBlock block = new SequentialBlock(inputShape);
@@ -509,7 +467,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		int h = inputShape.length(2);
 		int w = inputShape.length(3);
 
-		TraversalPolicy outputShape = shape(n, c, h / size, w / size);
+		TraversalPolicy outputShape =
+					shape(n, c, h / size, w / size).alignCount(inputShape);
 
 		Factor<PackedCollection<?>> operator = input ->
 				c(input)
@@ -522,33 +481,46 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
-		return shape -> dense(shape.getTotalSize(), nodes);
+		return shape -> dense(shape.getSize(), nodes).apply(shape);
 	}
 
-	default CellularLayer dense(int size, int nodes) {
+	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes) {
 		return dense(size, nodes, true);
 	}
 
-	default CellularLayer dense(int size, int nodes, boolean bias) {
+	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes, boolean bias) {
 		return dense(size, nodes, bias, true);
 	}
 
-	default CellularLayer dense(int size, int nodes, boolean bias, boolean init, ComputeRequirement... requirements) {
-		return dense(new PackedCollection<>(shape(nodes, size)), bias, init, requirements);
+	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes,
+														   boolean bias, boolean init,
+														   ComputeRequirement... requirements) {
+		return inputShape -> dense(inputShape, new PackedCollection<>(shape(nodes, size)), bias, init, requirements);
 	}
 
-	default CellularLayer dense(PackedCollection<?> weights, ComputeRequirement... requirements) {
-		return dense(weights, false, false, requirements);
+	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection<?> weights,
+														   ComputeRequirement... requirements) {
+		return inputShape -> dense(inputShape, weights, false, false, requirements);
 	}
 
-	default CellularLayer dense(PackedCollection<?> weights, boolean bias, boolean init, ComputeRequirement... requirements) {
+	default CellularLayer dense(TraversalPolicy inputShape,
+								PackedCollection<?> weights,
+								boolean bias, boolean init,
+								ComputeRequirement... requirements) {
+		inputShape = padDimensions(inputShape, 2);
+
 		TraversalPolicy weightShape = weights.getShape();
 		if (weightShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
+		int batch = inputShape.length(0);
 		int nodes = weightShape.length(0);
 		int size = weightShape.length(1);
+
+		if (inputShape.length(1) != size) {
+			throw new IllegalArgumentException();
+		}
 
 		PackedCollection<?> biases = bias ? new PackedCollection<>(shape(nodes)) : null;
 
@@ -565,7 +537,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			}
 		}
 
-		return layer("dense " + size, shape(size), shape(nodes),
+		return layer("dense " + size, inputShape.traverseEach(), shape(batch, nodes).traverseEach(),
 				operator, bias ? List.of(weights, biases) : List.of(weights),
 				setup,
 				requirements);
@@ -634,14 +606,26 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> logSoftmax(ComputeRequirement... requirements) {
-		return shape -> logSoftmax(shape.getTotalSize(), requirements);
+		return shape -> logSoftmax(shape, requirements);
 	}
 
-	default CellularLayer logSoftmax(int size, ComputeRequirement... requirements) {
-		TraversalPolicy shape = shape(size);
+	default Function<TraversalPolicy, CellularLayer> logSoftmax(int size, ComputeRequirement... requirements) {
+		return shape -> {
+			shape = padDimensions(shape, 2);
+			if (shape.length(1) != size) {
+				throw new IllegalArgumentException();
+			}
+
+			return logSoftmax(shape, requirements);
+		};
+	}
+
+	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
+		shape = padDimensions(shape, 2).traverse(1);
+
 		return layer("logSoftmax", shape, shape, input ->
-				c(input).traverse(1).subtract(
-							c(input).traverse(1).exp().traverse(0).sum().log()),
+				c(input).traverse(2).subtract(
+							c(input).traverse(2).exp().traverse(1).sum().log()),
 				requirements);
 	}
 
@@ -744,43 +728,23 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		TraversalPolicy outputShape = shape(batchSize, c, s1, s2).traverseEach();
 
-		if (enableWeightedSum) {
-			return compose("similarity", k, outputShape, (a, b) -> {
-				TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
-				TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
+		return compose("similarity", k, outputShape, (a, b) -> {
+			TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
+			TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
 
-				TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
-				TraversalPolicy leftPosition = leftShape.repeat(4, s2);
-				TraversalPolicy rightPosition = rightShape.repeat(3, s1);
-				TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
+			TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
+			TraversalPolicy leftPosition = leftShape.repeat(4, s2);
+			TraversalPolicy rightPosition = rightShape.repeat(3, s1);
+			TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
 
-				return weightedSum("similarity",
-								resultShape,
-								leftPosition, rightPosition,
-								groupShape, groupShape,
-								reshape(leftShape, c(a)),
-								reshape(rightShape, c(b)))
-						.reshape(outputShape);
-			});
-		} else {
-			return compose("similarity", k, shape(batchSize, c, s1, s2), (a, b) -> {
-				CollectionProducer<PackedCollection<?>> pa = c(a)
-						.traverse(2)
-						.enumerate(3, 1)
-						.traverse(3)
-						.repeat(s2);
-				CollectionProducer<PackedCollection<?>> pb = c(b)
-						.traverse(2)
-						.enumerate(3, 1)
-						.repeat(s1);
-
-				if (!shape(pa).equalsIgnoreAxis(shape(pb))) {
-					throw new IllegalArgumentException();
-				}
-
-				return multiply(pa, pb).sum(4);
-			});
-		}
+			return weightedSum("similarity",
+					resultShape,
+					leftPosition, rightPosition,
+					groupShape, groupShape,
+					reshape(leftShape, c(a)),
+					reshape(rightShape, c(b)))
+					.reshape(outputShape);
+		});
 	}
 
 	default Function<TraversalPolicy, CellularLayer> weightedSum(
@@ -929,12 +893,12 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			if (b != null) setup.add(a(p(b.each()), c(0.0)));
 		}
 
-		return layer("norm", shape, shape, input -> {
+		return layer("norm", shape.traverse(1), shape.traverse(1), input -> {
 			double eps = Hardware.getLocalHardware().epsilon();
 
 			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
-			out = out.reshape(-1, Math.toIntExact(size));
+			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);
 
 			if (w != null) out = out.multiply(cp(w));
 			if (b != null) out = out.add(cp(b));

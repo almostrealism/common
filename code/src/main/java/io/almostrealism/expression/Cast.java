@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -26,9 +28,12 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 public class Cast<T> extends UnaryExpression<T> {
+	public static final String FP_NAME = "double";
+	public static final String INT_NAME = "int";
+
 	private String typeName;
 
-	public Cast(Class<T> type, String typeName, Expression<?> operand) {
+	protected Cast(Class<T> type, String typeName, Expression<?> operand) {
 		super(type, "(" + typeName + ")", operand);
 		this.typeName = typeName;
 
@@ -37,8 +42,15 @@ public class Cast<T> extends UnaryExpression<T> {
 		}
 	}
 
-	public String getTypeName() {
-		return typeName;
+	public String getTypeName() { return typeName; }
+
+	@Override
+	protected String getOperator(LanguageOperations lang) {
+		if (FP_NAME.equals(getTypeName()) && lang.getPrecision() != Precision.FP64) {
+			return "(float)";
+		}
+
+		return "(" + getTypeName() + ")";
 	}
 
 	@Override
@@ -109,24 +121,20 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> simplify(KernelStructureContext context, int depth) {
-		Expression<T> flat = super.simplify(context, depth);
-		if (!(flat instanceof Cast)) return flat;
-
-		OptionalDouble d = flat.getChildren().get(0).doubleValue();
-		if (d.isPresent() && typeName.equals("int"))
-			return (Expression) new IntegerConstant((int) d.getAsDouble());
-
-		if (flat.getChildren().get(0) instanceof Cast) {
-			return new Cast(getType(), typeName, flat.getChildren().get(0).getChildren().get(0));
-		}
-
-		return flat;
-	}
-
-	@Override
 	public Expression<T> recreate(List children) {
 		if (children.size() != 1) throw new UnsupportedOperationException();
-		return new Cast<>(getType(), typeName, (Expression) children.get(0));
+		return Cast.of(getType(), typeName, (Expression) children.get(0));
+	}
+
+	public static <T> Expression<T> of(Class<T> type, String typeName, Expression<?> value) {
+		OptionalDouble d = value.doubleValue();
+		if (d.isPresent() && typeName.equals(Cast.INT_NAME))
+			return (Expression) new IntegerConstant((int) d.getAsDouble());
+
+		if (value instanceof Cast) {
+			return Cast.of(type, typeName, value.getChildren().get(0));
+		}
+
+		return new Cast<>(type, typeName, value);
 	}
 }

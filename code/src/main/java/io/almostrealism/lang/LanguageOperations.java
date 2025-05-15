@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,15 +19,9 @@ package io.almostrealism.lang;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
-import io.almostrealism.expression.Cast;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
 
-import java.util.function.Function;
-
 public interface LanguageOperations {
-
-	Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
 	Precision getPrecision();
 

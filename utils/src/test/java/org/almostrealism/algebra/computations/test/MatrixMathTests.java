@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -30,30 +29,42 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmulVerySmall() {
-		matmul(2, 4, true);
+		matmul(0, 2, 4, enableOptimization, true);
+	}
+
+	@Test
+	public void matmulVerySmallBatch() {
+		matmul(5, 2, 4, enableOptimization, true);
 	}
 
 	@Test
 	public void matmulSmall() {
-		matmul(12, 4, true);
+		matmul(0, 12, 4, enableOptimization, true);
+	}
+
+	@Test
+	public void matmulSmallBatch() {
+		matmul(10, 12, 4, enableOptimization, true);
 	}
 
 	@Test
 	public void matmulMedium() {
-		matmul(64, 32, true);
+		matmul(8, 64, 32, enableOptimization, true);
 	}
 
 	@Test
 	public void matmulLarge() {
 		if (testDepth < 1) return;
 
-		matmul(2048, 1024, true);
+		matmul(2, 2048, 1024, enableOptimization, true);
 	}
 
 	@Test
 	public void matmulPowers() {
+		if (testDepth < 1) return;
+
 		for (int i = 1; i < 8; i++) {
-			matmul(1 << i, 1 << i, false);
+			matmul(0, 1 << i, 1 << i, enableOptimization, false);
 		}
 	}
 
@@ -140,10 +151,18 @@ public class MatrixMathTests implements TestFeatures {
 		destination.setMem(result);
 	}
 
-	protected void matmul(int dim, int width, boolean validate) {
+	protected void matmul(int batches, int dim, int width, boolean optimize, boolean validate) {
 		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
-		PackedCollection<?> vector = new PackedCollection<>(width);
-		PackedCollection<?> result = new PackedCollection<>(dim);
+		PackedCollection<?> vector;
+		PackedCollection<?> result;
+
+		if (batches > 0) {
+			vector = new PackedCollection<>(batches, width, 1);
+			result = new PackedCollection<>(batches, dim);
+		} else {
+			vector = new PackedCollection<>(width);
+			result = new PackedCollection<>(dim);
+		}
 
 		matrix.fill(pos -> Math.random());
 		vector.fill(pos -> Math.random());
@@ -152,7 +171,7 @@ public class MatrixMathTests implements TestFeatures {
 
 		OperationList op = new OperationList("Matrix Test", false);
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
-		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
+		Runnable r = optimize ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
 		verboseLog(() -> r.run());
 
@@ -167,14 +186,28 @@ public class MatrixMathTests implements TestFeatures {
 		profiles.print();
 
 		if (validate) {
-			for (int i = 0; i < dim; i++) {
-				double v = 0.0;
+			if (batches > 0) {
+				for (int n = 0; n < batches; n++) {
+					for (int i = 0; i < dim; i++) {
+						double v = 0.0;
 
-				for (int j = 0; j < width; j++) {
-					v += matrix.valueAt(i, j) * vector.valueAt(j);
+						for (int j = 0; j < width; j++) {
+							v += matrix.valueAt(i, j) * vector.valueAt(n, j);
+						}
+
+						assertEquals(v, result.valueAt(n, i));
+					}
 				}
+			} else {
+				for (int i = 0; i < dim; i++) {
+					double v = 0.0;
 
-				assertEquals(v, result.valueAt(i));
+					for (int j = 0; j < width; j++) {
+						v += matrix.valueAt(i, j) * vector.valueAt(j);
+					}
+
+					assertEquals(v, result.valueAt(i));
+				}
 			}
 		}
 	}
@@ -199,10 +232,6 @@ public class MatrixMathTests implements TestFeatures {
 		OperationList op = new OperationList("Vector Test", false);
 		op.add(a("sum " + dim, traverseEach(p(result)), sum(traverse(1, p(vectors)))));
 		Runnable r = ((OperationList) op.optimize()).get(profiles);
-
-//		HardwareOperator.verboseLog(() -> {
-//			r.run();
-//		});
 
 		for (int i = 0; i < 50000; i++) {
 			r.run();

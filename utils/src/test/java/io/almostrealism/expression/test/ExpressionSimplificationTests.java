@@ -38,7 +38,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures, TestFeatures {
@@ -55,6 +57,40 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		Assert.assertEquals(100, kernel().withLimit(100).getLimit().orElse(-1));
 		Assert.assertEquals(50, kernel().withLimit(100).imod(50).getLimit().orElse(-1));
 		Assert.assertEquals(10, kernel().withLimit(100).divide(10).getLimit().orElse(-1));
+	}
+
+	@Test
+	public void kernelIndexOptions() {
+		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().size());
+	}
+
+	@Test
+	public void modIndexOptions() {
+		KernelIndex k = kernel();
+		Expression<?> r = k.imod(20);
+		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
+	}
+
+	@Test
+	public void divideIndexOptions1() {
+		KernelIndex k = kernel().withLimit(100);
+		Expression<?> r = k.divide(20);
+		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().size());
+		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
+	}
+
+	@Test
+	public void divideIndexOptions2() {
+		KernelIndex k = kernel().withLimit(6);
+		Expression<?> r = k.divide(4);
+
+		Set<Integer> options = r.getIndexOptions(k).orElseThrow();
+		Assert.assertEquals(r.sequence().distinct().length, options.size());
+		Assert.assertTrue(options.contains(4));
 	}
 
 	@Test
@@ -200,6 +236,18 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelModQuotient2() {
+		// (kernel0 % 9) / 3
+		Expression e = kernel().imod(9).divide(3);
+		log(e.getExpression(lang));
+
+		e = e.getSimplified(new DefaultKernelStructureContext(9));
+		log(e.getExpression(lang));
+
+		Assert.assertEquals("kernel0 / 3", e.getExpression(lang));
+	}
+
+	@Test
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
@@ -240,13 +288,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.divide(18 * n);
 		log(e.getExpression(lang));
 
-		if (Quotient.enableLowerBoundedNumeratorReplace) {
-			Assert.assertEquals("54", e.getExpression(lang));
-		} else {
-			e = ctx.getSeriesProvider().getSeries(e);
-			log(e.getExpression(lang));
-			Assert.assertEquals("54", e.getExpression(lang));
-		}
+		Assert.assertEquals("54", e.getExpression(lang));
 	}
 
 	@Test
@@ -259,12 +301,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.divide(18 * n);
 		log(e.getExpression(lang));
 
-		if (Quotient.enableLowerBoundedNumeratorReplace) {
-			Assert.assertEquals("0", e.getExpression(lang));
-		} else {
-			e = ctx.getSeriesProvider().getSeries(e);
-			log(e.getExpression(lang));
-		}
+		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
 	@Test
@@ -348,7 +385,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		System.out.println(e.getExpression(lang));
 
 		IndexSequence seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.toArray()));
+		System.out.println(Arrays.toString(seq.intValues().toArray()));
 
 		e = e.getSimplified();
 		System.out.println(e.getExpression(lang));
@@ -398,16 +435,16 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	public void sequenceMax1() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.toArray()));
-		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
 	@Test
 	public void sequenceMax2() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.toArray()));
-		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.toArray()[2]);
+		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
 	@Test
@@ -511,7 +548,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n * n).divide(n);
 		compareSimplifiedSequence(e);
 
-		System.out.println(e.getExpression(lang));
+		log(e.getExpression(lang));
 	}
 
 	@Test
@@ -583,6 +620,37 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 						.multiply(-2100);
 
 		Assert.assertEquals("(kernel0 % 2100) * -2100", e.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void kernelSumModOptions1() {
+		// ((kernel0 / 4) * 2) + (kernel0 % 2)
+		KernelIndex kernel = kernel().withLimit(8);
+		Expression<?> e = kernel.divide(4).multiply(2)
+								.add(kernel.imod(2));
+		log(e.getExpression(lang));
+
+		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+
+		// Ideally it would identify 5, but if it cannot
+		// - it should at least be explicitly uncertain
+		Assert.assertTrue(options.isEmpty() || options.get().contains(5));
+	}
+
+	@Test
+	public void kernelSumModOptions2() {
+		// ((((kernel0 % 4) / 2) * 4) + ((kernel0 / 4) * 2) + (kernel0 % 2))
+		KernelIndex kernel = kernel().withLimit(8);
+		Expression<?> e = kernel.imod(4).divide(2).multiply(4)
+				.add(kernel.divide(4).multiply(2))
+				.add(kernel.imod(2));
+		log(e.getExpression(lang));
+
+		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+
+		// Ideally it would identify 7, but if it cannot
+		// - it should at least be explicitly uncertain
+		Assert.assertTrue(options.isEmpty() || options.get().contains(7));
 	}
 
 	@Test
@@ -711,11 +779,11 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 				.add(kernel().divide(9).multiply(9))
 				.divide(3).imod(3)
 				.eq(kernel().divide(3)).conditional(e(1), e(0));
-		System.out.println(e.getExpression(lang));
+		log(e.getExpression(lang));
 
 		e = e.getSimplified();
-		System.out.println(e.getExpression(lang));
-		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+		log(e.getExpression(lang));
+		log(Arrays.toString(e.sequence(9).toArray()));
 
 		e = e.getSimplified(new DefaultKernelStructureContext(9));
 		// Assert.assertEquals("((kernel0 % 3) == (kernel0 / 3)) ? 1 : 0", e.getExpression(lang));
@@ -772,11 +840,17 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	protected void compareSequences(Expression a, Expression b) {
-		System.out.println(b.getExpression(lang));
+		log(b.getExpression(lang));
 
 		long seqA[] = a.sequence().longValues().toArray();
 
-		IndexSequence s = b.sequence();
+		IndexSequence s;
+		if (b.getStructureContext() == null || b.getStructureContext().getKernelMaximum().isEmpty()) {
+			s = b.sequence();
+		} else {
+			s = b.sequence(Math.toIntExact(b.getStructureContext().getKernelMaximum().orElseThrow()));
+		}
+
 		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
 		if (seqA.length < 100) {

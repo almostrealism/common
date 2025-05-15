@@ -21,6 +21,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Product;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
@@ -102,11 +103,33 @@ public interface TemporalFeatures extends GeometryFeatures {
 				(Supplier) time, (Supplier) value)
 				.setPostprocessor(TemporalScalar.postprocessor());
 	}
+
+	default Interpolate interpolate(Producer<PackedCollection<?>> series,
+									Producer<PackedCollection<?>> position) {
+		return interpolate(series, position, c(1.0));
+	}
 	
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,
 									Producer<PackedCollection<?>> position,
 									Producer<PackedCollection<?>> rate) {
 		return new Interpolate(series, position, rate);
+	}
+
+	default Interpolate interpolate(Producer<PackedCollection<?>> series,
+									Producer<PackedCollection<?>> time,
+									double sampleRate) {
+		return new Interpolate(series, time,
+				v -> Product.of(v, e(1.0 / sampleRate)),
+				v -> Product.of(v, e(sampleRate)));
+	}
+
+	default Interpolate interpolate(Producer<PackedCollection<?>> series,
+									Producer<PackedCollection<?>> time,
+									Producer<PackedCollection<?>> rate,
+									double sampleRate) {
+		return new Interpolate(series, time, rate,
+				v -> Product.of(v, e(1.0 / sampleRate)),
+				v -> Product.of(v, e(sampleRate)));
 	}
 
 	default Interpolate interpolate(

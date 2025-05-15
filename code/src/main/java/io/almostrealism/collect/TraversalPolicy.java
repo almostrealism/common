@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -38,7 +39,7 @@ import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable {
+public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
 	public static boolean enableStrictSizes = true;
 	public static boolean enableDivisibleSizes = true;
 
@@ -301,7 +302,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		Expression remaining = index;
 		for (int i = 0; i < pos.length; i++) {
-			Expression s = new IntegerConstant(inputSize(i + 1));
+			Expression s = e(inputSizeLong(i + 1));
 			pos[i] = Quotient.of(remaining, s);
 			remaining = Sum.of(remaining, Minus.of(Product.of(pos[i], s)));
 		}
@@ -530,6 +531,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		} else {
 			return new TraversalPolicy(order, getTotalSize());
 		}
+	}
+
+	public TraversalPolicy alignCount(TraversalPolicy alt) {
+		return alignCount(alt.getCountLong());
+	}
+
+	public TraversalPolicy alignCount(long count) {
+		int axis = getTraversalAxis();
+
+		while (traverse(axis).getCountLong() < count && axis < getDimensions()) {
+			axis++;
+		}
+
+		if (getTraversalAxis() != axis) {
+			return traverse(axis);
+		}
+
+		return this;
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }

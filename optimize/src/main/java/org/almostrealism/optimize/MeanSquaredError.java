@@ -33,11 +33,13 @@ public class MeanSquaredError implements LossProvider, CodeFeatures {
 
 	@Override
 	public double loss(PackedCollection<?> output, PackedCollection<?> target) {
-		return loss.evaluate(output, target).doubleStream().sum();
+		return loss.evaluate(output, target).doubleStream().average().orElse(0);
 	}
 
 	@Override
-	public Producer<PackedCollection<?>> gradient(Producer<PackedCollection<?>> output, Producer<PackedCollection<?>> target) {
-		return c(2).multiply(cv(outputShape, 0).subtract(cv(outputShape, 1)));
+	public Producer<PackedCollection<?>> gradient(Producer<PackedCollection<?>> output,
+												  Producer<PackedCollection<?>> target) {
+		return c(2.0 / outputShape.getTotalSize())
+				.multiply(c(output).subtract(c(target)));
 	}
 }

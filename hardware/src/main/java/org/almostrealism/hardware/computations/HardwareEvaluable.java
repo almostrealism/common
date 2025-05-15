@@ -25,6 +25,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Supplier;
@@ -123,6 +124,10 @@ public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T> {
 
 	@Override
 	public T evaluate(Object... args) {
+		if (Arrays.stream(args).anyMatch(i -> i instanceof Object[])) {
+			throw new IllegalArgumentException("Embedded array provided to evaluate");
+		}
+
 		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
 	}
 

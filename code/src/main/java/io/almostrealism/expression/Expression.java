@@ -212,6 +212,46 @@ public abstract class Expression<T> implements
 		return indices;
 	}
 
+	/**
+	 * Attempt to determine the smallest {@link Set} of distinct {@link Integer}
+	 * values (eg, the domain) for the provided index that would be required to
+	 * generate all possible results (eg, the range) for this expression. Note
+	 * that this may return an empty {@link Optional} even in cases where it is
+	 * possible to determine the domain, if the resulting {@link Set} would
+	 * contain more than {@value ScopeSettings#indexOptionLimit} elements or if
+	 * some members of the {@link Set} would exceed {@link Integer#MAX_VALUE}.
+	 */
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		if (this instanceof Index) {
+			if (!Objects.equals(this, index)) {
+				return Optional.of(Collections.emptySet());
+			}
+
+			OptionalLong limit = getLimit();
+			if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
+				return Optional.empty();
+			}
+
+			return Optional.of(
+					IntStream.range(0, Math.toIntExact(limit.getAsLong()))
+						.boxed().collect(Collectors.toSet()));
+		}
+
+		Set<Integer> options = new HashSet<>();
+
+		for (Expression<?> e : getChildren()) {
+			Optional<Set<Integer>> o = e.getIndexOptions(index);
+
+			if (o.isPresent() && options.size() < ScopeSettings.indexOptionLimit) {
+				options.addAll(o.get());
+			} else {
+				return Optional.empty();
+			}
+		}
+
+		return options.size() < ScopeSettings.indexOptionLimit ? Optional.of(options) : Optional.empty();
+	}
+
 	public KernelStructureContext getStructureContext() {
 		return getChildren().stream()
 				.map(Expression::getStructureContext)
@@ -303,7 +343,7 @@ public abstract class Expression<T> implements
 		}
 
 		return sequence(indices.iterator().next(),
-				Math.toIntExact(indices.iterator().next().getLimit().getAsLong()), Integer.MAX_VALUE);
+				Math.toIntExact(indices.iterator().next().getLimit().orElse(-1)), Integer.MAX_VALUE);
 	}
 
 	public IndexSequence sequence(int len) {
@@ -315,13 +355,11 @@ public abstract class Expression<T> implements
 
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {
-		if (len < 0) throw new IllegalArgumentException();
-
 		if (ScopeSettings.enableArithmeticSequence && equals(index)) {
 			return new ArithmeticIndexSequence(1, 1, len);
 		}
 
-		if (!isValue(new IndexValues().put(index, 0))) {
+		if (len < 0 || !isValue(new IndexValues().put(index, 0))) {
 			throw new IllegalArgumentException();
 		}
 
@@ -356,7 +394,14 @@ public abstract class Expression<T> implements
 		return seq;
 	}
 
-	public Expression<?> getSimplified() { return getSimplified(new NoOpKernelStructureContext()); }
+	public Expression<?> getSimplified() {
+		KernelStructureContext context = getStructureContext();
+		if (context != null) {
+			return getSimplified(context);
+		}
+
+		return getSimplified(new NoOpKernelStructureContext());
+	}
 
 	public Expression<?> getSimplified(KernelStructureContext context) {
 		return getSimplified(context, 0);
@@ -519,16 +564,16 @@ public abstract class Expression<T> implements
 		}
 	}
 
-	public Sine sin() { return new Sine((Expression) this); }
-	public Cosine cos() { return new Cosine((Expression) this); }
-	public Tangent tan() { return new Tangent((Expression) this); }
-	public Tangent tanh() { return new Tangent((Expression) this, true); }
+	public Expression<Double> sin() { return Sine.of((Expression) this); }
+	public Expression<Double> cos() { return Cosine.of((Expression) this); }
+	public Expression<Double> tan() { return Tangent.of((Expression) this); }
+	public Expression<Double> tanh() { return Tangent.of((Expression) this, true); }
 
-	public Negation not() {
+	public Expression not() {
 		if (getType() != Boolean.class)
 			throw new IllegalArgumentException();
 
-		return new Negation((Expression) this);
+		return Negation.of(this);
 	}
 
 	public Expression eqZero() { return eq(0.0); }
@@ -536,7 +581,7 @@ public abstract class Expression<T> implements
 	public Expression eq(long operand) { return eq(ExpressionFeatures.getInstance().e(operand)); };
 	public Expression eq(double operand) { return eq(new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
-	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
+	public Expression and(Expression<Boolean> operand) { return Conjunction.of((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();
 		return Conditional.of((Expression<Boolean>) this, positive, negative);
@@ -552,7 +597,7 @@ public abstract class Expression<T> implements
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;
-		return LanguageOperations.toDouble.apply(this);
+		return Cast.of(Double.class, Cast.FP_NAME, this);
 	}
 
 	public Expression<Integer> toInt() {
@@ -562,7 +607,7 @@ public abstract class Expression<T> implements
 	public Expression<Integer> toInt(boolean requireInt) {
 		boolean cast = requireInt ? getType() != Integer.class : isFP();
 		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return cast ? new Cast(Integer.class, "int", this) : (Expression<Integer>) this;
+		return cast ? Cast.of(Integer.class, Cast.INT_NAME, this) : (Expression<Integer>) this;
 	}
 
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {

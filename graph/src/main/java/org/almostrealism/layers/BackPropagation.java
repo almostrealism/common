@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,7 @@ import org.almostrealism.graph.Receptor;
 import java.util.function.Supplier;
 
 public interface BackPropagation {
-	Supplier<Runnable> propagate(Producer<PackedCollection<?>> learningRate,
-								 Producer<PackedCollection<?>> gradient,
+	Supplier<Runnable> propagate(Producer<PackedCollection<?>> gradient,
 								 Producer<PackedCollection<?>> input,
 								 Receptor<PackedCollection<?>> next);
 }

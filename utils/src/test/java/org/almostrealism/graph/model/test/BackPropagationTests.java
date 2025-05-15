@@ -45,7 +45,7 @@ public class BackPropagationTests implements TestFeatures {
 		int nodes = 5;
 
 		Model model = new Model(shape(size), 1e-1);
-		CellularLayer dense = dense(size, nodes);
+		CellularLayer dense = dense(size, nodes).apply(shape(size));
 		CellularLayer softmax = softmax(nodes);
 		model.add(dense);
 		model.add(softmax);

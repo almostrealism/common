@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,4 +21,12 @@ package io.almostrealism.relation;
  */
 public interface Validity {
 	boolean isValid();
+
+	static <T> boolean valid(T value) {
+		if (value instanceof Validity) {
+			return ((Validity) value).isValid();
+		}
+
+		return value != null;
+	}
 }

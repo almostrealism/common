@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -45,23 +46,16 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		this.pos = pos;
-		setShape(shape);
-		setInputs(new Destination<>(), (Supplier) collection);
-		init();
 	}
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
-		super("subset", shape, null, collection);
+		super("subset", shape, null, collection, pos);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		if (!shape(pos).equalsIgnoreAxis(shape(shape.getDimensions()))) {
 			throw new IllegalArgumentException();
 		}
-
-		setShape(shape);
-		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
-		init();
 	}
 
 	@Override
@@ -70,6 +64,11 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	@Override
 	public long getCountLong() {
 		return getShape().traverseEach().getCountLong();
+	}
+
+	@Override
+	protected int getStatementCount(KernelStructureContext context) {
+		return getMemLength();
 	}
 
 	// TODO  This custom destination creation should not be necessary
@@ -109,20 +108,5 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		} else {
 			throw new UnsupportedOperationException();
 		}
-	}
-
-	private class Destination<T extends PackedCollection<?>> implements Producer<T>, Delegated<Countable>, Countable {
-		@Override
-		public Evaluable<T> get() {
-			return args -> (T) new PackedCollection<>(getShape().traverseEach());
-		}
-
-		@Override
-		public Countable getDelegate() {
-			return PackedCollectionSubset.this;
-		}
-
-		@Override
-		public long getCountLong() { return getShape().getTotalSize(); }
 	}
 }

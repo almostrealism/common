@@ -54,6 +54,13 @@ public class ScopeSettings {
 	public static int maxNodeCount = 1 << 23;
 
 	/**
+	 * The maximum number of possible options to consider
+	 * for the value of any {@link Index} when evaluating
+	 * complexity in {@link Expression#getIndexOptions(Index)}.
+	 */
+	public static int indexOptionLimit = 1 << 15;
+
+	/**
 	 * Maximum number of statements allow in a {@link Scope}.
 	 *
 	 * @see Scope#getStatements()

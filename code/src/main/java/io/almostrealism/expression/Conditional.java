@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 
 import java.util.List;
@@ -75,32 +75,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 	@Override
 	public Expression simplify(KernelStructureContext context, int depth) {
 		Expression<?> flat = super.simplify(context, depth);
-		if (!(flat instanceof Conditional)) return flat;
+		if (!enableSimplification || !(flat instanceof Conditional)) return flat;
 
 		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);
 		Expression<Double> positive = (Expression<Double>) flat.getChildren().get(1);
 		Expression<Double> negative = (Expression<Double>) flat.getChildren().get(2);
 
-		Optional<Boolean> cond = condition.booleanValue();
-		if (cond.isPresent()) {
-			if (cond.get()) {
-				return positive;
-			} else {
-				return negative;
-			}
-		}
-
-		OptionalInt li = positive.intValue();
-		OptionalInt ri = negative.intValue();
-		if (li.isPresent() && ri.isPresent() && li.getAsInt() == ri.getAsInt())
-			return new IntegerConstant(li.getAsInt());
-
 		OptionalDouble ld = positive.doubleValue();
 		OptionalDouble rd = negative.doubleValue();
-		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
-			return new DoubleConstant(ld.getAsDouble());
-
-		if (!enableSimplification) return Conditional.of(condition, positive, negative);
 
 		boolean replaceCondition = false;
 		if (context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
@@ -174,6 +156,12 @@ public class Conditional<T extends Number> extends Expression<T> {
 				Scope.console.features(Conditional.class)
 						.warn("Conditional output is equivalent to a branch of the condition");
 			}
+		}
+
+		if (rd.isPresent() && ld.isPresent() && rd.getAsDouble() == ld.getAsDouble()) {
+			boolean fp = positive.isFP() || negative.isFP();
+			return fp ? new DoubleConstant(rd.getAsDouble()) :
+					ExpressionFeatures.getInstance().e((long) rd.getAsDouble());
 		}
 
 		if (rd.isPresent() && rd.getAsDouble() == 0.0) {

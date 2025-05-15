@@ -10,6 +10,7 @@
 
 **/*.hwcache/**
 **/*.hprof
+**/hs_err_pid**
 /utils/data/**
 /utils/results/**
 /utils/generated_images/**

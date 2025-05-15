@@ -37,12 +37,13 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class OperationProfileFX extends Application {
+public class OperationProfileFX extends Application implements ConsoleFeatures {
 	private static String path;
 
 	private TreeView<OperationProfileNodeInfo> compiledTree;
@@ -198,6 +199,7 @@ public class OperationProfileFX extends Application {
 
 	@Override
 	public void start(Stage stage) throws Exception {
+		log("Loading " + path);
 		OperationProfileNode root = OperationProfileNode.load(path);
 
 		this.infoArea = new TextArea();

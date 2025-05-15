@@ -18,14 +18,26 @@ package org.almostrealism.optimize;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
 
-public class NegativeLogLikelihood implements LossProvider {
+public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	@Override
 	public double loss(PackedCollection<?> output, PackedCollection<?> target) {
-		return -output.toDouble(target.argmax());
+		PackedCollection<?> o = output.reshape(padDimensions(output.getShape(), 2)).traverse(1);
+		PackedCollection<?> t = target.reshape(padDimensions(target.getShape(), 2)).traverse(1);
+
+		int bs = o.getShape().length(0);
+		if (bs != t.getShape().length(0)) {
+			throw new IllegalArgumentException("Batch size mismatch");
+		}
+
+		return IntStream.range(0, bs).mapToDouble(i -> {
+			PackedCollection<?> v = (PackedCollection<?>) t.get(i);
+			return -o.get(i).toDouble(v.argmax());
+		}).average().orElse(0.0);
 	}
 
 	@Override
@@ -36,18 +48,26 @@ public class NegativeLogLikelihood implements LossProvider {
 			Evaluable<PackedCollection<?>> valid = target.get();
 
 			return args -> {
-				double o[] = out.evaluate(args).toArray();
-				int idx = valid.evaluate(args).argmax();
+				PackedCollection<?> o = out.evaluate(args).traverse(1);
+				PackedCollection<?> v = valid.evaluate(args).traverse(1);
 
-				PackedCollection grad = PackedCollection.of(IntStream.range(0, o.length).mapToDouble(i -> {
-					if (i == idx) {
-						return -1.0;
-					} else {
-						return 0.0;
+				int bs = o.getShape().length(0);
+				double grad[] = new double[o.getShape().getTotalSize()];
+
+				for (int n = 0; n < o.getShape().length(0); n++) {
+					double od[] = o.get(n).toArray();
+					int idx = ((PackedCollection<?>) v.get(n)).argmax();
+
+					for (int i = 0; i < od.length; i++) {
+						if (i == idx) {
+							grad[n * bs + i] = -1.0;
+						} else {
+							grad[n * bs +i] = 0.0;
+						}
 					}
-				}).toArray());
+				}
 
-				return grad;
+				return PackedCollection.of(grad).reshape(o.getShape());
 			};
 		};
 	}

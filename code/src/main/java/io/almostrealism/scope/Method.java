@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
@@ -106,11 +105,6 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	public String getMember() { return this.member; }
 
 	public List<Expression<?>> getArguments() { return arguments; }
-
-	@Override
-	public Method<T> simplify(KernelStructureContext context, int depth) {
-		return (Method<T>) super.simplify(context, depth);
-	}
 
 	@Override
 	public Expression<T> recreate(List<Expression<?>> children) {

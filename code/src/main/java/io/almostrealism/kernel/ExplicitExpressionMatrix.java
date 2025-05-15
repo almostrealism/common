@@ -19,6 +19,7 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.Expression;
 
 public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
+	public static boolean enableProactiveSimplification = false;
 
 	private Expression[][] matrix;
 
@@ -44,7 +45,11 @@ public class ExplicitExpressionMatrix<T> extends ExpressionMatrix<T> {
 			boolean duplicate = true;
 
 			for (int j = 0; j < colCount; j++) {
-				matrix[i][j] = e.withIndex(row, i).withIndex(col, j).getSimplified();
+				matrix[i][j] = e.withIndex(row, i).withIndex(col, j);
+
+				if (enableProactiveSimplification)
+					matrix[i][j] = matrix[i][j].getSimplified();
+
 				if (i == 0 || !valueAt(i, j).equals(valueAt((i - 1), j))) {
 					duplicate = false;
 				}

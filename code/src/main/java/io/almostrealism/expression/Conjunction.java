@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,18 +16,11 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelStructureContext;
-
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class Conjunction extends NAryExpression<Boolean> {
-	public Conjunction(List<Expression<?>> values) { super(Boolean.class, "&", values); }
-
-	public Conjunction(Expression<Boolean>... values) {
-		super(Boolean.class, "&", values);
-	}
+	protected Conjunction(List<Expression<?>> values) { super(Boolean.class, "&", values); }
 
 	@Override
 	public Number evaluate(Number... children) {
@@ -40,30 +33,7 @@ public class Conjunction extends NAryExpression<Boolean> {
 
 	@Override
 	public Expression<Boolean> recreate(List<Expression<?>> children) {
-		return new Conjunction(children.toArray(new Expression[0]));
-	}
-
-	@Override
-	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
-		Expression<Boolean> flat = super.simplify(context, depth);
-		if (!(flat instanceof Conjunction)) return flat;
-
-		List<Expression<?>> children = new ArrayList<>();
-
-		for (Expression<?> child : flat.getChildren()) {
-			Optional<Boolean> value = child.booleanValue();
-			if (value.isPresent()) {
-				if (!value.get()) {
-					return new BooleanConstant(false);
-				}
-			} else {
-				children.add(child);
-			}
-		}
-
-		if (children.isEmpty()) return new BooleanConstant(true);
-		if (children.size() == 1) return (Expression) children.get(0);
-		return new Conjunction(children);
+		return Conjunction.of(children);
 	}
 
 	public static Expression<Boolean> of(Expression<Boolean>... values) {
@@ -71,10 +41,17 @@ public class Conjunction extends NAryExpression<Boolean> {
 	}
 
 	public static Expression<Boolean> of(List<Expression<?>> values) {
-		if (values.size() == 0)
-			throw new IllegalArgumentException();
+		values = values.stream().filter(e -> !e.booleanValue()
+							.orElse(false)).collect(Collectors.toList());
 
-		if (values.size() == 1) return (Expression<Boolean>) values.get(0);
+		if (values.isEmpty()) {
+			return new BooleanConstant(true);
+		} else if (values.size() == 1) {
+			return (Expression<Boolean>) values.get(0);
+		} else if (values.stream().anyMatch(e -> !e.booleanValue().orElse(true))) {
+			return new BooleanConstant(false);
+		}
+
 		return new Conjunction(values);
 	}
 }

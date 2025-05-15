@@ -58,6 +58,9 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	}
 
 	@Override
+	public boolean isZero() { return value == 0.0; }
+
+	@Override
 	public boolean isIdentity(int width) {
 		return value == 1.0 && width == 1 && getShape().getTotalSizeLong() == 1;
 	}

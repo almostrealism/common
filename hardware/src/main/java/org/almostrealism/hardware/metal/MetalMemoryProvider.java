@@ -24,6 +24,7 @@ import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.DistributionMetric;
+import org.almostrealism.io.SystemUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -33,7 +34,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
-	public static boolean enableLargeAllocationLogging = false;
+	public static boolean enableLargeAllocationLogging =
+			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 	public static int largeAllocationSize = 40 * 1024 * 1024;
 
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("mtlAllocationSizes", 1024 * 1024);
@@ -70,11 +72,15 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	public long getAllocatedMemory() { return memoryUsed; }
 
+	public double getMemoryUsed() {
+		return getAllocatedMemory() / (double) memoryMax;
+	}
+
 	public MetalDataContext getContext() { return context; }
 
 	@Override
 	public MetalMemory allocate(int size) {
-		if (enableLargeAllocationLogging && size >  largeAllocationSize) {
+		if (enableLargeAllocationLogging && size > largeAllocationSize) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 

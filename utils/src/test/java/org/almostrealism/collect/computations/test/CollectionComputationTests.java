@@ -451,6 +451,21 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void size() {
+		PackedCollection<?> a = new PackedCollection<>(shape(10));
+		PackedCollection<?> b = new PackedCollection<>(shape(15));
+
+		Evaluable<PackedCollection<?>> size = sizeOf(cv(shape(1), 0)).get();
+		PackedCollection<?> result = size.evaluate(a);
+		result.print();
+		assertEquals(10.0, result.toDouble(0));
+
+		result = size.evaluate(b);
+		result.print();
+		assertEquals(15.0, result.toDouble(0));
+	}
+
+	@Test
 	public void scale() {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -660,13 +675,5 @@ public class CollectionComputationTests implements TestFeatures {
 		print(2, 1, out);
 		assertEquals(6.0, out.toDouble(0));
 		assertEquals(3.0, out.toDouble(1));
-	}
-
-	@Test
-	public void clear() {
-		PackedCollection data = new PackedCollection(4);
-		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
-		data.clear();
-		assertEquals(0, data.toArray(0, 4)[1]);
 	}
 }

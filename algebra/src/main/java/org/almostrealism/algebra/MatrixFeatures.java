@@ -57,90 +57,119 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
-		TraversalPolicy shape = shape(matrix);
-		TraversalPolicy vshape = shape(vector);
+		TraversalPolicy mShape = shape(matrix);
+		TraversalPolicy vShape = shape(vector);
 
  		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
-			if (vshape.getDimensions() == 1) {
-				return zeros(shape(shape.length(0), 1));
+			if (vShape.getDimensions() == 1) {
+				return zeros(shape(mShape.length(0), 1));
 			}
 
-			return zeros(shape(shape.length(0), vshape.length(1)));
+			return zeros(shape(mShape.length(0), vShape.length(1)));
 		}
 
-		if (shape.getTotalSizeLong() == 1 || vshape.getTotalSizeLong() == 1) {
+		if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
-		} else if (shape.getDimensions() != 2) {
+		} else if (mShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		CollectionProducer<PackedCollection<?>> a;
-		CollectionProducer<PackedCollection<?>> b;
+		boolean each = vShape.getTraversalAxis() >= (vShape.getDimensions() - 1);
+		boolean onlyColumns = vShape.getDimensions() > 1 && vShape.length(vShape.getDimensions() - 1) == 1;
+		boolean singleRow = vShape.getDimensions() == 1;
 
-		int m = shape.length(0);
-		int n = shape.length(1);
-
-		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
-			if (WeightedSumExpression.enableCollectionExpression) {
-				TraversalPolicy weightShape = padDimensions(vshape, 1, 2, true);
-				int p = weightShape.length(1);
-
-				if (Algebraic.isIdentity(vshape.length(0), matrix)) {
-					return c(vector);
-				} else if (Algebraic.isIdentity(shape.length(0), vector)) {
-					return c(matrix);
-				}
-
-				// Is the matrix just a scalar transform?
-				Optional<Computable> scalar =
-						Algebraic.getDiagonalScalar(vshape.length(0), matrix);
-				if (scalar.isPresent() && scalar.get() instanceof Producer) {
-					return multiply(c(vector), (Producer) scalar.get());
-				}
-
-				// Is the vector just a scalar transform?
-				scalar =
-						Algebraic.getDiagonalScalar(shape.length(0), vector);
-				if (scalar.isPresent() && scalar.get() instanceof Producer) {
-					return multiply(c(matrix), (Producer) scalar.get());
-				}
-
-				if (Algebraic.isDiagonal(vshape.length(0), matrix) ||
-						Algebraic.isDiagonal(shape.length(0), vector)) {
-					console.features(MatrixFeatures.class)
-							.log("Matrix multiplication by diagonal matrix");
-				}
-
-				return weightedSum("matmul",
-						shape(m, p).withRate(1, n, p),
-						shape(1, p),
-						shape(1, n), shape(n, 1),
-						matrix, reshape(weightShape, vector));
+		// If the matrix is being multiplied by a vector, or by
+		// a batch of vectors, rather than a matrix (or batch of
+		// matrices) then simple multiplication followed by a sum
+		// is a sufficient alternative to matrix multiplication
+		// via genuine weighted sum
+		if (each || onlyColumns || singleRow) {
+			if (onlyColumns) {
+				vShape = vShape.trim();
+				vector = reshape(vShape, vector);
 			}
 
-			// warn("Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+			if (vShape.length(0) == 1) {
+				vShape = shape(vShape.length(1));
+				vector = reshape(vShape, vector);
+			}
 
-			int p = vshape.length(1);
+			if (vShape.getTraversalAxis() != vShape.getDimensions() - 1) {
+				vShape = vShape.traverse(vShape.getDimensions() - 1);
+				vector = reshape(vShape, vector);
+			}
 
-			a = c(matrix).repeat(p);
-			b = c(vector).enumerate(1, 1)
-					.reshape(p, n)
-					.traverse(1)
-					.repeat(m)
-					.reshape(p, m, n)
-					.traverse(1);
-			CollectionProducer<PackedCollection<?>> product = multiply(traverseEach(a), traverseEach(b));
-			return (CollectionProducer) product
-					.reshape(p, m, n).sum(2)
-					.traverse(0)
-					.enumerate(1, 1)
-					.reshape(m, p);
-		} else {
-			a = c(matrix);
-			b = repeat(m, vector);
+			int batchAxis = vShape.getDimensions();
+			int outputSize = mShape.length(0);
+			CollectionProducer<PackedCollection<?>> a = c(matrix);
+			CollectionProducer<PackedCollection<?>> b = repeat(outputSize, vector);
+			return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 		}
 
-		return multiply(traverseEach(a), traverseEach(b)).traverse(1).sum();
+		TraversalPolicy vectorShape = padDimensions(vShape, 1, 2, true);
+		vectorShape = padDimensions(vectorShape, 3);
+
+		int b = vectorShape.length(0);
+		int m = mShape.length(0);
+		int n = mShape.length(1);
+		int p = vectorShape.length(2);
+
+		if (Algebraic.isIdentity(vectorShape.length(1), matrix)) {
+			return c(vector);
+		} else if (Algebraic.isIdentity(vectorShape.length(1), vector)) {
+			return c(matrix);
+		}
+
+		// Is the matrix just a scalar transform?
+		Optional<Computable> scalar =
+				Algebraic.getDiagonalScalar(vectorShape.length(1), matrix);
+		if (scalar.isPresent() && scalar.get() instanceof Producer) {
+			return multiply(c(vector), (Producer) scalar.get());
+		}
+
+		// Is the vector just a scalar transform?
+		scalar =
+				Algebraic.getDiagonalScalar(mShape.length(0), vector);
+		if (b == 1 && scalar.isPresent() && scalar.get() instanceof Producer) {
+			return multiply(c(matrix), (Producer) scalar.get());
+		}
+
+		if (Algebraic.isDiagonal(vectorShape.length(1), matrix) ||
+				Algebraic.isDiagonal(mShape.length(0), vector)) {
+			console.features(MatrixFeatures.class)
+					.log("Matrix multiplication by diagonal matrix");
+		}
+
+		TraversalPolicy matrixShape = shape(1, m, n, 1);
+		vectorShape = shape(b, 1, n, p);
+
+		TraversalPolicy resultShape = shape(b, m, 1, p);
+		TraversalPolicy matrixPositions =
+				resultShape
+						.withRate(0, 1, b)
+						.withRate(3, n, p);
+		TraversalPolicy vectorPositions =
+				resultShape
+						.withRate(1, 1, m);
+		TraversalPolicy matrixGroupShape =
+				shape(1, 1, n, 1);
+		TraversalPolicy vectorGroupShape =
+				shape(1, 1, n, 1);
+
+		TraversalPolicy finalShape;
+		if (vShape.getDimensions() == 1) {
+			finalShape = shape(m);
+		} else if (vShape.getDimensions() == 2) {
+			finalShape = shape(m, p);
+		} else {
+			finalShape = shape(b, m, p);
+		}
+
+		return weightedSum("matmul",
+				matrixPositions, vectorPositions,
+				matrixGroupShape, vectorGroupShape,
+				reshape(matrixShape, matrix),
+				reshape(vectorShape, vector)).reshape(finalShape.traverseEach());
 	}
 
 	@Deprecated

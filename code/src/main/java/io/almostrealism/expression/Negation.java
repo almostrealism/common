@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 public class Negation extends UnaryExpression<Boolean> {
-	public Negation(Expression<Boolean> value) {
+	protected Negation(Expression<Boolean> value) {
 		super(Boolean.class, "!", value);
 	}
 
@@ -43,15 +43,17 @@ public class Negation extends UnaryExpression<Boolean> {
 
 	@Override
 	public Expression<Boolean> recreate(List<Expression<?>> children) {
-		return new Negation((Expression<Boolean>) children.get(0));
+		return (Expression) Negation.of(children.get(0));
 	}
 
-	@Override
-	public Expression<Boolean> simplify(KernelStructureContext context, int depth) {
-		Expression<Boolean> e = super.simplify(context, depth);
-		if (!(e instanceof Negation)) return e;
-		
-		Optional<Boolean> c = e.getChildren().get(0).booleanValue();
-		return c.isPresent() ? new BooleanConstant(!c.get()) : e;
+	public static Expression<?> of(Expression<?> value) {
+		Optional<Boolean> c = value.booleanValue();
+		if (c.isPresent()) {
+			return new BooleanConstant(!c.get());
+		} else if (value instanceof Negation) {
+			return value.getChildren().get(0);
+		}
+
+		return new Negation((Expression) value);
 	}
 }

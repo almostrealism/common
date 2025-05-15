@@ -22,6 +22,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.compute.ParallelismDiversityOptimization;
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.ProcessContextBase;
 import io.almostrealism.compute.TraversableDepthTargetOptimization;
@@ -133,6 +134,7 @@ public final class Hardware {
 		}
 
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
+				new ParallelismDiversityOptimization(),
 				new TraversableDepthTargetOptimization(),
 				new ParallelismTargetOptimization()
 		));
