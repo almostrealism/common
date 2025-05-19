@@ -715,6 +715,19 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				requirements);
 	}
 
+	default Function<TraversalPolicy, Block> residual(Function<TraversalPolicy, Block> block) {
+		return shape -> residual(block.apply(shape));
+	}
+
+	default Block residual(Block block) {
+		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
+			throw new IllegalArgumentException();
+
+		SequentialBlock residual = new SequentialBlock(block.getInputShape());
+		residual.accum(block);
+		return residual;
+	}
+
 	default Function<TraversalPolicy, CellularLayer> similarity(
 			Block k, int c, int s1, int s2) {
 		if (k.getOutputShape().getDimensions() != 4 ||

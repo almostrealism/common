@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,11 @@ import java.util.function.Function;
 
 public interface AttentionFeatures extends RotationFeatures {
 
+	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection<?>> keys,
+																   ComputeRequirement... requirements) {
+		return inputShape -> attentionKeys(inputShape, keys, requirements);
+	}
+
 	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
 										ComputeRequirement... requirements) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
@@ -54,6 +59,11 @@ public interface AttentionFeatures extends RotationFeatures {
 						.reshape(shape(seqLength, heads))
 						.enumerate(1, 1)
 						.reshape(outputShape), requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
+																   ComputeRequirement... requirements) {
+		return inputShape -> attentionValues(inputShape, values, requirements);
 	}
 
 	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values,
@@ -133,6 +143,48 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* ---- **/
 
 		return attention;
+	}
+
+	default Block crossAttention(int heads, PackedCollection<?> rmsWeight,
+								 PackedCollection<?> wk, PackedCollection<?> wv,
+								 PackedCollection<?> wq, PackedCollection<?> wo,
+								 int dimHead, Block context) {
+		int dim = rmsWeight.getShape().length(0);
+
+		SequentialBlock crossAttention = new SequentialBlock(shape(1, -1, dim));
+
+		// Create caches for context keys and values
+		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, -1, heads, dimHead));
+		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, -1, heads, dimHead));
+
+		// 1. Normalize input (queries)
+		crossAttention.add(rmsnorm(rmsWeight));
+
+		/* KEYS **/
+		SequentialBlock keyBranch = context.branch();
+		keyBranch.add(dense(wk));
+		keyBranch.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		keyBranch.andThen(into(keysCache));
+		/* ---- **/
+
+		/* VALUES **/
+		SequentialBlock valueBranch = context.branch();
+		valueBranch.add(dense(wv));
+		valueBranch.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		valueBranch.andThen(into(valuesCache));
+		/* ---- **/
+
+		/* QUERY **/
+		crossAttention.add(dense(wq));
+		crossAttention.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		crossAttention.add(attentionKeys(cp(keysCache)));
+		crossAttention.add(scale(1.0 / Math.sqrt(dimHead)));
+		crossAttention.add(softmax(true));
+		crossAttention.add(attentionValues(cp(valuesCache)));
+		crossAttention.add(dense(wo));
+		/* ---- **/
+
+		return crossAttention;
 	}
 
 	default Block feedForward(
