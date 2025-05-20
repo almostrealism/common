@@ -507,16 +507,20 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								PackedCollection<?> weights,
 								boolean bias, boolean init,
 								ComputeRequirement... requirements) {
-		inputShape = padDimensions(inputShape, 2);
-
 		TraversalPolicy weightShape = weights.getShape();
 		if (weightShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
 		}
 
-		int batch = inputShape.length(0);
 		int nodes = weightShape.length(0);
 		int size = weightShape.length(1);
+		inputShape = padDimensions(inputShape, 2)
+						.flatten(true, size);
+
+		// Note that this may not be the same as the batch size,
+		// since the input may be a sequence that has been flattened
+		// to combine the batch dimension with sequence dimensions
+		int batched = inputShape.length(0);
 
 		if (inputShape.length(1) != size) {
 			throw new IllegalArgumentException();
@@ -537,7 +541,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			}
 		}
 
-		return layer("dense " + size, inputShape.traverseEach(), shape(batch, nodes).traverseEach(),
+		return layer("dense " + size, inputShape.traverseEach(), shape(batched, nodes).traverseEach(),
 				operator, bias ? List.of(weights, biases) : List.of(weights),
 				setup,
 				requirements);

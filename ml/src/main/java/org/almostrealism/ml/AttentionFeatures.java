@@ -149,24 +149,105 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	default Function<TraversalPolicy, CellularLayer> sequenceAttentionKeys(Producer<PackedCollection<?>> keys,
+																   ComputeRequirement... requirements) {
+		return inputShape -> sequenceAttentionKeys(inputShape, keys, requirements);
+	}
+
+	default CellularLayer sequenceAttentionKeys(TraversalPolicy inputShape,
+										Producer<PackedCollection<?>> keys,
+										ComputeRequirement... requirements) {
+		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
+
+		if (inputShape.getDimensions() != 3 || keyShape.getDimensions() != 3)
+			throw new IllegalArgumentException();
+
+		int heads = inputShape.length(1);
+		int headSize = inputShape.length(2);
+
+		int seqLength = keyShape.length(0);
+		if (inputShape.length(0) != seqLength) {
+			throw new IllegalArgumentException();
+		}
+
+		TraversalPolicy outputShape = shape(heads, seqLength).traverseEach();
+
+		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
+			throw new IllegalArgumentException();
+
+		// TODO  divide(c(Math.sqrt(headSize))) is better to include
+		// TODO  outside this method rather than within the layer
+		return layer("attentionKeys", inputShape, outputShape, input ->
+				multiply(traverseEach(keys), input)
+						.traverse(2).sum()
+						.divide(c(Math.sqrt(headSize)))
+						.reshape(shape(seqLength, heads))
+						.enumerate(1, 1)
+						.reshape(outputShape), requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> sequenceAttentionValues(Producer<PackedCollection<?>> values,
+																	 ComputeRequirement... requirements) {
+		return inputShape -> sequenceAttentionValues(inputShape, values, requirements);
+	}
+
+	default CellularLayer sequenceAttentionValues(TraversalPolicy inputShape,
+												  Producer<PackedCollection<?>> values,
+												  ComputeRequirement... requirements) {
+		TraversalPolicy valueShape = shape(values);
+
+		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
+			throw new IllegalArgumentException();
+
+		int heads = inputShape.length(0);
+		int headSize = valueShape.length(2);
+		int dim = heads * headSize;
+
+		int batchSeqLen = inputShape.length(1);
+		TraversalPolicy outputShape = shape(batchSeqLen, dim);
+
+		if (valueShape.length(1) != heads || valueShape.length(0) != batchSeqLen)
+			throw new IllegalArgumentException();
+
+		return layer("attentionValues", inputShape, outputShape, input -> {
+			// We need to transpose the attention weights
+			// from (heads, batchSeqLen) to (batchSeqLen, heads)
+			CollectionProducer<PackedCollection<?>> attnWeights = c(input)
+					.reshape(heads, batchSeqLen)
+					.enumerate(1, 1)
+					.reshape(batchSeqLen, heads);
+
+			// Now for each sequence position, apply attention weights to values
+			// values has shape (batchSeqLen, heads, headSize)
+			CollectionProducer<PackedCollection<?>> v = c(values).traverse(2);
+
+			// Expand attention weights to match value dimensions for broadcasting
+			// (batchSeqLen, heads) -> (batchSeqLen, heads, headSize)
+			attnWeights = attnWeights.traverse(2).repeat(headSize);
+
+			// Apply attention weights to values
+			return multiply(v, attnWeights).reshape(batchSeqLen, dim);
+		}, requirements);
+	}
+
 	/**
 	 * Implements self-attention that processes entire sequences at once,
 	 * rather than token-by-token processing as in
 	 * {@link #attention(int, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, Producer, ComputeRequirement...)}
 	 */
-	default Block sequenceAttention(int heads, PackedCollection<?> rmsWeight,
+	default Block sequenceAttention(int batchSize, int seqLen, int heads,
+									PackedCollection<?> rmsWeight,
 									PackedCollection<?> wk, PackedCollection<?> wv,
 									PackedCollection<?> wq, PackedCollection<?> wo,
-									PackedCollection<?> freqCis,
-									int seqLen) {
+									PackedCollection<?> freqCis) {
 		int dim = rmsWeight.getShape().length(0);
 		int dimHead = dim / heads;
 
-		SequentialBlock sequenceAttention = new SequentialBlock(shape(1, seqLen, dim));
+		SequentialBlock sequenceAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Create caches for keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
+		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
+		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
 
 		// Normalize input
 		sequenceAttention.add(rmsnorm(sequenceAttention.getOutputShape(), rmsWeight));
@@ -178,7 +259,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// Apply rotary embeddings to keys
 		if (freqCis != null) {
-			keyBranch.add(sequenceRotaryEmbedding(shape(1, seqLen, heads, dimHead), freqCis));
+			keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), freqCis));
 		}
 
 		keyBranch.andThen(into(keysCache));
@@ -192,18 +273,19 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		/* QUERY **/
 		sequenceAttention.add(dense(wq));
-		sequenceAttention.reshape(1, seqLen, heads, dimHead);
+		sequenceAttention.reshape(batchSize, seqLen, heads, dimHead);
 
 		// Apply rotary embeddings to queries
 		if (freqCis != null) {
 			sequenceAttention.add(sequenceRotaryEmbedding(
-					shape(1, seqLen, heads, dimHead),
+					shape(batchSize, seqLen, heads, dimHead),
 					freqCis));
 		}
 
-		sequenceAttention.add(attentionKeys(cp(keysCache)));
+		sequenceAttention.reshape(batchSize * seqLen, heads, dimHead);
+		sequenceAttention.add(sequenceAttentionKeys(cp(keysCache.reshape(batchSize * seqLen, heads, dimHead))));
 		sequenceAttention.add(softmax(true));
-		sequenceAttention.add(attentionValues(cp(valuesCache)));
+		sequenceAttention.add(sequenceAttentionValues(cp(valuesCache.reshape(batchSize * seqLen, heads, dimHead))));
 		sequenceAttention.add(dense(wo));
 
 		return sequenceAttention;
@@ -221,7 +303,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
 		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
 
-		crossAttention.add(rmsnorm(rmsWeight));
+		crossAttention.add(rmsnorm(crossAttention.getOutputShape(), rmsWeight));
 
 		/* KEYS **/
 		SequentialBlock keyBranch = context.branch();
@@ -239,7 +321,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		/* QUERY **/
 		crossAttention.add(dense(wq));
-		crossAttention.add(reshape(shape(1, seqLen, dim), shape(1, seqLen, heads, dimHead)));
+		crossAttention.reshape(1, seqLen, heads, dimHead);
 		crossAttention.add(attentionKeys(cp(keysCache)));
 		crossAttention.add(softmax(true));
 		crossAttention.add(attentionValues(cp(valuesCache)));

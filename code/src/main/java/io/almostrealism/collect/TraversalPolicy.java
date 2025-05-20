@@ -521,6 +521,53 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return this;
 	}
 
+	public TraversalPolicy flatten(int... requiredDims) {
+		return flatten(false, requiredDims);
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which contains only one
+	 * dimension in addition to those specified by requiredDims.
+	 * If this process is strict, the dimensions of the original
+	 * must actually match the required dimensions. This process
+	 * will attempt to preserve the traversal axis of the original,
+	 * but this may not result in the same count and size if the
+	 * specified required dimensions make that impossible.
+	 */
+	public TraversalPolicy flatten(boolean strict, int... requiredDims) {
+		if (requiredDims.length == 0) {
+			return flatten(false);
+		}
+
+		TraversalPolicy targetItem = new TraversalPolicy(requiredDims);
+		long count = getTotalSizeLong() / targetItem.getTotalSizeLong();
+
+		int offset = getDimensions() - requiredDims.length;
+		int axis = 0;
+
+		long newDims[] = new long[requiredDims.length + 1];
+
+		for (int i = 0; i < requiredDims.length + 1; i++) {
+			int pos = i - 1;
+			int origPos = pos + offset;
+
+			if (i > 0) {
+				newDims[i] = requiredDims[pos];
+
+				if (strict && lengthLong(origPos) != requiredDims[pos]) {
+					throw new IllegalArgumentException();
+				} else if (getTraversalAxis() == origPos) {
+					axis = i;
+				}
+			} else {
+				newDims[i] = count;
+			}
+		}
+
+		return new TraversalPolicy(order, true, true, newDims)
+						.traverse(axis);
+	}
+
 	public TraversalPolicy flatten() {
 		return flatten(false);
 	}
