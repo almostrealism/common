@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
@@ -38,6 +39,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -132,6 +134,27 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
+	default void compare(CollectionProducer<PackedCollection<?>> expected,
+						 CollectionProducer<PackedCollection<?>> result) {
+		PackedCollection<?> e = expected.evaluate();
+		PackedCollection<?> o = result.evaluate();
+
+		if (!e.getShape().equals(o.getShape())) {
+			log(o.getShape().toStringDetail() + " != " + e.getShape().toStringDetail());
+			throw new AssertionError();
+		}
+
+		log(o.getShape());
+
+		double ev[] = e.toArray();
+		double ov[] = o.toArray();
+
+		for (int i = 0; i < ev.length; i++) {
+			log(ev[i] + " vs " + ov[i]);
+			assertEquals(ev[i], ov[i]);
+		}
+	}
+
 	default void kernelTest(Supplier<? extends Producer<PackedCollection<?>>> supply,
 							Consumer<PackedCollection<?>> validate) {
 		kernelTest(supply, validate, true, true, true);
@@ -214,6 +237,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		Hardware.getLocalHardware().assignProfile(profile);
 		AcceleratedComputationOperation.clearTimes();
 		return profile;
+	}
+
+	default String s(int[] a) {
+		return Arrays.toString(a);
 	}
 
 	default void logKernelMetrics() {

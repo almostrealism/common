@@ -232,8 +232,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 	/**
 	 * Implements self-attention that processes entire sequences at once,
-	 * rather than token-by-token processing as in
-	 * {@link #attention(int, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, Producer, ComputeRequirement...)}
+	 * rather than token-by-token processing.
 	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int heads,
 									PackedCollection<?> rmsWeight,
@@ -291,41 +290,162 @@ public interface AttentionFeatures extends RotationFeatures {
 		return sequenceAttention;
 	}
 
-	default Block crossAttention(int batchSize, int seqLen, int heads, int dimHead,
+	default Function<TraversalPolicy, CellularLayer> crossAttentionKeys(Producer<PackedCollection<?>> keys,
+																		ComputeRequirement... requirements) {
+		return inputShape -> crossAttentionKeys(inputShape, keys, requirements);
+	}
+
+	default CellularLayer crossAttentionKeys(TraversalPolicy inputShape,
+											 Producer<PackedCollection<?>> keys,
+											 ComputeRequirement... requirements) {
+		// inputShape is (batchSize, querySeqLen, heads, dimHead)
+		TraversalPolicy keyShape = shape(keys); // (batchSize, contextSeqLen, heads, dimHead)
+
+		if (inputShape.getDimensions() != 4 || keyShape.getDimensions() != 4)
+			throw new IllegalArgumentException("Invalid dimensions for cross-attention keys");
+
+		int batchSize = inputShape.length(0);
+		if (keyShape.length(0) != batchSize)
+			throw new IllegalArgumentException("Batch size mismatch in cross-attention keys");
+
+		int heads = inputShape.length(2);
+		int dimHead = inputShape.length(3);
+
+		if (keyShape.length(2) != heads || keyShape.length(3) != dimHead)
+			throw new IllegalArgumentException("Heads or dimHead mismatch in cross-attention keys");
+
+		int querySeqLen = inputShape.length(1);
+		int contextSeqLen = keyShape.length(1);
+
+		// Reshape the tensors for weightedSum operation
+		TraversalPolicy queryShape = shape(batchSize, querySeqLen, heads, dimHead);
+		TraversalPolicy keysReshape = shape(batchSize, contextSeqLen, heads, dimHead);
+
+		// Result shape for the weighted sum operation
+		TraversalPolicy resultShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
+
+		// Define positions for the query and key tensors
+		TraversalPolicy queryPositions = resultShape
+				.withRate(2, 1, querySeqLen)
+				.withRate(3, dimHead, contextSeqLen);
+
+		TraversalPolicy keyPositions = resultShape
+				.withRate(1, 1, heads)
+				.withRate(2, dimHead, querySeqLen);
+
+		// Group shape for the summation (summing over dimHead)
+		TraversalPolicy groupShape = shape(1, 1, 1, dimHead);
+
+		return layer("crossAttentionKeys", inputShape, resultShape, input -> {
+			// Apply scaling factor 1/sqrt(dimHead)
+			double scaleFactor = 1.0 / Math.sqrt(dimHead);
+
+			// Use weightedSum for the dot product calculation
+			return weightedSum("crossAttentionKeys",
+					resultShape,
+					queryPositions, keyPositions,
+					groupShape, groupShape,
+					reshape(queryShape, input),
+					reshape(keysReshape, keys))
+					.multiply(c(scaleFactor));
+		}, requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> crossAttentionValues(Producer<PackedCollection<?>> values,
+																		  ComputeRequirement... requirements) {
+		return inputShape -> crossAttentionValues(inputShape, values, requirements);
+	}
+
+	default CellularLayer crossAttentionValues(TraversalPolicy inputShape,
+											   Producer<PackedCollection<?>> values,
+											   ComputeRequirement... requirements) {
+		// inputShape is (batchSize, heads, querySeqLen, contextSeqLen) - attention weights
+		TraversalPolicy valueShape = shape(values); // (batchSize, contextSeqLen, heads, dimHead)
+
+		if (inputShape.getDimensions() != 4 || valueShape.getDimensions() != 4)
+			throw new IllegalArgumentException("Invalid dimensions for cross-attention values");
+
+		int batchSize = inputShape.length(0);
+		if (valueShape.length(0) != batchSize)
+			throw new IllegalArgumentException("Batch size mismatch in cross-attention values");
+
+		int heads = inputShape.length(1);
+		int querySeqLen = inputShape.length(2);
+		int contextSeqLen = inputShape.length(3);
+
+		if (valueShape.length(1) != contextSeqLen || valueShape.length(2) != heads)
+			throw new IllegalArgumentException("Context length or heads mismatch in cross-attention values");
+
+		int dimHead = valueShape.length(3);
+		int dim = heads * dimHead;
+
+		// Output shape will be (batchSize, querySeqLen, heads, dimHead)
+		TraversalPolicy outputShape = shape(batchSize, querySeqLen, heads, dimHead);
+
+		// Define shapes for the weighted sum operation
+		TraversalPolicy attnShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
+		TraversalPolicy valuesReshape = shape(batchSize, contextSeqLen, heads, dimHead);
+
+		// Define positions for attention weights and values
+		TraversalPolicy attnPositions = outputShape
+				.withRate(1, 1, querySeqLen)
+				.withRate(3, contextSeqLen, dimHead);
+
+		TraversalPolicy valuePositions = outputShape
+				.withRate(0, 1, batchSize)
+				.withRate(2, 1, heads);
+
+		// Group shape for the summation (summing over contextSeqLen)
+		TraversalPolicy groupShape = shape(1, 1, 1, contextSeqLen);
+
+		return layer("crossAttentionValues", inputShape, outputShape, attnWeights -> {
+			// Use weightedSum to apply attention weights to values
+			return weightedSum("crossAttentionValues",
+					outputShape,
+					attnPositions, valuePositions,
+					groupShape, groupShape,
+					reshape(attnShape, attnWeights),
+					reshape(valuesReshape, values));
+		}, requirements);
+	}
+
+	default Block crossAttention(int batchSize, int querySeqLen, int contextSeqLen,
+								 int heads, int dimHead,
 								 PackedCollection<?> rmsWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
 								 PackedCollection<?> wq, PackedCollection<?> wo,
 								 Block context) {
 		int dim = rmsWeight.getShape().length(0);
 
-		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
+		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
 
 		// Create caches for context keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
+		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
+		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
 
 		crossAttention.add(rmsnorm(crossAttention.getOutputShape(), rmsWeight));
 
 		/* KEYS **/
 		SequentialBlock keyBranch = context.branch();
 		keyBranch.add(dense(wk));
-		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
+		keyBranch.reshape(batchSize, contextSeqLen, heads, dimHead);
 		keyBranch.andThen(into(keysCache));
 		/* ---- **/
 
 		/* VALUES **/
 		SequentialBlock valueBranch = context.branch();
 		valueBranch.add(dense(wv));
-		valueBranch.reshape(batchSize, seqLen, heads, dimHead);
+		valueBranch.reshape(batchSize, contextSeqLen, heads, dimHead);
 		valueBranch.andThen(into(valuesCache));
 		/* ---- **/
 
 		/* QUERY **/
 		crossAttention.add(dense(wq));
-		crossAttention.reshape(batchSize * seqLen, heads, dimHead);
-		crossAttention.add(sequenceAttentionKeys(cp(keysCache.reshape(batchSize * seqLen, heads, dimHead))));
+		crossAttention.reshape(batchSize, querySeqLen, heads, dimHead);
+		crossAttention.add(crossAttentionKeys(cp(keysCache)));
 		crossAttention.add(softmax(true));
-		crossAttention.add(sequenceAttentionValues(cp(valuesCache.reshape(batchSize * seqLen, heads, dimHead))));
+		crossAttention.add(crossAttentionValues(cp(valuesCache)));
+		crossAttention.reshape(batchSize, querySeqLen, heads * dimHead);
 		crossAttention.add(dense(wo));
 		/* ---- **/
 
@@ -337,14 +457,20 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
-		int hiddenDim = w1.getShape().length(0);
+		return feedForward(shape(dim), rms, w1, w2, w3, requirements);
+	}
 
-		SequentialBlock feedForward = new SequentialBlock(shape(dim));
-		feedForward.add(rmsnorm(rms, requirements));
+	default Block feedForward(
+			TraversalPolicy shape,
+			PackedCollection<?> rms,
+			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+			ComputeRequirement... requirements) {
+		SequentialBlock feedForward = new SequentialBlock(shape);
+		feedForward.add(rmsnorm(shape, rms, requirements));
 
-		SequentialBlock hidden = new SequentialBlock(shape(dim));
+		SequentialBlock hidden = new SequentialBlock(shape);
 		hidden.add(dense(w1));
-		hidden.add(silu(shape(hiddenDim)));
+		hidden.add(silu());
 
 		feedForward.product(dense(w3), hidden);
 		feedForward.add(dense(w2));

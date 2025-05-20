@@ -25,6 +25,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.layers.Component;
 import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
@@ -66,7 +67,12 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default Block enumerate(int depth, int axis, int len, ComputeRequirement... requirements) {
-		return andThen(layer("enumerate", getOutputShape(),
+		// TODO  There should be a much more direct way to determine the resulting shape than this
+		TraversalPolicy resultShape =
+				traverse(depth, c(Input.value(getOutputShape(), 0)))
+					.enumerate(axis, len)
+						.getShape();
+		return andThen(layer("enumerate", getOutputShape(), resultShape,
 				in -> traverse(depth, in).enumerate(axis, len),
 				requirements));
 	}

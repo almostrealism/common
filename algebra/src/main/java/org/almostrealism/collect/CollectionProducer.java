@@ -94,6 +94,14 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape) {
+		return enumerate(shape, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape, TraversalPolicy stride) {
+		return enumerate(shape, stride, this);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
 		return pad(this, depths);
 	}
