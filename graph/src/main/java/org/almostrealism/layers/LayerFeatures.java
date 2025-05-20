@@ -919,22 +919,26 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}, prop, setup, requirements);
 	}
 
-	default CellularLayer rmsnorm(int size) {
-		return rmsnorm(new PackedCollection<>(shape(size)).fill(1.0));
+	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, ComputeRequirement... requirements) {
+		return shape -> rmsnorm(shape, new PackedCollection<>(shape(size)).fill(1.0), requirements);
 	}
 
 	default CellularLayer rmsnorm(PackedCollection<?> weights, ComputeRequirement... requirements) {
-		TraversalPolicy shape = weights.getShape();
-		if (shape.getDimensions() != 1)
+		return rmsnorm(weights.getShape(), weights, requirements);
+	}
+
+	default CellularLayer rmsnorm(TraversalPolicy shape, PackedCollection<?> weights, ComputeRequirement... requirements) {
+		if (weights.getShape().getDimensions() != 1)
 			throw new IllegalArgumentException();
 
-		int size = shape.getTotalSize();
+		int size = weights.getShape().getTotalSize();
+		int axis = shape.getDimensions() - 1;
 
 		return layer("rmsnorm", shape, shape, input -> {
-			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
+			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
-			return multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss);
+			return multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss);
 		}, List.of(weights), requirements);
 	}
 
