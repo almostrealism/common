@@ -291,10 +291,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		return sequenceAttention;
 	}
 
-	default Block crossAttention(int heads, PackedCollection<?> rmsWeight,
+	default Block crossAttention(int seqLen, int heads, int dimHead,
+								 PackedCollection<?> rmsWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
 								 PackedCollection<?> wq, PackedCollection<?> wo,
-								 int dimHead, int seqLen, Block context) {
+								 Block context) {
 		int dim = rmsWeight.getShape().length(0);
 
 		SequentialBlock crossAttention = new SequentialBlock(shape(1, seqLen, dim));
