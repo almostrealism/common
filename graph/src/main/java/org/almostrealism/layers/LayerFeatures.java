@@ -920,7 +920,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default CellularLayer rmsnorm(int size) {
-		return rmsnorm(new PackedCollection<>(shape(size)));
+		return rmsnorm(new PackedCollection<>(shape(size)).fill(1.0));
 	}
 
 	default CellularLayer rmsnorm(PackedCollection<?> weights, ComputeRequirement... requirements) {

@@ -148,35 +148,35 @@ public interface AttentionFeatures extends RotationFeatures {
 	default Block crossAttention(int heads, PackedCollection<?> rmsWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
 								 PackedCollection<?> wq, PackedCollection<?> wo,
-								 int dimHead, Block context) {
+								 int dimHead, int seqLen, Block context) {
 		int dim = rmsWeight.getShape().length(0);
 
-		SequentialBlock crossAttention = new SequentialBlock(shape(1, -1, dim));
+		SequentialBlock crossAttention = new SequentialBlock(shape(1, seqLen, dim));
 
 		// Create caches for context keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, -1, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, -1, heads, dimHead));
+		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
+		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
 
-		// 1. Normalize input (queries)
+		// Normalize input (queries)
 		crossAttention.add(rmsnorm(rmsWeight));
 
 		/* KEYS **/
 		SequentialBlock keyBranch = context.branch();
 		keyBranch.add(dense(wk));
-		keyBranch.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		keyBranch.add(reshape(shape(1, seqLen, dim), shape(1, seqLen, heads, dimHead)));
 		keyBranch.andThen(into(keysCache));
 		/* ---- **/
 
 		/* VALUES **/
 		SequentialBlock valueBranch = context.branch();
 		valueBranch.add(dense(wv));
-		valueBranch.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		valueBranch.add(reshape(shape(1, -1, dim), shape(1, seqLen, heads, dimHead)));
 		valueBranch.andThen(into(valuesCache));
 		/* ---- **/
 
 		/* QUERY **/
 		crossAttention.add(dense(wq));
-		crossAttention.add(reshape(shape(1, -1, dim), shape(1, -1, heads, dimHead)));
+		crossAttention.add(reshape(shape(1, seqLen, dim), shape(1, seqLen, heads, dimHead)));
 		crossAttention.add(attentionKeys(cp(keysCache)));
 		crossAttention.add(scale(1.0 / Math.sqrt(dimHead)));
 		crossAttention.add(softmax(true));
