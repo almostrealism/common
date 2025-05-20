@@ -255,7 +255,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		// Project to keys and store in cache
 		SequentialBlock keyBranch = sequenceAttention.branch();
 		keyBranch.add(dense(wk));
-		keyBranch.reshape(1, seqLen, heads, dimHead);
+		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
 
 		// Apply rotary embeddings to keys
 		if (freqCis != null) {
@@ -267,7 +267,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* VALUES **/
 		SequentialBlock valueBranch = sequenceAttention.branch();
 		valueBranch.add(dense(wv));
-		valueBranch.reshape(1, seqLen, heads, dimHead);
+		valueBranch.reshape(batchSize, seqLen, heads, dimHead);
 		valueBranch.andThen(into(valuesCache));
 		/* ---- **/
 
@@ -291,41 +291,41 @@ public interface AttentionFeatures extends RotationFeatures {
 		return sequenceAttention;
 	}
 
-	default Block crossAttention(int seqLen, int heads, int dimHead,
+	default Block crossAttention(int batchSize, int seqLen, int heads, int dimHead,
 								 PackedCollection<?> rmsWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
 								 PackedCollection<?> wq, PackedCollection<?> wo,
 								 Block context) {
 		int dim = rmsWeight.getShape().length(0);
 
-		SequentialBlock crossAttention = new SequentialBlock(shape(1, seqLen, dim));
+		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Create caches for context keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(1, seqLen, heads, dimHead));
+		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
+		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
 
 		crossAttention.add(rmsnorm(crossAttention.getOutputShape(), rmsWeight));
 
 		/* KEYS **/
 		SequentialBlock keyBranch = context.branch();
 		keyBranch.add(dense(wk));
-		keyBranch.reshape(1, seqLen, heads, dimHead);
+		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
 		keyBranch.andThen(into(keysCache));
 		/* ---- **/
 
 		/* VALUES **/
 		SequentialBlock valueBranch = context.branch();
 		valueBranch.add(dense(wv));
-		valueBranch.reshape(1, seqLen, heads, dimHead);
+		valueBranch.reshape(batchSize, seqLen, heads, dimHead);
 		valueBranch.andThen(into(valuesCache));
 		/* ---- **/
 
 		/* QUERY **/
 		crossAttention.add(dense(wq));
-		crossAttention.reshape(1, seqLen, heads, dimHead);
-		crossAttention.add(attentionKeys(cp(keysCache)));
+		crossAttention.reshape(batchSize * seqLen, heads, dimHead);
+		crossAttention.add(sequenceAttentionKeys(cp(keysCache.reshape(batchSize * seqLen, heads, dimHead))));
 		crossAttention.add(softmax(true));
-		crossAttention.add(attentionValues(cp(valuesCache)));
+		crossAttention.add(sequenceAttentionValues(cp(valuesCache.reshape(batchSize * seqLen, heads, dimHead))));
 		crossAttention.add(dense(wo));
 		/* ---- **/
 
