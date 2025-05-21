@@ -53,24 +53,23 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	default CollectionProducer<PackedCollection<?>> applySequenceRotaryEmbeddings(
 			Producer<PackedCollection<?>> x,
 			PackedCollection<?> freqCis,
-			int seqLen,
-			int heads,
-			int dimHead) {
+			int seqLen, int heads, int dimHead) {
 
-		// Reshape x from (1, seqLen, heads, dimHead) to (1, seqLen, heads, dimHead/2, 2)
+		// Reshape x from (seqLen, heads, dimHead) to (seqLen, heads, dimHead / 2, 2)
 		// treating each pair as a complex number (real, imag)
 		CollectionProducer<PackedCollection<?>> xComplex =
-				c(x).reshape(1, seqLen, heads, dimHead/2, 2);
+				c(x).reshape(seqLen, heads, dimHead / 2, 2);
 
-		// freqCis has shape (seqLen, dimHead/2, 2)
-		// We need to reshape to (1, seqLen, 1, dimHead/2, 2) to broadcast to heads
+		// freqCis has shape (seqLen, dimHead / 2, 2)
+		// We need to repeat to (seqLen, heads, dimHead/2, 2) to broadcast
 		CollectionProducer freqCisReshaped =
-				cp(freqCis).reshape(1, seqLen, 1, dimHead / 2, 2);
+				cp(freqCis).reshape(seqLen, dimHead / 2, 2)
+						.traverse(2).repeat(heads);
 
 		// Use multiplyComplex to apply the rotation to each position
 		// This performs (a+bi) * (c+di) for each complex number pair
 		CollectionProducer<PackedCollection<?>> rotated =
-				multiplyComplex(xComplex, freqCisReshaped);
+				multiplyComplex(xComplex.traverse(3), freqCisReshaped.traverse(3));
 
 		// Reshape back to original shape
 		return rotated.reshape(1, seqLen, heads, dimHead);
@@ -102,7 +101,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 			throw new IllegalArgumentException("freqCis has incorrect shape: " + freqCis.getShape());
 
 		return layer("sequenceRotaryEmbedding", shape, shape, input ->
-						applySequenceRotaryEmbeddings(input, freqCis, seqLen, heads, dimHead),
+						applySequenceRotaryEmbeddings(input, freqCis, seqLen, heads, dimHead).each(),
 				List.of(freqCis), requirements);
 	}
 

@@ -226,7 +226,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			attnWeights = attnWeights.traverse(2).repeat(headSize);
 
 			// Apply attention weights to values
-			return multiply(v, attnWeights).reshape(batchSeqLen, dim);
+			return multiply(v, attnWeights).reshape(batchSeqLen, dim).each();
 		}, requirements);
 	}
 
