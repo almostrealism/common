@@ -503,9 +503,25 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return inputShape -> dense(inputShape, weights, false, false, requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection<?> weights,
+														   PackedCollection<?> biases,
+														   ComputeRequirement... requirements) {
+		return inputShape -> dense(inputShape, weights, biases, false, requirements);
+	}
+
 	default CellularLayer dense(TraversalPolicy inputShape,
 								PackedCollection<?> weights,
 								boolean bias, boolean init,
+								ComputeRequirement... requirements) {
+		return dense(inputShape, weights,
+				bias ? new PackedCollection<>(shape(weights.getShape().length(0))) : null,
+				init, requirements);
+	}
+
+	default CellularLayer dense(TraversalPolicy inputShape,
+								PackedCollection<?> weights,
+								PackedCollection<?> biases,
+								boolean init,
 								ComputeRequirement... requirements) {
 		TraversalPolicy weightShape = weights.getShape();
 		if (weightShape.getDimensions() != 2) {
@@ -526,23 +542,21 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			throw new IllegalArgumentException();
 		}
 
-		PackedCollection<?> biases = bias ? new PackedCollection<>(shape(nodes)) : null;
-
 		Factor<PackedCollection<?>> operator = input ->
-				bias ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
+				biases != null ? matmul(p(weights), input).add(traverse(1, p(biases))) : matmul(p(weights), input);
 
 		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
 			Random randn = randn(weightShape);
 			setup.add(() -> randn::refresh);
 			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).all())));
-			if (bias) {
+			if (biases != null) {
 				setup.add(a(p(biases.each()), c(0.0)));
 			}
 		}
 
 		return layer("dense " + size, inputShape.traverseEach(), shape(batched, nodes).traverseEach(),
-				operator, bias ? List.of(weights, biases) : List.of(weights),
+				operator, biases != null ? List.of(weights, biases) : List.of(weights),
 				setup,
 				requirements);
 	}
