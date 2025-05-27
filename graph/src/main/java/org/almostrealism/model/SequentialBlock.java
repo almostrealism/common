@@ -101,7 +101,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public <T extends Block> T add(T block) {
 		if (block.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot add a Block with takes input " + block.getInputShape() +
+					" to a SequentialBlock that produces " + getOutputShape());
 
 		Block last = lastBlock();
 		Receptor<PackedCollection<?>> prev;

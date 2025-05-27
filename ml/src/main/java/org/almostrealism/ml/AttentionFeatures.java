@@ -233,13 +233,14 @@ public interface AttentionFeatures extends RotationFeatures {
 	/**
 	 * Implements self-attention that processes entire sequences at once,
 	 * rather than token-by-token processing.
+	 * <p>
+	 * Input Shape: (batchSize, seqLen, dim)
 	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int heads,
+	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
 									PackedCollection<?> rmsWeight,
 									PackedCollection<?> wk, PackedCollection<?> wv,
 									PackedCollection<?> wq, PackedCollection<?> wo,
 									PackedCollection<?> freqCis) {
-		int dim = rmsWeight.getShape().length(0);
 		int dimHead = dim / heads;
 
 		SequentialBlock sequenceAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
