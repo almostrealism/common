@@ -580,10 +580,22 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 	}
 
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same
+	 * dimensions, but with a traversal axis which results in
+	 * a {@link #getCountLong() count} that matches that of the
+	 * specified {@link TraversalPolicy}.
+	 */
 	public TraversalPolicy alignCount(TraversalPolicy alt) {
 		return alignCount(alt.getCountLong());
 	}
 
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same
+	 * dimensions, but with a traversal axis which results in
+	 * a {@link #getCountLong() count} that matches the specified
+	 * value (if possible).
+	 */
 	public TraversalPolicy alignCount(long count) {
 		int axis = getTraversalAxis();
 
@@ -596,6 +608,32 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 
 		return this;
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same dimensions,
+	 * but with a {@link #getTraversalAxis() traversal axis} which results
+	 * in a {@link #getSizeLong() size} that matches that of the specified
+	 * {@link TraversalPolicy}.
+	 */
+	public TraversalPolicy alignSize(TraversalPolicy alt) {
+		return alignSize(alt.getSizeLong());
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same dimensions,
+	 * but with a {@link #getTraversalAxis() traversal axis} which results
+	 * in a {@link #getSizeLong() size} that matches the specified value
+	 * (if possible).
+	 */
+	public TraversalPolicy alignSize(long size) {
+		int axis = 0;
+
+		while (traverse(axis).getSizeLong() > size && axis < getDimensions()) {
+			axis++;
+		}
+
+		return getTraversalAxis() != axis ? traverse(axis) : this;
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }

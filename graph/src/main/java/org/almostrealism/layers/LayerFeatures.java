@@ -890,13 +890,28 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return norm(shape, groups, weights, biases, init, requirements);
 	}
 
+
+	default CellularLayer norm(TraversalPolicy shape,
+							   PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   ComputeRequirement... requirements) {
+		return norm(shape, shape.length(0), weights, biases, true, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int groups,
+							   PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   ComputeRequirement... requirements) {
+		return norm(shape, groups, weights, biases, true, requirements);
+	}
+
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection<?> weights,
 							   PackedCollection<?> biases,
 							   boolean init,
 							   ComputeRequirement... requirements) {
 		shape = padDimensions(shape, 1, 3);
-		long size = shape.traverse(1).item().getTotalSizeLong();
+		long size = shape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
 
 		if (size % groups != 0) {
 			if (shape.getTotalSizeLong() % groups == 0) {
@@ -938,16 +953,42 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, ComputeRequirement... requirements) {
-		return shape -> rmsnorm(shape, new PackedCollection<>(shape(size)).fill(1.0), requirements);
+		return rmsnorm(size, true, requirements);
 	}
 
-	default CellularLayer rmsnorm(PackedCollection<?> weights, ComputeRequirement... requirements) {
-		return rmsnorm(weights.getShape(), weights, requirements);
+	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, boolean bias, ComputeRequirement... requirements) {
+		return shape -> rmsnorm(shape,
+				new PackedCollection<>(shape(size)).fill(1.0),
+				bias ? new PackedCollection<>(shape(size)) : null,
+				requirements);
 	}
 
-	default CellularLayer rmsnorm(TraversalPolicy shape, PackedCollection<?> weights, ComputeRequirement... requirements) {
-		if (weights.getShape().getDimensions() != 1)
+
+	default CellularLayer rmsnorm(PackedCollection<?> weights,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(weights.getShape(), weights, null, requirements);
+	}
+
+	default CellularLayer rmsnorm(PackedCollection<?> weights,
+								  PackedCollection<?> biases,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(weights.getShape(), weights, biases, requirements);
+	}
+
+	default CellularLayer rmsnorm(TraversalPolicy shape,
+								  PackedCollection<?> weights,
+								  ComputeRequirement... requirements) {
+		return rmsnorm(shape, weights, null, requirements);
+	}
+
+	default CellularLayer rmsnorm(TraversalPolicy shape,
+								  PackedCollection<?> weights,
+								  PackedCollection<?> biases,
+								  ComputeRequirement... requirements) {
+		if (weights.getShape().getDimensions() != 1 ||
+				(biases != null && biases.getShape().getDimensions() != 1)) {
 			throw new IllegalArgumentException();
+		}
 
 		int size = weights.getShape().getTotalSize();
 		int axis = shape.getDimensions() - 1;
@@ -956,8 +997,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
-			return multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss);
-		}, List.of(weights), requirements);
+			return multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss).add(traverseEach(cp(biases)));
+		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 
 	interface LearningCell extends Cell<PackedCollection<?>>, Learning { }
