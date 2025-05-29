@@ -52,7 +52,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 
 	default Block reshape(TraversalPolicy shape) {
 		if (getOutputShape().getTotalSize() != shape.getTotalSize()) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot reshape " + getOutputShape() + " to " + shape);
 		}
 
 		if (enableAlignCountReshape) {
@@ -87,6 +87,16 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		return andThen(layer("enumerate", getOutputShape(), resultShape,
 				in -> CollectionFeatures.getInstance().enumerate(shape, in),
 				requirements));
+	}
+
+	default Block andThenDense(PackedCollection<?> weights, ComputeRequirement... requirements) {
+		return andThen(dense(weights, requirements));
+	}
+
+	default Block andThenDense(PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   ComputeRequirement... requirements) {
+		return andThen(dense(weights, biases, requirements));
 	}
 
 	default SequentialBlock branch() {

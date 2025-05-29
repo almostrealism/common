@@ -322,6 +322,24 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 						next.push(subset(inputShape, in, pos))));
 	}
 
+	default Block convolution1d(int batchSize, int inputChannels, int outputChannels,
+								int seqLength, int kernelSize, int padding,
+								PackedCollection<?> weights, PackedCollection<?> bias) {
+		if (kernelSize != 1 || padding != 0) {
+			throw new UnsupportedOperationException("Currently only kernel size 1 with no padding is supported");
+		}
+
+		// For kernel size 1, this is just a pointwise linear transformation
+		// Reshape to (batchSize * seqLength, inputChannels) for matrix multiplication
+		return new SequentialBlock(shape(batchSize, inputChannels, seqLength))
+				.enumerate(1, 2, 1)
+				.reshape(batchSize * seqLength, inputChannels)
+				.andThenDense(weights, bias)
+				.reshape(batchSize, seqLength, outputChannels)
+				.enumerate(1, 2, 1)
+				.reshape(batchSize, outputChannels, seqLength);
+	}
+
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
 		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
@@ -895,7 +913,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection<?> weights,
 							   PackedCollection<?> biases,
 							   ComputeRequirement... requirements) {
-		return norm(shape, shape.length(0), weights, biases, true, requirements);
+		return norm(shape, 1, weights, biases, true, requirements);
 	}
 
 	default CellularLayer norm(TraversalPolicy shape, int groups,

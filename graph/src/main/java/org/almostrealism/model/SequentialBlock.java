@@ -254,7 +254,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public <T extends Block> Block andThen(T next) {
+	public <T extends Block> SequentialBlock andThen(T next) {
 		add(next);
 		return this;
 	}
