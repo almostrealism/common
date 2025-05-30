@@ -242,7 +242,7 @@ public interface AttentionFeatures extends RotationFeatures {
 									PackedCollection<?> wq, PackedCollection<?> wo,
 									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
 									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-									PackedCollection<?> freqCis) {
+									PackedCollection<?> invFreq) {
 		int dimHead = dim / heads;
 		int normBatch = batchSize * seqLen * heads;
 
@@ -261,8 +261,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
 
 		// Apply rotary embeddings to keys
-		if (freqCis != null) {
-			keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), freqCis));
+		if (invFreq != null) {
+			keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
 		}
 
 		// Add key normalization
@@ -282,10 +282,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		sequenceAttention.reshape(batchSize, seqLen, heads, dimHead);
 
 		// Apply rotary embeddings to queries
-		if (freqCis != null) {
+		if (invFreq != null) {
 			sequenceAttention.add(sequenceRotaryEmbedding(
 					shape(batchSize, seqLen, heads, dimHead),
-					freqCis));
+					invFreq));
 		}
 
 		// Add query normalization

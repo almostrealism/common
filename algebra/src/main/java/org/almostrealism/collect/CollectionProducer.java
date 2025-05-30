@@ -58,6 +58,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return repeat(axis, repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducer<V> subset(TraversalPolicy shape, int... position) {
+		return subset(shape, this, position);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
 		TraversalPolicy shape = shape(this);
 

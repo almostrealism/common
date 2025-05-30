@@ -26,6 +26,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 
 import java.util.List;
+import java.util.function.Function;
 
 public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights,
@@ -50,59 +51,104 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		}, List.of(weights), requirements);
 	}
 
-	default CollectionProducer<PackedCollection<?>> applySequenceRotaryEmbeddings(
-			Producer<PackedCollection<?>> x,
-			PackedCollection<?> freqCis,
-			int seqLen, int heads, int dimHead) {
+	default PackedCollection<?> computeRotaryFreqs(int seqLen, PackedCollection<?> invFreq) {
+		int freqDim = invFreq.getShape().getTotalSize(); // (dimHead / 4)
+		int rotaryDim = freqDim * 2; // (dimHead / 2)
 
-		// Reshape x from (seqLen, heads, dimHead) to (seqLen, heads, dimHead / 2, 2)
-		// treating each pair as a complex number (real, imag)
-		CollectionProducer<PackedCollection<?>> xComplex =
-				c(x).reshape(seqLen, heads, dimHead / 2, 2);
+		PackedCollection<?> freqs = new PackedCollection<>(shape(seqLen, rotaryDim));
 
-		// freqCis has shape (seqLen, dimHead / 2, 2)
-		// We need to repeat to (seqLen, heads, dimHead/2, 2) to broadcast
-		CollectionProducer freqCisReshaped =
-				cp(freqCis).reshape(seqLen, dimHead / 2, 2)
-						.traverse(2).repeat(heads);
+		// Compute position * inv_freq for each position and frequency
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double freq_val = pos * invFreq.toDouble(f);
+				freqs.setMem(pos * rotaryDim + f, freq_val);
+				freqs.setMem(pos * rotaryDim + f + freqDim, freq_val);
+			}
+		}
 
-		// Use multiplyComplex to apply the rotation to each position
-		// This performs (a+bi) * (c+di) for each complex number pair
-		CollectionProducer<PackedCollection<?>> rotated =
-				multiplyComplex(xComplex.traverse(3), freqCisReshaped.traverse(3));
+		return freqs;
+	}
 
-		// Reshape back to original shape
-		return rotated.reshape(1, seqLen, heads, dimHead);
+	default Function<TraversalPolicy, CellularLayer> sequenceRotaryEmbedding(PackedCollection<?> invFreq) {
+		return inputShape -> sequenceRotaryEmbedding(inputShape, invFreq);
 	}
 
 	/**
-	 * A sequence-aware version of ropeRotation that applies rotary embeddings to all
-	 * positions in a sequence at once.
+	 * Applies rotary positional embedding to a sequence input.
+	 *
+	 * @param inputShape  (batchSize, seqLen, heads, dimHead)
 	 */
-	default CellularLayer sequenceRotaryEmbedding(
-			TraversalPolicy shape,  // (1, seqLen, heads, dimHead)
-			PackedCollection<?> freqCis, // (seqLen, dimHead/2, 2)
-			ComputeRequirement... requirements) {
+	default CellularLayer sequenceRotaryEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
+		}
 
-		if (shape.getDimensions() != 4 || shape.length(0) != 1)
-			throw new IllegalArgumentException("Expected shape (1, seqLen, heads, dimHead) but got " + shape);
+		int batchSize = inputShape.length(0);
+		int seqLen = inputShape.length(1);
+		int heads = inputShape.length(2);
+		int dimHead = inputShape.length(3);
 
-		int seqLen = shape.length(1);
-		int heads = shape.length(2);
-		int dimHead = shape.length(3);
+		// only rotate first half
+		int freqDim = invFreq.getShape().getTotalSize();
+		int rotaryDim = freqDim * 2;
 
-		if (dimHead % 2 != 0)
-			throw new IllegalArgumentException("dimHead must be even");
+		// Precompute the frequency tensor
+		PackedCollection<?> freqs = computeRotaryFreqs(seqLen, invFreq);
 
-		if (freqCis.getShape().getDimensions() != 3 ||
-				freqCis.getShape().length(0) != seqLen ||
-				freqCis.getShape().length(1) != dimHead/2 ||
-				freqCis.getShape().length(2) != 2)
-			throw new IllegalArgumentException("freqCis has incorrect shape: " + freqCis.getShape());
+		return layer("sequenceRotaryEmbedding", inputShape, inputShape, input -> {
+			// Extract the rotary part (first rotaryDim dimensions)
+			CollectionProducer<PackedCollection<?>> rotaryPart =
+					c(input).subset(shape(batchSize, seqLen, heads, rotaryDim), 0, 0, 0, 0);
 
-		return layer("sequenceRotaryEmbedding", shape, shape, input ->
-						applySequenceRotaryEmbeddings(input, freqCis, seqLen, heads, dimHead).each(),
-				List.of(freqCis), requirements);
+			// Extract the non-rotary part (remaining dimensions)
+			CollectionProducer<PackedCollection<?>> nonRotaryPart =
+					c(input).subset(shape(batchSize, seqLen, heads, dimHead - rotaryDim),
+							0, 0, 0, rotaryDim);
+
+			// Apply rotation to the rotary part
+			CollectionProducer<PackedCollection<?>> rotated = applyRotaryTransform(
+					rotaryPart, cp(freqs), batchSize, seqLen, heads, rotaryDim);
+
+			// Concatenate rotated and non-rotary parts
+			return concat(inputShape, rotated, nonRotaryPart);
+		}, List.of(freqs));
+	}
+
+	default CollectionProducer<PackedCollection<?>> applyRotaryTransform(
+			CollectionProducer<PackedCollection<?>> input,
+			CollectionProducer<PackedCollection<?>> freqs,
+			int batchSize, int seqLen, int heads, int rotaryDim) {
+
+		int halfDim = rotaryDim / 2;
+
+		// Reshape input for rotation: (batchSize, seqLen, heads, rotaryDim)
+		// Split into two halves for rotation
+		CollectionProducer<PackedCollection<?>> x1 = input.subset(
+				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, 0);
+		CollectionProducer<PackedCollection<?>> x2 = input.subset(
+				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, halfDim);
+
+		// Repeat freqs to match input dimensions
+		// (seqLen, rotaryDim) -> (batchSize, seqLen, heads, rotaryDim)
+		CollectionProducer<PackedCollection<?>> expandedFreqs = freqs
+				.traverse(0).repeat(batchSize)  // (batchSize, seqLen, rotaryDim)
+				.traverse(2).repeat(heads);  // (batchSize, seqLen, heads, rotaryDim)
+
+		// Extract cos and sin components
+		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs.subset(
+				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, 0));
+		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs.subset(
+				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, halfDim));
+
+		// Apply rotation: x_rotated = x * cos(freq) + rotate_half(x) * sin(freq)
+		// rotate_half swaps and negates: [x1, x2] -> [-x2, x1]
+		CollectionProducer<PackedCollection<?>> rotated_x1 =
+				x1.multiply(cosFreqs).subtract(x2.multiply(sinFreqs));
+		CollectionProducer<PackedCollection<?>> rotated_x2 =
+				x1.multiply(sinFreqs).add(x2.multiply(cosFreqs));
+
+		// Concatenate the rotated halves
+		return concat(shape(batchSize, seqLen, heads, rotaryDim), rotated_x1, rotated_x2);
 	}
 
 	static RotationFeatures getInstance() {
