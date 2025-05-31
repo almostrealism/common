@@ -40,6 +40,7 @@ import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -63,6 +64,34 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default String describeOptions(Expression<?> e) {
 		Set<Integer> options = e.getIndexOptions(kernel()).orElseThrow();
 		return e.getExpression(Expression.defaultLanguage()) + " | " + options;
+	}
+
+	default void assertNotNull(Object o) {
+		if (o == null) {
+			throw new NullPointerException();
+		}
+	}
+
+	default void assertTrue(String msg, boolean condition) {
+		if (!condition) {
+			throw new AssertionError(msg);
+		}
+	}
+
+	default void assertFalse(String msg, boolean condition) {
+		assertTrue(msg, !condition);
+	}
+
+	default void assertNotEquals(Object expected, Object actual) {
+		if (Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " == " + expected);
+		}
+	}
+
+	default void assertEquals(Object expected, Object actual) {
+		if (!Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " != " + expected);
+		}
 	}
 
 	default void assertEquals(Scalar a, Scalar b) {

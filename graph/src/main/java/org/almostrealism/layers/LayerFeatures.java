@@ -866,12 +866,19 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
-		return norm(1);
+		return norm(1, requirements);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> norm(int groups, ComputeRequirement... requirements) {
 		return shape -> norm(shape, groups, requirements);
 	}
+
+	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection<?> weights,
+														  PackedCollection<?> biases,
+														  ComputeRequirement... requirements) {
+		return shape -> norm(shape, 1, weights, biases, true, requirements);
+	}
+
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
 		return norm(shape, groups, true, requirements);
@@ -907,7 +914,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 		return norm(shape, groups, weights, biases, init, requirements);
 	}
-
 
 	default CellularLayer norm(TraversalPolicy shape,
 							   PackedCollection<?> weights,

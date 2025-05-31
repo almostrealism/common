@@ -237,38 +237,29 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * Input Shape: (batchSize, seqLen, dim)
 	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection<?> rmsWeight, PackedCollection<?> rmsBias,
+									PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
 									PackedCollection<?> wk, PackedCollection<?> wv,
 									PackedCollection<?> wq, PackedCollection<?> wo,
 									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
 									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
 									PackedCollection<?> invFreq) {
 		int dimHead = dim / heads;
-		int normBatch = batchSize * seqLen * heads;
 
 		SequentialBlock sequenceAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
+		sequenceAttention.add(norm(preNormWeight, preNormBias)); // Normalize input
 
 		// Create caches for keys and values
 		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
 		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
 
-		// Normalize input
-		sequenceAttention.add(rmsnorm(sequenceAttention.getOutputShape(), rmsWeight, rmsBias));
-
-		// Project to keys and store in cache
+		/* KEYS **/
 		SequentialBlock keyBranch = sequenceAttention.branch();
 		keyBranch.add(dense(wk));
 		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
-
-		// Apply rotary embeddings to keys
-		if (invFreq != null) {
-			keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-		}
-
-		// Add key normalization
-		keyBranch.add(norm(shape(normBatch, dimHead), kNormWeight, kNormBias));
-
+		keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+		keyBranch.add(norm(kNormWeight, kNormBias));
 		keyBranch.andThen(into(keysCache));
+		/* ---- **/
 
 		/* VALUES **/
 		SequentialBlock valueBranch = sequenceAttention.branch();
@@ -280,23 +271,16 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* QUERY **/
 		sequenceAttention.add(dense(wq));
 		sequenceAttention.reshape(batchSize, seqLen, heads, dimHead);
-
-		// Apply rotary embeddings to queries
-		if (invFreq != null) {
-			sequenceAttention.add(sequenceRotaryEmbedding(
-					shape(batchSize, seqLen, heads, dimHead),
-					invFreq));
-		}
-
-		// Add query normalization
-		sequenceAttention.add(norm(shape(normBatch, dimHead), qNormWeight, qNormBias));
+		sequenceAttention.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+		sequenceAttention.add(norm(qNormWeight, qNormBias));
 		sequenceAttention.reshape(batchSize * seqLen, heads, dimHead);
 		sequenceAttention.add(sequenceAttentionKeys(cp(keysCache.reshape(batchSize * seqLen, heads, dimHead))));
 		sequenceAttention.add(softmax(true));
 		sequenceAttention.add(sequenceAttentionValues(cp(valuesCache.reshape(batchSize * seqLen, heads, dimHead))));
 		sequenceAttention.add(dense(wo));
+		/* ---- **/
 
-		return sequenceAttention;
+		return sequenceAttention.reshape(batchSize, seqLen, dim);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> crossAttentionKeys(Producer<PackedCollection<?>> keys,
@@ -420,22 +404,21 @@ public interface AttentionFeatures extends RotationFeatures {
 
 	default Block crossAttention(int batchSize, int querySeqLen, int contextSeqLen,
 								 int heads, int dimHead,
-								 PackedCollection<?> rmsWeight, PackedCollection<?> rmsBias,
+								 PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
 								 PackedCollection<?> wq, PackedCollection<?> wo,
 								 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
 								 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
 								 Block context) {
-		int dim = rmsWeight.getShape().length(0);
+		int dim = preNormWeight.getShape().length(0);
 		int normBatch = batchSize * contextSeqLen * heads;
 
 		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
+		crossAttention.add(norm(preNormWeight, preNormBias)); // Normalize input
 
 		// Create caches for context keys and values
 		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
 		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
-
-		crossAttention.add(rmsnorm(crossAttention.getOutputShape(), rmsWeight, rmsBias));
 
 		/* KEYS **/
 		SequentialBlock keyBranch = context.branch();
@@ -471,17 +454,25 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
-		return feedForward(shape(dim), rms, null, w1, w2, w3, null, null, requirements);
+		return feedForward(shape(dim), rms, null,
+				w1, w2, w3, null, null,
+				true, requirements);
 	}
 
 	default Block feedForward(
 			TraversalPolicy shape,
-			PackedCollection<?> rmsWeights,	PackedCollection<?> rmsBiases,
+			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
+			boolean rmsNorm,
 			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(shape, rmsWeights, rmsBiases, requirements));
+
+		if (rmsNorm) {
+			feedForward.add(rmsnorm(normWeights, normBiases, requirements));
+		} else {
+			feedForward.add(norm(normWeights, normBiases, requirements));
+		}
 
 		SequentialBlock hidden = new SequentialBlock(shape);
 		hidden.add(dense(w1, w1Bias));
