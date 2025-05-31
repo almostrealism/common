@@ -72,6 +72,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
+	default void assertNotNull(String msg, Object o) {
+		if (o == null) {
+			throw new NullPointerException(msg);
+		}
+	}
+
 	default void assertTrue(String msg, boolean condition) {
 		if (!condition) {
 			throw new AssertionError(msg);
@@ -91,6 +97,20 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void assertEquals(Object expected, Object actual) {
 		if (!Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {
+		if (!expected.getShape().equalsIgnoreAxis(actual.getShape())) {
+			throw new AssertionError(actual.getShape() + " != " + expected.getShape());
+		}
+
+		double[] ev = expected.toArray();
+		double[] ov = actual.toArray();
+		assertEquals(ev.length, ov.length);
+
+		for (int i = 0; i < ev.length; i++) {
+			assertEquals(ev[i], ov[i]);
 		}
 	}
 
