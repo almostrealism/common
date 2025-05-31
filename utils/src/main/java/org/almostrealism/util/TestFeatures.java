@@ -100,6 +100,18 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
+	default void assertEquals(String msg, PackedCollection<?> expected, PackedCollection<?> actual) {
+		try {
+			assertEquals(expected, actual);
+		} catch (AssertionError e) {
+			if (msg != null) {
+				throw new AssertionError(msg, e);
+			}
+
+			throw e;
+		}
+	}
+
 	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {
 		if (!expected.getShape().equalsIgnoreAxis(actual.getShape())) {
 			throw new AssertionError(actual.getShape() + " != " + expected.getShape());
