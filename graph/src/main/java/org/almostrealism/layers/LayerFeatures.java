@@ -876,7 +876,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection<?> weights,
 														  PackedCollection<?> biases,
 														  ComputeRequirement... requirements) {
-		return shape -> norm(shape, 1, weights, biases, true, requirements);
+		return shape -> norm(shape, 1, weights, biases, false, requirements);
 	}
 
 

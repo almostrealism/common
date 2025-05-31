@@ -17,21 +17,29 @@
 			<artifactId>ar-space</artifactId>
 			<version>0.69</version>
 		</dependency>
+
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-chemistry</artifactId>
 			<version>0.69</version>
 		</dependency>
+
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-optimize</artifactId>
 			<version>0.69</version>
 		</dependency>
+
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-economics</artifactId>
 			<version>0.69</version>
 		</dependency>
-	</dependencies>
 
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
 </project>
