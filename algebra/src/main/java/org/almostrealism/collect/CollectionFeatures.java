@@ -57,6 +57,7 @@ import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionLogarithmComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
+import org.almostrealism.collect.computations.CollectionPermute;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
@@ -678,6 +679,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 
 		return enumerate;
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> permute(Producer<?> collection, int... order) {
+		if (Algebraic.isZero(collection)) {
+			return zeros(shape(collection).permute(order).extentShape());
+		}
+
+		return new CollectionPermute<>(collection, order);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {

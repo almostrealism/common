@@ -106,6 +106,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return enumerate(shape, stride, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> permute(int... order) {
+		return permute(this, order);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
 		return pad(this, depths);
 	}

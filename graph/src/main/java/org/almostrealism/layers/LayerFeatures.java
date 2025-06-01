@@ -935,7 +935,13 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   boolean init,
 							   ComputeRequirement... requirements) {
 		shape = padDimensions(shape, 1, 3);
-		long size = shape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
+		long size;
+
+		if (weights == null) {
+			size = shape.item().getTotalSizeLong();
+		} else {
+			size = shape.alignSize(weights.getShape().getTotalSizeLong()).item().getTotalSizeLong();
+		}
 
 		if (size % groups != 0) {
 			if (shape.getTotalSizeLong() % groups == 0) {

@@ -89,6 +89,16 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 				requirements));
 	}
 
+	default Block transpose(int axis, ComputeRequirement... requirements) {
+		return enumerate(axis - 1, axis, 1, requirements);
+	}
+
+	default Block permute(int... order) {
+		TraversalPolicy resultShape = getOutputShape().permute(order).extentShape();
+		return andThen(layer("permute", getOutputShape(), resultShape,
+				in -> CollectionFeatures.getInstance().permute(in, order)));
+	}
+
 	default Block andThenDense(PackedCollection<?> weights, ComputeRequirement... requirements) {
 		return andThen(dense(weights, requirements));
 	}

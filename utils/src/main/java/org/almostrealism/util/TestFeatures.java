@@ -138,9 +138,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, true);
 	}
 
-	default void assertEquals(int a, int b) {
-		if (a != b) {
-			throw new AssertionError();
+	default void assertEquals(int expected, int actual) {
+		if (actual != expected) {
+			throw new AssertionError(actual + " != " + expected);
 		}
 	}
 

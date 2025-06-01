@@ -230,57 +230,90 @@ public interface AttentionFeatures extends RotationFeatures {
 		}, requirements);
 	}
 
-	/**
-	 * Implements self-attention that processes entire sequences at once,
-	 * rather than token-by-token processing.
-	 * <p>
-	 * Input Shape: (batchSize, seqLen, dim)
-	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
-									PackedCollection<?> wk, PackedCollection<?> wv,
-									PackedCollection<?> wq, PackedCollection<?> wo,
-									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
-									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-									PackedCollection<?> invFreq) {
+											PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
+											PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
+											PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
+											PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
+											PackedCollection<?> invFreq) {
 		int dimHead = dim / heads;
 
-		SequentialBlock sequenceAttention = new SequentialBlock(shape(batchSize, seqLen, dim));
-		sequenceAttention.add(norm(preNormWeight, preNormBias)); // Normalize input
+		SequentialBlock attention = new SequentialBlock(shape(batchSize, seqLen, dim));
 
-		// Create caches for keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, seqLen, heads, dimHead));
+		// 1. Pre-normalization (matches TransformerBlock.pre_norm in Python)
+		attention.add(norm(preNormWeight, preNormBias));
 
-		/* KEYS **/
-		SequentialBlock keyBranch = sequenceAttention.branch();
-		keyBranch.add(dense(wk));
-		keyBranch.reshape(batchSize, seqLen, heads, dimHead);
-		keyBranch.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-		keyBranch.add(norm(kNormWeight, kNormBias));
-		keyBranch.andThen(into(keysCache));
-		/* ---- **/
+		// 2. Fused QKV projection (matches Attention.to_qkv in Python)
+		attention.add(dense(toQkvWeight)); // Projects to dim*3
 
-		/* VALUES **/
-		SequentialBlock valueBranch = sequenceAttention.branch();
-		valueBranch.add(dense(wv));
-		valueBranch.reshape(batchSize, seqLen, heads, dimHead);
-		valueBranch.andThen(into(valuesCache));
-		/* ---- **/
+		// 3. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
+		attention
+				.reshape(batchSize, seqLen, 3, dim)
+				.enumerate(shape(batchSize, seqLen, 1, dim))
+				.reshape(3, batchSize, seqLen, heads, dimHead);
+		List<Block> qkv = attention.split(shape(1, batchSize, seqLen, heads, dimHead), 0);
+		SequentialBlock q = (SequentialBlock) qkv.get(0);
+		SequentialBlock k = (SequentialBlock) qkv.get(1);
+		SequentialBlock v = (SequentialBlock) qkv.get(2);
 
-		/* QUERY **/
-		sequenceAttention.add(dense(wq));
-		sequenceAttention.reshape(batchSize, seqLen, heads, dimHead);
-		sequenceAttention.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-		sequenceAttention.add(norm(qNormWeight, qNormBias));
-		sequenceAttention.reshape(batchSize * seqLen, heads, dimHead);
-		sequenceAttention.add(sequenceAttentionKeys(cp(keysCache.reshape(batchSize * seqLen, heads, dimHead))));
-		sequenceAttention.add(softmax(true));
-		sequenceAttention.add(sequenceAttentionValues(cp(valuesCache.reshape(batchSize * seqLen, heads, dimHead))));
-		sequenceAttention.add(dense(wo));
-		/* ---- **/
+		// 4. Apply QK normalization (matches Attention.apply_qk_layernorm in Python)
+		q.add(norm(qNormWeight, qNormBias));
+		k.add(norm(kNormWeight, kNormBias));
 
-		return sequenceAttention.reshape(batchSize, seqLen, dim);
+		// 5. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
+		q.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+		k.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+
+		// Permute to (batch, heads, seqLen, dimHead)
+		q.permute(0, 2, 1, 3);
+		k.permute(0, 2, 1, 3);
+		v.reshape(batchSize, seqLen, heads, dimHead).permute(0, 2, 1, 3);
+
+		// 6. Compute scaled dot-product attention using separate layers for performance
+		attention.add(batchScaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
+
+		// 7. Output projection (matches Attention.to_out in Python)
+		attention.add(dense(toOutWeight));
+
+		return attention;
+	}
+
+	/**
+	 *
+	 * @param k  (batch, heads, seq, dimHead)
+	 * @param v  (batch, heads, seq, dimHead)
+	 */
+	default Block batchScaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+												 Block k, Block v) {
+		if (batchSize != 1) {
+			throw new UnsupportedOperationException("Batches of more than 1 are not currently support by LayerFeatures::dense");
+		}
+
+		int dim = heads * dimHead;
+
+		// Create SequentialBlock to handle attention computation with separate layers
+		SequentialBlock attnBlock = new SequentialBlock(shape(heads, seqLen, dimHead));
+
+		// Store K and V for later use
+		PackedCollection<?> kCache = new PackedCollection<>(shape(heads * seqLen, dimHead));
+		PackedCollection<?> vCache = new PackedCollection<>(shape(dimHead, heads * seqLen));
+
+		// Cache K and V
+		k.reshape(heads * seqLen, dimHead).andThen(into(kCache));
+		v.reshape(heads * seqLen, dimHead).permute(1, 0).andThen(into(vCache));
+
+		// Compute Q @ K^T / sqrt(dimHead)
+		attnBlock.add(dense(kCache));
+		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
+
+		// Apply softmax over last dimension (key positions)
+		// to get attention weights
+		attnBlock.add(softmax(true));
+
+		// Apply attention weights to values: attn_weights @ V
+		attnBlock.add(dense(vCache));
+		attnBlock.reshape(batchSize, seqLen, dim);
+		return attnBlock;
 	}
 
 	default Function<TraversalPolicy, CellularLayer> crossAttentionKeys(Producer<PackedCollection<?>> keys,

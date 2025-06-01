@@ -39,4 +39,80 @@ public class TraversalPolicyTests implements TestFeatures {
 		TraversalPolicy expected = shape(10 * 2048, 1024, 4).traverse(2);
 		Assert.assertEquals(expected, shape);
 	}
+
+	@Test
+	public void permute3() {
+		TraversalPolicy shape = new TraversalPolicy(2, 4, 3);
+		TraversalPolicy permuted = shape.permute(1, 0, 2);
+
+		assertEquals(4, permuted.length(0));
+		assertEquals(2, permuted.length(1));
+		assertEquals(3, permuted.length(2));
+
+		assertEquals(3, permuted.inputSizeLong(2));
+		assertEquals(12, permuted.inputSizeLong(1));
+		assertEquals(24, permuted.inputSizeLong(0));
+
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 4; j++) {
+				for (int k = 0; k < 3; k++) {
+					log("i: " + i + ", j: " + j + ", k: " + k);
+					assertEquals(shape.index(i, j, k), permuted.index(j, i, k));
+
+					int originalIndex = shape.index(i, j, k);
+					int originalPosition[] = shape.position(originalIndex);
+					int permutedPosition[] = permuted.position(originalIndex);
+
+					assertEquals(i, originalPosition[0]);
+					assertEquals(j, originalPosition[1]);
+					assertEquals(k, originalPosition[2]);
+
+					assertEquals(j, permutedPosition[0]);
+					assertEquals(i, permutedPosition[1]);
+					assertEquals(k, permutedPosition[2]);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void permute4() {
+		TraversalPolicy shape = new TraversalPolicy(2, 4, 3, 8);
+		TraversalPolicy permuted = shape.permute(0, 2, 1, 3);
+
+		assertEquals(2, permuted.length(0));
+		assertEquals(3, permuted.length(1));
+		assertEquals(4, permuted.length(2));
+		assertEquals(8, permuted.length(3));
+
+		assertEquals(8, permuted.inputSizeLong(3));
+		assertEquals(24, permuted.inputSizeLong(2));
+		assertEquals(96, permuted.inputSizeLong(1));
+		assertEquals(192, permuted.inputSizeLong(0));
+
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 4; j++) {
+				for (int k = 0; k < 3; k++) {
+					for (int l = 0; l < 8; l++) {
+						log("i: " + i + ", j: " + j + ", k: " + k + ", l: " + l);
+						assertEquals(shape.index(i, j, k, l), permuted.index(i, k, j, l));
+
+						int originalIndex = shape.index(i, j, k, l);
+						int originalPosition[] = shape.position(originalIndex);
+						int permutedPosition[] = permuted.position(originalIndex);
+
+						assertEquals(i, originalPosition[0]);
+						assertEquals(j, originalPosition[1]);
+						assertEquals(k, originalPosition[2]);
+						assertEquals(l, originalPosition[3]);
+
+						assertEquals(i, permutedPosition[0]);
+						assertEquals(k, permutedPosition[1]);
+						assertEquals(j, permutedPosition[2]);
+						assertEquals(l, permutedPosition[3]);
+					}
+				}
+			}
+		}
+	}
 }
