@@ -258,8 +258,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		k.add(norm(kNormWeight, kNormBias));
 
 		// 5. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
-		q.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-		k.add(sequenceRotaryEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+		q.add(applyRotaryPositionEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
+		k.add(applyRotaryPositionEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
 
 		// Permute to (batch, heads, seqLen, dimHead)
 		q.permute(0, 2, 1, 3);

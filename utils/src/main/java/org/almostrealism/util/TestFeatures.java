@@ -78,6 +78,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 	}
 
+	default void assertTrue(boolean condition) {
+		assertTrue(null, condition);
+	}
+
 	default void assertTrue(String msg, boolean condition) {
 		if (!condition) {
 			throw new AssertionError(msg);
@@ -110,6 +114,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 			throw e;
 		}
+	}
+
+	default double compare(PackedCollection<?> expected, PackedCollection<?> actual) {
+		double totalDiff = expected.doubleStream().map(Math::abs).sum() -
+							actual.doubleStream().map(Math::abs).sum();
+		return totalDiff / expected.getShape().getTotalSize();
 	}
 
 	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {

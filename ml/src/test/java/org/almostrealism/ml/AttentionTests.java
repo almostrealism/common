@@ -33,9 +33,6 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.Model;
 import org.junit.Test;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 	private static final int TEST_BATCH_SIZE = 1;
@@ -253,5 +250,124 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 			out.print();
 		}));
 		Process.optimized(b.forward(cp(input))).get().run();
+	}
+
+	@Test
+	public void applyRotaryTransform() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/rotary_transform";
+		
+		// Load reference data
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+		
+		// Extract test configuration
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int batchSize = (int) testConfig.valueAt(0);
+		int seqLen = (int) testConfig.valueAt(1);
+		int heads = (int) testConfig.valueAt(2);
+		int dimHead = (int) testConfig.valueAt(3);
+		int rotaryDim = (int) testConfig.valueAt(4);
+		
+		System.out.println("Test configuration:");
+		System.out.println("  batchSize=" + batchSize + ", seqLen=" + seqLen +
+						", heads=" + heads + ", dimHead=" + dimHead + ", rotaryDim=" + rotaryDim);
+		
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> freqs = referenceData.get("freqs");
+		PackedCollection<?> invFreq = referenceData.get("inv_freq");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+		
+		// Load intermediate values for debugging
+		PackedCollection<?> expectedRotaryPart = referenceData.get("rotary_part");
+		PackedCollection<?> expectedX1 = referenceData.get("x1");
+		PackedCollection<?> expectedX2 = referenceData.get("x2");
+		PackedCollection<?> expectedCosFreqs = referenceData.get("cos_freqs");
+		PackedCollection<?> expectedSinFreqs = referenceData.get("sin_freqs");
+		PackedCollection<?> expectedManualRotated = referenceData.get("manual_rotated");
+		
+		// First test computeRotaryFreqs
+		System.out.println("\n=== Testing computeRotaryFreqs ===");
+		PackedCollection<?> computedFreqs = computeRotaryFreqs(seqLen, invFreq);
+		System.out.println("Computed freqs shape: " + computedFreqs.getShape());
+		System.out.println("Expected freqs shape: " + freqs.getShape());
+
+		double freqDiff = compare(freqs, computedFreqs);
+		System.out.println("Total frequency difference: " + freqDiff);
+		
+		if (freqDiff > 1e-6) {
+			System.out.println("WARNING: Frequency computation differs from Python!");
+			// Print first few values for debugging
+			System.out.println("First 10 computed freq values: ");
+			for (int i = 0; i < Math.min(10, computedFreqs.getShape().getTotalSize()); i++) {
+				System.out.println("  [" + i + "] computed=" + computedFreqs.valueAt(i) +
+								", expected=" + freqs.valueAt(i));
+			}
+		}
+		
+		// Test the full sequence rotary embedding
+		System.out.println("\n=== Testing sequenceRotaryEmbedding ===");
+		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead);
+		
+		Model model = new Model(inputShape);
+		SequentialBlock main = model.sequential();
+		main.add(applyRotaryPositionEmbedding(inputShape, invFreq));
+		
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> actualOutput = compiled.forward(input);
+		
+		System.out.println("Expected output shape: " + expectedOutput.getShape());
+		System.out.println("Actual output shape: " + actualOutput.getShape());
+		
+		// Calculate total absolute difference
+		double totalDiff = 0.0;
+		double maxDiff = 0.0;
+		int maxDiffIdx = -1;
+		
+		for (int i = 0; i < expectedOutput.getShape().getTotalSize(); i++) {
+			double diff = Math.abs(actualOutput.toDouble(i) - expectedOutput.toDouble(i));
+			totalDiff += diff;
+			if (diff > maxDiff) {
+				maxDiff = diff;
+				maxDiffIdx = i;
+			}
+		}
+		
+		System.out.println("Total absolute difference: " + totalDiff);
+		System.out.println("Max difference: " + maxDiff + " at index " + maxDiffIdx);
+		System.out.println("Average difference per element: " + (totalDiff / expectedOutput.getShape().getTotalSize()));
+		
+		// Test intermediate values if there's a large difference
+		if (totalDiff > 1e-4) {
+			System.out.println("\n=== Debugging intermediate values ===");
+			
+			// Extract rotary part manually
+			CollectionProducer<PackedCollection<?>> rotaryPart =
+				c(p(input)).subset(shape(batchSize, seqLen, heads, rotaryDim), 0, 0, 0, 0);
+			PackedCollection<?> rotaryPartEval = rotaryPart.get().evaluate();
+			
+			System.out.println("Rotary part difference: " +
+					compare(expectedRotaryPart, rotaryPartEval));
+			
+			// Test the actual transform on just the rotary part
+			CollectionProducer<PackedCollection<?>> transformed = applyRotaryTransform(
+				rotaryPart, cp(freqs), batchSize, seqLen, heads, rotaryDim);
+			PackedCollection<?> transformedEval = transformed.get().evaluate();
+			
+			System.out.println("Manual rotated difference: " +
+				compare(expectedManualRotated, transformedEval));
+			
+			// Print first few values of actual vs expected
+			System.out.println("\nFirst 10 output values:");
+			for (int i = 0; i < Math.min(10, actualOutput.getShape().getTotalSize()); i++) {
+				System.out.println("  [" + i + "] actual=" + actualOutput.toDouble(i) +
+								", expected=" + expectedOutput.toDouble(i));
+			}
+		}
+		
+		// Assert the outputs match within tolerance
+		assertTrue(expectedOutput.getShape().equalsIgnoreAxis(actualOutput.getShape()));
+		assertEquals(expectedOutput, actualOutput);
 	}
 }

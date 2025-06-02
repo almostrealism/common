@@ -69,8 +69,8 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		return freqs;
 	}
 
-	default Function<TraversalPolicy, CellularLayer> sequenceRotaryEmbedding(PackedCollection<?> invFreq) {
-		return inputShape -> sequenceRotaryEmbedding(inputShape, invFreq);
+	default Function<TraversalPolicy, CellularLayer> applyRotaryPositionEmbedding(PackedCollection<?> invFreq) {
+		return inputShape -> applyRotaryPositionEmbedding(inputShape, invFreq);
 	}
 
 	/**
@@ -78,7 +78,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	 *
 	 * @param inputShape  (batchSize, seqLen, heads, dimHead)
 	 */
-	default CellularLayer sequenceRotaryEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
+	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
 		if (inputShape.getDimensions() != 4) {
 			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
 		}
