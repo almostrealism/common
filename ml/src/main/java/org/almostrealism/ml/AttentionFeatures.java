@@ -247,14 +247,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(dense(toQkvWeight)); // Projects to dim*3
 
 		// 3. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
-		attention
-				.reshape(batchSize, seqLen, 3, dim)
-				.enumerate(shape(batchSize, seqLen, 1, dim))
-				.reshape(3, batchSize, seqLen, heads, dimHead);
-		List<Block> qkv = attention.split(shape(1, batchSize, seqLen, heads, dimHead), 0);
-		SequentialBlock q = (SequentialBlock) qkv.get(0);
-		SequentialBlock k = (SequentialBlock) qkv.get(1);
-		SequentialBlock v = (SequentialBlock) qkv.get(2);
+		attention.reshape(batchSize, seqLen, 3, dim);
+		List<Block> qkv = attention.split(shape( batchSize, seqLen, 1, dim), 0);
+		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
+		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
+		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
 
 		// 4. Apply QK normalization (matches Attention.apply_qk_layernorm in Python)
 		q.add(norm(qNormWeight, qNormBias));

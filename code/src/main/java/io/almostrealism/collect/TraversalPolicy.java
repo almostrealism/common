@@ -865,6 +865,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		dos.flush();
 	}
 
+	public int[] differingAxes(TraversalPolicy p) {
+		if (p.getDimensions() != getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+
+		return IntStream.range(0, getDimensions())
+				.filter(i -> lengthLong(i) != p.lengthLong(i))
+				.toArray();
+	}
+
 	@Override
 	public int hashCode() {
 		return Arrays.hashCode(dims);
