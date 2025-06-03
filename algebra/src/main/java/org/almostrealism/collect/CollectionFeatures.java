@@ -355,41 +355,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {
-		return (CollectionProducerComputation) concat(0, producers);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] = IntStream.range(0, producers.length)
 				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
 				.toArray(Function[]::new);
-		if (axis != 0) {
-			return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers).traverse(axis);
-		} else {
-			return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers);
-		}
+		return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, int depth, Producer<PackedCollection<?>>... producers) {
-//		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
-//				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
-//				.collect(Collectors.toList());
+	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
+		List<TraversalPolicy> shapes = Stream.of(producers)
+				.map(this::shape)
+				.filter(s -> s.getDimensions() == shape(producers[0]).getDimensions())
+				.collect(Collectors.toList());
+		if (shapes.size() != producers.length) {
+			throw new IllegalArgumentException("All inputs must have the same number of dimensions");
+		}
 
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = new ArrayList<>();
-
-		for (int i = 0; i < producers.length; i++) {
-			for (int j = 0; j < depth; j++) {
-				int x = i;
-				int y = j;
-				expressions.add(args -> args.get(x + 1).getValueRelative(y));
+		long dims[] = new long[shapes.get(0).getDimensions()];
+		for (int i = 0; i < dims.length; i++) {
+			if (i == axis) {
+				dims[i] = shapes.stream().mapToLong(s -> s.length(axis)).sum();
+			} else {
+				dims[i] = shapes.get(0).length(i);
 			}
 		}
 
-		if (axis != 0) {
-			return new ExpressionComputation(shape(producers.length, depth), expressions, producers).traverse(axis);
-		} else {
-			return new ExpressionComputation(shape(producers.length, depth), expressions, producers);
-		}
+		return concat(new TraversalPolicy(dims), producers);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(TraversalPolicy shape, Producer<PackedCollection<?>>... producers) {
