@@ -22,10 +22,13 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-public class RotationTests implements TestFeatures {
+public class RotationTests implements RotationFeatures, TestFeatures {
 	@Test
 	public void ropeRotation() {
 		int heads = 12;
@@ -70,5 +73,81 @@ public class RotationTests implements TestFeatures {
 				assertEquals(expected, actual);
 			}
 		}
+	}
+
+	@Test
+	public void rotateHalf() {
+		int batchSize = 1;
+		int heads = 2;
+		int seqLen = 4;
+		int rotaryDim = 4;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
+
+		PackedCollection<?> out = rotateHalf(cp(input), batchSize, heads, seqLen, rotaryDim).evaluate();
+
+		PackedCollection<?> dividedInput = input.reshape(batchSize, heads, seqLen, rotaryDim / 2, 2);
+
+		for (int h = 0; h < heads; h++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < rotaryDim; d++) {
+					double actual = out.valueAt(0, h, s, d);
+
+					int dHalf = d % (rotaryDim / 2);
+
+					if (d < rotaryDim / 2) {
+						// Negated odd elements
+						double expected = -dividedInput.valueAt(0, h, s, dHalf, 1);
+						assertEquals(expected, actual);
+					} else {
+						// Followed by even elements
+						double expected = dividedInput.valueAt(0, h, s, dHalf, 0);
+						assertEquals(expected, actual);
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void permutationCompilation() {
+		int batchSize = 1, seqLen = 4, heads = 2, dimHead = 8;
+		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead);
+
+		PackedCollection<?> input = new PackedCollection<>(inputShape).randnFill();
+
+		// Test 1: Direct permutation evaluation
+		CollectionProducer<PackedCollection<?>> directPermute = c(p(input))
+				.permute(0, 2, 1, 3)
+				.permute(0, 2, 1, 3); // Should be identity
+		PackedCollection<?> directResult = directPermute.evaluate();
+
+		// Test 2: Sequential model permutation compilation
+		Model model = new Model(inputShape);
+		SequentialBlock main = model.sequential();
+		main.permute(0, 2, 1, 3);
+		main.permute(0, 2, 1, 3); // Should be identity
+
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> compiledResult = compiled.forward(input);
+
+		log("Input total: " + input.doubleStream().sum());
+		log("Direct result total: " + directResult.doubleStream().sum());
+		log("Compiled result total: " + compiledResult.doubleStream().sum());
+
+		double diff = compare(input, compiledResult);
+		log("Permutation compilation difference: " + diff);
+
+		if (Math.abs(diff) > 1e-6) {
+			log("ERROR: SequentialBlock permutation compilation is broken!");
+
+			// Print detailed comparison
+			for (int i = 0; i < Math.min(20, input.getShape().getTotalSize()); i++) {
+				log("  [" + i + "] input=" + input.toDouble(i) +
+						", compiled=" + compiledResult.toDouble(i));
+			}
+		}
+
+		assertEquals(input, compiledResult);
 	}
 }

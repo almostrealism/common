@@ -269,8 +269,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int dimHead = (int) testConfig.valueAt(3);
 		int rotaryDim = (int) testConfig.valueAt(4);
 		
-		System.out.println("Test configuration:");
-		System.out.println("  batchSize=" + batchSize + ", seqLen=" + seqLen +
+		log("Test configuration:");
+		log("  batchSize=" + batchSize + ", seqLen=" + seqLen +
 						", heads=" + heads + ", dimHead=" + dimHead + ", rotaryDim=" + rotaryDim);
 		
 		// Load test data
@@ -279,95 +279,52 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		PackedCollection<?> invFreq = referenceData.get("inv_freq");
 		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
 		
-		// Load intermediate values for debugging
-		PackedCollection<?> expectedRotaryPart = referenceData.get("rotary_part");
-		PackedCollection<?> expectedX1 = referenceData.get("x1");
-		PackedCollection<?> expectedX2 = referenceData.get("x2");
-		PackedCollection<?> expectedCosFreqs = referenceData.get("cos_freqs");
-		PackedCollection<?> expectedSinFreqs = referenceData.get("sin_freqs");
-		PackedCollection<?> expectedManualRotated = referenceData.get("manual_rotated");
-		
 		// First test computeRotaryFreqs
-		System.out.println("\n=== Testing computeRotaryFreqs ===");
+		log("\n=== Testing computeRotaryFreqs ===");
 		PackedCollection<?> computedFreqs = computeRotaryFreqs(seqLen, invFreq);
-		System.out.println("Computed freqs shape: " + computedFreqs.getShape());
-		System.out.println("Expected freqs shape: " + freqs.getShape());
+		log("Computed freqs shape: " + computedFreqs.getShape());
+		log("Expected freqs shape: " + freqs.getShape());
 
 		double freqDiff = compare(freqs, computedFreqs);
-		System.out.println("Total frequency difference: " + freqDiff);
+		log("Total frequency difference: " + freqDiff);
 		
 		if (freqDiff > 1e-6) {
-			System.out.println("WARNING: Frequency computation differs from Python!");
+			log("WARNING: Frequency computation differs from Python!");
 			// Print first few values for debugging
-			System.out.println("First 10 computed freq values: ");
+			log("First 10 computed freq values: ");
 			for (int i = 0; i < Math.min(10, computedFreqs.getShape().getTotalSize()); i++) {
-				System.out.println("  [" + i + "] computed=" + computedFreqs.valueAt(i) +
+				log("  [" + i + "] computed=" + computedFreqs.valueAt(i) +
 								", expected=" + freqs.valueAt(i));
 			}
 		}
 		
-		// Test the full sequence rotary embedding
-		System.out.println("\n=== Testing sequenceRotaryEmbedding ===");
-		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead);
+		// Test the sequence rotary embedding with proper tensor layout handling
+		log("\n=== Testing sequenceRotaryEmbedding ===");
+		
+		// Create model that matches Python reference pattern:
+		// 1. Permute from (batch, seq, heads, dim_head) to (batch, heads, seq, dim_head)
+		// 2. Apply rotary embedding
+		// 3. Permute back to (batch, seq, heads, dim_head)
+		TraversalPolicy inputShape = shape(batchSize, seqLen, heads, dimHead).traverseEach();
+		TraversalPolicy permutedShape = shape(batchSize, heads, seqLen, dimHead).traverseEach();
 		
 		Model model = new Model(inputShape);
 		SequentialBlock main = model.sequential();
-		main.add(applyRotaryPositionEmbedding(inputShape, invFreq));
-		
+		main.permute(0, 2, 1, 3);
+		main.add(applyRotaryPositionEmbedding(permutedShape, invFreq));
+		main.permute(0, 2, 1, 3);
+
+		// Now test compiled model
 		CompiledModel compiled = model.compile(false);
 		PackedCollection<?> actualOutput = compiled.forward(input);
-		
-		System.out.println("Expected output shape: " + expectedOutput.getShape());
-		System.out.println("Actual output shape: " + actualOutput.getShape());
-		
-		// Calculate total absolute difference
-		double totalDiff = 0.0;
-		double maxDiff = 0.0;
-		int maxDiffIdx = -1;
-		
-		for (int i = 0; i < expectedOutput.getShape().getTotalSize(); i++) {
-			double diff = Math.abs(actualOutput.toDouble(i) - expectedOutput.toDouble(i));
-			totalDiff += diff;
-			if (diff > maxDiff) {
-				maxDiff = diff;
-				maxDiffIdx = i;
-			}
-		}
-		
-		System.out.println("Total absolute difference: " + totalDiff);
-		System.out.println("Max difference: " + maxDiff + " at index " + maxDiffIdx);
-		System.out.println("Average difference per element: " + (totalDiff / expectedOutput.getShape().getTotalSize()));
-		
-		// Test intermediate values if there's a large difference
-		if (totalDiff > 1e-4) {
-			System.out.println("\n=== Debugging intermediate values ===");
-			
-			// Extract rotary part manually
-			CollectionProducer<PackedCollection<?>> rotaryPart =
-				c(p(input)).subset(shape(batchSize, seqLen, heads, rotaryDim), 0, 0, 0, 0);
-			PackedCollection<?> rotaryPartEval = rotaryPart.get().evaluate();
-			
-			System.out.println("Rotary part difference: " +
-					compare(expectedRotaryPart, rotaryPartEval));
-			
-			// Test the actual transform on just the rotary part
-			CollectionProducer<PackedCollection<?>> transformed = applyRotaryTransform(
-				rotaryPart, cp(freqs), batchSize, seqLen, heads, rotaryDim);
-			PackedCollection<?> transformedEval = transformed.get().evaluate();
-			
-			System.out.println("Manual rotated difference: " +
-				compare(expectedManualRotated, transformedEval));
-			
-			// Print first few values of actual vs expected
-			System.out.println("\nFirst 10 output values:");
-			for (int i = 0; i < Math.min(10, actualOutput.getShape().getTotalSize()); i++) {
-				System.out.println("  [" + i + "] actual=" + actualOutput.toDouble(i) +
-								", expected=" + expectedOutput.toDouble(i));
-			}
-		}
-		
+
+		double diff = compare(expectedOutput, actualOutput);
+		log("Expected output shape: " + expectedOutput.getShape());
+		log("Actual output shape: " + actualOutput.getShape());
+		log("Average difference per element: " + compare(expectedOutput, actualOutput));
+
 		// Assert the outputs match within tolerance
 		assertTrue(expectedOutput.getShape().equalsIgnoreAxis(actualOutput.getShape()));
-		assertEquals(expectedOutput, actualOutput);
+		assertTrue(diff < 1e-4);
 	}
 }

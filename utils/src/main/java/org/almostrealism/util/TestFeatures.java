@@ -47,6 +47,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
@@ -117,9 +118,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default double compare(PackedCollection<?> expected, PackedCollection<?> actual) {
-		double totalDiff = expected.doubleStream().map(Math::abs).sum() -
-							actual.doubleStream().map(Math::abs).sum();
-		return totalDiff / expected.getShape().getTotalSize();
+		double exp[] = expected.toArray();
+		double act[] = actual.toArray();
+		return IntStream.range(0, exp.length)
+				.mapToDouble(i -> Math.abs(exp[i] - act[i]))
+				.average().orElseThrow();
 	}
 
 	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {

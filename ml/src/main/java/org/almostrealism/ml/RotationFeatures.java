@@ -74,18 +74,18 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	}
 
 	/**
-	 * Applies rotary positional embedding to a sequence input.
-	 *
-	 * @param inputShape  (batchSize, seqLen, heads, dimHead)
-	 */
+		* Applies rotary positional embedding to a sequence input.
+		*
+		* @param inputShape  (batchSize, heads, seqLen, dimHead) - matches Python layout after rearrange
+		*/
 	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
 		if (inputShape.getDimensions() != 4) {
 			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
 		}
 
 		int batchSize = inputShape.length(0);
-		int seqLen = inputShape.length(1);
-		int heads = inputShape.length(2);
+		int heads = inputShape.length(1);
+		int seqLen = inputShape.length(2);
 		int dimHead = inputShape.length(3);
 
 		// only rotate first half
@@ -98,57 +98,75 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		return layer("sequenceRotaryEmbedding", inputShape, inputShape, input -> {
 			// Extract the rotary part (first rotaryDim dimensions)
 			CollectionProducer<PackedCollection<?>> rotaryPart =
-					c(input).subset(shape(batchSize, seqLen, heads, rotaryDim), 0, 0, 0, 0);
+					c(input).subset(shape(batchSize, heads, seqLen, rotaryDim), 0, 0, 0, 0);
 
 			// Extract the non-rotary part (remaining dimensions)
 			CollectionProducer<PackedCollection<?>> nonRotaryPart =
-					c(input).subset(shape(batchSize, seqLen, heads, dimHead - rotaryDim),
+					c(input).subset(shape(batchSize, heads, seqLen, dimHead - rotaryDim),
 							0, 0, 0, rotaryDim);
 
 			// Apply rotation to the rotary part
 			CollectionProducer<PackedCollection<?>> rotated = applyRotaryTransform(
-					rotaryPart, cp(freqs), batchSize, seqLen, heads, rotaryDim);
+					rotaryPart, cp(freqs), batchSize, heads, seqLen, rotaryDim);
 
-			// Concatenate rotated and non-rotary parts
-			return concat(inputShape, rotated, nonRotaryPart);
+			// Concatenate rotated and non-rotary parts along dimension 3
+			return concat(3, rotated, nonRotaryPart);
 		}, List.of(freqs));
 	}
 
 	default CollectionProducer<PackedCollection<?>> applyRotaryTransform(
 			CollectionProducer<PackedCollection<?>> input,
 			CollectionProducer<PackedCollection<?>> freqs,
-			int batchSize, int seqLen, int heads, int rotaryDim) {
-
-		int halfDim = rotaryDim / 2;
-
-		// Reshape input for rotation: (batchSize, seqLen, heads, rotaryDim)
-		// Split into two halves for rotation
-		CollectionProducer<PackedCollection<?>> x1 = input.subset(
-				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, 0);
-		CollectionProducer<PackedCollection<?>> x2 = input.subset(
-				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, halfDim);
-
-		// Repeat freqs to match input dimensions
-		// (seqLen, rotaryDim) -> (batchSize, seqLen, heads, rotaryDim)
+			int batchSize, int heads, int seqLen, int rotaryDim) {
+	
+		// Validate input shapes
+		if (input.getShape().getDimensions() != 4) {
+			throw new IllegalArgumentException("Input must have 4 dimensions, got: " + input.getShape());
+		}
+	
+		if (input.getShape().length(0) != batchSize || input.getShape().length(1) != heads ||
+			input.getShape().length(2) != seqLen || input.getShape().length(3) != rotaryDim) {
+			throw new IllegalArgumentException("Input shape " + input.getShape() +
+				" doesn't match expected (" + batchSize + ", " + heads + ", " + seqLen + ", " + rotaryDim + ")");
+		}
+	
+		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
+		// This matches Python's frequency expansion for (batch, heads, seq, dim_head) layout
 		CollectionProducer<PackedCollection<?>> expandedFreqs = freqs
-				.traverse(0).repeat(batchSize)  // (batchSize, seqLen, rotaryDim)
-				.traverse(2).repeat(heads);  // (batchSize, seqLen, heads, rotaryDim)
+				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
+				.repeat(1, heads);       // (batchSize, heads, seqLen, rotaryDim)
 
-		// Extract cos and sin components
-		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs.subset(
-				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, 0));
-		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs.subset(
-				shape(batchSize, seqLen, heads, halfDim), 0, 0, 0, halfDim));
+		CollectionProducer<PackedCollection<?>> cosFreqs = cos(expandedFreqs);
+		CollectionProducer<PackedCollection<?>> sinFreqs = sin(expandedFreqs);
 
-		// Apply rotation: x_rotated = x * cos(freq) + rotate_half(x) * sin(freq)
-		// rotate_half swaps and negates: [x1, x2] -> [-x2, x1]
-		CollectionProducer<PackedCollection<?>> rotated_x1 =
-				x1.multiply(cosFreqs).subtract(x2.multiply(sinFreqs));
-		CollectionProducer<PackedCollection<?>> rotated_x2 =
-				x1.multiply(sinFreqs).add(x2.multiply(cosFreqs));
+		CollectionProducer<PackedCollection<?>> rotateHalfInput = rotateHalf(input, batchSize, heads, seqLen, rotaryDim);
 
-		// Concatenate the rotated halves
-		return concat(shape(batchSize, seqLen, heads, rotaryDim), rotated_x1, rotated_x2);
+		// Apply: input * cos(freqs) + rotate_half(input) * sin(freqs)
+		return input.multiply(cosFreqs).add(rotateHalfInput.multiply(sinFreqs));
+	}
+	default CollectionProducer<PackedCollection<?>> rotateHalf(
+			CollectionProducer<PackedCollection<?>> input,
+			int batchSize, int heads, int seqLen, int rotaryDim) {
+		// Reshape the input so that the last dimension splits the tensor into two halves
+		CollectionProducer<PackedCollection<?>> x = input.reshape(shape(batchSize, heads, seqLen, rotaryDim / 2, 2));
+
+		// Take the subset including column 0 of the final dimension
+		// these correspond to the even elements in the original input
+		CollectionProducer<PackedCollection<?>> x1 =
+				x.subset(shape(batchSize, heads, seqLen, rotaryDim / 2, 1),
+						0, 0, 0, 0, 0)
+						.reshape(batchSize, heads, seqLen, rotaryDim / 2);
+
+		// Take the subset including column 1 of the final dimension
+		// these correspond to the odd elements in the original input
+		CollectionProducer<PackedCollection<?>> x2 =
+				x.subset(shape(batchSize, heads, seqLen, rotaryDim / 2, 1),
+						0, 0, 0, 0, 1)
+						.reshape(batchSize, heads, seqLen, rotaryDim / 2);
+
+		// Concatenate the two halves, with the second half negated
+		return concat(3, x2.minus(), x1)
+				.reshape(batchSize, heads, seqLen, rotaryDim);
 	}
 
 	static RotationFeatures getInstance() {

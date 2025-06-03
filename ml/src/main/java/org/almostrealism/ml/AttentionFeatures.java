@@ -257,19 +257,21 @@ public interface AttentionFeatures extends RotationFeatures {
 		q.add(norm(qNormWeight, qNormBias));
 		k.add(norm(kNormWeight, kNormBias));
 
-		// 5. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
-		q.add(applyRotaryPositionEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-		k.add(applyRotaryPositionEmbedding(shape(batchSize, seqLen, heads, dimHead), invFreq));
-
-		// Permute to (batch, heads, seqLen, dimHead)
+		// 5. Permute to (batch, heads, seqLen, dimHead) BEFORE applying rotary embeddings
+		// This matches Python's rearrange(t, 'b n (h d) -> b h n d', h = h)
 		q.permute(0, 2, 1, 3);
 		k.permute(0, 2, 1, 3);
-		v.reshape(batchSize, seqLen, heads, dimHead).permute(0, 2, 1, 3);
+		v.permute(0, 2, 1, 3);
 
-		// 6. Compute scaled dot-product attention using separate layers for performance
+		// 6. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
+		// Now input shape is (batchSize, heads, seqLen, dimHead)
+		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
+		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
+
+		// 7. Compute scaled dot-product attention using separate layers for performance
 		attention.add(batchScaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
 
-		// 7. Output projection (matches Attention.to_out in Python)
+		// 8. Output projection (matches Attention.to_out in Python)
 		attention.add(dense(toOutWeight));
 
 		return attention;
