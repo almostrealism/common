@@ -48,7 +48,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	* matches the real Python behavior rather than a made-up reference.
 	*/
 	@Test
-	public void sequenceAttentionAgainstPythonReference() throws Exception {
+	public void sequenceAttentionCompare() throws Exception {
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/sequence_attention";
 
 		// Load reference data using StateDictionary
@@ -95,10 +95,10 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		int heads = 8; // From DiT config
 		int dimHead = embedDim / heads;
 
-		System.out.println("DiT Reference dimensions: batch=" + batchSize + ", seq=" + seqLen +
+		log("DiT Reference dimensions: batch=" + batchSize + ", seq=" + seqLen +
 				", embed_dim=" + embedDim + ", heads=" + heads + ", dim_head=" + dimHead);
-		System.out.println("QKV weight shape: " + toQKV.getShape());
-		System.out.println("Output weight shape: " + toOut.getShape());
+		log("QKV weight shape: " + toQKV.getShape());
+		log("Output weight shape: " + toOut.getShape());
 
 		// DiT uses fused QKV projection - no need to split manually anymore
 		// toQKV has shape (embed_dim * 3, embed_dim) -> (3072, 1024) for embed_dim=1024
@@ -123,13 +123,15 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		CompiledModel compiled = model.compile(false);
 		PackedCollection<?> actualOutput = compiled.forward(referenceInput);
 
-		System.out.println("Expected output total is " + expectedOutput.doubleStream().map(Math::abs).sum());
-		System.out.println("Actual output total is " + actualOutput.doubleStream().map(Math::abs).sum());
+		log("Expected output total is " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total is " + actualOutput.doubleStream().map(Math::abs).sum());
 
 		assertEquals(expectedOutput.getShape().getTotalSize(),
 					actualOutput.getShape().getTotalSize());
-		assertEquals(expectedOutput.reshape(seqLen, heads * dimHead),
+		double diff = compare(expectedOutput.reshape(seqLen, heads * dimHead),
 					actualOutput.reshape(seqLen, heads * dimHead));
+		log("Difference between expected and actual output = " + diff);
+		assertTrue("Output does not match reference within tolerance", diff < 1e-5);
 	}
 
 	@Test
