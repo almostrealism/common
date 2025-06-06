@@ -38,7 +38,7 @@ public class PairBankTest implements TestFeatures {
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
 		concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-		System.out.println(Arrays.toString(destination.toArray(0, 8)));
+		destination.traverse(1).print();
 
 		assertEquals(3.0, destination.valueAt(2, 0));
 		assertEquals(3.0, destination.valueAt(2, 1));
@@ -49,7 +49,7 @@ public class PairBankTest implements TestFeatures {
 		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
 
 		CollectionProducer<PackedCollection<?>> concat = map(shape(2), traverse(1, in),
-				v -> concat((Producer) c(2.0).multiply(v), (Producer) c(2.0).multiply(v).add(c(1.0))));
+				v -> concat(c(2.0).multiply(v), c(2.0).multiply(v).add(c(1.0))));
 
 		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
@@ -58,7 +58,7 @@ public class PairBankTest implements TestFeatures {
 
 		verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-			System.out.println(Arrays.toString(destination.toArray(0, 8)));
+			destination.print();
 		});
 
 		assertEquals(6.0, destination.valueAt(2, 0));
@@ -91,7 +91,7 @@ public class PairBankTest implements TestFeatures {
 		pairFromPairBank.get().into(destination.traverse(1))
 				.evaluate(bank, timeline.traverse(1));
 
-		System.out.println(Arrays.toString(destination.toArray(0, 8)));
+		destination.print();
 		assertEquals(11.0, destination.valueAt(1, 0));
 		assertEquals(12.0, destination.valueAt(1, 1));
 		assertEquals(19.0, destination.valueAt(3, 0));
@@ -123,7 +123,7 @@ public class PairBankTest implements TestFeatures {
 			TraversalPolicy subset = shape(bank.getShape().length(0) - 1, bank.getShape().length(1));
 			c.get().into(destination.traverse(1)).evaluate(bank.range(subset, 2).traverse(1));
 
-			System.out.println(Arrays.toString(destination.toArray(0, 4)));
+			destination.print();
 			assertEquals(6.0, destination.valueAt(1));
 			assertEquals(8.0, destination.valueAt(2));
 		});
