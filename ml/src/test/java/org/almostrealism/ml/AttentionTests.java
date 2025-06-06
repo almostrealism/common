@@ -33,6 +33,8 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.Model;
 import org.junit.Test;
 
+import java.util.List;
+
 public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 	private static final int TEST_BATCH_SIZE = 1;
@@ -41,98 +43,6 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	private static final int TEST_HEADS = 2;
 	private static final int TEST_DIM_HEAD = TEST_DIM / TEST_HEADS;
 	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
-
-	/**
-	* Tests sequenceAttention against reference data generated from the actual
-	* DiT Attention class in stable-audio-tools. This ensures our Java implementation
-	* matches the real Python behavior rather than a made-up reference.
-	*/
-	@Test
-	public void sequenceAttentionCompare() throws Exception {
-		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/sequence_attention";
-
-		// Load reference data using StateDictionary
-		StateDictionary referenceData = new StateDictionary(referenceDir);
-		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
-
-		// Extract input and expected output
-		PackedCollection<?> referenceInput = referenceData.get("input");
-		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
-
-		assertNotNull("Reference input not found", referenceInput);
-		assertNotNull("Expected output not found", expectedOutput);
-
-		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
-
-		// Load all weights
-		PackedCollection<?> preNormWeight = referenceData.get("model.model.transformer.layers.0.pre_norm.gamma");
-		PackedCollection<?> preNormBias = referenceData.get("model.model.transformer.layers.0.pre_norm.beta");
-		PackedCollection<?> toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
-		PackedCollection<?> toOut = referenceData.get("model.model.transformer.layers.0.self_attn.to_out.weight");
-		PackedCollection<?> qNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.weight");
-		PackedCollection<?> qNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.bias");
-		PackedCollection<?> kNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.weight");
-		PackedCollection<?> kNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.bias");
-		PackedCollection<?> invFreq = referenceData.get("model.model.transformer.rotary_pos_emb.inv_freq");
-
-		// Verify all weights were loaded
-		assertNotNull("preNormWeight not found", preNormWeight);
-		assertNotNull("preNormBias not found", preNormBias);
-		assertNotNull("toQKV not found", toQKV);
-		assertNotNull("toOut not found", toOut);
-		assertNotNull("qNormWeight not found", qNormWeight);
-		assertNotNull("qNormBias not found", qNormBias);
-		assertNotNull("kNormWeight not found", kNormWeight);
-		assertNotNull("kNormBias not found", kNormBias);
-		assertNotNull("invFreq not found", invFreq);
-
-		// Extract dimensions from the reference data
-		TraversalPolicy inputShape = referenceInput.getShape();
-		int batchSize = inputShape.length(0);
-		int seqLen = inputShape.length(1);
-		int embedDim = inputShape.length(2);
-		int heads = 8; // From DiT config
-		int dimHead = embedDim / heads;
-
-		log("DiT Reference dimensions: batch=" + batchSize + ", seq=" + seqLen +
-				", embed_dim=" + embedDim + ", heads=" + heads + ", dim_head=" + dimHead);
-		log("QKV weight shape: " + toQKV.getShape());
-		log("Output weight shape: " + toOut.getShape());
-
-		// DiT uses fused QKV projection - no need to split manually anymore
-		// toQKV has shape (embed_dim * 3, embed_dim) -> (3072, 1024) for embed_dim=1024
-		assertEquals(embedDim * 3, toQKV.getShape().length(0));
-		assertEquals(embedDim, toQKV.getShape().length(1));
-
-		// Create a simplified test model with just one layer to match Python reference
-		Model model = new Model(inputShape);
-		SequentialBlock main = model.sequential();
-
-		// Add sequence attention that matches the actual DiT flow using fused QKV
-		main.add(sequenceAttention(
-				batchSize, seqLen, embedDim, heads,
-				preNormWeight, preNormBias,
-				toQKV, toOut,
-				qNormWeight, qNormBias,
-				kNormWeight, kNormBias,
-				invFreq
-		));
-
-		// Compile and run the model
-		CompiledModel compiled = model.compile(false);
-		PackedCollection<?> actualOutput = compiled.forward(referenceInput);
-
-		log("Expected output total is " + expectedOutput.doubleStream().map(Math::abs).sum());
-		log("Actual output total is " + actualOutput.doubleStream().map(Math::abs).sum());
-
-		assertEquals(expectedOutput.getShape().getTotalSize(),
-					actualOutput.getShape().getTotalSize());
-		double diff = compare(expectedOutput.reshape(seqLen, heads * dimHead),
-					actualOutput.reshape(seqLen, heads * dimHead));
-		log("Difference between expected and actual output = " + diff);
-		assertTrue("Output does not match reference within tolerance", diff < 1e-5);
-	}
 
 	@Test
 	public void attentionKeys() {
@@ -356,5 +266,207 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		double diff = compare(expected, actual);
 		log("batchMatrixMultiply with transpose difference: " + diff);
 		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
+	}
+
+	@Test
+	public void qkvSplitOperation() {
+		int batchSize = 1;
+		int seqLen = 4;
+		int embedDim = 16;
+
+		// Create a simple input that's easy to verify
+		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, seqLen, embedDim * 3));
+		input.fill(pos -> (double) pos[0] * seqLen * embedDim * 3 + pos[1] * embedDim * 3 + pos[2]);
+
+		// Create a model that simulates the QKV split
+		Model model = new Model(shape(batchSize, seqLen, 3 * embedDim));
+		SequentialBlock main = model.sequential();
+		main.reshape(batchSize, seqLen, 3, embedDim);
+
+		// Test the QKV split using subset operations
+		List<Block> qkv = main.split(shape( batchSize, seqLen, 1, embedDim), 0);
+		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, embedDim);
+		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, embedDim);
+		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, embedDim);
+
+		PackedCollection<?> qOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
+		PackedCollection<?> kOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
+		PackedCollection<?> vOut = new PackedCollection<>(shape(batchSize, seqLen, embedDim));
+
+		q.andThen(into(qOut));
+		k.andThen(into(kOut));
+		v.andThen(into(vOut));
+
+		CompiledModel compiled = model.compile(false);
+		compiled.forward(input);
+
+		// Verify the split worked correctly
+		for (int b = 0; b < batchSize; b++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < embedDim; d++) {
+					double expectedQ = input.valueAt(b, s, d);
+					double expectedK = input.valueAt(b, s, d + embedDim);
+					double expectedV = input.valueAt(b, s, d + 2 * embedDim);
+
+					double actualQ = qOut.valueAt(b, s, d);
+					double actualK = kOut.valueAt(b, s, d);
+					double actualV = vOut.valueAt(b, s, d);
+
+					assertEquals("Q mismatch at [" + b + "," + s + "," + d + "]", expectedQ, actualQ);
+					assertEquals("K mismatch at [" + b + "," + s + "," + d + "]", expectedK, actualK);
+					assertEquals("V mismatch at [" + b + "," + s + "," + d + "]", expectedV, actualV);
+				}
+			}
+		}
+
+		log("QKV split test passed!");
+	}
+
+	@Test
+	public void sequenceAttentionSimplified() {
+		// Use smaller dimensions for easier debugging
+		int batchSize = 1;
+		int seqLen = 4;
+		int embedDim = 16;
+		int heads = 2;
+		int dimHead = embedDim / heads;
+
+		// Create simple test data
+		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, seqLen, embedDim)).randnFill();
+		
+		// QKV weight that keeps values mostly unchanged (near-identity)
+		PackedCollection<?> toQKV = new PackedCollection<>(shape(embedDim * 3, embedDim));
+		toQKV.fill(pos -> {
+			int outIdx = pos[0];
+			int inIdx = pos[1];
+			// Create a block diagonal structure
+			if (outIdx < embedDim && inIdx == outIdx) return 1.0;
+			else if (outIdx >= embedDim && outIdx < 2 * embedDim && inIdx == (outIdx - embedDim)) return 1.0;
+			else if (outIdx >= 2 * embedDim && inIdx == (outIdx - 2 * embedDim)) return 1.0;
+			else return 0.0;
+		});
+		
+		// Identity output projection
+		PackedCollection<?> toOut = new PackedCollection<>(shape(embedDim, embedDim));
+		toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
+		
+		// Identity norms
+		PackedCollection<?> qNormWeight = new PackedCollection<>(shape(dimHead)).fill(pos -> 1.0);
+		PackedCollection<?> qNormBias = new PackedCollection<>(shape(dimHead)).fill(pos -> 0.0);
+		PackedCollection<?> kNormWeight = new PackedCollection<>(shape(dimHead)).fill(pos -> 1.0);
+		PackedCollection<?> kNormBias = new PackedCollection<>(shape(dimHead)).fill(pos -> 0.0);
+		
+		// Simple inv_freq for rotary
+		PackedCollection<?> invFreq = new PackedCollection<>(shape(dimHead / 4)).fill(pos -> 0.01);
+
+		// Run through attention
+		Block attention = sequenceAttention(
+				batchSize, seqLen, embedDim, heads,
+				toQKV, toOut,
+				qNormWeight, qNormBias,
+				kNormWeight, kNormBias,
+				invFreq
+		);
+
+		Model model = new Model(shape(batchSize, seqLen, embedDim));
+		model.sequential().add(attention);
+		
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> output = compiled.forward(input);
+
+		log("Simplified attention test:");
+		log("Input shape: " + input.getShape() + ", total: " + input.doubleStream().map(Math::abs).sum());
+		log("Output shape: " + output.getShape() + ", total: " + output.doubleStream().map(Math::abs).sum());
+		
+		// The output should be somewhat similar to input with these near-identity weights
+		double diff = compare(input, output);
+		log("Difference between input and output: " + diff);
+	}
+
+	/**
+	 * Tests sequenceAttention against reference data generated from the actual
+	 * DiT Attention class in stable-audio-tools. This ensures our Java implementation
+	 * matches the real Python behavior rather than a made-up reference.
+	 */
+	@Test
+	public void sequenceAttentionCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/sequence_attention";
+
+		// Load reference data using StateDictionary
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract input and expected output
+		PackedCollection<?> referenceInput = referenceData.get("input");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		assertNotNull("Reference input not found", referenceInput);
+		assertNotNull("Expected output not found", expectedOutput);
+
+		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
+
+		// Load all weights
+		PackedCollection<?> toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
+		PackedCollection<?> toOut = referenceData.get("model.model.transformer.layers.0.self_attn.to_out.weight");
+		PackedCollection<?> qNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.weight");
+		PackedCollection<?> qNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.q_norm.bias");
+		PackedCollection<?> kNormWeight = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.weight");
+		PackedCollection<?> kNormBias = referenceData.get("model.model.transformer.layers.0.self_attn.k_norm.bias");
+		PackedCollection<?> invFreq = referenceData.get("model.model.transformer.rotary_pos_emb.inv_freq");
+
+		// Verify all weights were loaded
+		assertNotNull("toQKV not found", toQKV);
+		assertNotNull("toOut not found", toOut);
+		assertNotNull("qNormWeight not found", qNormWeight);
+		assertNotNull("qNormBias not found", qNormBias);
+		assertNotNull("kNormWeight not found", kNormWeight);
+		assertNotNull("kNormBias not found", kNormBias);
+		assertNotNull("invFreq not found", invFreq);
+
+		// Extract dimensions from the reference data
+		TraversalPolicy inputShape = referenceInput.getShape();
+		int batchSize = inputShape.length(0);
+		int seqLen = inputShape.length(1);
+		int embedDim = inputShape.length(2);
+		int heads = 8;
+		int dimHead = embedDim / heads;
+
+		log("DiT Reference dimensions - batch=" + batchSize + ", seq=" + seqLen +
+				", embed_dim=" + embedDim + ", heads=" + heads + ", dim_head=" + dimHead);
+		log("QKV weight shape = " + toQKV.getShape());
+		log("Output weight shape = " + toOut.getShape());
+
+		// DiT uses fused QKV projection - no need to split manually anymore
+		// toQKV has shape (embed_dim * 3, embed_dim)
+		assertEquals(embedDim * 3, toQKV.getShape().length(0));
+		assertEquals(embedDim, toQKV.getShape().length(1));
+
+		// Create a simplified test model with just one layer
+		Model model = new Model(inputShape);
+		SequentialBlock main = model.sequential();
+
+		// Add self-attention block
+		main.add(sequenceAttention(
+				batchSize, seqLen, embedDim, heads,
+				toQKV, toOut,
+				qNormWeight, qNormBias,
+				kNormWeight, kNormBias,
+				invFreq
+		));
+
+		// Compile and run the model
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> actualOutput = compiled.forward(referenceInput);
+
+		log("Expected output total is " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total is " + actualOutput.doubleStream().map(Math::abs).sum());
+
+		assertEquals(expectedOutput.getShape().getTotalSize(),
+				actualOutput.getShape().getTotalSize());
+		double diff = compare(expectedOutput.reshape(seqLen, heads * dimHead),
+				actualOutput.reshape(seqLen, heads * dimHead));
+		log("Difference between expected and actual output = " + diff);
+		assertTrue("Output does not match reference within tolerance", diff < 1e-5);
 	}
 }

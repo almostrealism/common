@@ -231,48 +231,44 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-											PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
-											PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
-											PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
-											PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-											PackedCollection<?> invFreq) {
+									PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
+									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
+									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
+									PackedCollection<?> invFreq) {
 		int dimHead = dim / heads;
 
 		SequentialBlock attention = new SequentialBlock(shape(batchSize, seqLen, dim));
 
-		// 1. Pre-normalization (matches TransformerBlock.pre_norm in Python)
-		attention.add(norm(preNormWeight, preNormBias));
-
-		// 2. Fused QKV projection (matches Attention.to_qkv in Python)
+		// 1. Fused QKV projection (matches Attention.to_qkv in Python)
 		attention.add(dense(toQkvWeight)); // Projects to dim*3
 
-		// 3. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
+		// 2. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
 		attention.reshape(batchSize, seqLen, 3, dim);
 		List<Block> qkv = attention.split(shape( batchSize, seqLen, 1, dim), 0);
 		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
 		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
 		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
 
-		// 4. Apply QK normalization (matches Attention.apply_qk_layernorm in Python)
+		// 3. Apply QK normalization (matches Attention.apply_qk_layernorm in Python)
 		q.add(norm(qNormWeight, qNormBias));
 		k.add(norm(kNormWeight, kNormBias));
 
-		// 5. Permute to (batch, heads, seqLen, dimHead) BEFORE applying rotary embeddings
+		// 4. Permute to (batch, heads, seqLen, dimHead) BEFORE applying rotary embeddings
 		// This matches Python's rearrange(t, 'b n (h d) -> b h n d', h = h)
 		q.permute(0, 2, 1, 3);
 		k.permute(0, 2, 1, 3);
 		v.permute(0, 2, 1, 3);
 
-		// 6. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
+		// 5. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
 		// Now input shape is (batchSize, heads, seqLen, dimHead)
 		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 
-		// 7. Compute scaled dot-product attention using separate layers for performance
-		attention.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
+		// 6. Compute scaled dot-product attention using separate layers for performance
+		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
 
-		// 8. Output projection (matches Attention.to_out in Python)
-		attention.add(dense(toOutWeight));
+		// 7. Output projection (matches Attention.to_out in Python)
+		q.add(dense(toOutWeight));
 
 		return attention;
 	}

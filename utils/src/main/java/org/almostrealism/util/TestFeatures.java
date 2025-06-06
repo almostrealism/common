@@ -151,6 +151,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, true);
 	}
 
+	default void assertEquals(String msg, double a, double b) {
+		assertEquals(msg, a, b, true);
+	}
+
 	default void assertEquals(int expected, int actual) {
 		if (actual != expected) {
 			throw new AssertionError(actual + " != " + expected);
@@ -170,8 +174,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	private static void assertEquals(double a, double b, boolean positive) {
-//		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
-//		double fallbackGap = Math.pow(10, -3);
+		assertEquals(null, a, b, positive);
+	}
+
+	private static void assertEquals(String msg, double a, double b, boolean positive) {
 		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
 
@@ -179,14 +185,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
 					System.err.println("TestFeatures: " + b + " != " + a);
-					throw new AssertionError();
+					throw new AssertionError(msg);
 				} else {
 					System.out.println("TestFeatures: " + b + " != " + a);
 				}
 			}
 		} else if (!positive) {
 			System.err.println("TestFeatures: " + b + " == " + a);
-			throw new AssertionError();
+			throw new AssertionError(msg);
 		}
 	}
 
