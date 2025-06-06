@@ -269,7 +269,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 
 		// 7. Compute scaled dot-product attention using separate layers for performance
-		attention.add(batchScaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
+		attention.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
 
 		// 8. Output projection (matches Attention.to_out in Python)
 		attention.add(dense(toOutWeight));
@@ -278,40 +278,96 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
+	 * Computes the scaled dot product of two collections.
+	 *
+	 * @param a  (batch, heads, seqLenA, dim)
+	 * @param b  (batch, heads, dim, seqLenB)
+	 */
+	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
+			CollectionProducer<PackedCollection<?>> a,
+			CollectionProducer<PackedCollection<?>> b) {
+		TraversalPolicy leftShape = a.getShape();
+		TraversalPolicy rightShape = b.getShape();
+
+		int batchSize = leftShape.length(0);
+		int heads = leftShape.length(1);
+		int seqLenA = leftShape.length(2);
+		int seqLenB = rightShape.length(3);
+		int dim = leftShape.length(3);
+
+		leftShape = shape(batchSize, heads, seqLenA, dim, 1);
+		rightShape = shape(batchSize, heads, 1, dim, seqLenB);
+
+		TraversalPolicy resultShape = shape(batchSize, heads, seqLenA, 1, seqLenB);
+		TraversalPolicy leftPosition = leftShape.repeat(4, seqLenB);
+		TraversalPolicy rightPosition = rightShape.repeat(2, seqLenA);
+		TraversalPolicy groupShape = shape(1, 1, 1, dim, 1);
+
+		TraversalPolicy outputShape = shape(batchSize, heads, seqLenA, seqLenB).traverseEach();
+
+		return weightedSum("scaledDotProduct",
+				resultShape,
+				leftPosition, rightPosition,
+				groupShape, groupShape,
+				reshape(leftShape, c(a)),
+				reshape(rightShape, c(b)))
+				.reshape(outputShape);
+	}
+
+	/**
 	 *
 	 * @param k  (batch, heads, seq, dimHead)
 	 * @param v  (batch, heads, seq, dimHead)
 	 */
-	default Block batchScaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-												 Block k, Block v) {
+	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+											Block k, Block v) {
 		if (batchSize != 1) {
-			throw new UnsupportedOperationException("Batches of more than 1 are not currently support by LayerFeatures::dense");
+			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
 
-		int dim = heads * dimHead;
+		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, seqLen, dimHead));
 
-		// Create SequentialBlock to handle attention computation with separate layers
-		SequentialBlock attnBlock = new SequentialBlock(shape(heads, seqLen, dimHead));
+		// Store K and V outputs for use in attention computation
+		PackedCollection<?> kCache = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
+		PackedCollection<?> vCache = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
 
-		// Store K and V for later use
-		PackedCollection<?> kCache = new PackedCollection<>(shape(heads * seqLen, dimHead));
-		PackedCollection<?> vCache = new PackedCollection<>(shape(dimHead, heads * seqLen));
+		k.andThen(into(kCache));
+		v.andThen(into(vCache));
 
-		// Cache K and V
-		k.reshape(heads * seqLen, dimHead).andThen(into(kCache));
-		v.reshape(heads * seqLen, dimHead).permute(1, 0).andThen(into(vCache));
+		// Compute attention scores: Q @ K^T
+		// Input shape: (batch, heads, seqLen, dimHead)
+		// K shape: (batch, heads, seqLen, dimHead)
+		// Result: (batch, heads, seqLen, seqLen)
+		attnBlock.add(layer("qkMatmul",
+				shape(batchSize, heads, seqLen, dimHead),
+				shape(batchSize, heads, seqLen, seqLen),
+				q -> {
+					// K^T has shape (batch, heads, dimHead, seqLen)
+					CollectionProducer<PackedCollection<?>> kT =
+							c(p(kCache)).permute(0, 1, 3, 2);
 
-		// Compute Q @ K^T / sqrt(dimHead)
-		attnBlock.add(dense(kCache));
+					// Batch matrix multiply Q @ K^T
+					return scaledDotProduct(c(q), kT);
+				}));
+
+		// Scale by 1/sqrt(dimHead)
 		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
 
 		// Apply softmax over last dimension (key positions)
-		// to get attention weights
-		attnBlock.add(softmax(true));
+		attnBlock.add(softmax(shape(batchSize, heads, seqLen, seqLen), true));
 
-		// Apply attention weights to values: attn_weights @ V
-		attnBlock.add(dense(vCache));
-		attnBlock.reshape(batchSize, seqLen, dim);
+		// Apply attention to values: attention_weights @ V
+		// Attention weights shape: (batch, heads, seqLen, seqLen)
+		// V shape: (batch, heads, seqLen, dimHead)
+		// Result: (batch, heads, seqLen, dimHead)
+		attnBlock.add(layer("attnValues",
+				shape(batchSize, heads, seqLen, seqLen),
+				shape(batchSize, heads, seqLen, dimHead),
+				attnWeights -> scaledDotProduct(c(attnWeights), c(p(vCache)))));
+
+		// Reshape back to (batchSize, seqLen, dim)
+		attnBlock.reshape(batchSize, seqLen, heads * dimHead);
+
 		return attnBlock;
 	}
 
