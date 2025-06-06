@@ -322,6 +322,59 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("QKV split test passed!");
 	}
 
+
+	/**
+	 * Tests scaledDotProductAttention against PyTorch's F.scaled_dot_product_attention
+	 * to isolate and verify just the attention computation mechanism.
+	 */
+	@Test
+	public void scaledDotProductAttentionCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/scaled_dot_product_attention";
+
+		// Load reference data
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract test inputs and expected output
+		PackedCollection<?> q = referenceData.get("q");
+		PackedCollection<?> k = referenceData.get("k");
+		PackedCollection<?> v = referenceData.get("v");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		assertNotNull("Q tensor not found", q);
+		assertNotNull("K tensor not found", k);
+		assertNotNull("V tensor not found", v);
+		assertNotNull("Expected output not found", expectedOutput);
+
+		// Extract dimensions
+		TraversalPolicy qShape = q.getShape();
+		int batchSize = qShape.length(0);
+		int heads = qShape.length(1);
+		int seqLen = qShape.length(2);
+		int dimHead = qShape.length(3);
+
+		log("Scaled dot-product attention test dimensions:");
+		log("  batch=" + batchSize + ", heads=" + heads + ", seq=" + seqLen + ", dimHead=" + dimHead);
+		log("  Q shape=" + q.getShape() + ", K shape=" + k.getShape() + ", V shape=" + v.getShape());
+
+		// Test our scaled dot-product attention implementation
+		Model model = new Model(shape(batchSize, heads, seqLen, dimHead));
+		model.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
+
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> actualOutput = compiled.forward(q);
+		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
+
+		assertEquals(expectedOutput.getShape().getTotalSize(),
+				actualOutput.getShape().getTotalSize());
+
+		double diff = compare(expectedOutput, actualOutput);
+		log("Difference between expected and actual scaled dot-product attention = " + diff);
+		assertTrue("Scaled dot-product attention output does not match PyTorch reference within tolerance", diff < 1e-5);
+	}
+
 	@Test
 	public void sequenceAttentionSimplified() {
 		// Use smaller dimensions for easier debugging

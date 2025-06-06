@@ -244,7 +244,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// 2. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
 		attention.reshape(batchSize, seqLen, 3, dim);
-		List<Block> qkv = attention.split(shape( batchSize, seqLen, 1, dim), 0);
+		List<Block> qkv = attention.split(shape(batchSize, seqLen, 1, dim), 0);
 		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
 		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
 		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
@@ -264,10 +264,17 @@ public interface AttentionFeatures extends RotationFeatures {
 		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 
-		// 6. Compute scaled dot-product attention using separate layers for performance
-		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k, v));
+		// 6. Store K and V tensors for use in attention computation
+		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
+		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
 
-		// 7. Output projection (matches Attention.to_out in Python)
+		k.andThen(into(kTensor));
+		v.andThen(into(vTensor));
+
+		// 7. Compute scaled dot-product attention using stored tensors
+		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, kTensor, vTensor));
+
+		// 8. Output projection (matches Attention.to_out in Python)
 		q.add(dense(toOutWeight));
 
 		return attention;
@@ -311,27 +318,26 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
+	 * Computes scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
+	 * This implementation properly handles K and V as tensor data rather than computational blocks.
 	 *
-	 * @param k  (batch, heads, seq, dimHead)
-	 * @param v  (batch, heads, seq, dimHead)
+	 * @param batchSize batch dimension
+	 * @param seqLen    sequence length
+	 * @param heads     number of attention heads
+	 * @param dimHead   dimension per head
+	 * @param k         key tensor data (batch, heads, seq, dimHead)
+	 * @param v         value tensor data (batch, heads, seq, dimHead)
 	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											Block k, Block v) {
+											PackedCollection<?> k, PackedCollection<?> v) {
 		if (batchSize != 1) {
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
 
 		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, seqLen, dimHead));
 
-		// Store K and V outputs for use in attention computation
-		PackedCollection<?> kCache = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
-		PackedCollection<?> vCache = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
-
-		k.andThen(into(kCache));
-		v.andThen(into(vCache));
-
 		// Compute attention scores: Q @ K^T
-		// Input shape: (batch, heads, seqLen, dimHead)
+		// Input Q shape: (batch, heads, seqLen, dimHead)
 		// K shape: (batch, heads, seqLen, dimHead)
 		// Result: (batch, heads, seqLen, seqLen)
 		attnBlock.add(layer("qkMatmul",
@@ -340,7 +346,7 @@ public interface AttentionFeatures extends RotationFeatures {
 				q -> {
 					// K^T has shape (batch, heads, dimHead, seqLen)
 					CollectionProducer<PackedCollection<?>> kT =
-							c(p(kCache)).permute(0, 1, 3, 2);
+							cp(k).permute(0, 1, 3, 2);
 
 					// Batch matrix multiply Q @ K^T
 					return scaledDotProduct(c(q), kT);
@@ -359,7 +365,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		attnBlock.add(layer("attnValues",
 				shape(batchSize, heads, seqLen, seqLen),
 				shape(batchSize, heads, seqLen, dimHead),
-				attnWeights -> scaledDotProduct(c(attnWeights), c(p(vCache)))));
+				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
 
 		// Reshape back to (batchSize, seqLen, dim)
 		attnBlock.reshape(batchSize, seqLen, heads * dimHead);
