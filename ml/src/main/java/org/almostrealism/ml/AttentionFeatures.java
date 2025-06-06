@@ -256,8 +256,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		v.permute(0, 2, 1, 3);
 
 		// 4. Apply QK normalization
-		q.add(norm(qNormWeight, qNormBias));
-		k.add(norm(kNormWeight, kNormBias));
+		q.add(norm(qNormWeight, qNormBias, 1e-6));
+		k.add(norm(kNormWeight, kNormBias, 1e-6));
 
 		// 5. Apply rotary embeddings to Q and K
 		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));

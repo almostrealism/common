@@ -880,6 +880,13 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		return shape -> norm(shape, 1, weights, biases, false, requirements);
 	}
 
+	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection<?> weights,
+														  PackedCollection<?> biases,
+														  double eps,
+														  ComputeRequirement... requirements) {
+		return shape -> norm(shape, 1, weights, biases, eps, false, requirements);
+	}
+
 
 	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
 		return norm(shape, groups, true, requirements);
@@ -935,6 +942,15 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 							   PackedCollection<?> biases,
 							   boolean init,
 							   ComputeRequirement... requirements) {
+		return norm(shape, groups, weights, biases,
+				Hardware.getLocalHardware().epsilon(), init, requirements);
+	}
+
+	default CellularLayer norm(TraversalPolicy shape, int groups,
+							   PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   double eps, boolean init,
+							   ComputeRequirement... requirements) {
 		shape = padDimensions(shape, 1, 3);
 		long size;
 
@@ -971,8 +987,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		}
 
 		return layer("norm", shape.traverse(1), shape.traverse(1), input -> {
-			double eps = Hardware.getLocalHardware().epsilon();
-
 			CollectionProducer<?> in = c(input).reshape(-1, groups, Math.toIntExact(size / groups));
 			CollectionProducer<?> out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
 			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);

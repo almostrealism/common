@@ -324,6 +324,71 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 
 	/**
+	 * Tests isolated QK normalization against Python LayerNorm reference.
+	 * This helps debug the norm step in sequenceAttention by testing it in isolation.
+	 */
+	@Test
+	public void qkNormCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/qk_norm";
+
+		// Load reference data
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract test configuration
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int batchSize = (int) testConfig.valueAt(0);
+		int heads = (int) testConfig.valueAt(1);
+		int seqLen = (int) testConfig.valueAt(2);
+		int dimHead = (int) testConfig.valueAt(3);
+
+		log("QK Norm test configuration:");
+		log("  batchSize=" + batchSize + ", heads=" + heads +
+				", seqLen=" + seqLen + ", dimHead=" + dimHead);
+
+		// Load test data
+		PackedCollection<?> qInput = referenceData.get("q_input");
+		PackedCollection<?> kInput = referenceData.get("k_input");
+		PackedCollection<?> qNormWeight = referenceData.get("q_norm_weight");
+		PackedCollection<?> qNormBias = referenceData.get("q_norm_bias");
+		PackedCollection<?> kNormWeight = referenceData.get("k_norm_weight");
+		PackedCollection<?> kNormBias = referenceData.get("k_norm_bias");
+		PackedCollection<?> qExpectedOutput = referenceData.get("q_expected_output");
+		PackedCollection<?> kExpectedOutput = referenceData.get("k_expected_output");
+
+		// Test Q normalization
+		Model qModel = new Model(shape(batchSize, heads, seqLen, dimHead));
+		SequentialBlock qMain = qModel.sequential();
+		qMain.add(norm(qNormWeight, qNormBias, 1e-6));
+
+		CompiledModel qCompiled = qModel.compile(false);
+		PackedCollection<?> qActualOutput = qCompiled.forward(qInput);
+
+		// Test K normalization
+		Model kModel = new Model(shape(batchSize, heads, seqLen, dimHead));
+		SequentialBlock kMain = kModel.sequential();
+		kMain.add(norm(kNormWeight, kNormBias, 1e-6));
+
+		CompiledModel kCompiled = kModel.compile(false);
+		PackedCollection<?> kActualOutput = kCompiled.forward(kInput);
+
+		// Compare results
+		double qDiff = compare(qExpectedOutput, qActualOutput);
+		double kDiff = compare(kExpectedOutput, kActualOutput);
+
+		log("Q norm difference: " + qDiff);
+		log("K norm difference: " + kDiff);
+		log("Q expected output total: " + qExpectedOutput.doubleStream().map(Math::abs).sum());
+		log("Q actual output total: " + qActualOutput.doubleStream().map(Math::abs).sum());
+		log("K expected output total: " + kExpectedOutput.doubleStream().map(Math::abs).sum());
+		log("K actual output total: " + kActualOutput.doubleStream().map(Math::abs).sum());
+
+		assertTrue("Q normalization does not match Python reference within tolerance", qDiff < 1e-5);
+		assertTrue("K normalization does not match Python reference within tolerance", kDiff < 1e-5);
+	}
+
+	/**
 	 * Tests scaledDotProductAttention against PyTorch's F.scaled_dot_product_attention
 	 * to isolate and verify just the attention computation mechanism.
 	 */
