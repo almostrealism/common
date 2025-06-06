@@ -249,18 +249,17 @@ public interface AttentionFeatures extends RotationFeatures {
 		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
 		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
 
-		// 3. Apply QK normalization (matches Attention.apply_qk_layernorm in Python)
-		q.add(norm(qNormWeight, qNormBias));
-		k.add(norm(kNormWeight, kNormBias));
-
-		// 4. Permute to (batch, heads, seqLen, dimHead) BEFORE applying rotary embeddings
+		// 3. Permute to (batch, heads, seqLen, dimHead)
 		// This matches Python's rearrange(t, 'b n (h d) -> b h n d', h = h)
 		q.permute(0, 2, 1, 3);
 		k.permute(0, 2, 1, 3);
 		v.permute(0, 2, 1, 3);
 
-		// 5. Apply rotary embeddings to Q and K (matches apply_rotary_pos_emb in Python)
-		// Now input shape is (batchSize, heads, seqLen, dimHead)
+		// 4. Apply QK normalization
+		q.add(norm(qNormWeight, qNormBias));
+		k.add(norm(kNormWeight, kNormBias));
+
+		// 5. Apply rotary embeddings to Q and K
 		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
 
