@@ -202,166 +202,58 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
-	default Function<TraversalPolicy, CellularLayer> crossAttentionKeys(Producer<PackedCollection<?>> keys,
-																		ComputeRequirement... requirements) {
-		return inputShape -> crossAttentionKeys(inputShape, keys, requirements);
-	}
 
-	default CellularLayer crossAttentionKeys(TraversalPolicy inputShape,
-											 Producer<PackedCollection<?>> keys,
-											 ComputeRequirement... requirements) {
-		// inputShape is (batchSize, querySeqLen, heads, dimHead)
-		TraversalPolicy keyShape = shape(keys); // (batchSize, contextSeqLen, heads, dimHead)
-
-		if (inputShape.getDimensions() != 4 || keyShape.getDimensions() != 4)
-			throw new IllegalArgumentException("Invalid dimensions for cross-attention keys");
-
-		int batchSize = inputShape.length(0);
-		if (keyShape.length(0) != batchSize)
-			throw new IllegalArgumentException("Batch size mismatch in cross-attention keys");
-
-		int heads = inputShape.length(2);
-		int dimHead = inputShape.length(3);
-
-		if (keyShape.length(2) != heads || keyShape.length(3) != dimHead)
-			throw new IllegalArgumentException("Heads or dimHead mismatch in cross-attention keys");
-
-		int querySeqLen = inputShape.length(1);
-		int contextSeqLen = keyShape.length(1);
-
-		// Reshape the tensors for weightedSum operation
-		TraversalPolicy queryShape = shape(batchSize, querySeqLen, heads, dimHead);
-		TraversalPolicy keysReshape = shape(batchSize, contextSeqLen, heads, dimHead);
-
-		// Result shape for the weighted sum operation
-		TraversalPolicy resultShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
-
-		// Define positions for the query and key tensors
-		TraversalPolicy queryPositions = resultShape
-				.withRate(2, 1, querySeqLen)
-				.withRate(3, dimHead, contextSeqLen);
-
-		TraversalPolicy keyPositions = resultShape
-				.withRate(1, 1, heads)
-				.withRate(2, dimHead, querySeqLen);
-
-		// Group shape for the summation (summing over dimHead)
-		TraversalPolicy groupShape = shape(1, 1, 1, dimHead);
-
-		return layer("crossAttentionKeys", inputShape, resultShape, input -> {
-			// Apply scaling factor 1/sqrt(dimHead)
-			double scaleFactor = 1.0 / Math.sqrt(dimHead);
-
-			// Use weightedSum for the dot product calculation
-			return weightedSum("crossAttentionKeys",
-					resultShape,
-					queryPositions, keyPositions,
-					groupShape, groupShape,
-					reshape(queryShape, input),
-					reshape(keysReshape, keys))
-					.multiply(c(scaleFactor));
-		}, requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> crossAttentionValues(Producer<PackedCollection<?>> values,
-																		  ComputeRequirement... requirements) {
-		return inputShape -> crossAttentionValues(inputShape, values, requirements);
-	}
-
-	default CellularLayer crossAttentionValues(TraversalPolicy inputShape,
-											   Producer<PackedCollection<?>> values,
-											   ComputeRequirement... requirements) {
-		// inputShape is (batchSize, heads, querySeqLen, contextSeqLen) - attention weights
-		TraversalPolicy valueShape = shape(values); // (batchSize, contextSeqLen, heads, dimHead)
-
-		if (inputShape.getDimensions() != 4 || valueShape.getDimensions() != 4)
-			throw new IllegalArgumentException("Invalid dimensions for cross-attention values");
-
-		int batchSize = inputShape.length(0);
-		if (valueShape.length(0) != batchSize)
-			throw new IllegalArgumentException("Batch size mismatch in cross-attention values");
-
-		int heads = inputShape.length(1);
-		int querySeqLen = inputShape.length(2);
-		int contextSeqLen = inputShape.length(3);
-
-		if (valueShape.length(1) != contextSeqLen || valueShape.length(2) != heads)
-			throw new IllegalArgumentException("Context length or heads mismatch in cross-attention values");
-
-		int dimHead = valueShape.length(3);
-		int dim = heads * dimHead;
-
-		// Output shape will be (batchSize, querySeqLen, heads, dimHead)
-		TraversalPolicy outputShape = shape(batchSize, querySeqLen, heads, dimHead);
-
-		// Define shapes for the weighted sum operation
-		TraversalPolicy attnShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
-		TraversalPolicy valuesReshape = shape(batchSize, contextSeqLen, heads, dimHead);
-
-		// Define positions for attention weights and values
-		TraversalPolicy attnPositions = outputShape
-				.withRate(1, 1, querySeqLen)
-				.withRate(3, contextSeqLen, dimHead);
-
-		TraversalPolicy valuePositions = outputShape
-				.withRate(0, 1, batchSize)
-				.withRate(2, 1, heads);
-
-		// Group shape for the summation (summing over contextSeqLen)
-		TraversalPolicy groupShape = shape(1, 1, 1, contextSeqLen);
-
-		return layer("crossAttentionValues", inputShape, outputShape, attnWeights -> {
-			// Use weightedSum to apply attention weights to values
-			return weightedSum("crossAttentionValues",
-					outputShape,
-					attnPositions, valuePositions,
-					groupShape, groupShape,
-					reshape(attnShape, attnWeights),
-					reshape(valuesReshape, values));
-		}, requirements);
-	}
-
-	default Block crossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-								 int heads, int dimHead,
-								 PackedCollection<?> wk, PackedCollection<?> wv,
-								 PackedCollection<?> wq, PackedCollection<?> wo,
-								 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
-								 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-								 Block context) {
-		int dim = heads * dimHead;
-		int normBatch = batchSize * contextSeqLen * heads;
+	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
+										 int dim, int heads,
+										 PackedCollection<?> toQWeight, PackedCollection<?> toKvWeight,
+										 PackedCollection<?> toOutWeight,
+										 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
+										 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
+										 Block contextInput) {
+		int dimHead = dim / heads;
 
 		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
 
-		// Create caches for context keys and values
-		PackedCollection<?> keysCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
-		PackedCollection<?> valuesCache = new PackedCollection<>(shape(batchSize, contextSeqLen, heads, dimHead));
-
-		/* KEYS **/
-		SequentialBlock keyBranch = context.branch();
-		keyBranch.add(dense(wk));
-		keyBranch.reshape(batchSize, contextSeqLen, heads, dimHead);
-		keyBranch.add(norm(shape(normBatch, dimHead), kNormWeight, kNormBias));
-		keyBranch.andThen(into(keysCache));
-		/* ---- **/
-
-		/* VALUES **/
-		SequentialBlock valueBranch = context.branch();
-		valueBranch.add(dense(wv));
-		valueBranch.reshape(batchSize, contextSeqLen, heads, dimHead);
-		valueBranch.andThen(into(valuesCache));
-		/* ---- **/
-
-		/* QUERY **/
-		crossAttention.add(dense(wq));
-		valueBranch.add(norm(shape(normBatch, dimHead), qNormWeight, qNormBias));
+		// 1. Project main input to queries
+		crossAttention.add(dense(toQWeight)); // Projects to dim
 		crossAttention.reshape(batchSize, querySeqLen, heads, dimHead);
-		crossAttention.add(crossAttentionKeys(cp(keysCache)));
-		crossAttention.add(softmax(true));
-		crossAttention.add(crossAttentionValues(cp(valuesCache)));
-		crossAttention.reshape(batchSize, querySeqLen, heads * dimHead);
-		crossAttention.add(dense(wo));
-		/* ---- **/
+		crossAttention.permute(0, 2, 1, 3); // (batch, heads, querySeqLen, dimHead)
+
+		// 2. Apply Q normalization
+		crossAttention.add(norm(qNormWeight, qNormBias, 1e-6));
+
+		// 3. Process context input through separate branch for K and V
+		SequentialBlock contextBranch = contextInput.branch();
+		contextBranch.add(dense(toKvWeight)); // Projects to dim * 2 (K and V)
+		contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
+
+		List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
+		SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
+		SequentialBlock v = (SequentialBlock) kv.get(1).reshape(batchSize, contextSeqLen, heads, dimHead);
+
+		// 4. Permute K and V to (batch, heads, contextSeqLen, dimHead)
+		k.permute(0, 2, 1, 3);
+		v.permute(0, 2, 1, 3);
+
+		// 5. Apply K normalization (no rotary for context keys/values)
+		k.add(norm(kNormWeight, kNormBias, 1e-6));
+
+		// 6. Store K and V tensors for use in attention computation
+		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
+		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
+
+		k.andThen(into(kTensor));
+		v.andThen(into(vTensor));
+
+		// 7. Apply attention to values
+		crossAttention.add(scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead, kTensor, vTensor));
+
+		// 8. Rearrange back to (batch, querySeqLen, dim)
+		crossAttention.permute(0, 2, 1, 3)
+				.reshape(batchSize, querySeqLen, dim);
+
+		// 9. Output projection
+		crossAttention.add(dense(toOutWeight));
 
 		return crossAttention;
 	}
@@ -490,32 +382,36 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+											PackedCollection<?> k, PackedCollection<?> v) {
+		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v);
+	}
+
 	/**
 	 * Computes scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
 	 * This implementation properly handles K and V as tensor data rather than computational blocks.
 	 *
 	 * @param batchSize batch dimension
-	 * @param seqLen    sequence length
+	 * @param querySeqLen sequence length for queries
+	 * @param contextSeqLen sequence length for context (keys/values)
 	 * @param heads     number of attention heads
 	 * @param dimHead   dimension per head
-	 * @param k         key tensor data (batch, heads, seq, dimHead)
-	 * @param v         value tensor data (batch, heads, seq, dimHead)
+	 * @param k         key tensor data (batch, heads, seqLenK, dimHead)
+	 * @param v         value tensor data (batch, heads, seqLenV, dimHead)
 	 */
-	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
 											PackedCollection<?> k, PackedCollection<?> v) {
 		if (batchSize != 1) {
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
 
-		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, seqLen, dimHead));
+		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, dimHead));
 
-		// Compute attention scores: Q @ K^T
-		// Input Q shape: (batch, heads, seqLen, dimHead)
-		// K shape: (batch, heads, seqLen, dimHead)
-		// Result: (batch, heads, seqLen, seqLen)
+		// Q @ K^T: (batch, heads, querySeqLen, dimHead) @ (batch, heads, dimHead, contextSeqLen)
+		//         = (batch, heads, querySeqLen, contextSeqLen)
 		attnBlock.add(layer("qkMatmul",
-				shape(batchSize, heads, seqLen, dimHead),
-				shape(batchSize, heads, seqLen, seqLen),
+				shape(batchSize, heads, querySeqLen, dimHead),
+				shape(batchSize, heads, querySeqLen, contextSeqLen),
 				q -> {
 					// K^T has shape (batch, heads, dimHead, seqLen)
 					CollectionProducer<PackedCollection<?>> kT =
@@ -529,15 +425,13 @@ public interface AttentionFeatures extends RotationFeatures {
 		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
 
 		// Apply softmax over last dimension (key positions)
-		attnBlock.add(softmax(shape(batchSize, heads, seqLen, seqLen), true));
+		attnBlock.add(softmax(shape(batchSize, heads, querySeqLen, contextSeqLen), true));
 
-		// Apply attention to values: attention_weights @ V
-		// Attention weights shape: (batch, heads, seqLen, seqLen)
-		// V shape: (batch, heads, seqLen, dimHead)
-		// Result: (batch, heads, seqLen, dimHead)
+		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
+		//              = (batch, heads, querySeqLen, dimHead)
 		attnBlock.add(layer("attnValues",
-				shape(batchSize, heads, seqLen, seqLen),
-				shape(batchSize, heads, seqLen, dimHead),
+				shape(batchSize, heads, querySeqLen, contextSeqLen),
+				shape(batchSize, heads, querySeqLen, dimHead),
 				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
 
 		return attnBlock;

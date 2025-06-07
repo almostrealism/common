@@ -587,4 +587,110 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("Difference between expected and actual output = " + diff);
 		assertTrue("Output does not match reference within tolerance", diff < 1e-5);
 	}
+
+	/**
+	* Tests sequenceCrossAttention against reference data generated from the actual
+	* DiT Attention class in cross-attention mode. This ensures our Java implementation
+	* matches the real Python cross-attention behavior.
+	*/
+	@Test
+	public void sequenceCrossAttentionCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/cross_attention";
+
+		// Load reference data using StateDictionary
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract test configuration
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int batchSize = (int) testConfig.valueAt(0);
+		int querySeqLen = (int) testConfig.valueAt(1);
+		int contextSeqLen = (int) testConfig.valueAt(2);
+		int embedDim = (int) testConfig.valueAt(3);
+		int contextDim = (int) testConfig.valueAt(4);
+		int heads = (int) testConfig.valueAt(5);
+		int dimHead = embedDim / heads;
+
+		log("Cross-attention test dimensions:");
+		log("  batch=" + batchSize + ", querySeq=" + querySeqLen + ", contextSeq=" + contextSeqLen);
+		log("  embedDim=" + embedDim + ", contextDim=" + contextDim + ", heads=" + heads + ", dimHead=" + dimHead);
+
+		// Extract inputs and expected output
+		PackedCollection<?> mainInput = referenceData.get("main_input");
+		PackedCollection<?> contextInput = referenceData.get("context_input");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		assertNotNull("Main input not found", mainInput);
+		assertNotNull("Context input not found", contextInput);
+		assertNotNull("Expected output not found", expectedOutput);
+
+		// Load cross-attention weights
+		PackedCollection<?> toQ = referenceData.get("to_q.weight");
+		PackedCollection<?> toKv = referenceData.get("to_kv.weight");
+		PackedCollection<?> toOut = referenceData.get("to_out.weight");
+		PackedCollection<?> qNormWeight = referenceData.get("q_norm.weight");
+		PackedCollection<?> qNormBias = referenceData.get("q_norm.bias");
+		PackedCollection<?> kNormWeight = referenceData.get("k_norm.weight");
+		PackedCollection<?> kNormBias = referenceData.get("k_norm.bias");
+
+		// Verify all weights were loaded
+		assertNotNull("toQ not found", toQ);
+		assertNotNull("toKv not found", toKv);
+		assertNotNull("toOut not found", toOut);
+		assertNotNull("qNormWeight not found", qNormWeight);
+		assertNotNull("qNormBias not found", qNormBias);
+		assertNotNull("kNormWeight not found", kNormWeight);
+		assertNotNull("kNormBias not found", kNormBias);
+
+		log("Cross-attention weight shapes:");
+		log("  toQ: " + toQ.getShape());
+		log("  toKv: " + toKv.getShape());
+		log("  toOut: " + toOut.getShape());
+
+		// Verify weight shapes match cross-attention expectations
+		assertEquals(embedDim, toQ.getShape().length(0));  // Q projects from embedDim to embedDim
+		assertEquals(embedDim, toQ.getShape().length(1));
+		assertEquals(contextDim * 2, toKv.getShape().length(0));  // KV projects from contextDim to contextDim*2
+		assertEquals(contextDim, toKv.getShape().length(1));
+
+		// Create context input model
+		Model contextModel = new Model(shape(batchSize, contextSeqLen, contextDim));
+		SequentialBlock contextBlock = contextModel.sequential();
+		// Context input is passed through as-is for this test
+
+		// Create main model with cross-attention
+		Model mainModel = new Model(shape(batchSize, querySeqLen, embedDim));
+		SequentialBlock mainBlock = mainModel.sequential();
+
+		// Add cross-attention block (no invFreq parameter since cross-attention doesn't use rotary embeddings)
+		mainBlock.add(sequenceCrossAttention(
+				batchSize, querySeqLen, contextSeqLen,
+				embedDim, heads,
+				toQ, toKv, toOut,
+				qNormWeight, qNormBias,
+				kNormWeight, kNormBias,
+				contextBlock
+		));
+
+		// Compile and run the model
+		CompiledModel mainCompiled = mainModel.compile(false);
+		
+		// Set context input in context model
+		contextModel.compile(false).forward(contextInput);
+		
+		// Run main model with cross-attention
+		PackedCollection<?> actualOutput = mainCompiled.forward(mainInput);
+
+		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
+
+		assertEquals(expectedOutput.getShape().getTotalSize(),
+				actualOutput.getShape().getTotalSize());
+
+		double diff = compare(expectedOutput.reshape(querySeqLen, embedDim),
+				actualOutput.reshape(querySeqLen, embedDim));
+		log("Cross-attention difference between expected and actual output = " + diff);
+		assertTrue("Cross-attention output does not match reference within tolerance", diff < 1e-5);
+	}
 }
