@@ -20,6 +20,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
@@ -46,6 +47,7 @@ import org.almostrealism.model.SequentialBlock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -66,6 +68,29 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, forward, backward,
 				Collections.emptyList(), new OperationList(), requirements);
+	}
+
+	default Function<TraversalPolicy, Block> monitor(Consumer<PackedCollection<?>> consumer) {
+		return layer(Cell.of((in, next) -> {
+				OperationList op = new OperationList("Monitor Layer");
+				op.add(() -> {
+					Evaluable<PackedCollection<?>> eval = in.get();
+
+					return () -> consumer.accept(eval.evaluate());
+				});
+				op.add(next.push(in));
+				return op;
+			}), Cell.of((in, next) -> next.push(in)));
+	}
+
+	default Function<TraversalPolicy, Block> layer(Factor<PackedCollection<?>> forward,
+												   Factor<PackedCollection<?>> backward) {
+		return layer(Cell.of(forward), Cell.of(backward));
+	}
+
+	default Function<TraversalPolicy, Block> layer(Cell<PackedCollection<?>> forward,
+												   Cell<PackedCollection<?>> backward) {
+		return shape -> new DefaultBlock(shape, shape, forward, backward);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> layer(String name,

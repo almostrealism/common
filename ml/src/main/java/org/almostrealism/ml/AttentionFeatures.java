@@ -239,10 +239,10 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		SequentialBlock attention = new SequentialBlock(shape(batchSize, seqLen, dim));
 
-		// 1. Fused QKV projection (matches Attention.to_qkv in Python)
+		// 1. Fused QKV projection
 		attention.add(dense(toQkvWeight)); // Projects to dim*3
 
-		// 2. Split QKV and reshape to multi-head format (matches Python chunk and rearrange)
+		// 2. Split QKV and reshape to multi-head format
 		attention.reshape(batchSize, seqLen, 3, dim);
 		List<Block> qkv = attention.split(shape(batchSize, seqLen, 1, dim), 0);
 		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
@@ -273,7 +273,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		// 7. Compute scaled dot-product attention using stored tensors
 		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, kTensor, vTensor));
 
-		// 8. Output projection (matches Attention.to_out in Python)
+		// Rearrange back to (batch, seqLen, dim)
+		q.permute(0, 2, 1, 3)
+			.reshape(batchSize, seqLen, dim);
+
+		// 8. Output projection
 		q.add(dense(toOutWeight));
 
 		return attention;
@@ -365,9 +369,6 @@ public interface AttentionFeatures extends RotationFeatures {
 				shape(batchSize, heads, seqLen, seqLen),
 				shape(batchSize, heads, seqLen, dimHead),
 				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
-
-		// Reshape back to (batchSize, seqLen, dim)
-		attnBlock.reshape(batchSize, seqLen, heads * dimHead);
 
 		return attnBlock;
 	}
