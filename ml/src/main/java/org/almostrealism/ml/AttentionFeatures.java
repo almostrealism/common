@@ -264,7 +264,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
 		return feedForward(shape(dim), rms, null,
-				w1, w2, w3, null, null,
+				w1, w2, w3, null, null, null,
 				true, requirements);
 	}
 
@@ -272,7 +272,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			TraversalPolicy shape,
 			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
+			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
 			boolean rmsNorm,
 			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
@@ -287,7 +287,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		hidden.add(dense(w1, w1Bias));
 		hidden.add(silu());
 
-		feedForward.product(dense(w3), hidden);
+		feedForward.product(dense(w3, w3Bias), hidden);
 		feedForward.add(dense(w2, w2Bias));
 		return feedForward;
 	}

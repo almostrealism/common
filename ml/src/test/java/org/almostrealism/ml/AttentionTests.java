@@ -693,4 +693,87 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("Cross-attention difference between expected and actual output = " + diff);
 		assertTrue("Cross-attention output does not match reference within tolerance", diff < 1e-5);
 	}
+
+	/**
+	* Tests feedForward against reference data generated from the actual
+	* DiT FeedForward class. This ensures our Java SwiGLU implementation
+	* matches the real Python behavior.
+	*/
+	@Test
+	public void feedForwardCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/feedforward";
+
+		// Load reference data using StateDictionary
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract test configuration
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int batchSize = (int) testConfig.valueAt(0);
+		int seqLen = (int) testConfig.valueAt(1);
+		int dim = (int) testConfig.valueAt(2);
+		int innerDim = (int) testConfig.valueAt(3);
+
+		log("Feed-forward test configuration:");
+		log("  batchSize=" + batchSize + ", seqLen=" + seqLen +
+				", dim=" + dim + ", innerDim=" + innerDim);
+
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		// Load weights
+		PackedCollection<?> w1Weight = referenceData.get("w1_weight");
+		PackedCollection<?> w1Bias = referenceData.get("w1_bias");
+		PackedCollection<?> w2Weight = referenceData.get("w2_weight");
+		PackedCollection<?> w2Bias = referenceData.get("w2_bias");
+		PackedCollection<?> w3Weight = referenceData.get("w3_weight");
+		PackedCollection<?> w3Bias = referenceData.get("w3_bias");
+		PackedCollection<?> normWeight = referenceData.get("norm_weight");
+		PackedCollection<?> normBias = referenceData.get("norm_bias");
+
+		// Verify all weights were loaded
+		assertNotNull("w1Weight not found", w1Weight);
+		assertNotNull("w1Bias not found", w1Bias);
+		assertNotNull("w2Weight not found", w2Weight);
+		assertNotNull("w2Bias not found", w2Bias);
+		assertNotNull("w3Weight not found", w3Weight);
+		assertNotNull("w3Bias not found", w3Bias);
+		assertNotNull("normWeight not found", normWeight);
+		assertNotNull("normBias not found", normBias);
+
+		log("Feed-forward weight shapes:");
+		log("  w1: " + w1Weight.getShape() + ", bias: " + w1Bias.getShape());
+		log("  w2: " + w2Weight.getShape() + ", bias: " + w2Bias.getShape());
+		log("  w3: " + w3Weight.getShape() + ", bias: " + w3Bias.getShape());
+		log("  norm: " + normWeight.getShape() + ", bias: " + normBias.getShape());
+
+		// Create test model with just feed-forward
+		Model model = new Model(shape(batchSize, seqLen, dim));
+		SequentialBlock main = model.sequential();
+
+		// Add feed-forward block
+		main.add(feedForward(
+				shape(batchSize, seqLen, dim),
+				normWeight, normBias,
+				w1Weight, w2Weight, w3Weight,
+				w1Bias, w2Bias, w3Bias,
+				false  // Use layer norm, not RMS norm
+		));
+
+		// Compile and run the model
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> actualOutput = compiled.forward(input);
+
+		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
+
+		assertEquals(expectedOutput.getShape().getTotalSize(),
+				actualOutput.getShape().getTotalSize());
+
+		double diff = compare(expectedOutput, actualOutput);
+		log("Feed-forward difference between expected and actual output = " + diff);
+		assertTrue("Feed-forward output does not match reference within tolerance", diff < 1e-5);
+	}
 }
