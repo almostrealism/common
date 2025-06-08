@@ -292,6 +292,67 @@ public interface AttentionFeatures extends RotationFeatures {
 		return feedForward;
 	}
 
+	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
+								   boolean crossAttend, int contextDim,
+								   int contextSeqLen, boolean globalCond, Block context,
+								   // Self-attention weights
+								   PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
+								   PackedCollection<?> selfQkv, PackedCollection<?> selfWo,
+								   PackedCollection<?> selfQNormWeight, PackedCollection<?> selfQNormBias,
+								   PackedCollection<?> selfKNormWeight, PackedCollection<?> selfKNormBias,
+								   PackedCollection<?> invFreq,
+								   // Cross-attention weights
+								   PackedCollection<?> crossAttPreNormWeight, PackedCollection<?> crossAttPreNormBias,
+								   PackedCollection<?> crossWq, PackedCollection<?> crossKv, PackedCollection<?> crossWo,
+								   PackedCollection<?> crossQNormWeight, PackedCollection<?> crossQNormBias,
+								   PackedCollection<?> crossKNormWeight, PackedCollection<?> crossKNormBias,
+								   // Feed-forward weights
+								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
+								   PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias) {
+		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
+		int dimHead = dim / heads;
+
+		// Pre-normalization
+		block.add(norm(preNormWeight, preNormBias));
+
+		// Create self-attention block with sequence processing
+		Block selfAttention = sequenceAttention(
+				batchSize, seqLen, dim, heads,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq);
+		block.add(residual(selfAttention));
+
+		// Cross-attention (if needed)
+		if (crossAttend) {
+			if (context == null) {
+				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
+			}
+
+			// Pre-normalization
+			block.add(norm(crossAttPreNormWeight, crossAttPreNormBias));
+
+			// Create cross-attention block with context
+			Block crossAttention = sequenceCrossAttention(
+					batchSize, seqLen, contextSeqLen, dim, heads,
+					crossWq, crossKv, crossWo,
+					crossQNormWeight, crossQNormBias,
+					crossKNormWeight, crossKNormBias,
+					context);
+			block.add(residual(crossAttention));
+		}
+
+		// Feed-forward block with layer normalization
+		block.add(residual(feedForward(block.getOutputShape(),
+				ffnNormWeight, ffnNormBias,
+				w1, w2, w3, w1Bias, w2Bias, w3Bias,
+				false)));
+
+		return block;
+	}
+
 	default Block transformer(int heads,
 							  PackedCollection<?> rmsAttWeight,
 							  PackedCollection<?> wk, PackedCollection<?> wv,

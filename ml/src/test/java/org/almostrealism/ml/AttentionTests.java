@@ -776,4 +776,146 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		log("Feed-forward difference between expected and actual output = " + diff);
 		assertTrue("Feed-forward output does not match reference within tolerance", diff < 1e-5);
 	}
+
+	/**
+	* Tests transformerBlock against reference data generated from the actual
+	* DiT TransformerBlock class. This ensures our Java implementation of the
+	* complete transformer block (self-attention + cross-attention + feed-forward)
+	* matches the real Python behavior.
+	*/
+	@Test
+	public void transformerBlockCompare() throws Exception {
+		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/transformer_block";
+
+		// Load reference data using StateDictionary
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		referenceData.keySet()
+				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+
+		// Extract test configuration
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int batchSize = (int) testConfig.valueAt(0);
+		int seqLen = (int) testConfig.valueAt(1);
+		int contextSeqLen = (int) testConfig.valueAt(2);
+		int dim = (int) testConfig.valueAt(3);
+		int contextDim = (int) testConfig.valueAt(4);
+		int heads = (int) testConfig.valueAt(5);
+		int dimHead = (int) testConfig.valueAt(6);
+
+		log("TransformerBlock test configuration:");
+		log("  batch=" + batchSize + ", seq=" + seqLen + ", contextSeq=" + contextSeqLen);
+		log("  dim=" + dim + ", contextDim=" + contextDim + ", heads=" + heads + ", dimHead=" + dimHead);
+
+		// Extract inputs and expected output
+		PackedCollection<?> mainInput = referenceData.get("main_input");
+		PackedCollection<?> contextInput = referenceData.get("context_input");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		assertNotNull("Main input not found", mainInput);
+		assertNotNull("Context input not found", contextInput);
+		assertNotNull("Expected output not found", expectedOutput);
+
+		// Load all transformer block weights
+		// Self-attention weights
+		PackedCollection<?> selfQkv = referenceData.get("self_attn.to_qkv.weight");
+		PackedCollection<?> selfWo = referenceData.get("self_attn.to_out.weight");
+		PackedCollection<?> selfQNormWeight = referenceData.get("self_attn.q_norm.weight");
+		PackedCollection<?> selfQNormBias = referenceData.get("self_attn.q_norm.bias");
+		PackedCollection<?> selfKNormWeight = referenceData.get("self_attn.k_norm.weight");
+		PackedCollection<?> selfKNormBias = referenceData.get("self_attn.k_norm.bias");
+
+		// Cross-attention weights
+		PackedCollection<?> crossWq = referenceData.get("cross_attn.to_q.weight");
+		PackedCollection<?> crossKv = referenceData.get("cross_attn.to_kv.weight");
+		PackedCollection<?> crossWo = referenceData.get("cross_attn.to_out.weight");
+		PackedCollection<?> crossQNormWeight = referenceData.get("cross_attn.q_norm.weight");
+		PackedCollection<?> crossQNormBias = referenceData.get("cross_attn.q_norm.bias");
+		PackedCollection<?> crossKNormWeight = referenceData.get("cross_attn.k_norm.weight");
+		PackedCollection<?> crossKNormBias = referenceData.get("cross_attn.k_norm.bias");
+
+		// Layer normalization weights
+		PackedCollection<?> preNormWeight = referenceData.get("pre_norm.gamma");
+		PackedCollection<?> preNormBias = referenceData.get("pre_norm.beta");
+		PackedCollection<?> crossAttPreNormWeight = referenceData.get("cross_attend_norm.gamma");
+		PackedCollection<?> crossAttPreNormBias = referenceData.get("cross_attend_norm.beta");
+		PackedCollection<?> ffnNormWeight = referenceData.get("ff_norm.gamma");
+		PackedCollection<?> ffnNormBias = referenceData.get("ff_norm.beta");
+
+		// Feed-forward weights
+		PackedCollection<?> w1Weight = referenceData.get("ff.w1_weight");
+		PackedCollection<?> w1Bias = referenceData.get("ff.w1_bias");
+		PackedCollection<?> w2Weight = referenceData.get("ff.w2_weight");
+		PackedCollection<?> w2Bias = referenceData.get("ff.w2_bias");
+		PackedCollection<?> w3Weight = referenceData.get("ff.w3_weight");
+		PackedCollection<?> w3Bias = referenceData.get("ff.w3_bias");
+
+		// Rotary embeddings
+		PackedCollection<?> invFreq = referenceData.get("rope.inv_freq");
+
+		// Verify all weights were loaded
+		assertNotNull("Self QKV weight not found", selfQkv);
+		assertNotNull("Self output weight not found", selfWo);
+		assertNotNull("Cross Q weight not found", crossWq);
+		assertNotNull("Cross KV weight not found", crossKv);
+		assertNotNull("Cross output weight not found", crossWo);
+		assertNotNull("Pre-norm weight not found", preNormWeight);
+		assertNotNull("FF norm weight not found", ffnNormWeight);
+		assertNotNull("W1 weight not found", w1Weight);
+		assertNotNull("W2 weight not found", w2Weight);
+		assertNotNull("W3 weight not found", w3Weight);
+		assertNotNull("Inverse frequency not found", invFreq);
+
+		log("TransformerBlock weight shapes:");
+		log("  Self QKV: " + selfQkv.getShape());
+		log("  Cross Q: " + crossWq.getShape() + ", Cross KV: " + crossKv.getShape());
+		log("  FF W1: " + w1Weight.getShape() + ", W2: " + w2Weight.getShape() + ", W3: " + w3Weight.getShape());
+
+		// Create main model with transformer block
+		Model model = new Model(shape(batchSize, seqLen, dim));
+		
+		// Create context input using addInput
+		SequentialBlock contextBlock = new SequentialBlock(shape(batchSize, contextSeqLen, contextDim));
+		// Context block passes input through as-is for this test
+		model.addInput(contextBlock);
+
+		SequentialBlock main = model.sequential();
+
+		// Add transformer block with all weights
+		main.add(transformerBlock(
+				batchSize, dim, seqLen, heads,
+				true, // crossAttend
+				contextDim, contextSeqLen,
+				false, // globalCond
+				contextBlock,
+				// Self-attention weights
+				preNormWeight, preNormBias,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq,
+				// Cross-attention weights
+				crossAttPreNormWeight, crossAttPreNormBias,
+				crossWq, crossKv, crossWo,
+				crossQNormWeight, crossQNormBias,
+				crossKNormWeight, crossKNormBias,
+				// Feed-forward weights
+				ffnNormWeight, ffnNormBias,
+				w1Weight, w2Weight, w3Weight,
+				w1Bias, w2Bias, w3Bias
+		));
+
+		// Compile and run the model with both inputs
+		CompiledModel compiled = model.compile(false);
+		PackedCollection<?> actualOutput = compiled.forward(mainInput, contextInput);
+
+		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
+		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());
+
+		assertEquals(expectedOutput.getShape().getTotalSize(),
+				actualOutput.getShape().getTotalSize());
+
+		double diff = compare(expectedOutput, actualOutput);
+		log("TransformerBlock difference between expected and actual output = " + diff);
+		assertTrue("TransformerBlock output does not match reference within tolerance", diff < 1e-5);
+	}
 }
