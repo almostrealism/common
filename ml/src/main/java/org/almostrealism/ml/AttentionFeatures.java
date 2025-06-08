@@ -311,40 +311,38 @@ public interface AttentionFeatures extends RotationFeatures {
 								   PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
-		int dimHead = dim / heads;
 
-		// Pre-normalization
-		block.add(norm(preNormWeight, preNormBias));
-
-		// Create self-attention block with sequence processing
-		Block selfAttention = sequenceAttention(
+		// Self-attention with pre-normalization inside residual branch
+		// Python: x = x + self_attn(pre_norm(x))
+		SequentialBlock selfAttentionWithNorm = new SequentialBlock(shape(batchSize, seqLen, dim));
+		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
+		selfAttentionWithNorm.add(sequenceAttention(
 				batchSize, seqLen, dim, heads,
 				selfQkv, selfWo,
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
-				invFreq);
-		block.add(residual(selfAttention));
+				invFreq));
+		block.add(residual(selfAttentionWithNorm));
 
-		// Cross-attention (if needed)
+		// Cross-attention with pre-normalization inside residual branch (if needed)
+		// Python: x = x + cross_attn(cross_attend_norm(x))
 		if (crossAttend) {
 			if (context == null) {
 				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
 			}
 
-			// Pre-normalization
-			block.add(norm(crossAttPreNormWeight, crossAttPreNormBias));
-
-			// Create cross-attention block with context
-			Block crossAttention = sequenceCrossAttention(
+			SequentialBlock crossAttentionWithNorm = new SequentialBlock(shape(batchSize, seqLen, dim));
+			crossAttentionWithNorm.add(norm(crossAttPreNormWeight, crossAttPreNormBias));
+			crossAttentionWithNorm.add(sequenceCrossAttention(
 					batchSize, seqLen, contextSeqLen, dim, heads,
 					crossWq, crossKv, crossWo,
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
-					context);
-			block.add(residual(crossAttention));
+					context));
+			block.add(residual(crossAttentionWithNorm));
 		}
 
-		// Feed-forward block with layer normalization
+		// Feed-forward with normalization inside residual branch
 		block.add(residual(feedForward(block.getOutputShape(),
 				ffnNormWeight, ffnNormBias,
 				w1, w2, w3, w1Bias, w2Bias, w3Bias,
