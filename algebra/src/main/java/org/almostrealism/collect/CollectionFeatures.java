@@ -298,17 +298,86 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return s.getShape().getSize();
 	}
 
-	// TODO  Move to TraversalPolicy
+	/**
+	 * Pads a TraversalPolicy shape with additional dimensions of size 1.
+	 * This utility method adds dimensions to a shape until it reaches the target
+	 * number of dimensions, useful for making shapes compatible for operations.
+	 * 
+	 * @param shape the original shape to pad
+	 * @param target the desired number of dimensions
+	 * @return a new TraversalPolicy with the target number of dimensions
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Pad a 1D shape to 3D
+	 * TraversalPolicy original = shape(5); // [5]
+	 * TraversalPolicy padded = padDimensions(original, 3);
+	 * // Result: shape [1, 1, 5] (padded at the beginning)
+	 * 
+	 * // Pad a 2D shape to 4D
+	 * TraversalPolicy matrix = shape(3, 4); // [3, 4]
+	 * TraversalPolicy tensor = padDimensions(matrix, 4);
+	 * // Result: shape [1, 1, 3, 4]
+	 * }</pre>
+	 */
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int target) {
 		return padDimensions(shape, 1, target);
 	}
 
-	// TODO  Move to TraversalPolicy
+	/**
+	 * Pads a TraversalPolicy shape with additional dimensions, but only if it has at least min dimensions.
+	 * This overload provides more control by specifying a minimum number of dimensions
+	 * that must be present before padding occurs.
+	 * 
+	 * @param shape the original shape to pad
+	 * @param min the minimum number of dimensions required before padding
+	 * @param target the desired number of dimensions after padding
+	 * @return a new TraversalPolicy with the target number of dimensions (if min is met)
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Only pad if shape has at least 2 dimensions
+	 * TraversalPolicy small = shape(5); // [5] - only 1 dimension
+	 * TraversalPolicy unchanged = padDimensions(small, 2, 4);
+	 * // Result: [5] (unchanged because it has less than 2 dimensions)
+	 * 
+	 * TraversalPolicy matrix = shape(3, 4); // [3, 4] - 2 dimensions
+	 * TraversalPolicy expanded = padDimensions(matrix, 2, 4);
+	 * // Result: [1, 1, 3, 4] (padded because it has >= 2 dimensions)
+	 * }</pre>
+	 */
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target) {
 		return padDimensions(shape, min, target, false);
 	}
 
-	// TODO  Move to TraversalPolicy
+	/**
+	 * Pads a TraversalPolicy shape with additional dimensions, with control over padding direction.
+	 * This is the most flexible padding method, allowing you to specify whether
+	 * padding dimensions should be added at the beginning (false) or end (true) of the shape.
+	 * 
+	 * @param shape the original shape to pad
+	 * @param min the minimum number of dimensions required before padding
+	 * @param target the desired number of dimensions after padding
+	 * @param post whether to append dimensions at the end (true) or prepend at the beginning (false)
+	 * @return a new TraversalPolicy with the target number of dimensions
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Pad at the beginning (default behavior)
+	 * TraversalPolicy original = shape(3, 4); // [3, 4]
+	 * TraversalPolicy frontPadded = padDimensions(original, 1, 4, false);
+	 * // Result: [1, 1, 3, 4] (padded at front)
+	 * 
+	 * // Pad at the end
+	 * TraversalPolicy backPadded = padDimensions(original, 1, 4, true);
+	 * // Result: [3, 4, 1, 1] (padded at back)
+	 * 
+	 * // Practical use: making tensor shapes compatible
+	 * TraversalPolicy vector = shape(100); // [100]
+	 * TraversalPolicy batchVector = padDimensions(vector, 1, 2, false);
+	 * // Result: [1, 100] (adds batch dimension at front)
+	 * }</pre>
+	 */
 	default TraversalPolicy padDimensions(TraversalPolicy shape, int min, int target, boolean post) {
 		if (shape.getDimensions() < min) {
 			return shape;
@@ -621,6 +690,30 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c(p(value));
 	}
 
+	/**
+	 * Creates a CollectionProducerComputation that generates a collection filled with zeros.
+	 * This is one of the most basic building blocks for creating empty collections
+	 * or initializing collections to a known state.
+	 * 
+	 * @param <V> the type of PackedCollection produced
+	 * @param shape the desired shape for the zero-filled collection
+	 * @return a CollectionProducerComputation that generates zeros
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a zero vector
+	 * CollectionProducerComputation<PackedCollection<?>> zeroVector = zeros(shape(5));
+	 * // Result: Producer that generates [0.0, 0.0, 0.0, 0.0, 0.0]
+	 * 
+	 * // Create a zero matrix
+	 * CollectionProducerComputation<PackedCollection<?>> zeroMatrix = zeros(shape(2, 3));
+	 * // Result: Producer that generates 2x3 matrix of all zeros
+	 * 
+	 * // Create a 3D tensor of zeros
+	 * CollectionProducerComputation<PackedCollection<?>> zeroTensor = zeros(shape(2, 2, 2));
+	 * // Result: Producer that generates 2x2x2 tensor of all zeros
+	 * }</pre>
+	 */
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> zeros(TraversalPolicy shape) {
 		return new CollectionZerosComputation<>(shape);
 	}
@@ -1140,14 +1233,88 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return repeat(repeat, traverse(axis, (Producer) collection));
 	}
 
+	/**
+	 * Creates an enumeration of a collection along a specific axis with specified length.
+	 * This operation extracts consecutive elements along the specified axis,
+	 * useful for creating sliding windows or extracting sequential patterns.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param axis the axis along which to enumerate (0-based)
+	 * @param len the length of each enumerated sequence
+	 * @param collection the collection to enumerate
+	 * @return a CollectionProducerComputation containing the enumerated sequences
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Enumerate a 1D vector with length 3 sequences
+	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
+	 * CollectionProducerComputation<PackedCollection<?>> enumerated = enumerate(0, 3, vector);
+	 * // Result: Creates sequences of length 3: [1,2,3], [2,3,4], [3,4,5], [4,5,6]
+	 * 
+	 * // Enumerate along axis 1 of a 2D matrix
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+	 * CollectionProducerComputation<PackedCollection<?>> colEnum = enumerate(1, 2, matrix);
+	 * // Result: Extracts 2-element sequences along columns
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
 	}
 
+	/**
+	 * Creates an enumeration with custom stride between elements.
+	 * This allows for more flexible enumeration patterns by specifying
+	 * how far apart the starting positions of consecutive sequences should be.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param axis the axis along which to enumerate
+	 * @param len the length of each enumerated sequence
+	 * @param stride the step size between consecutive sequence starts
+	 * @param collection the collection to enumerate
+	 * @return a CollectionProducerComputation containing the enumerated sequences
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Enumerate with stride 2 (overlapping sequences)
+	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducerComputation<PackedCollection<?>> strided = enumerate(0, 3, 2, vector);
+	 * // Result: [1,2,3], [3,4,5], [5,6,7] (stride of 2 between starts)
+	 * 
+	 * // Non-overlapping sequences with stride equal to length
+	 * CollectionProducerComputation<PackedCollection<?>> blocks = enumerate(0, 2, 2, vector);
+	 * // Result: [1,2], [3,4], [5,6], [7,8] (no overlap)
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, Producer<?> collection) {
 		return enumerate(axis, len, stride, 1, collection);
 	}
 
+	/**
+	 * Creates multiple levels of enumeration with repetition.
+	 * This advanced enumeration allows for complex patterns by repeating
+	 * the enumeration process multiple times with different parameters.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param axis the axis along which to enumerate
+	 * @param len the length of each enumerated sequence
+	 * @param stride the step size between consecutive sequence starts
+	 * @param repeat the number of times to repeat the enumeration process
+	 * @param collection the collection to enumerate
+	 * @return a CollectionProducerComputation containing the multi-level enumerated sequences
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Multiple enumeration passes
+	 * CollectionProducer<PackedCollection<?>> data = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducerComputation<PackedCollection<?>> multiEnum = enumerate(0, 2, 1, 2, data);
+	 * // Result: Applies enumeration twice, creating nested patterns
+	 * 
+	 * // Complex pattern extraction from matrix
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+	 * CollectionProducerComputation<PackedCollection<?>> complexEnum = enumerate(1, 2, 1, 3, matrix);
+	 * // Result: Multi-level enumeration along axis 1
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
 		CollectionProducerComputation<T> result = null;
 
@@ -1483,6 +1650,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				operands.toArray(new Producer[0]));
 	}
 
+	/**
+	 * Performs element-wise subtraction of two collections.
+	 * This operation subtracts corresponding elements of the second collection
+	 * from the first collection, equivalent to add(a, minus(b)).
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the collection to subtract from (minuend)
+	 * @param b the collection to subtract (subtrahend)
+	 * @return a CollectionProducer that generates the element-wise difference
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Subtract two vectors element-wise
+	 * CollectionProducer<PackedCollection<?>> vec1 = c(5.0, 8.0, 12.0);
+	 * CollectionProducer<PackedCollection<?>> vec2 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> difference = subtract(vec1, vec2);
+	 * // Result: Producer that generates [3.0, 5.0, 8.0] (5-2, 8-3, 12-4)
+	 * 
+	 * // Subtract a constant from a vector
+	 * CollectionProducer<PackedCollection<?>> vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer<PackedCollection<?>> constant = constant(5.0);
+	 * CollectionProducer<PackedCollection<?>> result = subtract(vector, constant);
+	 * // Result: Producer that generates [5.0, 15.0, 25.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> subtract(Producer<T> a, Producer<T> b) {
 		return add(a, minus(b));
 	}
@@ -1637,6 +1829,32 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c(shape, a.evaluate().doubleStream().parallel().map(d -> d * scale).toArray());
 	}
 
+	/**
+	 * Performs element-wise division of two collections.
+	 * This operation divides corresponding elements of the first collection
+	 * by the corresponding elements of the second collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the dividend collection (numerator)
+	 * @param b the divisor collection (denominator)
+	 * @return a CollectionProducer that generates the element-wise quotient
+	 * @throws UnsupportedOperationException if attempting to divide by zero
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Divide two vectors element-wise
+	 * CollectionProducer<PackedCollection<?>> numerator = c(12.0, 15.0, 20.0);
+	 * CollectionProducer<PackedCollection<?>> denominator = c(3.0, 5.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> quotient = divide(numerator, denominator);
+	 * // Result: Producer that generates [4.0, 3.0, 5.0] (12/3, 15/5, 20/4)
+	 * 
+	 * // Divide by a constant (scalar division)
+	 * CollectionProducer<PackedCollection<?>> vector = c(10.0, 20.0, 30.0);
+	 * CollectionProducer<PackedCollection<?>> divisor = constant(2.0);
+	 * CollectionProducer<PackedCollection<?>> halved = divide(vector, divisor);
+	 * // Result: Producer that generates [5.0, 10.0, 15.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> divide(Producer<T> a, Producer<T> b) {
 		if (Algebraic.isZero(b)) {
 			throw new UnsupportedOperationException();
@@ -1661,6 +1879,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return p;
 	}
 
+	/**
+	 * Negates all elements in a collection (unary minus operation).
+	 * This operation multiplies every element by -1, effectively flipping
+	 * the sign of all values in the collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the collection to negate
+	 * @return a CollectionProducerComputationBase that generates the negated collection
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Negate a vector
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0, -4.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negated = minus(vector);
+	 * // Result: Producer that generates [-1.0, 2.0, -3.0, 4.0]
+	 * 
+	 * // Negate a constant (optimized case)
+	 * CollectionProducer<PackedCollection<?>> constant = constant(5.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedConstant = minus(constant);
+	 * // Result: Producer that generates [-5.0]
+	 * 
+	 * // Negate a matrix
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedMatrix = minus(matrix);
+	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
 		TraversalPolicy shape = shape(a);
 		int w = shape.length(0);
@@ -1678,12 +1923,69 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						.setDescription(args -> "-" + args.get(0));
 	}
 
+	/**
+	 * Computes the square root of each element in a collection.
+	 * This is a convenience method that raises each element to the power of 0.5,
+	 * providing a more readable way to compute square roots.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param value the collection containing values to compute square roots for
+	 * @return a CollectionProducer that generates the element-wise square roots
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Compute square roots of elements
+	 * CollectionProducer<PackedCollection<?>> values = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer<PackedCollection<?>> roots = sqrt(values);
+	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
+	 * 
+	 * // Square root of a single value
+	 * CollectionProducer<PackedCollection<?>> number = c(64.0);
+	 * CollectionProducer<PackedCollection<?>> root = sqrt(number);
+	 * // Result: Producer that generates [8.0]
+	 * 
+	 * // Square root in mathematical expressions
+	 * CollectionProducer<PackedCollection<?>> squares = c(1.0, 4.0, 9.0);
+	 * CollectionProducer<PackedCollection<?>> magnitude = sqrt(sum(squares));
+	 * // Result: sqrt(1+4+9) = sqrt(14) ≈ 3.74
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {
 		T half = (T) new PackedCollection<>(1);
 		half.setMem(0.5);
 		return pow(value, c(half));
 	}
 
+	/**
+	 * Raises elements of the base collection to the power of corresponding elements in the exponent collection.
+	 * This operation performs element-wise exponentiation, computing base[i]^exp[i] for each element.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param base the base collection (values to be raised to powers)
+	 * @param exp the exponent collection (power values)
+	 * @return a CollectionProducer that generates the element-wise power results
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Raise elements to specified powers
+	 * CollectionProducer<PackedCollection<?>> base = c(2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> exponent = c(2.0, 3.0, 0.5);
+	 * CollectionProducer<PackedCollection<?>> powers = pow(base, exponent);
+	 * // Result: Producer that generates [4.0, 27.0, 2.0] (2^2, 3^3, 4^0.5)
+	 * 
+	 * // Square all elements (power of 2)
+	 * CollectionProducer<PackedCollection<?>> values = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> two = constant(2.0);
+	 * CollectionProducer<PackedCollection<?>> squares = pow(values, two);
+	 * // Result: Producer that generates [1.0, 4.0, 9.0, 16.0]
+	 * 
+	 * // Square root (power of 0.5)
+	 * CollectionProducer<PackedCollection<?>> numbers = c(4.0, 9.0, 16.0, 25.0);
+	 * CollectionProducer<PackedCollection<?>> half = constant(0.5);
+	 * CollectionProducer<PackedCollection<?>> roots = pow(numbers, half);
+	 * // Result: Producer that generates [2.0, 3.0, 4.0, 5.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> pow(Producer<T> base, Producer<T> exp) {
 		if (Algebraic.isIdentity(1, base)) {
 			TraversalPolicy shape = shape(exp);
@@ -1788,6 +2090,29 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return min(max(a, c(min)), c(max));
 	}
 
+	/**
+	 * Computes the absolute value of each element in a collection.
+	 * This operation converts all negative values to positive while
+	 * leaving positive values unchanged.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param value the collection containing values to compute absolute values for
+	 * @return a CollectionProducer that generates the element-wise absolute values
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Compute absolute values
+	 * CollectionProducer<PackedCollection<?>> values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
+	 * CollectionProducer<PackedCollection<?>> absolutes = abs(values);
+	 * // Result: Producer that generates [3.0, 1.0, 0.0, 2.0, 5.0]
+	 * 
+	 * // Absolute value of differences
+	 * CollectionProducer<PackedCollection<?>> a = c(10.0, 5.0, 8.0);
+	 * CollectionProducer<PackedCollection<?>> b = c(7.0, 9.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> distance = abs(subtract(a, b));
+	 * // Result: Producer that generates [3.0, 4.0, 5.0] (absolute differences)
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> abs(Producer<T> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
@@ -1804,6 +2129,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Finds the maximum element in a collection.
+	 * This reduction operation scans through all elements and returns
+	 * the largest value as a single-element collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param input the collection to find the maximum element in
+	 * @return a CollectionProducerComputationBase that generates the maximum value
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Find maximum in a vector
+	 * CollectionProducer<PackedCollection<?>> values = c(3.0, 7.0, 2.0, 9.0, 5.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> maximum = max(values);
+	 * // Result: Producer that generates [9.0]
+	 * 
+	 * // Find maximum in a matrix (flattened)
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> matrixMax = max(matrix);
+	 * // Result: Producer that generates [8.0] (maximum across all elements)
+	 * 
+	 * // Maximum of negative numbers
+	 * CollectionProducer<PackedCollection<?>> negatives = c(-5.0, -2.0, -8.0, -1.0);
+	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negMax = max(negatives);
+	 * // Result: Producer that generates [-1.0] (least negative = maximum)
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
 		DynamicIndexProjectionProducerComputation<T> projection =
 				new DynamicIndexProjectionProducerComputation<>("projectMax", shape(input).replace(shape(1)),
