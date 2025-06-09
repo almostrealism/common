@@ -116,12 +116,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	Console console = Computation.console.child();
 
 	/**
-	 * Creates a new TraversalPolicy with the specified dimensions.
+	 * Creates a new {@link TraversalPolicy} with the specified dimensions.
 	 * This is one of the most fundamental methods for creating shapes that define
 	 * how data is organized and accessed in collections.
 	 * 
 	 * @param dims the dimensions of the shape (e.g., width, height, depth)
-	 * @return a new TraversalPolicy representing the specified shape
+	 * @return a new {@link TraversalPolicy} representing the specified shape
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -141,12 +141,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 	
 	/**
-	 * Creates a new TraversalPolicy with the specified dimensions using long values.
+	 * Creates a new {@link TraversalPolicy} with the specified dimensions using long values.
 	 * This overload is useful when working with very large dimensions that exceed
 	 * the range of int values.
 	 * 
 	 * @param dims the dimensions of the shape as long values
-	 * @return a new TraversalPolicy representing the specified shape
+	 * @return a new {@link TraversalPolicy} representing the specified shape
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -162,12 +162,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default TraversalPolicy shape(long... dims) { return new TraversalPolicy(dims); }
 	
 	/**
-	 * Creates a position TraversalPolicy with the specified dimensions.
+	 * Creates a position {@link TraversalPolicy} with the specified dimensions.
 	 * Unlike regular shapes, positions are used to specify coordinates or offsets
 	 * within a larger collection structure.
 	 * 
 	 * @param dims the position coordinates
-	 * @return a new TraversalPolicy representing the specified position
+	 * @return a new {@link TraversalPolicy} representing the specified position
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -183,16 +183,16 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default TraversalPolicy position(int... dims) { return new TraversalPolicy(true, dims); }
 
 	/**
-	 * Extracts the TraversalPolicy shape from a Supplier.
+	 * Extracts the {@link TraversalPolicy} shape from a {@link Supplier}.
 	 * This method is useful for determining the shape of collections at runtime
 	 * by examining the supplier object.
 	 * 
 	 * @param s the supplier to extract shape from
-	 * @return the TraversalPolicy representing the supplier's shape, or shape(1) if no shape available
+	 * @return the {@link TraversalPolicy} representing the supplier's shape, or {@link #shape(int...)} if no shape available
 	 * 
 	 * @example
 	 * <pre>{@code
-	 * // Extract shape from a PackedCollection supplier
+	 * // Extract shape from a {@link PackedCollection} supplier
 	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
 	 * TraversalPolicy extractedShape = shape(() -> collection);
 	 * // Result: shape with dimensions [3, 4]
@@ -216,12 +216,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Extracts the TraversalPolicy shape from a TraversableExpression.
+	 * Extracts the {@link TraversalPolicy} shape from a {@link TraversableExpression}.
 	 * This method is used to determine the shape of expressions used in 
 	 * computational graphs and operations.
 	 * 
-	 * @param t the TraversableExpression to extract shape from
-	 * @return the TraversalPolicy representing the expression's shape, or shape(1) if no shape available
+	 * @param t the {@link TraversableExpression} to extract shape from
+	 * @return the {@link TraversalPolicy} representing the expression's shape, or {@link #shape(int...)} if no shape available
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -244,7 +244,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Gets the total number of elements that a Supplier can produce.
+	 * Gets the total number of elements that a {@link Supplier} can produce.
 	 * This method is essential for understanding memory requirements and
 	 * iteration bounds when working with data suppliers.
 	 * 
@@ -253,12 +253,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @example
 	 * <pre>{@code
-	 * // Get size of a PackedCollection supplier
+	 * // Get size of a {@link PackedCollection} supplier
 	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
 	 * int totalSize = size(() -> collection);
 	 * // Result: 12 (3 * 4 elements)
 	 * 
-	 * // For MemoryDataComputation suppliers
+	 * // For {@link MemoryDataComputation} suppliers
 	 * MemoryDataComputation computation = new SomeComputation(5);
 	 * int memLength = size(computation);
 	 * // Result: 5 (memory length of the computation)
@@ -279,11 +279,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Gets the total number of elements in a Shape.
+	 * Gets the total number of elements in a {@link Shape}.
 	 * This is a convenient method for getting the size directly from
-	 * objects that implement the Shape interface.
+	 * objects that implement the {@link Shape} interface.
 	 * 
-	 * @param s the Shape to examine
+	 * @param s the {@link Shape} to examine
 	 * @return the total number of elements in the shape
 	 * 
 	 * @example
@@ -299,13 +299,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Pads a TraversalPolicy shape with additional dimensions of size 1.
+	 * Pads a {@link TraversalPolicy} shape with additional dimensions of size 1.
 	 * This utility method adds dimensions to a shape until it reaches the target
 	 * number of dimensions, useful for making shapes compatible for operations.
 	 * 
 	 * @param shape the original shape to pad
 	 * @param target the desired number of dimensions
-	 * @return a new TraversalPolicy with the target number of dimensions
+	 * @return a new {@link TraversalPolicy} with the target number of dimensions
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -325,14 +325,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Pads a TraversalPolicy shape with additional dimensions, but only if it has at least min dimensions.
+	 * Pads a {@link TraversalPolicy} shape with additional dimensions, but only if it has at least min dimensions.
 	 * This overload provides more control by specifying a minimum number of dimensions
 	 * that must be present before padding occurs.
 	 * 
 	 * @param shape the original shape to pad
 	 * @param min the minimum number of dimensions required before padding
 	 * @param target the desired number of dimensions after padding
-	 * @return a new TraversalPolicy with the target number of dimensions (if min is met)
+	 * @return a new {@link TraversalPolicy} with the target number of dimensions (if min is met)
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -351,7 +351,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Pads a TraversalPolicy shape with additional dimensions, with control over padding direction.
+	 * Pads a {@link TraversalPolicy} shape with additional dimensions, with control over padding direction.
 	 * This is the most flexible padding method, allowing you to specify whether
 	 * padding dimensions should be added at the beginning (false) or end (true) of the shape.
 	 * 
@@ -359,7 +359,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param min the minimum number of dimensions required before padding
 	 * @param target the desired number of dimensions after padding
 	 * @param post whether to append dimensions at the end (true) or prepend at the beginning (false)
-	 * @return a new TraversalPolicy with the target number of dimensions
+	 * @return a new {@link TraversalPolicy} with the target number of dimensions
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -391,12 +391,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a PackedCollection from an array of double values.
+	 * Creates a {@link PackedCollection} from an array of double values.
 	 * This is one of the primary methods for creating collections from raw data,
 	 * automatically determining the shape based on the array length.
 	 * 
 	 * @param values the double values to pack into a collection
-	 * @return a new PackedCollection containing the specified values
+	 * @return a new {@link PackedCollection} containing the specified values
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -418,12 +418,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a PackedCollection from an array of float values.
+	 * Creates a {@link PackedCollection} from an array of float values.
 	 * The float values are automatically converted to double precision
 	 * before being stored in the collection.
 	 * 
 	 * @param values the float values to pack into a collection
-	 * @return a new PackedCollection containing the converted double values
+	 * @return a new {@link PackedCollection} containing the converted double values
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -441,12 +441,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates an empty PackedCollection with the specified shape.
+	 * Creates an empty {@link PackedCollection} with the specified shape.
 	 * The collection will have the correct dimensions but all values
 	 * will be initialized to zero.
 	 * 
-	 * @param shape the TraversalPolicy defining the collection's shape
-	 * @return a new empty PackedCollection with the specified shape
+	 * @param shape the {@link TraversalPolicy} defining the collection's shape
+	 * @return a new empty {@link PackedCollection} with the specified shape
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -521,13 +521,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a CollectionProducer from a sequence of double values.
+	 * Creates a {@link CollectionProducer} from a sequence of double values.
 	 * This is a fundamental method for creating computational producers
 	 * from raw numeric data.
 	 * 
-	 * @param <T> the type of PackedCollection produced
+	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param values the double values to include in the producer
-	 * @return a CollectionProducer that generates the specified values
+	 * @return a {@link CollectionProducer} that generates the specified values
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -556,14 +556,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a CollectionProducer with a specific shape from double values.
+	 * Creates a {@link CollectionProducer} with a specific shape from double values.
 	 * This method allows you to specify both the data and the desired shape,
 	 * enabling creation of multi-dimensional collections.
 	 * 
-	 * @param <T> the type of PackedCollection produced
+	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param shape the desired shape for the collection
 	 * @param values the double values to include (must match shape's total size)
-	 * @return a CollectionProducer with the specified shape and values
+	 * @return a {@link CollectionProducer} with the specified shape and values
 	 * @throws IllegalArgumentException if values.length doesn't match shape.getTotalSize()
 	 * 
 	 * @example
@@ -590,13 +590,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a constant CollectionProducer that always produces the same scalar value.
+	 * Creates a constant {@link CollectionProducer} that always produces the same scalar value.
 	 * This is useful for creating constant terms in mathematical expressions
 	 * and operations.
 	 * 
-	 * @param <T> the type of PackedCollection produced
+	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param value the constant value to produce
-	 * @return a CollectionProducer that always generates the specified constant
+	 * @return a {@link CollectionProducer} that always generates the specified constant
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -607,7 +607,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Use in mathematical operations
 	 * CollectionProducer<PackedCollection<?>> zero = constant(0.0);
 	 * CollectionProducer<PackedCollection<?>> one = constant(1.0);
-	 * // These can be used in add(), multiply(), etc.
+	 * // These can be used in {@link #add}, {@link #multiply}, etc.
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> constant(double value) {
@@ -615,14 +615,14 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a constant CollectionProducer with a specific shape.
+	 * Creates a constant {@link CollectionProducer} with a specific shape.
 	 * All elements in the produced collection will have the same constant value,
 	 * but the collection will have the specified multi-dimensional shape.
 	 * 
-	 * @param <T> the type of PackedCollection produced
+	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param shape the desired shape for the constant collection
 	 * @param value the constant value for all elements
-	 * @return a CollectionProducer that generates a constant-filled collection
+	 * @return a {@link CollectionProducer} that generates a constant-filled collection
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -691,13 +691,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Creates a CollectionProducerComputation that generates a collection filled with zeros.
+	 * Creates a {@link CollectionProducerComputation} that generates a collection filled with zeros.
 	 * This is one of the most basic building blocks for creating empty collections
 	 * or initializing collections to a known state.
 	 * 
-	 * @param <V> the type of PackedCollection produced
+	 * @param <V> the type of {@link PackedCollection} produced
 	 * @param shape the desired shape for the zero-filled collection
-	 * @return a CollectionProducerComputation that generates zeros
+	 * @return a {@link CollectionProducerComputation} that generates zeros
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1083,11 +1083,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation creates a new collection containing only the elements
 	 * at the specified coordinates within the original collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param shape the desired shape for the subset
 	 * @param collection the source collection to extract from
 	 * @param position the integer coordinates specifying which elements to extract
-	 * @return a CollectionProducerComputation that generates the subset
+	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1109,15 +1109,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Extracts a subset of elements from a collection using Expression-based positions.
+	 * Extracts a subset of elements from a collection using {@link Expression}-based positions.
 	 * This allows for dynamic position calculation using mathematical expressions,
 	 * enabling more flexible subset extraction patterns.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param shape the desired shape for the subset
 	 * @param collection the source collection to extract from
-	 * @param position the Expression objects specifying dynamic coordinates
-	 * @return a CollectionProducerComputation that generates the subset
+	 * @param position the {@link Expression} objects specifying dynamic coordinates
+	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1135,15 +1135,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Extracts a subset of elements from a collection using a Producer for positions.
+	 * Extracts a subset of elements from a collection using a {@link Producer} for positions.
 	 * This advanced form allows positions to be computed dynamically from other
 	 * collection operations, enabling complex indexing patterns.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param shape the desired shape for the subset
 	 * @param collection the source collection to extract from
-	 * @param position a Producer that generates the position coordinates
-	 * @return a CollectionProducerComputation that generates the subset
+	 * @param position a {@link Producer} that generates the position coordinates
+	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1170,10 +1170,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation creates a new collection by concatenating multiple copies
 	 * of the input collection along its primary dimension.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param repeat the number of times to repeat the collection
 	 * @param collection the collection to repeat
-	 * @return a CollectionProducerComputation containing the repeated collection
+	 * @return a {@link CollectionProducerComputation} containing the repeated collection
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1207,11 +1207,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation first sets the traversal axis and then repeats the collection,
 	 * allowing for more control over how the repetition is structured.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to perform the repetition
 	 * @param repeat the number of times to repeat
 	 * @param collection the collection to repeat
-	 * @return a CollectionProducerComputation containing the repeated collection
+	 * @return a {@link CollectionProducerComputation} containing the repeated collection
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1238,11 +1238,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation extracts consecutive elements along the specified axis,
 	 * useful for creating sliding windows or extracting sequential patterns.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to enumerate (0-based)
 	 * @param len the length of each enumerated sequence
 	 * @param collection the collection to enumerate
-	 * @return a CollectionProducerComputation containing the enumerated sequences
+	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1266,12 +1266,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This allows for more flexible enumeration patterns by specifying
 	 * how far apart the starting positions of consecutive sequences should be.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to enumerate
 	 * @param len the length of each enumerated sequence
 	 * @param stride the step size between consecutive sequence starts
 	 * @param collection the collection to enumerate
-	 * @return a CollectionProducerComputation containing the enumerated sequences
+	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1653,12 +1653,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	/**
 	 * Performs element-wise subtraction of two collections.
 	 * This operation subtracts corresponding elements of the second collection
-	 * from the first collection, equivalent to add(a, minus(b)).
+	 * from the first collection, equivalent to {@link #add add(a, minus(b))}.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the collection to subtract from (minuend)
 	 * @param b the collection to subtract (subtrahend)
-	 * @return a CollectionProducer that generates the element-wise difference
+	 * @return a {@link CollectionProducer} that generates the element-wise difference
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1703,10 +1703,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is a fundamental arithmetic operation that multiplies corresponding
 	 * elements from each input collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the first collection to multiply
 	 * @param b the second collection to multiply
-	 * @return a CollectionProducer that generates the element-wise product
+	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1733,11 +1733,11 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This overload allows for optimization by providing a pre-computed result
 	 * that can be used instead of performing the actual computation.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the first collection to multiply
 	 * @param b the second collection to multiply
 	 * @param shortCircuit optional pre-computed result for optimization
-	 * @return a CollectionProducer that generates the element-wise product
+	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1790,10 +1790,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is an optimized operation for scaling all elements of a collection
 	 * by the same constant factor.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param scale the scalar value to multiply by
 	 * @param a the collection to scale
-	 * @return a CollectionProducer that generates the scaled collection, or null if no optimization available
+	 * @return a {@link CollectionProducer} that generates the scaled collection, or null if no optimization available
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1834,10 +1834,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation divides corresponding elements of the first collection
 	 * by the corresponding elements of the second collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the dividend collection (numerator)
 	 * @param b the divisor collection (denominator)
-	 * @return a CollectionProducer that generates the element-wise quotient
+	 * @return a {@link CollectionProducer} that generates the element-wise quotient
 	 * @throws UnsupportedOperationException if attempting to divide by zero
 	 * 
 	 * @example
@@ -1884,9 +1884,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation multiplies every element by -1, effectively flipping
 	 * the sign of all values in the collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the collection to negate
-	 * @return a CollectionProducerComputationBase that generates the negated collection
+	 * @return a {@link CollectionProducerComputationBase} that generates the negated collection
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1928,9 +1928,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is a convenience method that raises each element to the power of 0.5,
 	 * providing a more readable way to compute square roots.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param value the collection containing values to compute square roots for
-	 * @return a CollectionProducer that generates the element-wise square roots
+	 * @return a {@link CollectionProducer} that generates the element-wise square roots
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -1960,10 +1960,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Raises elements of the base collection to the power of corresponding elements in the exponent collection.
 	 * This operation performs element-wise exponentiation, computing base[i]^exp[i] for each element.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param base the base collection (values to be raised to powers)
 	 * @param exp the exponent collection (power values)
-	 * @return a CollectionProducer that generates the element-wise power results
+	 * @return a {@link CollectionProducer} that generates the element-wise power results
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -2095,9 +2095,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This operation converts all negative values to positive while
 	 * leaving positive values unchanged.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param value the collection containing values to compute absolute values for
-	 * @return a CollectionProducer that generates the element-wise absolute values
+	 * @return a {@link CollectionProducer} that generates the element-wise absolute values
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -2134,9 +2134,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This reduction operation scans through all elements and returns
 	 * the largest value as a single-element collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param input the collection to find the maximum element in
-	 * @return a CollectionProducerComputationBase that generates the maximum value
+	 * @return a {@link CollectionProducerComputationBase} that generates the maximum value
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -2203,9 +2203,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This reduction operation adds up all elements to produce a single scalar result.
 	 * It's one of the most common aggregation operations in numerical computing.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param input the collection to sum
-	 * @return a CollectionProducer that generates a single-element collection containing the sum
+	 * @return a {@link CollectionProducerComputation} that generates a single-element collection containing the sum
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -2245,9 +2245,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Computes the arithmetic mean (average) of all elements in a collection.
 	 * This is calculated as the sum of all elements divided by the number of elements.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param input the collection to compute the mean for
-	 * @return a CollectionProducer that generates a single-element collection containing the mean
+	 * @return a {@link CollectionProducer} that generates a single-element collection containing the mean
 	 * 
 	 * @example
 	 * <pre>{@code
