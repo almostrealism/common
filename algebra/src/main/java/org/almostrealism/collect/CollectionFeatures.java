@@ -244,9 +244,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Gets the total number of elements that a {@link Supplier} can produce.
-	 * This method is essential for understanding memory requirements and
-	 * iteration bounds when working with data suppliers.
+	 * Gets the number of elements that will be operated on by one thread of a kernel
+	 * for the given {@link Supplier}. This is not the total number of elements that can be
+	 * produced, but rather the number that will be processed by a single thread.
+	 * The total number is the product of the size and the count.
 	 * 
 	 * @param s the supplier to examine
 	 * @return the total number of elements, or -1 if the supplier is null
@@ -298,6 +299,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return s.getShape().getSize();
 	}
 
+	// TODO  Move to TraversalPolicy
 	/**
 	 * Pads a {@link TraversalPolicy} shape with additional dimensions of size 1.
 	 * This utility method adds dimensions to a shape until it reaches the target
@@ -324,6 +326,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return padDimensions(shape, 1, target);
 	}
 
+	// TODO  Move to TraversalPolicy
 	/**
 	 * Pads a {@link TraversalPolicy} shape with additional dimensions, but only if it has at least min dimensions.
 	 * This overload provides more control by specifying a minimum number of dimensions
@@ -350,6 +353,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return padDimensions(shape, min, target, false);
 	}
 
+	// TODO  Move to TraversalPolicy
 	/**
 	 * Pads a {@link TraversalPolicy} shape with additional dimensions, with control over padding direction.
 	 * This is the most flexible padding method, allowing you to specify whether
