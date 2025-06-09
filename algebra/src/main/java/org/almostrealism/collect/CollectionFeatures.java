@@ -115,10 +115,94 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	Console console = Computation.console.child();
 
+	/**
+	 * Creates a new TraversalPolicy with the specified dimensions.
+	 * This is one of the most fundamental methods for creating shapes that define
+	 * how data is organized and accessed in collections.
+	 * 
+	 * @param dims the dimensions of the shape (e.g., width, height, depth)
+	 * @return a new TraversalPolicy representing the specified shape
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a 1D shape with 5 elements
+	 * TraversalPolicy shape1D = shape(5);
+	 * // Result: shape with dimensions [5], total size = 5
+	 * 
+	 * // Create a 2D shape (matrix) with 3 rows and 4 columns
+	 * TraversalPolicy shape2D = shape(3, 4);
+	 * // Result: shape with dimensions [3, 4], total size = 12
+	 * 
+	 * // Create a 3D shape (tensor) with dimensions 2x3x4
+	 * TraversalPolicy shape3D = shape(2, 3, 4);
+	 * // Result: shape with dimensions [2, 3, 4], total size = 24
+	 * }</pre>
+	 */
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
+	
+	/**
+	 * Creates a new TraversalPolicy with the specified dimensions using long values.
+	 * This overload is useful when working with very large dimensions that exceed
+	 * the range of int values.
+	 * 
+	 * @param dims the dimensions of the shape as long values
+	 * @return a new TraversalPolicy representing the specified shape
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a large 1D shape
+	 * TraversalPolicy largShape = shape(1000000L);
+	 * // Result: shape with dimensions [1000000], total size = 1000000
+	 * 
+	 * // Create a 2D shape with large dimensions
+	 * TraversalPolicy shape2D = shape(10000L, 20000L);
+	 * // Result: shape with dimensions [10000, 20000], total size = 200000000
+	 * }</pre>
+	 */
 	default TraversalPolicy shape(long... dims) { return new TraversalPolicy(dims); }
+	
+	/**
+	 * Creates a position TraversalPolicy with the specified dimensions.
+	 * Unlike regular shapes, positions are used to specify coordinates or offsets
+	 * within a larger collection structure.
+	 * 
+	 * @param dims the position coordinates
+	 * @return a new TraversalPolicy representing the specified position
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a position at coordinates (2, 3) in a 2D space
+	 * TraversalPolicy pos = position(2, 3);
+	 * // Result: position representing coordinates [2, 3]
+	 * 
+	 * // Create a position at coordinates (1, 2, 3) in a 3D space
+	 * TraversalPolicy pos3D = position(1, 2, 3);
+	 * // Result: position representing coordinates [1, 2, 3]
+	 * }</pre>
+	 */
 	default TraversalPolicy position(int... dims) { return new TraversalPolicy(true, dims); }
 
+	/**
+	 * Extracts the TraversalPolicy shape from a Supplier.
+	 * This method is useful for determining the shape of collections at runtime
+	 * by examining the supplier object.
+	 * 
+	 * @param s the supplier to extract shape from
+	 * @return the TraversalPolicy representing the supplier's shape, or shape(1) if no shape available
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Extract shape from a PackedCollection supplier
+	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
+	 * TraversalPolicy extractedShape = shape(() -> collection);
+	 * // Result: shape with dimensions [3, 4]
+	 * 
+	 * // For suppliers without shape information, returns shape(1)
+	 * Supplier<Double> simpleSupplier = () -> 42.0;
+	 * TraversalPolicy defaultShape = shape(simpleSupplier);
+	 * // Result: shape with dimensions [1]
+	 * }</pre>
+	 */
 	default TraversalPolicy shape(Supplier s) {
 		if (s instanceof Shape) {
 			return ((Shape) s).getShape();
@@ -131,6 +215,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Extracts the TraversalPolicy shape from a TraversableExpression.
+	 * This method is used to determine the shape of expressions used in 
+	 * computational graphs and operations.
+	 * 
+	 * @param t the TraversableExpression to extract shape from
+	 * @return the TraversalPolicy representing the expression's shape, or shape(1) if no shape available
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create an expression with known shape
+	 * TraversableExpression expr = new SomeExpression(shape(2, 3));
+	 * TraversalPolicy extractedShape = shape(expr);
+	 * // Result: shape with dimensions [2, 3]
+	 * }</pre>
+	 */
 	default TraversalPolicy shape(TraversableExpression t) {
 		if (t instanceof Shape) {
 			return ((Shape) t).getShape();
@@ -143,6 +243,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Gets the total number of elements that a Supplier can produce.
+	 * This method is essential for understanding memory requirements and
+	 * iteration bounds when working with data suppliers.
+	 * 
+	 * @param s the supplier to examine
+	 * @return the total number of elements, or -1 if the supplier is null
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Get size of a PackedCollection supplier
+	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
+	 * int totalSize = size(() -> collection);
+	 * // Result: 12 (3 * 4 elements)
+	 * 
+	 * // For MemoryDataComputation suppliers
+	 * MemoryDataComputation computation = new SomeComputation(5);
+	 * int memLength = size(computation);
+	 * // Result: 5 (memory length of the computation)
+	 * 
+	 * // Null supplier returns -1
+	 * int nullSize = size(null);
+	 * // Result: -1
+	 * }</pre>
+	 */
 	default int size(Supplier s) {
 		if (s == null) {
 			return -1;
@@ -153,6 +278,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Gets the total number of elements in a Shape.
+	 * This is a convenient method for getting the size directly from
+	 * objects that implement the Shape interface.
+	 * 
+	 * @param s the Shape to examine
+	 * @return the total number of elements in the shape
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Get size of a shape object
+	 * Shape<?> someShape = new PackedCollection<>(shape(2, 3, 4));
+	 * int totalElements = size(someShape);
+	 * // Result: 24 (2 * 3 * 4 elements)
+	 * }</pre>
+	 */
 	default int size(Shape s) {
 		return s.getShape().getSize();
 	}
@@ -180,14 +321,75 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return shape;
 	}
 
+	/**
+	 * Creates a PackedCollection from an array of double values.
+	 * This is one of the primary methods for creating collections from raw data,
+	 * automatically determining the shape based on the array length.
+	 * 
+	 * @param values the double values to pack into a collection
+	 * @return a new PackedCollection containing the specified values
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a collection from double array
+	 * PackedCollection<?> collection = pack(1.0, 2.0, 3.0, 4.0);
+	 * // Result: PackedCollection with shape [4] containing [1.0, 2.0, 3.0, 4.0]
+	 * 
+	 * // Create a single-element collection
+	 * PackedCollection<?> single = pack(42.0);
+	 * // Result: PackedCollection with shape [1] containing [42.0]
+	 * 
+	 * // Create an empty collection
+	 * PackedCollection<?> empty = pack();
+	 * // Result: PackedCollection with shape [0] containing no elements
+	 * }</pre>
+	 */
 	default PackedCollection<?> pack(double... values) {
 		return PackedCollection.of(values);
 	}
 
+	/**
+	 * Creates a PackedCollection from an array of float values.
+	 * The float values are automatically converted to double precision
+	 * before being stored in the collection.
+	 * 
+	 * @param values the float values to pack into a collection
+	 * @return a new PackedCollection containing the converted double values
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a collection from float array
+	 * PackedCollection<?> collection = pack(1.5f, 2.5f, 3.5f);
+	 * // Result: PackedCollection with shape [3] containing [1.5, 2.5, 3.5] as doubles
+	 * 
+	 * // Single float value
+	 * PackedCollection<?> single = pack(3.14f);
+	 * // Result: PackedCollection with shape [1] containing [3.14] as double
+	 * }</pre>
+	 */
 	default PackedCollection<?> pack(float... values) {
 		return PackedCollection.of(IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray());
 	}
 
+	/**
+	 * Creates an empty PackedCollection with the specified shape.
+	 * The collection will have the correct dimensions but all values
+	 * will be initialized to zero.
+	 * 
+	 * @param shape the TraversalPolicy defining the collection's shape
+	 * @return a new empty PackedCollection with the specified shape
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create empty 2D collection
+	 * PackedCollection<?> matrix = empty(shape(3, 4));
+	 * // Result: 3x4 PackedCollection filled with zeros
+	 * 
+	 * // Create empty 1D collection
+	 * PackedCollection<?> vector = empty(shape(5));
+	 * // Result: 1D PackedCollection with 5 zero elements
+	 * }</pre>
+	 */
 	default PackedCollection<?> empty(TraversalPolicy shape) {
 		return new PackedCollection<>(shape);
 	}
@@ -249,6 +451,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new CollectionProducerSubstitution(original, replacement);
 	}
 
+	/**
+	 * Creates a CollectionProducer from a sequence of double values.
+	 * This is a fundamental method for creating computational producers
+	 * from raw numeric data.
+	 * 
+	 * @param <T> the type of PackedCollection produced
+	 * @param values the double values to include in the producer
+	 * @return a CollectionProducer that generates the specified values
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a producer for multiple values
+	 * CollectionProducer<PackedCollection<?>> producer = c(1.0, 2.0, 3.0);
+	 * // Result: Producer that generates a collection [1.0, 2.0, 3.0]
+	 * 
+	 * // Create a single-value producer (becomes a constant)
+	 * CollectionProducer<PackedCollection<?>> constant = c(42.0);
+	 * // Result: Constant producer that generates [42.0]
+	 * 
+	 * // Create from computed values
+	 * double[] computed = {Math.PI, Math.E, Math.sqrt(2)};
+	 * CollectionProducer<PackedCollection<?>> mathConstants = c(computed);
+	 * // Result: Producer with [3.14159..., 2.71828..., 1.41421...]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
 		if (values.length == 1) {
 			return constant(values[0]);
@@ -259,6 +486,28 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return (CollectionProducer<T>) c(c);
 	}
 
+	/**
+	 * Creates a CollectionProducer with a specific shape from double values.
+	 * This method allows you to specify both the data and the desired shape,
+	 * enabling creation of multi-dimensional collections.
+	 * 
+	 * @param <T> the type of PackedCollection produced
+	 * @param shape the desired shape for the collection
+	 * @param values the double values to include (must match shape's total size)
+	 * @return a CollectionProducer with the specified shape and values
+	 * @throws IllegalArgumentException if values.length doesn't match shape.getTotalSize()
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a 2x3 matrix producer
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * // Result: 2x3 matrix producer with values [[1,2,3], [4,5,6]]
+	 * 
+	 * // Create a single constant with specific shape
+	 * CollectionProducer<PackedCollection<?>> constant = c(shape(1), 42.0);
+	 * // Result: Constant producer with shape [1] containing [42.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(TraversalPolicy shape, double... values) {
 		if (values.length != shape.getTotalSize()) {
 			throw new IllegalArgumentException("Wrong number of values for shape");
@@ -271,10 +520,56 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return (CollectionProducer<T>) c(c);
 	}
 
+	/**
+	 * Creates a constant CollectionProducer that always produces the same scalar value.
+	 * This is useful for creating constant terms in mathematical expressions
+	 * and operations.
+	 * 
+	 * @param <T> the type of PackedCollection produced
+	 * @param value the constant value to produce
+	 * @return a CollectionProducer that always generates the specified constant
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a constant producer
+	 * CollectionProducer<PackedCollection<?>> pi = constant(Math.PI);
+	 * // Result: Producer that always generates [3.14159...]
+	 * 
+	 * // Use in mathematical operations
+	 * CollectionProducer<PackedCollection<?>> zero = constant(0.0);
+	 * CollectionProducer<PackedCollection<?>> one = constant(1.0);
+	 * // These can be used in add(), multiply(), etc.
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> constant(double value) {
 		return constant(shape(1), value);
 	}
 
+	/**
+	 * Creates a constant CollectionProducer with a specific shape.
+	 * All elements in the produced collection will have the same constant value,
+	 * but the collection will have the specified multi-dimensional shape.
+	 * 
+	 * @param <T> the type of PackedCollection produced
+	 * @param shape the desired shape for the constant collection
+	 * @param value the constant value for all elements
+	 * @return a CollectionProducer that generates a constant-filled collection
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a 2x3 matrix filled with ones
+	 * CollectionProducer<PackedCollection<?>> ones = constant(shape(2, 3), 1.0);
+	 * // Result: Producer that generates a 2x3 matrix [[1,1,1], [1,1,1]]
+	 * 
+	 * // Create a 1D vector filled with zeros
+	 * CollectionProducer<PackedCollection<?>> zeros = constant(shape(5), 0.0);
+	 * // Result: Producer that generates [0, 0, 0, 0, 0]
+	 * 
+	 * // Create a 3D tensor filled with pi
+	 * CollectionProducer<PackedCollection<?>> piTensor = constant(shape(2, 2, 2), Math.PI);
+	 * // Result: 2x2x2 tensor where all 8 elements equal π
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> constant(TraversalPolicy shape, double value) {
 		if (shape.getTotalSizeLong() == 1) {
 			return new AtomicConstantComputation<T>(value).reshape(shape);
@@ -570,6 +865,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
 	}
 
+	/**
+	 * Changes the traversal axis of a collection producer.
+	 * This operation modifies how the collection is traversed during computation
+	 * without changing the underlying data layout.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param axis the new traversal axis (0-based index)
+	 * @param producer the collection producer to modify
+	 * @return a CollectionProducer with the specified traversal axis
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Create a 2D collection and change traversal axis
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4), 
+	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+	 * 
+	 * // Traverse along axis 0 (rows)
+	 * CollectionProducer<PackedCollection<?>> rowTraversal = traverse(0, matrix);
+	 * // Changes how iteration occurs over the matrix
+	 * 
+	 * // Traverse along axis 1 (columns)
+	 * CollectionProducer<PackedCollection<?>> colTraversal = traverse(1, matrix);
+	 * // Different traversal pattern for the same data
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).traverse(axis);
@@ -580,14 +900,81 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new ReshapeProducer(axis, producer);
 	}
 
+	/**
+	 * Alias for traverseEach - sets up the producer to traverse each element.
+	 * This is a convenience method that makes collection operations more readable.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param producer the collection producer to modify
+	 * @return a Producer configured to traverse each element
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Set up element-wise traversal
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * Producer eachElement = each(vector);
+	 * // Result: Producer configured for element-wise operations
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> Producer each(Producer<T> producer) {
 		return traverseEach(producer);
 	}
 
+	/**
+	 * Configures a producer to traverse each individual element.
+	 * This sets up the traversal policy to process every element independently,
+	 * which is useful for element-wise operations and transformations.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param producer the collection producer to configure
+	 * @return a Producer configured for element-wise traversal
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Configure for element-wise processing
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * Producer elementWise = traverseEach(matrix);
+	 * // Result: Producer that can process each of the 6 elements individually
+	 * 
+	 * // Useful for applying functions to each element
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 4.0, 9.0);
+	 * Producer sqrt = traverseEach(vector).sqrt(); // hypothetical sqrt operation
+	 * // Would apply sqrt to each element: [1.0, 2.0, 3.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> Producer traverseEach(Producer<T> producer) {
 		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
+	/**
+	 * Reshapes a collection producer to have a new shape.
+	 * This operation changes the dimensional structure of the collection
+	 * while preserving the total number of elements.
+	 * 
+	 * @param <T> the type of Shape
+	 * @param shape the new shape for the collection
+	 * @param producer the collection producer to reshape
+	 * @return a Producer with the new shape
+	 * @throws IllegalArgumentException if the new shape has a different total size
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Reshape a 1D vector to a 2D matrix
+	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
+	 * Producer<PackedCollection<?>> matrix = reshape(shape(2, 3), vector);
+	 * // Result: 2x3 matrix [[1,2,3], [4,5,6]]
+	 * 
+	 * // Reshape a matrix to a different matrix
+	 * CollectionProducer<PackedCollection<?>> matrix2x3 = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * Producer<PackedCollection<?>> matrix3x2 = reshape(shape(3, 2), matrix2x3);
+	 * // Result: 3x2 matrix [[1,2], [3,4], [5,6]]
+	 * 
+	 * // Flatten a multi-dimensional array
+	 * CollectionProducer<PackedCollection<?>> tensor = c(shape(2, 2, 2), 1, 2, 3, 4, 5, 6, 7, 8);
+	 * Producer<PackedCollection<?>> flattened = reshape(shape(8), tensor);
+	 * // Result: 1D vector [1, 2, 3, 4, 5, 6, 7, 8]
+	 * }</pre>
+	 */
 	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer producer) {
 		if (producer instanceof ReshapeProducer) {
 			return ((ReshapeProducer) producer).reshape(shape);
@@ -598,18 +985,121 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new ReshapeProducer<>(shape, producer);
 	}
 
+	/**
+	 * Extracts a subset of elements from a collection at specified integer positions.
+	 * This operation creates a new collection containing only the elements
+	 * at the specified coordinates within the original collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param shape the desired shape for the subset
+	 * @param collection the source collection to extract from
+	 * @param position the integer coordinates specifying which elements to extract
+	 * @return a CollectionProducerComputation that generates the subset
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Extract subset from a 2D matrix
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 3), 
+	 *     1, 2, 3, 4, 5, 6, 7, 8, 9);
+	 * // Extract element at position (1, 2) -> value 6
+	 * CollectionProducerComputation<PackedCollection<?>> element = 
+	 *     subset(shape(1), matrix, 1, 2);
+	 * 
+	 * // Extract a 2x2 subset starting at position (0, 1)
+	 * CollectionProducerComputation<PackedCollection<?>> block = 
+	 *     subset(shape(2, 2), matrix, 0, 1);
+	 * // Result: subset containing elements [2, 3, 5, 6]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, int... position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	/**
+	 * Extracts a subset of elements from a collection using Expression-based positions.
+	 * This allows for dynamic position calculation using mathematical expressions,
+	 * enabling more flexible subset extraction patterns.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param shape the desired shape for the subset
+	 * @param collection the source collection to extract from
+	 * @param position the Expression objects specifying dynamic coordinates
+	 * @return a CollectionProducerComputation that generates the subset
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Extract subset using computed positions  
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+	 * Expression rowExpr = e(2); // Expression evaluating to 2
+	 * Expression colExpr = e(1); // Expression evaluating to 1
+	 * CollectionProducerComputation<PackedCollection<?>> dynamicSubset = 
+	 *     subset(shape(1), matrix, rowExpr, colExpr);
+	 * // Extracts element at computed position (2, 1)
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	/**
+	 * Extracts a subset of elements from a collection using a Producer for positions.
+	 * This advanced form allows positions to be computed dynamically from other
+	 * collection operations, enabling complex indexing patterns.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param shape the desired shape for the subset
+	 * @param collection the source collection to extract from
+	 * @param position a Producer that generates the position coordinates
+	 * @return a CollectionProducerComputation that generates the subset
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Extract subset using dynamically computed positions
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(5, 5), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25);
+	 * CollectionProducer<PackedCollection<?>> indices = c(2.0, 3.0); // row 2, col 3
+	 * CollectionProducerComputation<PackedCollection<?>> dynamicSubset = 
+	 *     subset(shape(1), matrix, indices);
+	 * // Extracts element at position determined by indices producer
+	 * 
+	 * // Extract multiple elements using computed index patterns
+	 * CollectionProducer<PackedCollection<?>> indexPattern = 
+	 *     add(c(1.0, 1.0), c(0.0, 1.0)); // generates positions (1,2)
+	 * CollectionProducerComputation<PackedCollection<?>> pattern = 
+	 *     subset(shape(1), matrix, indexPattern);
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	/**
+	 * Repeats a collection a specified number of times.
+	 * This operation creates a new collection by concatenating multiple copies
+	 * of the input collection along its primary dimension.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param repeat the number of times to repeat the collection
+	 * @param collection the collection to repeat
+	 * @return a CollectionProducerComputation containing the repeated collection
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Repeat a vector 3 times
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0);
+	 * CollectionProducerComputation<PackedCollection<?>> repeated = repeat(3, vector);
+	 * // Result: Producer that generates [1.0, 2.0, 1.0, 2.0, 1.0, 2.0]
+	 * 
+	 * // Repeat a single value to create a vector
+	 * CollectionProducer<PackedCollection<?>> scalar = c(5.0);
+	 * CollectionProducerComputation<PackedCollection<?>> vector5s = repeat(4, scalar);
+	 * // Result: Producer that generates [5.0, 5.0, 5.0, 5.0]
+	 * 
+	 * // Repeat a constant (optimized case)
+	 * CollectionProducer<PackedCollection<?>> constant = constant(3.14);
+	 * CollectionProducerComputation<PackedCollection<?>> constants = repeat(3, constant);
+	 * // Result: Efficiently generates [3.14, 3.14, 3.14] without actual repetition
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
 		if (collection instanceof SingleConstantComputation) {
 			return ((SingleConstantComputation) collection)
@@ -619,6 +1109,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new PackedCollectionRepeat<>(repeat, collection);
 	}
 
+	/**
+	 * Repeats a collection along a specific axis.
+	 * This operation first sets the traversal axis and then repeats the collection,
+	 * allowing for more control over how the repetition is structured.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param axis the axis along which to perform the repetition
+	 * @param repeat the number of times to repeat
+	 * @param collection the collection to repeat
+	 * @return a CollectionProducerComputation containing the repeated collection
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Repeat a 2D matrix along different axes
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * 
+	 * // Repeat along axis 0 (row repetition)
+	 * CollectionProducerComputation<PackedCollection<?>> rowRepeated = 
+	 *     repeat(0, 2, matrix);
+	 * // Result: Each row is repeated 2 times
+	 * 
+	 * // Repeat along axis 1 (column repetition) 
+	 * CollectionProducerComputation<PackedCollection<?>> colRepeated = 
+	 *     repeat(1, 3, matrix);
+	 * // Result: Each column is repeated 3 times
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int axis, int repeat, Producer<?> collection) {
 		return repeat(repeat, traverse(axis, (Producer) collection));
 	}
@@ -882,10 +1399,62 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return integers(0, steps).multiply(c(step));
 	}
 
+	/**
+	 * Performs element-wise addition of two collections.
+	 * This is one of the fundamental arithmetic operations for collections,
+	 * adding corresponding elements from each input collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the first collection to add
+	 * @param b the second collection to add
+	 * @return a CollectionProducer that generates the element-wise sum
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Add two vectors element-wise
+	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> vec2 = c(4.0, 5.0, 6.0);
+	 * CollectionProducer<PackedCollection<?>> sum = add(vec1, vec2);
+	 * // Result: Producer that generates [5.0, 7.0, 9.0]
+	 * 
+	 * // Add a constant to a vector
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> constant = constant(1.0);
+	 * CollectionProducer<PackedCollection<?>> result = add(vector, constant);
+	 * // Result: Producer that generates [2.0, 3.0, 4.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(Producer<T> a, Producer<T> b) {
 		return add(List.of(a, b));
 	}
 
+	/**
+	 * Performs element-wise addition of multiple collections.
+	 * This method can add any number of collections together by summing
+	 * corresponding elements across all input collections.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param operands the list of collections to add together
+	 * @return a CollectionProducer that generates the element-wise sum
+	 * @throws IllegalArgumentException if any operand is null
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Add three vectors together
+	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0);
+	 * CollectionProducer<PackedCollection<?>> vec2 = c(3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> vec3 = c(5.0, 6.0);
+	 * CollectionProducer<PackedCollection<?>> sum = add(List.of(vec1, vec2, vec3));
+	 * // Result: Producer that generates [9.0, 12.0] (1+3+5, 2+4+6)
+	 * 
+	 * // Add multiple constants
+	 * List<Producer<?>> constants = List.of(
+	 *     constant(1.0), constant(2.0), constant(3.0)
+	 * );
+	 * CollectionProducer<PackedCollection<?>> total = add(constants);
+	 * // Result: Producer that generates [6.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(List<Producer<?>> operands) {
 		if (operands.stream().anyMatch(Objects::isNull)) {
 			throw new IllegalArgumentException();
@@ -937,11 +1506,59 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return (CollectionProducerComputation) equals(a, c(0.0), zeros(shape), difference);
 	}
 
+	/**
+	 * Performs element-wise multiplication of two collections.
+	 * This is a fundamental arithmetic operation that multiplies corresponding
+	 * elements from each input collection.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the first collection to multiply
+	 * @param b the second collection to multiply
+	 * @return a CollectionProducer that generates the element-wise product
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Multiply two vectors element-wise
+	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> vec2 = c(5.0, 6.0, 7.0);
+	 * CollectionProducer<PackedCollection<?>> product = multiply(vec1, vec2);
+	 * // Result: Producer that generates [10.0, 18.0, 28.0]
+	 * 
+	 * // Scale a vector by a constant
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> scale = constant(2.0);
+	 * CollectionProducer<PackedCollection<?>> scaled = multiply(vector, scale);
+	 * // Result: Producer that generates [2.0, 4.0, 6.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b) {
 		return multiply(a, b, null);
 	}
 
+	/**
+	 * Performs element-wise multiplication with an optional short-circuit evaluation.
+	 * This overload allows for optimization by providing a pre-computed result
+	 * that can be used instead of performing the actual computation.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param a the first collection to multiply
+	 * @param b the second collection to multiply
+	 * @param shortCircuit optional pre-computed result for optimization
+	 * @return a CollectionProducer that generates the element-wise product
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Multiply with potential optimization
+	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> vec2 = c(1.0, 1.0);
+	 * 
+	 * // Pre-compute result for optimization
+	 * Evaluable<PackedCollection<?>> precomputed = () -> pack(2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> result = multiply(vec1, vec2, precomputed);
+	 * // May use precomputed result if beneficial
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
@@ -976,6 +1593,32 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				args -> String.join(" * ", applyParentheses(args)), a, b), shortCircuit);
 	}
 
+	/**
+	 * Multiplies a collection by a scalar value.
+	 * This is an optimized operation for scaling all elements of a collection
+	 * by the same constant factor.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param scale the scalar value to multiply by
+	 * @param a the collection to scale
+	 * @return a CollectionProducer that generates the scaled collection, or null if no optimization available
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Scale a vector by 2
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * CollectionProducer<PackedCollection<?>> doubled = multiply(2.0, vector);
+	 * // Result: Producer that generates [2.0, 4.0, 6.0]
+	 * 
+	 * // Scale by zero to create zero vector
+	 * CollectionProducer<PackedCollection<?>> zeros = multiply(0.0, vector);
+	 * // Result: Producer that generates [0.0, 0.0, 0.0]
+	 * 
+	 * // Scale by -1 to negate
+	 * CollectionProducer<PackedCollection<?>> negated = multiply(-1.0, vector);
+	 * // Result: Producer that generates [-1.0, -2.0, -3.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double scale, Producer<T> a) {
 		if (scale == 0) {
 			return zeros(shape(a));
@@ -1203,6 +1846,33 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Computes the sum of all elements in a collection.
+	 * This reduction operation adds up all elements to produce a single scalar result.
+	 * It's one of the most common aggregation operations in numerical computing.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param input the collection to sum
+	 * @return a CollectionProducer that generates a single-element collection containing the sum
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Sum all elements in a vector
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> total = sum(vector);
+	 * // Result: Producer that generates [10.0] (1+2+3+4)
+	 * 
+	 * // Sum elements in a matrix (flattened)
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer<PackedCollection<?>> matrixSum = sum(matrix);
+	 * // Result: Producer that generates [10.0] (1+2+3+4)
+	 * 
+	 * // Sum of zeros returns zero
+	 * CollectionProducer<PackedCollection<?>> zeros = zeros(shape(5));
+	 * CollectionProducer<PackedCollection<?>> zeroSum = sum(zeros);
+	 * // Result: Producer that generates [0.0]
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sum(Producer<T> input) {
 		if (Algebraic.isZero(input)) {
 			return zeros(shape(input).replace(shape(1)));
@@ -1219,6 +1889,32 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return sum;
 	}
 
+	/**
+	 * Computes the arithmetic mean (average) of all elements in a collection.
+	 * This is calculated as the sum of all elements divided by the number of elements.
+	 * 
+	 * @param <T> the type of PackedCollection
+	 * @param input the collection to compute the mean for
+	 * @return a CollectionProducer that generates a single-element collection containing the mean
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Calculate mean of a vector
+	 * CollectionProducer<PackedCollection<?>> vector = c(2.0, 4.0, 6.0, 8.0);
+	 * CollectionProducer<PackedCollection<?>> average = mean(vector);
+	 * // Result: Producer that generates [5.0] ((2+4+6+8)/4)
+	 * 
+	 * // Mean of a single element
+	 * CollectionProducer<PackedCollection<?>> single = c(42.0);
+	 * CollectionProducer<PackedCollection<?>> singleMean = mean(single);
+	 * // Result: Producer that generates [42.0] (42/1)
+	 * 
+	 * // Mean of mixed positive/negative values
+	 * CollectionProducer<PackedCollection<?>> mixed = c(-2.0, 0.0, 2.0);
+	 * CollectionProducer<PackedCollection<?>> mixedMean = mean(mixed);
+	 * // Result: Producer that generates [0.0] ((-2+0+2)/3)
+	 * }</pre>
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> mean(Producer<T> input) {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
