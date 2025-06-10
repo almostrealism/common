@@ -367,6 +367,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			throw new UnsupportedOperationException("Currently only kernel size 1 with no padding is supported");
 		}
 
+		weights = weights.reshape(weights.getShape().trim());
+
 		// For kernel size 1, this is just a pointwise linear transformation
 		// Reshape to (batchSize * seqLength, inputChannels) for matrix multiplication
 		return new SequentialBlock(shape(batchSize, inputChannels, seqLength))
