@@ -283,12 +283,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Gets the total number of elements in a {@link Shape}.
-	 * This is a convenient method for getting the size directly from
-	 * objects that implement the {@link Shape} interface.
+	 * Gets the number of elements that will be operated on by a single thread
+	 * of a kernel for a {@link Shape}. This is a convenient method for getting
+	 * the size directly from objects that implement the {@link Shape} interface.
+	 * The total number of elements is the product of this size and the count.
 	 * 
 	 * @param s the {@link Shape} to examine
-	 * @return the total number of elements in the shape
+	 * @return the number of elements operated on by one thread
 	 * 
 	 * @example
 	 * <pre>{@code
@@ -304,7 +305,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	// TODO  Move to TraversalPolicy
 	/**
-	 * Pads a {@link TraversalPolicy} shape with additional dimensions of size 1.
+	 * Pads a {@link TraversalPolicy} shape with additional dimensions of length 1.
 	 * This utility method adds dimensions to a shape until it reaches the target
 	 * number of dimensions, useful for making shapes compatible for operations.
 	 * 
@@ -402,6 +403,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is one of the primary methods for creating collections from raw data,
 	 * automatically determining the shape based on the array length.
 	 * 
+	 * <p>Note: This method delegates to {@link PackedCollection#of(double...)}.
+	 * 
 	 * @param values the double values to pack into a collection
 	 * @return a new {@link PackedCollection} containing the specified values
 	 * 
@@ -451,6 +454,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Creates an empty {@link PackedCollection} with the specified shape.
 	 * The collection will have the correct dimensions but all values
 	 * will be initialized to zero.
+	 * 
+	 * <p>Note: This method is equivalent to {@code new PackedCollection<>(shape)}.
 	 * 
 	 * @param shape the {@link TraversalPolicy} defining the collection's shape
 	 * @return a new empty {@link PackedCollection} with the specified shape
