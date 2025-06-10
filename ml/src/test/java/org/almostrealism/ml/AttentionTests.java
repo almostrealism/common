@@ -884,8 +884,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		main.add(transformerBlock(
 				batchSize, dim, seqLen, heads,
 				true, // crossAttend
-				contextDim, contextSeqLen,
-				false, // globalCond
+				contextSeqLen,
+				// globalCond
 				contextBlock,
 				// Self-attention weights
 				preNormWeight, preNormBias,

@@ -337,6 +337,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
+		if (inputShape.getDimensions() != subsetShape.getDimensions()) {
+			throw new IllegalArgumentException("Cannot take a " + subsetShape + " subset of " +
+					inputShape + " with different number of dimensions");
+		} else if (subsetShape.getDimensions() != pos.length) {
+			throw new IllegalArgumentException("Subset shape " + subsetShape +
+					" does not match position (" + pos.length + " dimensions)");
+		}
+
 		return new DefaultBlock(inputShape, subsetShape,
 				Cell.of((in, next) ->
 						next.push(subset(subsetShape, in, pos))),

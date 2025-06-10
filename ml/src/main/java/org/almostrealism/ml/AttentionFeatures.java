@@ -293,8 +293,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
-								   boolean crossAttend, int contextDim,
-								   int contextSeqLen, boolean globalCond, Block context,
+								   boolean crossAttend,
+								   int contextSeqLen, Block context,
 								   // Self-attention weights
 								   PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
 								   PackedCollection<?> selfQkv, PackedCollection<?> selfWo,
