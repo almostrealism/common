@@ -192,15 +192,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @example
 	 * <pre>{@code
-	 * // Extract shape from a {@link PackedCollection} supplier
-	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
-	 * TraversalPolicy extractedShape = shape(() -> collection);
-	 * // Result: shape with dimensions [3, 4]
+	 * // Extract shape from a {@link CollectionProducer} created with c()
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * TraversalPolicy vectorShape = shape(vector);
+	 * // Result: shape with dimensions [3]
 	 * 
-	 * // For suppliers without shape information, returns shape(1)
-	 * Supplier<Double> simpleSupplier = () -> 42.0;
-	 * TraversalPolicy defaultShape = shape(simpleSupplier);
-	 * // Result: shape with dimensions [1]
+	 * // Extract shape from arithmetic operation results
+	 * CollectionProducer<PackedCollection<?>> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer<PackedCollection<?>> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer<PackedCollection<?>> sum = add(a, b);
+	 * TraversalPolicy resultShape = shape(sum);
+	 * // Result: shape with dimensions [2, 3]
+	 * 
+	 * // Extract shape from reshaped {@link CollectionProducer}
+	 * CollectionProducer<PackedCollection<?>> reshaped = vector.reshape(shape(1, 3));
+	 * TraversalPolicy reshapedShape = shape(reshaped);
+	 * // Result: shape with dimensions [1, 3]
 	 * }</pre>
 	 */
 	default TraversalPolicy shape(Supplier s) {
