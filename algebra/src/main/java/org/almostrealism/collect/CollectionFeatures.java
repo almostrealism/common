@@ -254,19 +254,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @example
 	 * <pre>{@code
-	 * // Get size of a {@link PackedCollection} supplier
-	 * PackedCollection<?> collection = new PackedCollection<>(shape(3, 4));
-	 * int totalSize = size(() -> collection);
-	 * // Result: 12 (3 * 4 elements)
+	 * // Get size of a {@link CollectionProducer} created with c()
+	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
+	 * int vectorSize = size(vector);
+	 * // Result: 3 (3 elements in the vector)
 	 * 
-	 * // For {@link MemoryDataComputation} suppliers
-	 * MemoryDataComputation computation = new SomeComputation(5);
-	 * int memLength = size(computation);
-	 * // Result: 5 (memory length of the computation)
+	 * // Get size of arithmetic operation results
+	 * CollectionProducer<PackedCollection<?>> a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
+	 * CollectionProducer<PackedCollection<?>> b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
+	 * CollectionProducer<PackedCollection<?>> sum = add(a, b);
+	 * int matrixSize = size(sum);
+	 * // Result: 6 (2 * 3 matrix elements)
 	 * 
-	 * // Null supplier returns -1
-	 * int nullSize = size(null);
-	 * // Result: -1
+	 * // Get size of reshaped producers
+	 * CollectionProducer<PackedCollection<?>> reshaped = vector.reshape(shape(1, 3));
+	 * int reshapedSize = size(reshaped);
+	 * // Result: 3 (same total elements, different shape)
 	 * }</pre>
 	 */
 	default int size(Supplier s) {
