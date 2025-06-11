@@ -306,6 +306,22 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
+	/**
+	 * Creates a Block that performs subset extraction in the forward pass and padding in the backward pass.
+	 * This is commonly used in neural network architectures where you need to crop data in one direction
+	 * and pad it back in the reverse direction during backpropagation.
+	 *
+	 * <p>The forward operation extracts a subset from the input at the specified position,
+	 * while the backward operation pads the gradient back to the original input size.</p>
+	 *
+	 * @param inputShape The shape of the input data
+	 * @param subsetShape The shape of the extracted subset
+	 * @param pos The position coordinates where to extract the subset from
+	 * @return A Block that performs subset extraction forward and padding backward
+	 * 
+	 * @see #subset(TraversalPolicy, Producer, int...)
+	 * @see PackedCollectionSubset
+	 */
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		return new DefaultBlock(inputShape, subsetShape,
 				Cell.of((in, next) ->
