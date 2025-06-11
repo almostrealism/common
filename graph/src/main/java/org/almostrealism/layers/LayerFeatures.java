@@ -332,10 +332,37 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
 	}
 
+	/**
+	 * Creates a function that produces a Block for subset extraction operations using position from TraversalPolicy.
+	 * This method provides a functional interface for creating subset blocks where the position coordinates
+	 * are derived from a TraversalPolicy's extent.
+	 *
+	 * @param subsetShape The shape of the extracted subset
+	 * @param pos The TraversalPolicy whose extent provides position coordinates
+	 * @return A function that takes input shape and returns a Block for subset operations
+	 * 
+	 * @see #subset(TraversalPolicy, TraversalPolicy, int...)
+	 */
 	default Function<TraversalPolicy, Block> subset(TraversalPolicy subsetShape, TraversalPolicy pos) {
 		return inputShape -> subset(inputShape, subsetShape, pos.extent());
 	}
 
+	/**
+	 * Creates a Block that performs subset extraction in the forward pass and padding in the backward pass.
+	 * This is commonly used in neural network architectures where you need to crop data in one direction
+	 * and pad it back in the reverse direction during backpropagation.
+	 *
+	 * <p>The forward operation extracts a subset from the input at the specified position,
+	 * while the backward operation pads the gradient back to the original input size.</p>
+	 *
+	 * @param inputShape The shape of the input data
+	 * @param subsetShape The shape of the extracted subset
+	 * @param pos The position coordinates where to extract the subset from
+	 * @return A Block that performs subset extraction forward and padding backward
+	 * 
+	 * @see #subset(TraversalPolicy, Producer, int...)
+	 * @see PackedCollectionSubset
+	 */
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		if (inputShape.getDimensions() != subsetShape.getDimensions()) {
 			throw new IllegalArgumentException("Cannot take a " + subsetShape + " subset of " +

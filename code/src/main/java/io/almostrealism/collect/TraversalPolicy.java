@@ -401,19 +401,47 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return index(new TraversalPolicy(dims).position(index));
 	}
 
+	/**
+	 * Convenience method for subset index calculation with integer index and location values.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, int index, int... loc) {
 		return subset(shape, new IntegerConstant(index), loc);
 	}
 
+	/**
+	 * Convenience method for subset index calculation with Expression index and integer locations.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, Expression index, int... loc) {
 		return subset(shape, index,
 				IntStream.of(loc).mapToObj(i -> new IntegerConstant(i)).toArray(Expression[]::new));
 	}
 
+	/**
+	 * Convenience method for subset index calculation with integer index and Expression locations.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, int index, Expression... loc) {
 		return subset(shape, new IntegerConstant(index), loc);
 	}
 
+	/**
+	 * Creates an expression that computes the index in this TraversalPolicy's coordinate system
+	 * corresponding to a subset operation. This is the core mathematical method used by 
+	 * {@link org.almostrealism.collect.computations.PackedCollectionSubset} to map indices
+	 * from subset space to input collection space.
+	 *
+	 * <p>Given an index in the subset coordinate system and the location offset where the subset
+	 * starts, this method computes the equivalent index in the parent collection's coordinate system.</p>
+	 *
+	 * @param shape The shape/dimensions of the subset being extracted
+	 * @param index The index within the subset coordinate system
+	 * @param loc The starting location/offset where the subset begins in each dimension
+	 * @return An expression that computes the corresponding index in the parent collection
+	 * 
+	 * @see org.almostrealism.collect.computations.PackedCollectionSubset#projectIndex(Expression)
+	 */
 	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {
 		if (shape.getDimensions() != getDimensions()) {
 			System.out.println("WARN: Obtaining a " + shape.getDimensions() +
