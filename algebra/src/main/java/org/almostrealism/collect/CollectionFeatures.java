@@ -1920,6 +1920,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return add(a, minus(b));
 	}
 
+	/**
+	 * Performs element-wise subtraction while ignoring operations that would result in zero.
+	 * This method uses epsilon-based floating-point comparison to determine when the operands
+	 * are effectively equal, avoiding unnecessary computation in those cases.
+	 * 
+	 * <p>The implementation uses {@link EpsilonConstantComputation} to create a tolerance threshold
+	 * for floating-point equality comparison. When two values are equal within epsilon tolerance,
+	 * the subtraction is skipped and the original value is preserved rather than computing a
+	 * potentially inaccurate zero result.</p>
+	 * 
+	 * <p>This is particularly useful in numerical computations where:</p>
+	 * <ul>
+	 *   <li>Floating-point precision errors might cause (a - a) to not equal exactly 0.0</li>
+	 *   <li>Avoiding unnecessary computation when operands are effectively equal</li>
+	 *   <li>Maintaining numerical stability in iterative algorithms</li>
+	 * </ul>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
+	 * @param a the minuend (value to subtract from)
+	 * @param b the subtrahend (value to subtract)
+	 * @return a {@link CollectionProducerComputation} that performs epsilon-aware subtraction
+	 * 
+	 * @see EpsilonConstantComputation
+	 * @see #equals(Producer, Producer, Producer, Producer)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subtractIgnoreZero(Producer<T> a, Producer<T> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
@@ -2551,6 +2576,29 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
 	}
 
+	/**
+	 * Performs element-wise equality comparison between two collections with custom return values.
+	 * This method compares corresponding elements and returns specified values based on the comparison result.
+	 * 
+	 * <p>This method is commonly used with {@link EpsilonConstantComputation} as the threshold parameter
+	 * for floating-point equality comparisons that need to account for numerical precision:</p>
+	 * <pre>{@code
+	 * // Compare two collections with epsilon tolerance
+	 * CollectionProducer<PackedCollection> areEqual = 
+	 *     equals(a, b, new EpsilonConstantComputation<>(shape), 
+	 *            c(1.0).reshape(shape));  // return 1.0 if equal within epsilon
+	 * }</pre>
+	 * 
+	 * @param <T> the type of {@link PackedCollection} to produce
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare  
+	 * @param trueValue the value to return when elements are equal (often an epsilon threshold)
+	 * @param falseValue the value to return when elements are not equal
+	 * @return a {@link CollectionProducer} that generates comparison results
+	 * 
+	 * @see EpsilonConstantComputation
+	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> equals(Producer<?> a, Producer<?> b,
 																		Producer<T> trueValue, Producer<T> falseValue) {
 		return compute((shape, args) ->
