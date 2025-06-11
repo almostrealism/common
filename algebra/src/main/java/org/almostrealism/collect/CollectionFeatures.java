@@ -634,11 +634,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * All elements in the produced collection will have the same constant value,
 	 * but the collection will have the specified multi-dimensional shape.
 	 * 
+	 * <p>This method uses {@link SingleConstantComputation} for multi-element collections
+	 * and {@link AtomicConstantComputation} for single-element collections to provide
+	 * optimal performance for constant value operations.</p>
+	 * 
 	 * @param <T> the type of {@link PackedCollection} produced
 	 * @param shape the desired shape for the constant collection
 	 * @param value the constant value for all elements
 	 * @return a {@link CollectionProducer} that generates a constant-filled collection
 	 * 
+	 * @see SingleConstantComputation
+	 * @see AtomicConstantComputation
 	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix filled with ones
@@ -1201,7 +1207,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * <h4>Optimization Notes:</h4>
 	 * <ul>
-	 * <li>Constant collections are optimized using reshape operations</li>
+	 * <li>Constant collections ({@link SingleConstantComputation}) are optimized using reshape operations</li>
 	 * <li>Regular collections use the full {@link PackedCollectionRepeat} implementation</li>
 	 * <li>The output shape is automatically computed based on the input</li>
 	 * </ul>
@@ -1213,6 +1219,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @see PackedCollectionRepeat
 	 * @see PackedCollectionRepeat#shape(int, TraversalPolicy)
+	 * @see SingleConstantComputation#reshape(TraversalPolicy)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
 		if (collection instanceof SingleConstantComputation) {
@@ -1828,11 +1835,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This method can add any number of collections together by summing
 	 * corresponding elements across all input collections.
 	 * 
+	 * <p>This method includes optimizations for constant operations:
+	 * when all operands are {@link SingleConstantComputation} instances,
+	 * the method computes the sum directly and returns a new constant
+	 * computation, avoiding the overhead of the full computation pipeline.</p>
+	 * 
 	 * @param <T> the type of PackedCollection
 	 * @param operands the list of collections to add together
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
 	 * 
+	 * @see SingleConstantComputation
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
@@ -1842,12 +1855,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * CollectionProducer<PackedCollection<?>> sum = add(List.of(vec1, vec2, vec3));
 	 * // Result: Producer that generates [9.0, 12.0] (1+3+5, 2+4+6)
 	 * 
-	 * // Add multiple constants
+	 * // Add multiple constants (optimized)
 	 * List<Producer<?>> constants = List.of(
 	 *     constant(1.0), constant(2.0), constant(3.0)
 	 * );
 	 * CollectionProducer<PackedCollection<?>> total = add(constants);
-	 * // Result: Producer that generates [6.0]
+	 * // Result: Producer that generates [6.0] (computed at construction time)
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(List<Producer<?>> operands) {
@@ -1961,12 +1974,21 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This overload allows for optimization by providing a pre-computed result
 	 * that can be used instead of performing the actual computation.
 	 * 
+	 * <p>This method includes several optimizations:</p>
+	 * <ul>
+	 *   <li>Identity element detection (multiplication by 1.0)</li>
+	 *   <li>Constant multiplication optimization using {@link SingleConstantComputation}</li>
+	 *   <li>When both operands are constants, computes the result directly</li>
+	 *   <li>Scalar constant multiplication optimization</li>
+	 * </ul>
+	 * 
 	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the first collection to multiply
 	 * @param b the second collection to multiply
 	 * @param shortCircuit optional pre-computed result for optimization
 	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 * 
+	 * @see SingleConstantComputation
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
@@ -1977,6 +1999,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Evaluable<PackedCollection<?>> precomputed = () -> pack(2.0, 3.0);
 	 * CollectionProducer<PackedCollection<?>> result = multiply(vec1, vec2, precomputed);
 	 * // May use precomputed result if beneficial
+	 * 
+	 * // Constant multiplication (optimized)
+	 * CollectionProducer<PackedCollection<?>> constant1 = constant(2.0);
+	 * CollectionProducer<PackedCollection<?>> constant2 = constant(3.0);
+	 * CollectionProducer<PackedCollection<?>> product = multiply(constant1, constant2);
+	 * // Result: constant(6.0) computed directly without full pipeline
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(
