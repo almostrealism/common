@@ -114,18 +114,6 @@ CollectionProducer<PackedCollection> conditionalResult =
 // Returns data where data > epsilon, zeros elsewhere
 ```
 
-### Parallel Processing
-
-```java
-// EpsilonConstantComputation supports parallel processing
-EpsilonConstantComputation<PackedCollection> epsilon = 
-    new EpsilonConstantComputation<>(new TraversalPolicy(1000, 1000));
-
-// The computation automatically handles parallel execution
-CollectionProducerParallelProcess<PackedCollection> process = epsilon.generate(null);
-// Process efficiently handles large epsilon collections
-```
-
 ## Machine Epsilon Behavior
 
 ### Runtime vs Compiled Behavior
@@ -142,15 +130,19 @@ EpsilonConstantComputation<PackedCollection> epsilon =
 ### Precision Awareness
 
 ```java
-// EpsilonConstantComputation automatically adapts to target precision
-// - Uses Float.EPSILON for single precision
-// - Uses Double.EPSILON for double precision  
-// - Respects platform-specific epsilon characteristics
+// EpsilonConstantComputation works with the Precision enum to determine epsilon values
+// The Precision class defines three floating-point precisions:
 
-// The actual epsilon value depends on:
-// 1. Target hardware precision settings
-// 2. Compilation context (test vs production)
-// 3. Language operations precision configuration
+// FP16 (half precision): epsilon = 1e-4 (or 0.0009765625 strict)
+// FP32 (single precision): epsilon = 1e-5 (or 1.1920928955078125e-7 strict)  
+// FP64 (double precision): epsilon = 1e-7 (or 2.220446049250313e-16 strict)
+
+// Precision.epsilon() provides the appropriate epsilon value:
+// Precision.FP32.epsilon() -> 1e-5
+// Precision.FP64.epsilon() -> 1e-7
+// Precision.FP16.epsilon() -> 1e-4
+
+// The actual epsilon used depends on the compilation context and target precision
 ```
 
 ## Performance Considerations
@@ -178,19 +170,7 @@ TraversalPolicy operandShape = a.getShape();
 CollectionProducer<PackedCollection> tolerance = 
     new EpsilonConstantComputation<>(operandShape);
 
-// Use in various tolerance-based computations
-CollectionProducer<PackedCollection> withinTolerance = 
+// Use in various direct comparisons
+CollectionProducer<PackedCollection> comparison = 
     lessThan(abs(subtract(a, b)), tolerance, c(1.0), c(0.0));
-```
-
-### Numerical Gradient Computation
-
-```java
-// Pattern: Use epsilon for numerical differentiation
-EpsilonConstantComputation<PackedCollection> h = 
-    new EpsilonConstantComputation<>(inputShape);
-
-// Approximate derivative: (f(x + h) - f(x)) / h
-CollectionProducer<PackedCollection> derivative = 
-    divide(subtract(f(add(x, h)), f(x)), h);
 ```
