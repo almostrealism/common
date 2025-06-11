@@ -126,15 +126,12 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		this.position = position;
 
 		if (shape.getDimensions() != position.getDimensions()) {
-			throw new IllegalArgumentException("Output shape and position must have the same number of dimensions. " +
-				"Shape dimensions: " + shape.getDimensions() + ", Position dimensions: " + position.getDimensions());
+			throw new IllegalArgumentException();
 		}
 
 		for (int i = 0; i < shape.getDimensions(); i++) {
 			if (shape.length(i) < (position.length(i) + inputShape.length(i))) {
-				throw new IllegalArgumentException("Output shape is too small for input at specified position. " +
-					"Dimension " + i + ": shape=" + shape.length(i) + ", required=" + (position.length(i) + inputShape.length(i)) +
-					" (position=" + position.length(i) + " + input=" + inputShape.length(i) + ")");
+				throw new IllegalArgumentException();
 			}
 		}
 	}
