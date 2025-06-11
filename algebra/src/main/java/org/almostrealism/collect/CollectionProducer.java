@@ -110,6 +110,27 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return permute(this, order);
 	}
 
+	/**
+	 * Convenience method to apply symmetric padding to this collection.
+	 * This method creates a {@link PackedCollectionPad} computation that adds the specified
+	 * amount of zero-padding to each dimension.
+	 * 
+	 * <p><strong>Example:</strong></p>
+	 * <pre>{@code
+	 * CollectionProducer<?> input = ...; // 2x3 collection
+	 * CollectionProducer<?> padded = input.pad(1, 2); // Results in 4x7 collection
+	 * // Adds 1 unit of padding to each side of dimension 0: 2 + 1+1 = 4
+	 * // Adds 2 units of padding to each side of dimension 1: 3 + 2+2 = 7
+	 * }</pre>
+	 * 
+	 * @param depths Padding depth for each dimension. depths[i] specifies the amount of
+	 *               zero-padding to add before and after the data in dimension i
+	 * @param <V> The type of PackedCollection
+	 * @return A CollectionProducerComputation that produces the padded collection
+	 * 
+	 * @see PackedCollectionPad
+	 * @see org.almostrealism.collect.CollectionFeatures#pad(Producer, int...)
+	 */
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
 		return pad(this, depths);
 	}
