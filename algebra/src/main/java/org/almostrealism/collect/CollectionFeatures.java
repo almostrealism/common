@@ -233,7 +233,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @example
 	 * <pre>{@code
 	 * // Create an expression with known shape
-	 * TraversableExpression expr = new SomeExpression(shape(2, 3));
+	 * TraversableExpression expr = new PackedCollectionMap(shape(2, 3), someProducer, mapper);
 	 * TraversalPolicy extractedShape = shape(expr);
 	 * // Result: shape with dimensions [2, 3]
 	 * }</pre>
@@ -301,8 +301,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @example
 	 * <pre>{@code
 	 * // Get size of a shape object
-	 * Shape<?> someShape = new PackedCollection<>(shape(2, 3, 4));
-	 * int totalElements = size(someShape);
+	 * Shape<?> collection = new PackedCollection<>(shape(2, 3, 4));
+	 * int totalElements = size(collection);
 	 * // Result: 24 (2 * 3 * 4 elements)
 	 * }</pre>
 	 */
@@ -424,10 +424,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Create a single-element collection
 	 * PackedCollection<?> single = pack(42.0);
 	 * // Result: PackedCollection with shape [1] containing [42.0]
-	 * 
-	 * // Create an empty collection
-	 * PackedCollection<?> empty = pack();
-	 * // Result: PackedCollection with shape [0] containing no elements
 	 * }</pre>
 	 */
 	default PackedCollection<?> pack(double... values) {
@@ -1013,7 +1009,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Alias for traverseEach - sets up the producer to traverse each element.
+	 * Alias for {@link #traverseEach} - sets up the producer to traverse each element.
 	 * This is a convenience method that makes collection operations more readable.
 	 * 
 	 * @param <T> the type of PackedCollection
