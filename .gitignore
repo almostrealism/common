@@ -14,3 +14,6 @@
 /utils/data/**
 /utils/results/**
 /utils/generated_images/**
+
+# Javac argument files
+javac.*.args
