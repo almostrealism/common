@@ -34,6 +34,7 @@ import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.util.DescribableParent;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -49,10 +50,78 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * A producer that reshapes collections by modifying their dimensional structure or traversal patterns.
+ * This class provides two primary modes of operation: traversal axis modification and explicit shape transformation.
+ * 
+ * <h3>Purpose</h3>
+ * The {@code ReshapeProducer} enables changing how collections are structured and accessed without copying
+ * the underlying data. It supports both logical reshaping (changing dimensions while preserving total size)
+ * and traversal modifications (changing iteration patterns over the same data).
+ * 
+ * <h3>Operation Modes</h3>
+ * <ul>
+ *   <li><strong>Traversal Axis Mode:</strong> Changes which dimension is used as the primary traversal axis</li>
+ *   <li><strong>Shape Transformation Mode:</strong> Explicitly changes the dimensional structure of the collection</li>
+ * </ul>
+ * 
+ * <h3>Usage Examples</h3>
+ * 
+ * <h4>Basic Shape Transformation</h4>
+ * <pre>{@code
+ * // Reshape a 1D vector into a 2D matrix
+ * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
+ * TraversalPolicy matrixShape = shape(2, 3);
+ * ReshapeProducer<PackedCollection<?>> matrix = new ReshapeProducer<>(matrixShape, vector);
+ * // Result: 2x3 matrix with same data arranged as [[1,2,3], [4,5,6]]
+ * }</pre>
+ * 
+ * <h4>Traversal Axis Modification</h4>
+ * <pre>{@code
+ * // Change traversal axis for different iteration patterns
+ * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4)); // 12 elements
+ * ReshapeProducer<PackedCollection<?>> rowTraversal = new ReshapeProducer<>(0, matrix);
+ * ReshapeProducer<PackedCollection<?>> colTraversal = new ReshapeProducer<>(1, matrix);
+ * // Same data, different traversal patterns
+ * }</pre>
+ * 
+ * <h4>Integration with Collection Operations</h4>
+ * <pre>{@code
+ * // Using via CollectionFeatures helper methods
+ * CollectionProducer<PackedCollection<?>> data = c(shape(2, 2, 3)); // 12 elements
+ * 
+ * // Reshape to flatten the data
+ * Producer<?> flattened = reshape(shape(12), data);
+ * 
+ * // Change traversal axis
+ * Producer<?> reordered = traverse(1, data);
+ * 
+ * // Element-wise traversal
+ * Producer<?> elements = traverseEach(data);
+ * }</pre>
+ * 
+ * <h3>Important Considerations</h3>
+ * <ul>
+ *   <li><strong>Size Preservation:</strong> Shape transformations must preserve total element count</li>
+ *   <li><strong>Performance:</strong> Operations are typically zero-copy, changing only metadata</li>
+ *   <li><strong>Composability:</strong> Can be chained with other collection operations</li>
+ *   <li><strong>Type Safety:</strong> Maintains type information through generic parameters</li>
+ * </ul>
+ * 
+ * @param <T> the type of Shape being reshaped, must extend Shape
+ * 
+ * @see org.almostrealism.collect.CollectionFeatures#reshape(io.almostrealism.collect.TraversalPolicy, io.almostrealism.relation.Producer)
+ * @see org.almostrealism.collect.CollectionFeatures#traverse(int, io.almostrealism.relation.Producer)
+ * @see org.almostrealism.collect.CollectionFeatures#traverseEach(io.almostrealism.relation.Producer)
+ * @see io.almostrealism.collect.TraversalPolicy
+ * @see io.almostrealism.collect.Shape
+ * 
+ * @author Michael Murray
+ */
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducerParallelProcess<T>,
 					TraversableExpression<Double>,
-					ScopeLifecycle, DescribableParent<Process<?, ?>> {
+					ScopeLifecycle, DescribableParent<Process<?, ?>>, CollectionFeatures {
 	public static boolean enableTraversalDelegateIsolation = true;
 	public static boolean enableShapeDelegateIsolation = true;
 
