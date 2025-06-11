@@ -106,7 +106,7 @@ import java.util.stream.IntStream;
  *
  * <p><strong>Performance Considerations:</strong></p>
  * <ul>
- *   <li>The subset operation creates a view that projects indices rather than copying data</li>
+ *   <li>The subset operation copies data from the source to a new collection using optimized index projection</li>
  *   <li>Memory access patterns are optimized for the underlying hardware</li>
  *   <li>Static positions enable compile-time optimizations</li>
  *   <li>Dynamic positions provide runtime flexibility at a small performance cost</li>
