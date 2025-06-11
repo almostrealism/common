@@ -129,52 +129,13 @@ import java.util.OptionalDouble;
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
 	
-	/**
-	 * Enables optimization for operations with unique index patterns.
-	 * When {@code true}, the implementation attempts to optimize cases where
-	 * index projections follow predictable, unique patterns, potentially
-	 * improving performance for large-scale repetitions.
-	 */
 	public static boolean enableUniqueIndexOptimization = true;
-	
-	/**
-	 * Controls whether input computations should be isolated for efficiency.
-	 * When {@code true}, input operations are isolated to prevent redundant
-	 * computation and improve memory usage patterns.
-	 */
 	public static boolean enableInputIsolation = true;
-	
-	/**
-	 * General isolation flag for computational optimization.
-	 * When {@code true}, enables various isolation strategies to improve
-	 * performance and reduce computational overhead.
-	 */
 	public static boolean enableIsolation = true;
-	
-	/**
-	 * Permits operations on collections that exceed normal size limits.
-	 * When {@code true}, allows repetition operations that would normally
-	 * be restricted due to large memory requirements or computational complexity.
-	 */
 	public static boolean enableLargeSlice = true;
-	
-	/**
-	 * Enables short-circuit optimization for simple repetition cases.
-	 * When {@code true}, simple repetitions bypass the full computation
-	 * pipeline and use direct memory operations for better performance.
-	 */
 	public static boolean enableShortCircuit = false;
 
-	/**
-	 * The shape policy for individual subset elements within the repeated structure.
-	 * This defines how each repetition unit is shaped and accessed.
-	 */
 	private TraversalPolicy subsetShape;
-	
-	/**
-	 * The shape policy for complete slices including repetition dimensions.
-	 * This encompasses the full repeated structure including all repetition axes.
-	 */
 	private TraversalPolicy sliceShape;
 
 	/**

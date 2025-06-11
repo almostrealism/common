@@ -418,30 +418,9 @@ covered briefly here.
 #### Repeat
 
 The repeat operation is used to repeat the item (see TraversalPolicy::item, described above)
-of a collection some finite number of times. This is a fundamental operation for broadcasting,
-neural network computations, and tensor manipulations. The operation is implemented by the
-{@link PackedCollectionRepeat} class, which provides memory-efficient repetition through
-index projection rather than actual data duplication.
+of a collection some finite number of times. This is useful for broadcasting operations in
+different ways.
 
-**Basic Repetition:**
-```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-    // ....
-
-	public void basicRepeat() {
-		// Create a 2x3 collection
-		PackedCollection<?> input = new PackedCollection<>(shape(2, 3));
-		input.fill(pos -> pos);  // Fill with indices [0, 1, 2, 3, 4, 5]
-		
-		// Repeat the entire collection 4 times
-		PackedCollection<?> repeated = cp(input).repeat(4).get().evaluate();
-		// Result shape: (4, 2, 3) - same data appears 4 times
-		repeated.print(); // Shows the repeated structure
-	}
-}
-```
-
-**Broadcasting with Repeat:**
 ```Java
 public class MyNativeEnabledApplication implements CodeFeatures {
     // ....
@@ -456,35 +435,8 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 
 This example will produces [8, 10, 12, 15]. Notice how the broadcast behavior here is different
 because of the repeat operation - because the 2x1 collection has each item (size 1) repeated twice,
-producing [2, 2, 3, 3] which is then multiplied by the other value to produce a result.
-
-**Neural Network Usage:**
-```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-    // ....
-
-	public void denseLayer() {
-		int inputSize = 128;
-		int outputSize = 64;
-		
-		PackedCollection<?> input = new PackedCollection<>(shape(inputSize));
-		PackedCollection<?> weights = new PackedCollection<>(shape(inputSize, outputSize));
-		
-		// Repeat input for each output node, then compute weighted sum
-		PackedCollection<?> result = cp(input).repeat(outputSize).traverseEach()
-			.multiply(cp(weights).enumerate(1, 1))
-			.traverse(1).sum()
-			.get().evaluate();
-		// Result shape: (outputSize)
-	}
-}
-```
-
-**Performance Notes:**
-- Repeat operations use index projection for memory efficiency
-- No actual data duplication occurs in memory
-- Hardware acceleration is supported for large-scale operations
-- Multiple optimization flags control performance behavior
+producing [2, 2, 3, 3] which is then multiplied by the other value to produce a result. Notice
+how the broadcast behavior here is different because of the repeat operation.
 
 #### Enumerate
 
