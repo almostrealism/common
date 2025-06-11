@@ -438,16 +438,7 @@ stride can also be omitted if it is the same as the length, as it is in the exam
 #### Subset
 
 To take just a slice of a collection, the subset operation can be used. It accepts shape and
-position information for the slice. The subset operation is fundamental for many tensor operations
-including image processing, convolutions, and data windowing.
-
-There are three main ways to use the subset operation:
-
-1. **Static positions** - positions known at compile time (most common)
-2. **Expression positions** - positions calculated using expressions
-3. **Dynamic positions** - positions determined at runtime
-
-##### Static Position Subset
+position information for the slice.
 
 ```Java
 public class MyNativeEnabledApplication implements CodeFeatures {
@@ -481,40 +472,6 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 	}
 }
 ```
-
-##### Dynamic Position Subset
-
-For cases where the subset position needs to be determined at runtime:
-
-```Java
-public class MyNativeEnabledApplication implements CodeFeatures {
-    // ....
-
-	public void dynamicSubset() {
-		PackedCollection<?> data = new PackedCollection<>(shape(50, 50));
-		data.fill(Math::random);
-
-		// Position determined at runtime
-		PackedCollection<?> position = new PackedCollection<>(2);
-		position.set(0, 15.0); // x-offset
-		position.set(1, 25.0); // y-offset
-
-		// Extract 5x5 subset at dynamic position
-		CollectionProducer<PackedCollection<?>> producer = 
-			subset(shape(5, 5), c(data), p(position));
-		PackedCollection<?> result = producer.get().evaluate();
-
-		// Result contains data[15:20, 25:30]
-	}
-}
-```
-
-##### Common Use Cases
-
-- **Image patch extraction**: Extract patches from images for convolution operations
-- **Time series windowing**: Extract sliding windows from temporal data
-- **Matrix block operations**: Extract sub-matrices for block-wise computations
-- **Data cropping**: Remove unwanted regions from multi-dimensional data
 
 #### More Complex Operations
 
