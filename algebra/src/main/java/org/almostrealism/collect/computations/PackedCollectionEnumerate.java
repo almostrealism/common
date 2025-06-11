@@ -62,6 +62,21 @@ import java.util.stream.IntStream;
  * <li><strong>Attention Patterns:</strong> Create attention windows for transformer models</li>
  * </ul>
  * 
+ * <h3>Performance Considerations</h3>
+ * <p>This class includes several optimization features:</p>
+ * <ul>
+ * <li><strong>Parallel Processing:</strong> Supports isolation for better parallelization</li>
+ * <li><strong>One-to-One Optimization:</strong> Special handling for bijective mappings</li>
+ * <li><strong>Expression Simplification:</strong> Reduces computational overhead in index calculations</li>
+ * <li><strong>Memory-Aware:</strong> Considers memory limits for isolation decisions</li>
+ * </ul>
+ * 
+ * <h3>Thread Safety</h3>
+ * <p>This class is thread-safe for read operations once constructed. The static
+ * configuration flags ({@link #enablePreferIsolation}, {@link #enableDetectTraversalDepth}, etc.)
+ * should be set before creating instances in multi-threaded environments as they
+ * are not synchronized.</p>
+ * 
  * @param <T> the type of {@link PackedCollection} being enumerated
  * 
  * @example
@@ -90,22 +105,60 @@ import java.util.stream.IntStream;
  * 
  * @see org.almostrealism.collect.CollectionFeatures#enumerate(int, int, io.almostrealism.relation.Producer)
  * @see io.almostrealism.collect.TraversalPolicy
+ * @see IndexProjectionProducerComputation
  */
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
-	/** Enable optimization for preferring isolation in parallel processing */
+	/**
+	 * Enable optimization for preferring isolation in parallel processing.
+	 * When enabled, enumeration operations will prefer to run in isolation
+	 * when the parallelism count is above the minimum threshold and output
+	 * size is within memory limits. This can improve performance for
+	 * compute-intensive enumeration operations.
+	 * 
+	 * @see #isIsolationTarget(ProcessContext)
+	 */
 	public static boolean enablePreferIsolation = false;
-	/** Enable automatic detection of traversal depth for multi-dimensional operations */
+	
+	/**
+	 * Enable automatic detection of traversal depth for multi-dimensional operations.
+	 * When enabled, the enumeration will automatically determine the appropriate
+	 * traversal axis based on the input collection's shape. When disabled,
+	 * traversal depth defaults to 0.
+	 * 
+	 * @see TraversalPolicy#getTraversalAxis()
+	 */
 	public static boolean enableDetectTraversalDepth = true;
-	/** Enable position simplification optimizations during index projection */
+	
+	/**
+	 * Enable position simplification optimizations during index projection.
+	 * When enabled, mathematical expressions used in index calculations are
+	 * simplified using kernel structure context information. This can reduce
+	 * computational overhead at the cost of additional compilation time.
+	 * 
+	 * @see #projectIndex(Expression)
+	 */
 	public static boolean enablePositionSimplification = true;
-	/** Enable unique index optimization for one-to-one mappings */
+	
+	/**
+	 * Enable unique index optimization for one-to-one mappings.
+	 * When enabled and the enumeration represents a one-to-one mapping,
+	 * specialized index calculations are used that can significantly
+	 * improve performance for certain enumeration patterns.
+	 * 
+	 * @see #isOneToOne()
+	 * @see #uniqueNonZeroOffsetMapped(Index, Index)
+	 */
 	public static boolean enableUniqueIndexOptimization = true;
 
+	/** The shape of the input collection after applying traversal transformations */
 	private TraversalPolicy inputShape;
+	/** The depth at which traversal operations are performed */
 	private int traversalDepth;
 
+	/** The shape of each enumerated subset/window */
 	private TraversalPolicy subsetShape;
+	/** The stride pattern determining spacing between consecutive enumerations */
 	private TraversalPolicy strideShape;
 
 	/**
@@ -148,9 +201,33 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		this.strideShape = stride;
 	}
 
+	/**
+	 * Returns false to indicate that the output is not relative to the input indexing.
+	 * This enumeration creates absolute indices into the input collection based on
+	 * the enumeration pattern, rather than relative offsets.
+	 * 
+	 * @return always false for enumeration operations
+	 */
 	@Override
 	protected boolean isOutputRelative() { return false; }
 
+	/**
+	 * Determines whether this enumeration should be executed in isolation
+	 * for better parallel processing performance.
+	 * 
+	 * <p>Isolation is preferred when:</p>
+	 * <ul>
+	 * <li>The parent class indicates isolation is beneficial</li>
+	 * <li>Prefer isolation is enabled and parallelism count exceeds minimum threshold</li>
+	 * <li>Output size fits within memory reservation limits</li>
+	 * </ul>
+	 * 
+	 * @param context the processing context providing parallelism information
+	 * @return true if this enumeration should run in isolation
+	 * 
+	 * @see #enablePreferIsolation
+	 * @see ParallelismTargetOptimization#minCount
+	 */
 	@Override
 	public boolean isIsolationTarget(ProcessContext context) {
 		if (super.isIsolationTarget(context)) return true;
@@ -185,11 +262,44 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return true;
 	}
 
+	/**
+	 * Determines if this enumeration results in a zero-valued output.
+	 * This occurs when the input collection itself is algebraically zero.
+	 * 
+	 * @return true if the enumeration output will be all zeros
+	 * 
+	 * @see Algebraic#isZero(Object)
+	 */
 	@Override
 	public boolean isZero() {
 		return Algebraic.isZero(getInputs().get(1));
 	}
 
+	/**
+	 * Projects an output index to the corresponding input index for enumeration.
+	 * This is the core method that implements the enumeration transformation by
+	 * mapping each position in the output enumerated collection back to the
+	 * appropriate position in the input collection.
+	 * 
+	 * <p>The projection algorithm works as follows:</p>
+	 * <ol>
+	 * <li><strong>Block Determination:</strong> Calculate which enumeration block 
+	 *     the index belongs to based on traversal depth</li>
+	 * <li><strong>Slice Calculation:</strong> Determine which enumerated slice 
+	 *     within the block</li>
+	 * <li><strong>Offset Calculation:</strong> Find the position within the slice</li>
+	 * <li><strong>Stride Application:</strong> Apply stride pattern to determine 
+	 *     the starting position</li>
+	 * <li><strong>Final Mapping:</strong> Combine block, slice, and offset to get 
+	 *     the input index</li>
+	 * </ol>
+	 * 
+	 * @param index the output index to project back to input space
+	 * @return an {@link Expression} representing the corresponding input index
+	 * 
+	 * @see #enablePositionSimplification
+	 * @see TraversalPolicy#subset(TraversalPolicy, Expression, Expression[])
+	 */
 	@Override
 	protected Expression<?> projectIndex(Expression<?> index) {
 		Expression block;
@@ -242,6 +352,22 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return block.multiply(inputShape.getTotalSizeLong()).add(blockOffset);
 	}
 
+	/**
+	 * Optimized calculation of unique non-zero offset for specific index patterns.
+	 * This method provides an optimization for cases where the enumeration can
+	 * determine unique index mappings more efficiently than the general case.
+	 * 
+	 * <p>The optimization is applied when the global and local indices match
+	 * the target index, allowing for a specialized mapping calculation that
+	 * can avoid the full index projection computation.</p>
+	 * 
+	 * @param globalIndex the global index context
+	 * @param localIndex the local index within the current context  
+	 * @param targetIndex the index being targeted for offset calculation
+	 * @return the calculated offset expression, or delegates to parent if optimization not applicable
+	 * 
+	 * @see #uniqueNonZeroOffsetMapped(Index, Index)
+	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (Index.child(globalIndex, localIndex).equals(targetIndex)) {
@@ -252,6 +378,29 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
+	/**
+	 * Specialized unique offset calculation for one-to-one enumeration mappings.
+	 * This optimization is used when the enumeration represents a bijective
+	 * (one-to-one) mapping between input and output elements.
+	 * 
+	 * <p>The optimization applies when:</p>
+	 * <ul>
+	 * <li>Unique index optimization is enabled</li>  
+	 * <li>The enumeration is a one-to-one mapping</li>
+	 * <li>Index limits are properly defined</li>
+	 * <li>Subset shape size matches the local output limit</li>
+	 * </ul>
+	 * 
+	 * <p>When applicable, this method can significantly reduce computational
+	 * overhead by using direct index mapping instead of general projection.</p>
+	 * 
+	 * @param globalOut the global output index
+	 * @param localOut the local output index
+	 * @return the optimized offset expression, or null if optimization not applicable
+	 * 
+	 * @see #enableUniqueIndexOptimization
+	 * @see #isOneToOne()
+	 */
 	protected Expression<?> uniqueNonZeroOffsetMapped(Index globalOut, Index localOut) {
 		if (!enableUniqueIndexOptimization || !isOneToOne()) return null;
 		if (localOut.getLimit().isEmpty() || globalOut.getLimit().isEmpty()) return null;
@@ -267,6 +416,15 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return idx == null ? null : idx.withIndex(g, (Expression<?>) globalOut).imod(subsetShape.getSizeLong());
 	}
 
+	/**
+	 * Generates a new enumeration instance with the same configuration but different inputs.
+	 * This method is used by the framework to create optimized versions of the enumeration
+	 * with potentially transformed or optimized child processes.
+	 * 
+	 * @param children the list of child processes to use in the new instance
+	 * @return a new {@link PackedCollectionEnumerate} instance with the same configuration
+	 *         but using the provided child processes
+	 */
 	@Override
 	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
 		return (PackedCollectionEnumerate)
@@ -275,6 +433,15 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 						.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
+	/**
+	 * Extracts the {@link TraversalPolicy} shape from a producer.
+	 * This helper method ensures that the producer implements the {@link Shape}
+	 * interface and can provide traversal policy information needed for enumeration.
+	 * 
+	 * @param collection the producer to extract shape from
+	 * @return the {@link TraversalPolicy} representing the collection's shape
+	 * @throws IllegalArgumentException if the producer doesn't implement {@link Shape}
+	 */
 	private static TraversalPolicy shape(Producer<?> collection) {
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Enumerate cannot be performed without a TraversalPolicy");
