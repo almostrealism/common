@@ -1100,87 +1100,154 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Extracts a subset of elements from a collection at specified integer positions.
-	 * This operation creates a new collection containing only the elements
-	 * at the specified coordinates within the original collection.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param shape the desired shape for the subset
-	 * @param collection the source collection to extract from
-	 * @param position the integer coordinates specifying which elements to extract
-	 * @return a {@link CollectionProducerComputation} that generates the subset
-	 * 
+	 * Creates a subset computation that extracts a sub-collection from a larger collection
+	 * using static integer positions. This is the most commonly used subset method for
+	 * extracting fixed-size windows or slices from multi-dimensional data.
 	 *
+	 * <p>The subset operation is fundamental for many tensor operations including:</p>
+	 * <ul>
+	 *   <li>Image patch extraction for convolutions</li>
+	 *   <li>Time series windowing</li>
+	 *   <li>Matrix block operations</li>
+	 *   <li>Data sampling and cropping</li>
+	 * </ul>
+	 *
+	 * <p><strong>Example - 2D image patch extraction:</strong></p>
 	 * <pre>{@code
-	 * // Extract subset from a 2D matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 3), 
-	 *     1, 2, 3, 4, 5, 6, 7, 8, 9);
-	 * // Extract element at position (1, 2) -> value 6
-	 * CollectionProducerComputation<PackedCollection<?>> element = 
-	 *     subset(shape(1), matrix, 1, 2);
+	 * // Extract a 5x5 patch from a 256x256 image starting at (100, 150)
+	 * PackedCollection<?> image = new PackedCollection<>(shape(256, 256));
+	 * image.fill(Math::random);
 	 * 
-	 * // Extract a 2x2 subset starting at position (0, 1)
-	 * CollectionProducerComputation<PackedCollection<?>> block = 
-	 *     subset(shape(2, 2), matrix, 0, 1);
-	 * // Result: subset containing elements [2, 3, 5, 6]
+	 * CollectionProducer<PackedCollection<?>> patch = 
+	 *     subset(shape(5, 5), p(image), 100, 150);
+	 * PackedCollection<?> result = patch.get().evaluate();
+	 * 
+	 * // result now contains image[100:105, 150:155]
 	 * }</pre>
+	 *
+	 * <p><strong>Example - 3D volume extraction:</strong></p>
+	 * <pre>{@code
+	 * // Extract a 10x10x5 sub-volume from a 100x100x50 volume
+	 * PackedCollection<?> volume = new PackedCollection<>(shape(100, 100, 50));
+	 * volume.fill(pos -> pos[0] + pos[1] + pos[2]); // example fill
+	 * 
+	 * CollectionProducer<PackedCollection<?>> subVolume = 
+	 *     subset(shape(10, 10, 5), p(volume), 20, 30, 15);
+	 * PackedCollection<?> result = subVolume.get().evaluate();
+	 * }</pre>
+	 *
+	 * @param <T> The type of PackedCollection being subset
+	 * @param shape The desired shape/dimensions of the resulting subset
+	 * @param collection The source collection to extract from
+	 * @param position The starting position coordinates (one integer per dimension)
+	 * @return A CollectionProducerComputation that will produce the subset when evaluated
+	 * @throws IllegalArgumentException if position array length doesn't match collection dimensions
+	 * @throws IllegalArgumentException if resulting subset would extend beyond collection bounds
+	 * 
+	 * @see PackedCollectionSubset
+	 * @see TraversalPolicy
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, int... position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
 	/**
-	 * Extracts a subset of elements from a collection using {@link Expression}-based positions.
-	 * This allows for dynamic position calculation using mathematical expressions,
-	 * enabling more flexible subset extraction patterns.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param shape the desired shape for the subset
-	 * @param collection the source collection to extract from
-	 * @param position the {@link Expression} objects specifying dynamic coordinates
-	 * @return a {@link CollectionProducerComputation} that generates the subset
-	 * 
+	 * Creates a subset computation that extracts a sub-collection using expression-based positions.
+	 * This method allows for more complex position calculations that may involve runtime expressions,
+	 * mathematical operations, or computed offsets.
 	 *
+	 * <p>This variant is useful when subset positions need to be calculated based on other values
+	 * or when implementing adaptive algorithms where positions are determined dynamically.</p>
+	 *
+	 * <p><strong>Example - Computed position subset:</strong></p>
 	 * <pre>{@code
-	 * // Extract subset using computed positions  
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-	 * Expression rowExpr = e(2); // Expression evaluating to 2
-	 * Expression colExpr = e(1); // Expression evaluating to 1
-	 * CollectionProducerComputation<PackedCollection<?>> dynamicSubset = 
-	 *     subset(shape(1), matrix, rowExpr, colExpr);
-	 * // Extracts element at computed position (2, 1)
+	 * PackedCollection<?> data = new PackedCollection<>(shape(50, 50));
+	 * data.fill(Math::random);
+	 * 
+	 * // Calculate positions using expressions
+	 * Expression centerX = e(25);
+	 * Expression centerY = e(25);
+	 * Expression offset = e(5);
+	 * 
+	 * Expression startX = centerX.subtract(offset);
+	 * Expression startY = centerY.subtract(offset);
+	 * 
+	 * // Extract 10x10 subset around center
+	 * CollectionProducer<PackedCollection<?>> centeredSubset = 
+	 *     subset(shape(10, 10), p(data), startX, startY);
 	 * }</pre>
+	 *
+	 * @param <T> The type of PackedCollection being subset
+	 * @param shape The desired shape/dimensions of the resulting subset
+	 * @param collection The source collection to extract from
+	 * @param position The starting position coordinates as expressions (one per dimension)
+	 * @return A CollectionProducerComputation that will produce the subset when evaluated
+	 * 
+	 * @see PackedCollectionSubset
+	 * @see Expression
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Expression... position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
 	/**
-	 * Extracts a subset of elements from a collection using a {@link Producer} for positions.
-	 * This advanced form allows positions to be computed dynamically from other
-	 * collection operations, enabling complex indexing patterns.
-	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param shape the desired shape for the subset
-	 * @param collection the source collection to extract from
-	 * @param position a {@link Producer} that generates the position coordinates
-	 * @return a {@link CollectionProducerComputation} that generates the subset
-	 * 
+	 * Creates a subset computation with fully dynamic positions provided by another Producer.
+	 * This is the most flexible subset method, allowing positions to be computed at runtime
+	 * and potentially changed between evaluations.
 	 *
+	 * <p>This method is particularly useful for:</p>
+	 * <ul>
+	 *   <li>Implementing sliding window operations</li>
+	 *   <li>Dynamic region-of-interest extraction</li>
+	 *   <li>Adaptive sampling based on runtime conditions</li>
+	 *   <li>Batch processing with varying positions</li>
+	 * </ul>
+	 *
+	 * <p><strong>Example - Dynamic sliding window:</strong></p>
 	 * <pre>{@code
-	 * // Extract subset using dynamically computed positions
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(5, 5), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25);
-	 * CollectionProducer<PackedCollection<?>> indices = c(2.0, 3.0); // row 2, col 3
-	 * CollectionProducerComputation<PackedCollection<?>> dynamicSubset = 
-	 *     subset(shape(1), matrix, indices);
-	 * // Extracts element at position determined by indices producer
+	 * PackedCollection<?> timeSeries = new PackedCollection<>(shape(1000));
+	 * timeSeries.fill(pos -> Math.sin(pos[0] * 0.1)); // example signal
 	 * 
-	 * // Extract multiple elements using computed index patterns
-	 * CollectionProducer<PackedCollection<?>> indexPattern = 
-	 *     add(c(1.0, 1.0), c(0.0, 1.0)); // generates positions (1,2)
-	 * CollectionProducerComputation<PackedCollection<?>> pattern = 
-	 *     subset(shape(1), matrix, indexPattern);
+	 * // Position determined at runtime
+	 * PackedCollection<?> windowStart = new PackedCollection<>(1);
+	 * 
+	 * // Extract different windows by changing the position
+	 * for (int i = 0; i < 950; i += 10) {
+	 *     windowStart.set(0, (double) i);
+	 *     
+	 *     CollectionProducer<PackedCollection<?>> window = 
+	 *         subset(shape(50), p(timeSeries), p(windowStart));
+	 *     PackedCollection<?> result = window.get().evaluate();
+	 *     
+	 *     // Process this window...
+	 * }
 	 * }</pre>
+	 *
+	 * <p><strong>Example - 2D dynamic region extraction:</strong></p>
+	 * <pre>{@code
+	 * PackedCollection<?> image = new PackedCollection<>(shape(640, 480));
+	 * image.fill(Math::random);
+	 * 
+	 * // Dynamic position based on some computed region of interest
+	 * PackedCollection<?> roiPosition = new PackedCollection<>(2);
+	 * roiPosition.set(0, detectedObjectX);
+	 * roiPosition.set(1, detectedObjectY);
+	 * 
+	 * // Extract region around detected object
+	 * CollectionProducer<PackedCollection<?>> objectRegion = 
+	 *     subset(shape(64, 64), p(image), p(roiPosition));
+	 * PackedCollection<?> objectPatch = objectRegion.get().evaluate();
+	 * }</pre>
+	 *
+	 * @param <T> The type of PackedCollection being subset
+	 * @param shape The desired shape/dimensions of the resulting subset
+	 * @param collection The source collection to extract from
+	 * @param position A Producer that generates position coordinates at runtime
+	 * @return A CollectionProducerComputation that will produce the subset when evaluated
+	 * @throws IllegalArgumentException if position producer shape doesn't match collection dimensions
+	 * 
+	 * @see PackedCollectionSubset
+	 * @see Producer
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
