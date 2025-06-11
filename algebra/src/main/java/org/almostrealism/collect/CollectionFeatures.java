@@ -679,6 +679,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return enumerate;
 	}
 
+	/**
+	 * Pads a collection along specified axes with a uniform depth.
+	 * This convenience method applies symmetric padding (same amount on all sides) to selected dimensions.
+	 * 
+	 * @param axes Array of axis indices to pad (0-based)
+	 * @param depth Amount of padding to add on each side of the specified axes
+	 * @param collection The input collection to pad
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducerComputation that produces the padded collection
+	 * @throws UnsupportedOperationException if the input collection has a non-null traversal order
+	 * 
+	 * @see #pad(Producer, int...)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
 		if (shape.getOrder() != null) {
@@ -693,6 +706,27 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return pad(collection, depths);
 	}
 
+	/**
+	 * Pads a collection with specified depths for each dimension.
+	 * This method applies symmetric padding where each dimension gets the specified amount
+	 * of padding on both sides (before and after the original data).
+	 * 
+	 * <p><strong>Example:</strong></p>
+	 * <pre>{@code
+	 * // Pad a 2x3 collection with 1 unit on all sides of both dimensions
+	 * PackedCollection<?> input = new PackedCollection<>(2, 3);
+	 * CollectionProducer<?> padded = pad(input, 1, 1); // Results in 4x5 collection
+	 * }</pre>
+	 * 
+	 * @param collection The input collection to pad
+	 * @param depths Padding depth for each dimension. depths[i] specifies how much padding
+	 *               to add before and after the data in dimension i
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducerComputation that produces the padded collection
+	 * 
+	 * @see PackedCollectionPad
+	 * @see #pad(TraversalPolicy, TraversalPolicy, Producer)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(Producer<?> collection, int... depths) {
 		TraversalPolicy shape = shape(collection);
 
@@ -705,6 +739,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return pad(shape, new TraversalPolicy(true, depths), collection);
 	}
 
+	/**
+	 * Pads a collection to a specific output shape with specified positioning.
+	 * This method provides fine-grained control over where the input data is placed
+	 * within the output shape.
+	 * 
+	 * <p><strong>Examples:</strong></p>
+	 * <pre>{@code
+	 * // Place a 2x3 input at position (1,1) within a 4x5 output
+	 * TraversalPolicy outputShape = new TraversalPolicy(4, 5);
+	 * TraversalPolicy position = new TraversalPolicy(1, 1);
+	 * CollectionProducer<?> padded = pad(outputShape, input, 1, 1);
+	 * 
+	 * // Asymmetric padding: 2 units before, 1 unit after in first dimension
+	 * CollectionProducer<?> asymmetric = pad(outputShape, input, 2, 0);
+	 * }</pre>
+	 * 
+	 * @param shape The desired output shape after padding
+	 * @param collection The input collection to pad  
+	 * @param pos Position offsets for placing the input within the output shape.
+	 *            pos[i] specifies how many zeros to add before the input data in dimension i
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducer that produces the padded collection
+	 * 
+	 * @see PackedCollectionPad
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> pad(TraversalPolicy shape,
 																				 Producer<?> collection,
 																				 int... pos) {
@@ -718,6 +777,34 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Creates a PackedCollectionPad computation with explicit shape and position policies.
+	 * This is the most flexible padding method, allowing complete control over the output shape
+	 * and input positioning through TraversalPolicy objects.
+	 * 
+	 * <p>This method directly instantiates a {@link PackedCollectionPad} computation that implements
+	 * the padding logic. If the input collection is known to be zero (via {@link Algebraic#isZero}),
+	 * this method optimizes by returning a zeros collection instead.</p>
+	 * 
+	 * <p><strong>Usage in Neural Networks:</strong></p>
+	 * <p>Padding is commonly used in convolutional neural networks to:</p>
+	 * <ul>
+	 * <li>Preserve spatial dimensions after convolution</li>
+	 * <li>Handle boundary conditions in image processing</li>
+	 * <li>Implement specific architectural patterns (e.g., "same" padding)</li>
+	 * </ul>
+	 * 
+	 * @param shape The complete output shape specification
+	 * @param position The positioning policy specifying where input data is placed
+	 * @param collection The input collection producer
+	 * @param <T> The type of PackedCollection  
+	 * @return A CollectionProducerComputation that implements the padding operation,
+	 *         or a zeros collection if the input is zero
+	 * 
+	 * @see PackedCollectionPad
+	 * @see TraversalPolicy
+	 * @see Algebraic#isZero(Producer)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
 																				 TraversalPolicy position,
 																				 Producer<?> collection) {
