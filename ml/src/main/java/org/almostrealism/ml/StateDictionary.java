@@ -25,6 +25,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * StateDictionary provides access to model weights stored in protobuf format.
@@ -57,10 +58,11 @@ public class StateDictionary {
 		while (true) {
 			File weightFile = new File(weightsDirectory, "weights_" + fileIndex);
 			if (!weightFile.exists()) {
-				break; // No more weight files
+				// No more weight files
+				break;
 			}
 
-			// Read and parse protobuf file
+			// Read and parse protobuf
 			try (FileInputStream fis = new FileInputStream(weightFile)) {
 				Collections.CollectionLibraryData libraryData = Collections.CollectionLibraryData.parseFrom(fis);
 
@@ -110,7 +112,7 @@ public class StateDictionary {
 	 *
 	 * @return Set of all weight keys
 	 */
-	public java.util.Set<String> keySet() {
+	public Set<String> keySet() {
 		return weights.keySet();
 	}
 

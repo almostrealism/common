@@ -333,6 +333,21 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	}
 
 	/**
+	 * Creates a function that produces a Block for subset extraction operations using position from TraversalPolicy.
+	 * This method provides a functional interface for creating subset blocks where the position coordinates
+	 * are derived from a TraversalPolicy's extent.
+	 *
+	 * @param subsetShape The shape of the extracted subset
+	 * @param pos The TraversalPolicy whose extent provides position coordinates
+	 * @return A function that takes input shape and returns a Block for subset operations
+	 * 
+	 * @see #subset(TraversalPolicy, TraversalPolicy, int...)
+	 */
+	default Function<TraversalPolicy, Block> subset(TraversalPolicy subsetShape, TraversalPolicy pos) {
+		return inputShape -> subset(inputShape, subsetShape, pos.extent());
+	}
+
+	/**
 	 * Creates a Block that performs subset extraction in the forward pass and padding in the backward pass.
 	 * This is commonly used in neural network architectures where you need to crop data in one direction
 	 * and pad it back in the reverse direction during backpropagation.
@@ -349,6 +364,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	 * @see PackedCollectionSubset
 	 */
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
+		if (inputShape.getDimensions() != subsetShape.getDimensions()) {
+			throw new IllegalArgumentException("Cannot take a " + subsetShape + " subset of " +
+					inputShape + " with different number of dimensions");
+		} else if (subsetShape.getDimensions() != pos.length) {
+			throw new IllegalArgumentException("Subset shape " + subsetShape +
+					" does not match position (" + pos.length + " dimensions)");
+		}
+
 		return new DefaultBlock(inputShape, subsetShape,
 				Cell.of((in, next) ->
 						next.push(subset(subsetShape, in, pos))),
@@ -370,6 +393,8 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (kernelSize != 1 || padding != 0) {
 			throw new UnsupportedOperationException("Currently only kernel size 1 with no padding is supported");
 		}
+
+		weights = weights.reshape(weights.getShape().trim());
 
 		// For kernel size 1, this is just a pointwise linear transformation
 		// Reshape to (batchSize * seqLength, inputChannels) for matrix multiplication

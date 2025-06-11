@@ -89,6 +89,15 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 				requirements));
 	}
 
+	default Block subset(TraversalPolicy shape, int... dims) {
+		if (getOutputShape().getDimensions() != shape.getDimensions()) {
+			throw new IllegalArgumentException("Cannot take a " + shape + " subset of " +
+					getOutputShape() + " with different number of dimensions");
+		}
+
+		return andThen(subset(shape, position(dims)));
+	}
+
 	default Block transpose(int axis, ComputeRequirement... requirements) {
 		return enumerate(axis - 1, axis, 1, requirements);
 	}
