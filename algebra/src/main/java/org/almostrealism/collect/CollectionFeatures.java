@@ -1250,8 +1250,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	/**
 	 * Creates an enumeration of a collection along a specific axis with specified length.
-	 * This operation extracts consecutive elements along the specified axis,
-	 * useful for creating sliding windows or extracting sequential patterns.
+	 * This operation extracts consecutive elements along the specified axis, creating
+	 * sliding windows or sequential patterns. The stride defaults to the sequence length,
+	 * creating non-overlapping sequences.
+	 * 
+	 * <p>This method delegates to {@link PackedCollectionEnumerate} to perform the
+	 * enumeration computation, which transforms the input shape by adding a new dimension
+	 * for the enumerated sequences.</p>
 	 * 
 	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to enumerate (0-based)
@@ -1260,17 +1265,27 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
 	 * @example
+	 * <p><strong>1D Vector Enumeration:</strong></p>
 	 * <pre>{@code
-	 * // Enumerate a 1D vector with length 3 sequences
+	 * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
 	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
 	 * CollectionProducerComputation<PackedCollection<?>> enumerated = enumerate(0, 3, vector);
-	 * // Result: Creates sequences of length 3: [1,2,3], [2,3,4], [3,4,5], [4,5,6]
-	 * 
-	 * // Enumerate along axis 1 of a 2D matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
-	 * CollectionProducerComputation<PackedCollection<?>> colEnum = enumerate(1, 2, matrix);
-	 * // Result: Extracts 2-element sequences along columns
+	 * // Output: [[1,2,3], [4,5,6]] (shape: [2, 3])
+	 * // Creates 2 non-overlapping sequences of length 3
 	 * }</pre>
+	 * 
+	 * @example
+	 * <p><strong>2D Matrix Column Enumeration:</strong></p>
+	 * <pre>{@code
+	 * // Input: 3x6 matrix (shape: [3, 6])
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 6), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+	 * CollectionProducerComputation<PackedCollection<?>> colEnum = enumerate(1, 2, matrix);
+	 * // Output: shape [3, 3, 2] - extracts 3 pairs from each row
+	 * // Each row [1,2,3,4,5,6] becomes [[1,2], [3,4], [5,6]]
+	 * }</pre>
+	 * 
+	 * @see PackedCollectionEnumerate
+	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
@@ -1280,6 +1295,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Creates an enumeration with custom stride between elements.
 	 * This allows for more flexible enumeration patterns by specifying
 	 * how far apart the starting positions of consecutive sequences should be.
+	 * When stride is less than length, sequences will overlap.
+	 * 
+	 * <p>This method delegates to {@link PackedCollectionEnumerate} to perform the
+	 * strided enumeration computation.</p>
 	 * 
 	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to enumerate
@@ -1289,16 +1308,36 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
 	 * @example
+	 * <p><strong>Overlapping Sliding Windows:</strong></p>
 	 * <pre>{@code
-	 * // Enumerate with stride 2 (overlapping sequences)
+	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
 	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6, 7, 8);
-	 * CollectionProducerComputation<PackedCollection<?>> strided = enumerate(0, 3, 2, vector);
-	 * // Result: [1,2,3], [3,4,5], [5,6,7] (stride of 2 between starts)
-	 * 
-	 * // Non-overlapping sequences with stride equal to length
-	 * CollectionProducerComputation<PackedCollection<?>> blocks = enumerate(0, 2, 2, vector);
-	 * // Result: [1,2], [3,4], [5,6], [7,8] (no overlap)
+	 * CollectionProducerComputation<PackedCollection<?>> sliding = enumerate(0, 3, 1, vector);
+	 * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6], [5,6,7], [6,7,8]] (shape: [6, 3])
+	 * // Stride of 1 creates overlapping windows
 	 * }</pre>
+	 * 
+	 * @example
+	 * <p><strong>Strided Convolution Pattern:</strong></p>
+	 * <pre>{@code
+	 * // Input: 8x10 matrix for 2D stride enumeration
+	 * CollectionProducer<PackedCollection<?>> input = c(shape(8, 10), /* values */);
+	 * CollectionProducerComputation<PackedCollection<?>> strided = enumerate(1, 2, 1, input);
+	 * // Output: shape [8, 9, 2] - sliding window of size 2 with stride 1 along axis 1
+	 * // Each row [a,b,c,d,e,f,g,h,i,j] becomes [[a,b], [b,c], [c,d], ..., [i,j]]
+	 * }</pre>
+	 * 
+	 * @example
+	 * <p><strong>Non-overlapping Blocks:</strong></p>
+	 * <pre>{@code
+	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
+	 * CollectionProducerComputation<PackedCollection<?>> blocks = enumerate(0, 2, 2, vector);
+	 * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
+	 * // Stride equals length, creating non-overlapping blocks
+	 * }</pre>
+	 * 
+	 * @see PackedCollectionEnumerate
+	 * @see #enumerate(int, int, io.almostrealism.relation.Producer)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, Producer<?> collection) {
 		return enumerate(axis, len, stride, 1, collection);
@@ -1306,29 +1345,59 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	/**
 	 * Creates multiple levels of enumeration with repetition.
-	 * This advanced enumeration allows for complex patterns by repeating
-	 * the enumeration process multiple times with different parameters.
+	 * This advanced enumeration applies the enumeration operation multiple times,
+	 * creating nested patterns useful for complex data transformations and
+	 * multi-dimensional convolution operations.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * <p>Each repetition applies enumeration to the result of the previous enumeration,
+	 * progressively building more complex structural patterns in the data.</p>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param axis the axis along which to enumerate
 	 * @param len the length of each enumerated sequence
 	 * @param stride the step size between consecutive sequence starts
 	 * @param repeat the number of times to repeat the enumeration process
 	 * @param collection the collection to enumerate
-	 * @return a CollectionProducerComputation containing the multi-level enumerated sequences
+	 * @return a {@link CollectionProducerComputation} containing the multi-level enumerated sequences
 	 * 
 	 * @example
+	 * <p><strong>Double Enumeration for 2D Patches:</strong></p>
 	 * <pre>{@code
-	 * // Multiple enumeration passes
-	 * CollectionProducer<PackedCollection<?>> data = c(1, 2, 3, 4, 5, 6, 7, 8);
-	 * CollectionProducerComputation<PackedCollection<?>> multiEnum = enumerate(0, 2, 1, 2, data);
-	 * // Result: Applies enumeration twice, creating nested patterns
+	 * // Input: 4x4 matrix 
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 
+	 *     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
 	 * 
-	 * // Complex pattern extraction from matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-	 * CollectionProducerComputation<PackedCollection<?>> complexEnum = enumerate(1, 2, 1, 3, matrix);
-	 * // Result: Multi-level enumeration along axis 1
+	 * // First enumerate along axis 1, then along axis 0
+	 * CollectionProducerComputation<PackedCollection<?>> patches = 
+	 *     enumerate(1, 2, 2, 2, matrix); // 2 repetitions of (len=2, stride=2)
+	 * // Output: shape [2, 2, 2, 2] - creates 2x2 grid of 2x2 patches
+	 * // Result: 4 non-overlapping 2x2 patches from the input matrix
 	 * }</pre>
+	 * 
+	 * @example
+	 * <p><strong>Multi-dimensional Convolution Pattern:</strong></p>
+	 * <pre>{@code
+	 * // Input: 4D tensor (batch, channels, height, width)
+	 * CollectionProducer<PackedCollection<?>> input = c(shape(2, 5, 10, 6), /* values */);
+	 * CollectionProducerComputation<PackedCollection<?>> conv = 
+	 *     cp(input).traverse(2).enumerate(3, 3, 1, 2); // Extract 3x3 patches
+	 * // Applies enumerate twice along spatial dimensions
+	 * // Useful for 2D convolution operations
+	 * }</pre>
+	 * 
+	 * @example
+	 * <p><strong>Attention Window Creation:</strong></p>
+	 * <pre>{@code
+	 * // Input: sequence of length 8
+	 * CollectionProducer<PackedCollection<?>> sequence = c(1, 2, 3, 4, 5, 6, 7, 8);
+	 * CollectionProducerComputation<PackedCollection<?>> windows = 
+	 *     enumerate(0, 3, 1, 3, sequence); // 3 levels of enumeration
+	 * // Creates progressively nested window structures
+	 * // Useful for hierarchical attention mechanisms
+	 * }</pre>
+	 * 
+	 * @see PackedCollectionEnumerate
+	 * @see #enumerate(int, int, int, io.almostrealism.relation.Producer)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
 		CollectionProducerComputation<T> result = null;
@@ -1349,6 +1418,29 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return result;
 	}
 
+	/**
+	 * Creates an enumeration using explicit {@link TraversalPolicy} shapes.
+	 * This low-level method provides direct control over the enumeration shape
+	 * and automatically computes an appropriate stride pattern.
+	 * 
+	 * <p>Note: This method delegates to {@link PackedCollectionEnumerate#of}.</p>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
+	 * @param shape the {@link TraversalPolicy} defining the subset shape
+	 * @param collection the collection to enumerate
+	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Enumerate 2D patches from a matrix
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(10, 10), /* values */);
+	 * CollectionProducerComputation<PackedCollection<?>> patches = 
+	 *     enumerate(shape(10, 2), matrix);
+	 * // Output: shape [5, 10, 2] - 5 slices of 10x2 from the input
+	 * }</pre>
+	 * 
+	 * @see PackedCollectionEnumerate
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
 																					   Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate<>(shape, collection);
@@ -1359,6 +1451,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 		return enumerate;
 	}
+
+	/**
+	 * Creates an enumeration using explicit {@link TraversalPolicy} shapes for both
+	 * subset and stride patterns. This provides full control over the enumeration
+	 * operation for advanced use cases.
+	 * 
+	 * <p>Note: This method delegates to {@link PackedCollectionEnumerate#of}.</p>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
+	 * @param shape the {@link TraversalPolicy} defining the subset shape
+	 * @param stride the {@link TraversalPolicy} defining the stride pattern
+	 * @param collection the collection to enumerate
+	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Custom stride enumeration for complex patterns
+	 * CollectionProducer<PackedCollection<?>> data = c(shape(8, 6), /* values */);
+	 * CollectionProducerComputation<PackedCollection<?>> custom = 
+	 *     enumerate(shape(2, 3), shape(1, 1), data);
+	 * // Creates overlapping 2x3 patches with stride 1 in both dimensions
+	 * }</pre>
+	 * 
+	 * @see PackedCollectionEnumerate
+	 */
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape,
 																					   TraversalPolicy stride,
