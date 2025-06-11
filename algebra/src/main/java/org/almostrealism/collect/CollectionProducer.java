@@ -58,6 +58,10 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return repeat(axis, repeat, this);
 	}
 
+	default <V extends PackedCollection<?>> CollectionProducer<V> subset(TraversalPolicy shape, int... position) {
+		return subset(shape, this, position);
+	}
+
 	default <V extends PackedCollection<?>> CollectionProducer<V> transpose() {
 		TraversalPolicy shape = shape(this);
 
@@ -92,6 +96,18 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(int axis, int len, int stride, int repeat) {
 		return enumerate(axis, len, stride, repeat, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape) {
+		return enumerate(shape, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> enumerate(TraversalPolicy shape, TraversalPolicy stride) {
+		return enumerate(shape, stride, this);
+	}
+
+	default <V extends PackedCollection<?>> CollectionProducerComputation<V> permute(int... order) {
+		return permute(this, order);
 	}
 
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {

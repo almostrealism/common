@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package almostrealism;
+
+option java_package = "org.almostrealism.protobuf";
+
+message TraversalPolicyData {
+  repeated int32 dims = 1;
+  int32 traversal_axis = 2;
+}
+
+message CollectionData {
+  TraversalPolicyData traversal_policy = 1;
+  repeated double data = 2;
+  repeated float data_32 = 3;
+}
+
+message CollectionLibraryEntry {
+  string key = 1;
+  CollectionData collection = 2;
+}
+
+message CollectionLibraryData {
+  repeated CollectionLibraryEntry collections = 1;
+}

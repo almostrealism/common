@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,13 @@ import java.util.function.Function;
 
 public interface AttentionFeatures extends RotationFeatures {
 
-	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys,
+	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection<?>> keys,
+																   ComputeRequirement... requirements) {
+		return inputShape -> attentionKeys(inputShape, keys, requirements);
+	}
+
+	default CellularLayer attentionKeys(TraversalPolicy inputShape,
+										Producer<PackedCollection<?>> keys,
 										ComputeRequirement... requirements) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
 
@@ -47,6 +53,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
 			throw new IllegalArgumentException();
 
+		// TODO  divide(c(Math.sqrt(headSize))) is better to include
+		// TODO  outside this method rather than within the layer
 		return layer("attentionKeys", inputShape, outputShape, input ->
 				traverse(1, keys).map(v -> v.multiply(input))
 						.traverse(2).sum()
@@ -56,7 +64,13 @@ public interface AttentionFeatures extends RotationFeatures {
 						.reshape(outputShape), requirements);
 	}
 
-	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values,
+	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
+																     ComputeRequirement... requirements) {
+		return inputShape -> attentionValues(inputShape, values, requirements);
+	}
+
+	default CellularLayer attentionValues(TraversalPolicy inputShape,
+										  Producer<PackedCollection<?>> values,
 										  ComputeRequirement... requirements) {
 		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
 
@@ -135,22 +149,146 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
+									PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
+									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
+									PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
+									PackedCollection<?> invFreq) {
+		int dimHead = dim / heads;
+
+		SequentialBlock attention = new SequentialBlock(shape(batchSize, seqLen, dim));
+
+		// 1. Fused QKV projection
+		attention.add(dense(toQkvWeight)); // Projects to dim*3
+
+		// 2. Split QKV and reshape to multi-head format
+		attention.reshape(batchSize, seqLen, 3, dim);
+		List<Block> qkv = attention.split(shape(batchSize, seqLen, 1, dim), 0);
+		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
+		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
+		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
+
+		// 3. Permute to (batch, heads, seqLen, dimHead)
+		// This matches Python's rearrange(t, 'b n (h d) -> b h n d', h = h)
+		q.permute(0, 2, 1, 3);
+		k.permute(0, 2, 1, 3);
+		v.permute(0, 2, 1, 3);
+
+		// 4. Apply QK normalization
+		q.add(norm(qNormWeight, qNormBias, 1e-6));
+		k.add(norm(kNormWeight, kNormBias, 1e-6));
+
+		// 5. Apply rotary embeddings to Q and K
+		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
+		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
+
+		// 6. Store K and V tensors for use in attention computation
+		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
+		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, seqLen, dimHead));
+
+		k.andThen(into(kTensor));
+		v.andThen(into(vTensor));
+
+		// 7. Compute scaled dot-product attention using stored tensors
+		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, kTensor, vTensor));
+
+		// Rearrange back to (batch, seqLen, dim)
+		q.permute(0, 2, 1, 3)
+			.reshape(batchSize, seqLen, dim);
+
+		// 8. Output projection
+		q.add(dense(toOutWeight));
+
+		return attention;
+	}
+
+
+	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
+										 int dim, int heads,
+										 PackedCollection<?> toQWeight, PackedCollection<?> toKvWeight,
+										 PackedCollection<?> toOutWeight,
+										 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
+										 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
+										 Block contextInput) {
+		int dimHead = dim / heads;
+
+		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
+
+		// 1. Project main input to queries
+		crossAttention.add(dense(toQWeight)); // Projects to dim
+		crossAttention.reshape(batchSize, querySeqLen, heads, dimHead);
+		crossAttention.permute(0, 2, 1, 3); // (batch, heads, querySeqLen, dimHead)
+
+		// 2. Apply Q normalization
+		crossAttention.add(norm(qNormWeight, qNormBias, 1e-6));
+
+		// 3. Process context input through separate branch for K and V
+		SequentialBlock contextBranch = contextInput.branch();
+		contextBranch.add(dense(toKvWeight)); // Projects to dim * 2 (K and V)
+		contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
+
+		List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
+		SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
+		SequentialBlock v = (SequentialBlock) kv.get(1).reshape(batchSize, contextSeqLen, heads, dimHead);
+
+		// 4. Permute K and V to (batch, heads, contextSeqLen, dimHead)
+		k.permute(0, 2, 1, 3);
+		v.permute(0, 2, 1, 3);
+
+		// 5. Apply K normalization (no rotary for context keys/values)
+		k.add(norm(kNormWeight, kNormBias, 1e-6));
+
+		// 6. Store K and V tensors for use in attention computation
+		PackedCollection<?> kTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
+		PackedCollection<?> vTensor = new PackedCollection<>(shape(batchSize, heads, contextSeqLen, dimHead));
+
+		k.andThen(into(kTensor));
+		v.andThen(into(vTensor));
+
+		// 7. Apply attention to values
+		crossAttention.add(scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead, kTensor, vTensor));
+
+		// 8. Rearrange back to (batch, querySeqLen, dim)
+		crossAttention.permute(0, 2, 1, 3)
+				.reshape(batchSize, querySeqLen, dim);
+
+		// 9. Output projection
+		crossAttention.add(dense(toOutWeight));
+
+		return crossAttention;
+	}
+
 	default Block feedForward(
 			PackedCollection<?> rms,
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 			ComputeRequirement... requirements) {
 		int dim = w2.getShape().length(0);
-		int hiddenDim = w1.getShape().length(0);
+		return feedForward(shape(dim), rms, null,
+				w1, w2, w3, null, null, null,
+				true, requirements);
+	}
 
-		SequentialBlock feedForward = new SequentialBlock(shape(dim));
-		feedForward.add(rmsnorm(rms, requirements));
+	default Block feedForward(
+			TraversalPolicy shape,
+			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
+			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
+			boolean rmsNorm,
+			ComputeRequirement... requirements) {
+		SequentialBlock feedForward = new SequentialBlock(shape);
 
-		SequentialBlock hidden = new SequentialBlock(shape(dim));
-		hidden.add(dense(w1));
-		hidden.add(silu(shape(hiddenDim)));
+		if (rmsNorm) {
+			feedForward.add(rmsnorm(normWeights, normBiases, requirements));
+		} else {
+			feedForward.add(norm(normWeights, normBiases, requirements));
+		}
 
-		feedForward.product(dense(w3), hidden);
-		feedForward.add(dense(w2));
+		SequentialBlock hidden = new SequentialBlock(shape);
+		hidden.add(dense(w1, w1Bias));
+		hidden.add(silu());
+
+		feedForward.product(dense(w3, w3Bias), hidden);
+		feedForward.add(dense(w2, w2Bias));
 		return feedForward;
 	}
 
@@ -242,6 +380,61 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		return attention;
+	}
+
+	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+											PackedCollection<?> k, PackedCollection<?> v) {
+		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v);
+	}
+
+	/**
+	 * Computes scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
+	 * This implementation properly handles K and V as tensor data rather than computational blocks.
+	 *
+	 * @param batchSize batch dimension
+	 * @param querySeqLen sequence length for queries
+	 * @param contextSeqLen sequence length for context (keys/values)
+	 * @param heads     number of attention heads
+	 * @param dimHead   dimension per head
+	 * @param k         key tensor data (batch, heads, seqLenK, dimHead)
+	 * @param v         value tensor data (batch, heads, seqLenV, dimHead)
+	 */
+	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
+											PackedCollection<?> k, PackedCollection<?> v) {
+		if (batchSize != 1) {
+			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
+		}
+
+		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, dimHead));
+
+		// Q @ K^T: (batch, heads, querySeqLen, dimHead) @ (batch, heads, dimHead, contextSeqLen)
+		//         = (batch, heads, querySeqLen, contextSeqLen)
+		attnBlock.add(layer("qkMatmul",
+				shape(batchSize, heads, querySeqLen, dimHead),
+				shape(batchSize, heads, querySeqLen, contextSeqLen),
+				q -> {
+					// K^T has shape (batch, heads, dimHead, seqLen)
+					CollectionProducer<PackedCollection<?>> kT =
+							cp(k).permute(0, 1, 3, 2);
+
+					// Batch matrix multiply Q @ K^T
+					return scaledDotProduct(c(q), kT);
+				}));
+
+		// Scale by 1/sqrt(dimHead)
+		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
+
+		// Apply softmax over last dimension (key positions)
+		attnBlock.add(softmax(shape(batchSize, heads, querySeqLen, contextSeqLen), true));
+
+		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
+		//              = (batch, heads, querySeqLen, dimHead)
+		attnBlock.add(layer("attnValues",
+				shape(batchSize, heads, querySeqLen, contextSeqLen),
+				shape(batchSize, heads, querySeqLen, dimHead),
+				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
+
+		return attnBlock;
 	}
 
 	static AttentionFeatures getInstance() {

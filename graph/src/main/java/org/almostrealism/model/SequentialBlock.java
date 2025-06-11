@@ -101,7 +101,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	public <T extends Block> T add(T block) {
 		if (block.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot add a Block with takes input " + block.getInputShape() +
+					" to a SequentialBlock that produces " + getOutputShape());
 
 		Block last = lastBlock();
 		Receptor<PackedCollection<?>> prev;
@@ -139,7 +140,6 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return branch;
 	}
 
-
 	public List<Block> split(TraversalPolicy subsetShape) {
 		return split(subsetShape, -1);
 	}
@@ -154,12 +154,19 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			throw new IllegalArgumentException("Split cannot change the total number of dimensions");
 		}
 
-		for (int i = 1; i < superShape.getDimensions(); i++) {
-			if (splitShape.length(i) != superShape.length(i))
-				throw new IllegalArgumentException("Split is only permitted along first dimension");
+		int axis;
+
+		int axes[] = superShape.differingAxes(splitShape);
+		if (axes.length > 1) {
+			throw new IllegalArgumentException("Cannot split along multiple dimensions");
+		} else if (axes.length == 1) {
+			axis = axes[0];
+		} else {
+			warn("Unnecessary split");
+			axis = -1;
 		}
 
-		int count = superShape.length(0) / splitShape.length(0);
+		int count = superShape.length(axis) / splitShape.length(axis);
 		List<Block> blocks = new ArrayList<>();
 
 		BranchBlock split = new BranchBlock(superShape);
@@ -167,7 +174,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 		for (int i = 0; i < count; i++) {
 			int section = i;
-			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == 0 ? section : 0).toArray();
+			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == axis ? section : 0).toArray();
 
 			SequentialBlock sub = new SequentialBlock(superShape);
 			sub.add(subset(superShape, splitShape, pos));
@@ -253,7 +260,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	}
 
 	@Override
-	public <T extends Block> Block andThen(T next) {
+	public <T extends Block> SequentialBlock andThen(T next) {
 		add(next);
 		return this;
 	}

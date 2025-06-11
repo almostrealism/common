@@ -25,6 +25,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.layers.Component;
 import org.almostrealism.layers.Layer;
 import org.almostrealism.layers.LayerFeatures;
@@ -51,7 +52,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 
 	default Block reshape(TraversalPolicy shape) {
 		if (getOutputShape().getTotalSize() != shape.getTotalSize()) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot reshape " + getOutputShape() + " to " + shape);
 		}
 
 		if (enableAlignCountReshape) {
@@ -66,7 +67,12 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 	}
 
 	default Block enumerate(int depth, int axis, int len, ComputeRequirement... requirements) {
-		return andThen(layer("enumerate", getOutputShape(),
+		// TODO  There should be a much more direct way to determine the resulting shape than this
+		TraversalPolicy resultShape =
+				traverse(depth, c(Input.value(getOutputShape(), 0)))
+					.enumerate(axis, len)
+						.getShape();
+		return andThen(layer("enumerate", getOutputShape(), resultShape,
 				in -> traverse(depth, in).enumerate(axis, len),
 				requirements));
 	}
@@ -81,6 +87,26 @@ public interface Block extends Component, CellularPropagation<PackedCollection<?
 		return andThen(layer("enumerate", getOutputShape(), resultShape,
 				in -> CollectionFeatures.getInstance().enumerate(shape, in),
 				requirements));
+	}
+
+	default Block transpose(int axis, ComputeRequirement... requirements) {
+		return enumerate(axis - 1, axis, 1, requirements);
+	}
+
+	default Block permute(int... order) {
+		TraversalPolicy resultShape = getOutputShape().permute(order).extentShape();
+		return andThen(layer("permute", getOutputShape(), resultShape,
+				in -> CollectionFeatures.getInstance().permute(in, order)));
+	}
+
+	default Block andThenDense(PackedCollection<?> weights, ComputeRequirement... requirements) {
+		return andThen(dense(weights, requirements));
+	}
+
+	default Block andThenDense(PackedCollection<?> weights,
+							   PackedCollection<?> biases,
+							   ComputeRequirement... requirements) {
+		return andThen(dense(weights, biases, requirements));
 	}
 
 	default SequentialBlock branch() {

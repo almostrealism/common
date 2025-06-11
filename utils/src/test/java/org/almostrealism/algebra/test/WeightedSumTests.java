@@ -256,29 +256,4 @@ public class WeightedSumTests implements TestFeatures {
 
 		compare(out, result.reshape(bs, c, s1, s2));
 	}
-
-	// TODO  Move to TestFeatures
-	protected void compare(CollectionProducer<PackedCollection<?>> expected, CollectionProducer<PackedCollection<?>> result) {
-		PackedCollection<?> e = expected.evaluate();
-		PackedCollection<?> o = result.evaluate();
-
-		if (!e.getShape().equals(o.getShape())) {
-			log(o.getShape().toStringDetail() + " != " + e.getShape().toStringDetail());
-			throw new AssertionError();
-		}
-
-		log(o.getShape());
-
-		double ev[] = e.toArray();
-		double ov[] = o.toArray();
-
-		for (int i = 0; i < ev.length; i++) {
-			log(ev[i] + " vs " + ov[i]);
-			assertEquals(ev[i], ov[i]);
-		}
-	}
-
-	private String s(int[] a) {
-		return Arrays.toString(a);
-	}
 }
