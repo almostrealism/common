@@ -331,6 +331,50 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Creates a new PackedCollection with this collection's data repeated the specified number of times.
+	 * 
+	 * <p>This method creates a view of the current collection that appears to contain
+	 * the same data repeated multiple times along a new leading dimension. The operation
+	 * is memory-efficient as it doesn't actually duplicate the underlying data, but
+	 * rather uses a {@link RepeatTraversalOrdering} to map indices appropriately.</p>
+	 * 
+	 * <h4>Shape Transformation:</h4>
+	 * <ul>
+	 * <li>Input shape: (d1, d2, ..., dn)</li>
+	 * <li>Output shape: (count, d1, d2, ..., dn)</li>
+	 * <li>Total size: count × original_size</li>
+	 * </ul>
+	 * 
+	 * <h4>Usage Examples:</h4>
+	 * <pre>{@code
+	 * // Create a 2x3 collection
+	 * PackedCollection<?> original = new PackedCollection<>(shape(2, 3));
+	 * original.fill(pos -> pos);  // [0, 1, 2, 3, 4, 5]
+	 * 
+	 * // Repeat it 4 times
+	 * PackedCollection<?> repeated = original.repeat(4);
+	 * // Shape: (4, 2, 3)
+	 * // Data appears as: [[0,1,2,3,4,5], [0,1,2,3,4,5], [0,1,2,3,4,5], [0,1,2,3,4,5]]
+	 * 
+	 * // Access repeated data
+	 * double value = repeated.valueAt(2, 1, 0);  // Gets original.valueAt(1, 0)
+	 * }</pre>
+	 * 
+	 * <h4>Performance Notes:</h4>
+	 * <ul>
+	 * <li>Memory efficient - no data duplication</li>
+	 * <li>Fast creation - only creates a new view</li>
+	 * <li>Access time depends on the underlying traversal ordering</li>
+	 * </ul>
+	 * 
+	 * @param count the number of times to repeat this collection (must be positive)
+	 * @return a new PackedCollection representing the repeated data
+	 * 
+	 * @see RepeatTraversalOrdering
+	 * @see TraversalPolicy#prependDimension(int)
+	 * @see #range(TraversalPolicy)
+	 */
 	public PackedCollection<T> repeat(int count) {
 		int len = getShape().getTotalSize();
 		TraversalPolicy shape = getShape().prependDimension(count)
@@ -344,6 +388,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 
 	public double valueAt(int... pos) {
 		return toDouble(getShape().extentShape().index(pos));
+	}
+
+	public void setValueAt(double value, int... pos) {
+		setMem(getShape().index(pos), value);
 	}
 
 	// TODO  Accelerated version
