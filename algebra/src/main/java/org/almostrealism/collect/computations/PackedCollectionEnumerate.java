@@ -103,6 +103,15 @@ import java.util.stream.IntStream;
  * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
  * }</pre>
  * 
+ * @example
+ * <p><strong>4D Tensor Convolution Window:</strong></p>
+ * <pre>{@code
+ * // Input: batch=2, channels=5, height=10, width=6 (shape: [2, 5, 10, 6])
+ * // enumerate(axis=3, len=3, stride=1, input.traverse(2))
+ * // Output: [2, 5, 4, 10, 3] - 4 windows of size 3 from each row
+ * // Common pattern for 1D convolution along width dimension
+ * }</pre>
+ * 
  * @see org.almostrealism.collect.CollectionFeatures#enumerate(int, int, io.almostrealism.relation.Producer)
  * @see io.almostrealism.collect.TraversalPolicy
  * @see IndexProjectionProducerComputation
