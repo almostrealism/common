@@ -51,13 +51,6 @@ import java.util.List;
  * EpsilonConstantComputation<PackedCollection> epsilon = 
  *     new EpsilonConstantComputation<>(shape);
  * 
- * // Use in floating-point equality comparison (typical usage)
- * CollectionProducer<PackedCollection> a = ...; // some computation
- * CollectionProducer<PackedCollection> b = ...; // another computation
- * CollectionProducer<PackedCollection> areEqual = 
- *     equals(a, b, new EpsilonConstantComputation<>(a.getShape()), 
- *            c(1.0).reshape(a.getShape()));
- * 
  * // Create epsilon values for different shapes
  * EpsilonConstantComputation<PackedCollection> vectorEpsilon = 
  *     new EpsilonConstantComputation<>(new TraversalPolicy(10));
@@ -88,7 +81,6 @@ import java.util.List;
  * @see io.almostrealism.expression.Epsilon
  * @see PackedCollection
  * @see TraversalPolicy
- * @see org.almostrealism.collect.CollectionFeatures#equals(CollectionProducer, CollectionProducer, CollectionProducer, CollectionProducer)
  */
 public class EpsilonConstantComputation<T extends PackedCollection<?>> extends SingleConstantComputation<T> {
 	/**

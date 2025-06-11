@@ -2580,23 +2580,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Performs element-wise equality comparison between two collections with custom return values.
 	 * This method compares corresponding elements and returns specified values based on the comparison result.
 	 * 
-	 * <p>This method is commonly used with {@link EpsilonConstantComputation} as the threshold parameter
-	 * for floating-point equality comparisons that need to account for numerical precision:</p>
-	 * <pre>{@code
-	 * // Compare two collections with epsilon tolerance
-	 * CollectionProducer<PackedCollection> areEqual = 
-	 *     equals(a, b, new EpsilonConstantComputation<>(shape), 
-	 *            c(1.0).reshape(shape));  // return 1.0 if equal within epsilon
-	 * }</pre>
-	 * 
 	 * @param <T> the type of {@link PackedCollection} to produce
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare  
-	 * @param trueValue the value to return when elements are equal (often an epsilon threshold)
+	 * @param trueValue the value to return when elements are equal
 	 * @param falseValue the value to return when elements are not equal
 	 * @return a {@link CollectionProducer} that generates comparison results
 	 * 
-	 * @see EpsilonConstantComputation
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> equals(Producer<?> a, Producer<?> b,
