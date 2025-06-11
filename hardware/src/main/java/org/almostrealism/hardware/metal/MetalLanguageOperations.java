@@ -34,6 +34,11 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public String kernelIndex(int index) {
+		return "(int)" + super.kernelIndex(index);
+	}
+
+	@Override
 	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		if (scope != null)
 			return (!enableThreadScope || access == Accessibility.EXTERNAL) ? "device" : "thread";

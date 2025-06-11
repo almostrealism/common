@@ -346,6 +346,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return toDouble(getShape().extentShape().index(pos));
 	}
 
+	public void setValueAt(double value, int... pos) {
+		setMem(getShape().index(pos), value);
+	}
+
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {

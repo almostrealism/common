@@ -6,13 +6,18 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.68</version>
+    <version>0.69</version>
 
 	<properties>
 		<jacoco.version>0.8.11</jacoco.version>
 		<maven.compiler.source>17</maven.compiler.source>
 		<maven.compiler.target>17</maven.compiler.target>
+		<kotlin.version>1.8.20</kotlin.version>
 
+		<protobuf.version>3.21.7</protobuf.version>
+		<protoc.version>3.21.7</protoc.version>
+
+		<!-- TODO - These should not be necessary -->
 		<javafx.version>21</javafx.version>
 		<javafx.classifier>mac-aarch64</javafx.classifier>
 	</properties>
@@ -94,14 +99,28 @@
 		</plugins>
 	</build>
 
-    <dependencies>
-		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<version>4.12</version>
-			<scope>test</scope>
-		</dependency>
-    </dependencies>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.google.protobuf</groupId>
+				<artifactId>protobuf-java</artifactId>
+				<version>${protobuf.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>com.google.protobuf</groupId>
+				<artifactId>protobuf-java-util</artifactId>
+				<version>${protobuf.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>junit</groupId>
+				<artifactId>junit</artifactId>
+				<version>4.12</version>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<distributionManagement>
 		<repository>

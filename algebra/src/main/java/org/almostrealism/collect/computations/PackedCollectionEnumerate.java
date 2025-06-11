@@ -35,11 +35,71 @@ import io.almostrealism.collect.TraversalPolicy;
 import java.util.List;
 import java.util.stream.IntStream;
 
+/**
+ * A computation that creates enumerated subsequences from a {@link PackedCollection}.
+ * This class implements sliding window operations, patch extraction, and strided 
+ * enumeration patterns commonly used in machine learning and signal processing.
+ * 
+ * <p>The enumeration operation extracts overlapping or non-overlapping windows from
+ * the input collection along specified dimensions, creating a new output collection
+ * with an additional dimension representing the enumerated sequences.</p>
+ * 
+ * <h3>Shape Transformation</h3>
+ * <p>For an input collection with shape {@code [d1, d2, ..., dn]} and enumeration
+ * along axis {@code k} with subset shape {@code [s1, s2, ..., sm]} and stride 
+ * {@code [t1, t2, ..., tm]}, the output shape becomes:</p>
+ * <pre>
+ * [d1, ..., d(k-1), count, d(k+1), ..., dn, s1, s2, ..., sm]
+ * </pre>
+ * <p>where {@code count} is determined by how many times the subset pattern fits
+ * within the input dimension with the given stride.</p>
+ * 
+ * <h3>Common Use Cases</h3>
+ * <ul>
+ * <li><strong>Sliding Windows:</strong> Extract sequential patterns from time series data</li>
+ * <li><strong>Image Patches:</strong> Extract 2D patches for convolution operations</li>
+ * <li><strong>Stride Operations:</strong> Down-sampling with configurable step sizes</li>
+ * <li><strong>Attention Patterns:</strong> Create attention windows for transformer models</li>
+ * </ul>
+ * 
+ * @param <T> the type of {@link PackedCollection} being enumerated
+ * 
+ * @example
+ * <p><strong>Basic 1D Sliding Window:</strong></p>
+ * <pre>{@code
+ * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
+ * // enumerate(shape(3), stride(1), input)
+ * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6]] (shape: [4, 3])
+ * }</pre>
+ * 
+ * @example
+ * <p><strong>2D Patch Extraction:</strong></p>
+ * <pre>{@code
+ * // Input: 4x4 matrix (shape: [4, 4])
+ * // enumerate(shape(2, 2), stride(1, 1), input)
+ * // Output: 3x3x2x2 tensor (9 patches of size 2x2)
+ * }</pre>
+ * 
+ * @example
+ * <p><strong>Strided Enumeration:</strong></p>
+ * <pre>{@code
+ * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
+ * // enumerate(shape(2), stride(2), input) 
+ * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
+ * }</pre>
+ * 
+ * @see org.almostrealism.collect.CollectionFeatures#enumerate(int, int, io.almostrealism.relation.Producer)
+ * @see io.almostrealism.collect.TraversalPolicy
+ */
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	/** Enable optimization for preferring isolation in parallel processing */
 	public static boolean enablePreferIsolation = false;
+	/** Enable automatic detection of traversal depth for multi-dimensional operations */
 	public static boolean enableDetectTraversalDepth = true;
+	/** Enable position simplification optimizations during index projection */
 	public static boolean enablePositionSimplification = true;
+	/** Enable unique index optimization for one-to-one mappings */
 	public static boolean enableUniqueIndexOptimization = true;
 
 	private TraversalPolicy inputShape;
@@ -48,14 +108,37 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy strideShape;
 
+	/**
+	 * Creates a new enumeration with automatically computed stride.
+	 * The stride is calculated to evenly divide the input collection
+	 * along the enumeration dimensions.
+	 * 
+	 * @param shape the shape of each enumerated subset
+	 * @param collection the input collection to enumerate
+	 */
 	public PackedCollectionEnumerate(TraversalPolicy shape, Producer<?> collection) {
 		this(shape, computeStride(shape, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0), collection);
 	}
 
+	/**
+	 * Creates a new enumeration with explicit stride specification.
+	 * 
+	 * @param shape the shape of each enumerated subset
+	 * @param stride the stride pattern for enumeration
+	 * @param collection the input collection to enumerate
+	 */
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		this(shape, stride, collection, enableDetectTraversalDepth ? shape(collection).getTraversalAxis() : 0);
 	}
 
+	/**
+	 * Creates a new enumeration with full parameter control.
+	 * 
+	 * @param shape the shape of each enumerated subset
+	 * @param stride the stride pattern for enumeration  
+	 * @param collection the input collection to enumerate
+	 * @param traversalDepth the depth at which to perform traversal operations
+	 */
 	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride,
 									 Producer<?> collection, int traversalDepth) {
 		super("enumerate", computeShape(shape, stride, collection, traversalDepth), null, collection);
@@ -199,6 +282,33 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
+	/**
+	 * Computes the output shape for the enumeration operation.
+	 * This determines the dimensions of the resulting collection based on
+	 * the input shape, subset shape, stride, and traversal depth.
+	 * 
+	 * <p>The computation follows these steps:</p>
+	 * <ol>
+	 * <li>Extract the item shape after applying traversal depth</li>
+	 * <li>Calculate how many complete subsets fit within each dimension</li>
+	 * <li>Construct the output shape by inserting the count dimension</li>
+	 * </ol>
+	 * 
+	 * @param shape the shape of each enumerated subset
+	 * @param stride the stride pattern for enumeration
+	 * @param collection the input collection
+	 * @param traversalDepth the depth for traversal operations
+	 * @return the computed output {@link TraversalPolicy}
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Input: shape [6, 4], subset shape [2, 2], stride [1, 1]
+	 * // Output: shape [5, 3, 2, 2] (5x3 patches of size 2x2)
+	 * 
+	 * // Input: shape [8], subset shape [3], stride [2] 
+	 * // Output: shape [3, 3] (3 sequences of length 3)
+	 * }</pre>
+	 */
 	public static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride,
 												Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
@@ -231,6 +341,31 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return new TraversalPolicy(dims).traverse(traversalDepth);
 	}
 
+	/**
+	 * Automatically computes an appropriate stride pattern for enumeration.
+	 * This method calculates stride values that evenly divide the input 
+	 * dimensions by the corresponding subset dimensions.
+	 * 
+	 * <p>The stride computation ensures that the enumeration can be performed
+	 * without partial subsets at the boundaries, by requiring that each
+	 * input dimension is evenly divisible by the corresponding subset dimension.</p>
+	 * 
+	 * @param shape the shape of each enumerated subset
+	 * @param collection the input collection 
+	 * @param traversalDepth the depth for traversal operations
+	 * @return the computed stride {@link TraversalPolicy}
+	 * @throws IllegalArgumentException if dimensions are not evenly divisible
+	 * @throws UnsupportedOperationException if enumeration spans multiple axes
+	 * 
+	 * @example
+	 * <pre>{@code
+	 * // Input: [12, 8], subset: [3, 2]
+	 * // Computed stride: [3, 2] (evenly divides: 12/3=4, 8/2=4)
+	 * 
+	 * // Input: [10], subset: [2] 
+	 * // Computed stride: [2] (evenly divides: 10/2=5)
+	 * }</pre>
+	 */
 	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection, int traversalDepth) {
 		TraversalPolicy superShape = shape(collection);
 

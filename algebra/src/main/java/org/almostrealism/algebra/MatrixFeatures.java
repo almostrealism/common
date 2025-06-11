@@ -195,6 +195,45 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	}
 
 
+	/**
+	 * Computes the scaled dot product of two collections.
+	 *
+	 * @param a  (batch, heads, seqLenA, dim)
+	 * @param b  (batch, heads, dim, seqLenB)
+	 */
+	// TODO  This should support any shapes that can be coerced to
+	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
+	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
+			CollectionProducer<PackedCollection<?>> a,
+			CollectionProducer<PackedCollection<?>> b) {
+		TraversalPolicy leftShape = a.getShape();
+		TraversalPolicy rightShape = b.getShape();
+
+		int batchSize = leftShape.length(0);
+		int heads = leftShape.length(1);
+		int seqLenA = leftShape.length(2);
+		int seqLenB = rightShape.length(3);
+		int dim = leftShape.length(3);
+
+		leftShape = shape(batchSize, heads, seqLenA, dim, 1);
+		rightShape = shape(batchSize, heads, 1, dim, seqLenB);
+
+		TraversalPolicy resultShape = shape(batchSize, heads, seqLenA, 1, seqLenB);
+		TraversalPolicy leftPosition = leftShape.repeat(4, seqLenB);
+		TraversalPolicy rightPosition = rightShape.repeat(2, seqLenA);
+		TraversalPolicy groupShape = shape(1, 1, 1, dim, 1);
+
+		TraversalPolicy outputShape = shape(batchSize, heads, seqLenA, seqLenB).traverseEach();
+
+		return weightedSum("scaledDotProduct",
+				resultShape,
+				leftPosition, rightPosition,
+				groupShape, groupShape,
+				reshape(leftShape, c(a)),
+				reshape(rightShape, c(b)))
+				.reshape(outputShape);
+	}
+
 	default <T extends Shape<?>> CollectionProducer<T> attemptDelta(Producer<T> producer,
 																	Producer<?> target) {
 		if (producer instanceof DeltaAlternate) {

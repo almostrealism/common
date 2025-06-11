@@ -194,6 +194,30 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return toArray(0, getMemLength());
 	}
 
+	default float[] toFloatArray(int offset, int length) {
+		if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
+		if (getMemOrdering() == null) {
+			float out[] = new float[length];
+			getMem(0, out, offset, length);
+			return out;
+		} else {
+			double raw[] = toArray(offset, length);
+			float out[] = new float[raw.length];
+			for (int i = 0; i < raw.length; i++) {
+				out[i] = (float) raw[i];
+			}
+
+			return out;
+		}
+	}
+
+	default float[] toFloatArray() {
+		return toFloatArray(0, getMemLength());
+	}
+
 	default String toArrayString(int offset, int length) {
 		return Arrays.toString(toArray(offset, length));
 	}
