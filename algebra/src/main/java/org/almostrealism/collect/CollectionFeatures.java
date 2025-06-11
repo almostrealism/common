@@ -1181,32 +1181,38 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Repeats a collection a specified number of times.
-	 * This operation creates a new collection by concatenating multiple copies
-	 * of the input collection along its primary dimension.
+	 * Creates a computation that repeats a collection a specified number of times.
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param repeat the number of times to repeat the collection
-	 * @param collection the collection to repeat
-	 * @return a {@link CollectionProducerComputation} containing the repeated collection
+	 * <p>This is the primary method for creating repeat operations. It handles
+	 * optimization for constant collections by avoiding the full computation
+	 * pipeline when possible, and delegates to {@link PackedCollectionRepeat}
+	 * for general cases.</p>
 	 * 
-	 *
 	 * <pre>{@code
-	 * // Repeat a vector 3 times
-	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0);
-	 * CollectionProducerComputation<PackedCollection<?>> repeated = repeat(3, vector);
-	 * // Result: Producer that generates [1.0, 2.0, 1.0, 2.0, 1.0, 2.0]
+	 * // Repeat a collection 5 times along a new leading dimension
+	 * CollectionProducer<?> input = cp(someCollection);
+	 * CollectionProducer<?> repeated = repeat(5, input);
 	 * 
-	 * // Repeat a single value to create a vector
-	 * CollectionProducer<PackedCollection<?>> scalar = c(5.0);
-	 * CollectionProducerComputation<PackedCollection<?>> vector5s = repeat(4, scalar);
-	 * // Result: Producer that generates [5.0, 5.0, 5.0, 5.0]
-	 * 
-	 * // Repeat a constant (optimized case)
-	 * CollectionProducer<PackedCollection<?>> constant = constant(3.14);
-	 * CollectionProducerComputation<PackedCollection<?>> constants = repeat(3, constant);
-	 * // Result: Efficiently generates [3.14, 3.14, 3.14] without actual repetition
+	 * // Can be chained with other operations
+	 * CollectionProducer<?> result = repeat(3, input)
+	 *     .multiply(otherCollection)
+	 *     .traverse(1).sum();
 	 * }</pre>
+	 * 
+	 * <h4>Optimization Notes:</h4>
+	 * <ul>
+	 * <li>Constant collections are optimized using reshape operations</li>
+	 * <li>Regular collections use the full {@link PackedCollectionRepeat} implementation</li>
+	 * <li>The output shape is automatically computed based on the input</li>
+	 * </ul>
+	 * 
+	 * @param <T> the type of PackedCollection being repeated
+	 * @param repeat the number of times to repeat the collection (must be positive)
+	 * @param collection the source collection to repeat
+	 * @return a computation that produces the repeated collection
+	 * 
+	 * @see PackedCollectionRepeat
+	 * @see PackedCollectionRepeat#shape(int, TraversalPolicy)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
 		if (collection instanceof SingleConstantComputation) {
@@ -1218,31 +1224,34 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
-	 * Repeats a collection along a specific axis.
-	 * This operation first sets the traversal axis and then repeats the collection,
-	 * allowing for more control over how the repetition is structured.
+	 * Creates a computation that repeats a collection along a specific axis.
 	 * 
-	 * @param <T> the type of {@link PackedCollection}
-	 * @param axis the axis along which to perform the repetition
-	 * @param repeat the number of times to repeat
-	 * @param collection the collection to repeat
-	 * @return a {@link CollectionProducerComputation} containing the repeated collection
+	 * <p>This method provides axis-specific repetition by first traversing to
+	 * the specified axis and then performing the repetition. This is useful
+	 * for repeating along specific dimensions rather than adding a new leading
+	 * dimension.</p>
 	 * 
-	 *
 	 * <pre>{@code
-	 * // Repeat a 2D matrix along different axes
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * 
-	 * // Repeat along axis 0 (row repetition)
-	 * CollectionProducerComputation<PackedCollection<?>> rowRepeated = 
-	 *     repeat(0, 2, matrix);
-	 * // Result: Each row is repeated 2 times
-	 * 
-	 * // Repeat along axis 1 (column repetition) 
-	 * CollectionProducerComputation<PackedCollection<?>> colRepeated = 
-	 *     repeat(1, 3, matrix);
-	 * // Result: Each column is repeated 3 times
+	 * // Repeat along axis 1 (the second dimension) 3 times
+	 * CollectionProducer<?> input = cp(someCollection);  // Shape: (5, 7, 9)
+	 * CollectionProducer<?> repeated = repeat(1, 3, input);
+	 * // Result: axis 1 is used as repetition context
 	 * }</pre>
+	 * 
+	 * <h4>Implementation:</h4>
+	 * <p>This method is equivalent to:</p>
+	 * <pre>{@code
+	 * repeat(repeat, traverse(axis, collection))
+	 * }</pre>
+	 * 
+	 * @param <T> the type of PackedCollection being repeated
+	 * @param axis the axis along which to perform repetition
+	 * @param repeat the number of times to repeat
+	 * @param collection the source collection to repeat
+	 * @return a computation that produces the repeated collection
+	 * 
+	 * @see #repeat(int, Producer)
+	 * @see #traverse(int, Producer)
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int axis, int repeat, Producer<?> collection) {
 		return repeat(repeat, traverse(axis, (Producer) collection));
