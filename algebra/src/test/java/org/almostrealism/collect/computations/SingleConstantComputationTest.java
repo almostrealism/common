@@ -35,7 +35,7 @@ public class SingleConstantComputationTest {
 	 * Demonstrates how to create a computation that fills a collection with a constant value.
 	 */
 	@Test
-	public void testBasicConstantCreation() {
+	public void basicConstantCreation() {
 		// Create a 2x3 matrix filled with the value 5.0
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
 		SingleConstantComputation<PackedCollection> constant = 
@@ -55,7 +55,7 @@ public class SingleConstantComputationTest {
 	 * pipeline for efficiency by directly creating the result collection.
 	 */
 	@Test
-	public void testShortCircuitEvaluation() {
+	public void shortCircuitEvaluation() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		double constantValue = 7.5;
 		SingleConstantComputation<PackedCollection> constant = 
@@ -77,7 +77,7 @@ public class SingleConstantComputationTest {
 	 * like zero and identity elements for optimization purposes.
 	 */
 	@Test
-	public void testOptimizationMethods() {
+	public void optimizationMethods() {
 		// Test zero detection
 		SingleConstantComputation<PackedCollection> zero = 
 			new SingleConstantComputation<>(new TraversalPolicy(5), 0.0);
@@ -109,7 +109,7 @@ public class SingleConstantComputationTest {
 	 * without affecting the constant value that fills the collection.
 	 */
 	@Test
-	public void testReshapeOperation() {
+	public void reshapeOperation() {
 		double constantValue = 2.5;
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3); // 2x3 matrix
 		SingleConstantComputation<PackedCollection> original = 
@@ -134,7 +134,7 @@ public class SingleConstantComputationTest {
 	 * while maintaining the constant value semantics.
 	 */
 	@Test
-	public void testTraverseOperation() {
+	public void traverseOperation() {
 		double constantValue = -1.5;
 		TraversalPolicy originalShape = new TraversalPolicy(3, 4); // 3x4 matrix
 		SingleConstantComputation<PackedCollection> original = 
@@ -157,7 +157,7 @@ public class SingleConstantComputationTest {
 	 * representation of the constant value.
 	 */
 	@Test
-	public void testDescription() {
+	public void description() {
 		SingleConstantComputation<PackedCollection> constant = 
 			new SingleConstantComputation<>(new TraversalPolicy(2), 3.14159);
 		
@@ -173,7 +173,7 @@ public class SingleConstantComputationTest {
 	 * of SingleConstantComputation instances.
 	 */
 	@Test
-	public void testCustomNameConstructor() {
+	public void customNameConstructor() {
 		String customName = "myConstant";
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
 		double value = 42.0;
