@@ -33,24 +33,26 @@ EpsilonConstantComputation<PackedCollection> epsilonTensor =
     new EpsilonConstantComputation<>(new TraversalPolicy(2, 3, 4));
 ```
 
-## Primary Use Case: Floating-Point Comparisons
+## Primary Use Case: Floating-Point Computations
 
-### Epsilon-Based Equality Testing
+### Epsilon Constants in Conditional Logic
 
 ```java
 import org.almostrealism.collect.CollectionFeatures;
 
-// Compare two collections with epsilon tolerance
+// Create epsilon constants for use in conditional computations
+TraversalPolicy shape = new TraversalPolicy(10);
 CollectionProducer<PackedCollection> a = ...; // some computation
 CollectionProducer<PackedCollection> b = ...; // another computation
 
-// Use EpsilonConstantComputation for precision-aware comparison
-CollectionProducer<PackedCollection> areEqual = 
+// Use EpsilonConstantComputation as return value in conditional operations
+CollectionProducer<PackedCollection> result = 
     equals(a, b, 
-           new EpsilonConstantComputation<>(a.getShape()),  // epsilon tolerance
-           c(1.0).reshape(a.getShape()));                   // return 1.0 if equal
+           new EpsilonConstantComputation<>(shape),     // return epsilon if equal
+           add(a, minus(b)));                           // return difference if not equal
 
-// The comparison will return 1.0 where |a - b| <= epsilon, 0.0 otherwise
+// When a equals b exactly, result contains epsilon values
+// When a does not equal b, result contains the actual difference
 ```
 
 ### Numerical Stability in Subtraction
