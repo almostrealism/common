@@ -123,7 +123,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param dims the dimensions of the shape (e.g., width, height, depth)
 	 * @return a new {@link TraversalPolicy} representing the specified shape
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a 1D shape with 5 elements
 	 * TraversalPolicy shape1D = shape(5);
@@ -148,7 +148,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param dims the dimensions of the shape as long values
 	 * @return a new {@link TraversalPolicy} representing the specified shape
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a large 1D shape
 	 * TraversalPolicy largShape = shape(1000000L);
@@ -169,7 +169,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param dims the position coordinates
 	 * @return a new {@link TraversalPolicy} representing the specified position
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a position at coordinates (2, 3) in a 2D space
 	 * TraversalPolicy pos = position(2, 3);
@@ -190,7 +190,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param s the supplier to extract shape from
 	 * @return the {@link TraversalPolicy} representing the supplier's shape, or {@link #shape(int...)} if no shape available
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Extract shape from a {@link CollectionProducer} created with c()
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
@@ -230,7 +230,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param t the {@link TraversableExpression} to extract shape from
 	 * @return the {@link TraversalPolicy} representing the expression's shape, or {@link #shape(int...)} if no shape available
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create an expression with known shape
 	 * TraversableExpression expr = new PackedCollectionMap(shape(2, 3), someProducer, mapper);
@@ -259,7 +259,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param s the supplier to examine
 	 * @return the total number of elements, or -1 if the supplier is null
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Get size of a {@link CollectionProducer} created with c()
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
@@ -298,7 +298,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param s the {@link Shape} to examine
 	 * @return the number of elements operated on by one thread
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Get size of a shape object
 	 * Shape<?> collection = new PackedCollection<>(shape(2, 3, 4));
@@ -320,7 +320,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param target the desired number of dimensions
 	 * @return a new {@link TraversalPolicy} with the target number of dimensions
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Pad a 1D shape to 3D
 	 * TraversalPolicy original = shape(5); // [5]
@@ -348,7 +348,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param target the desired number of dimensions after padding
 	 * @return a new {@link TraversalPolicy} with the target number of dimensions (if min is met)
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Only pad if shape has at least 2 dimensions
 	 * TraversalPolicy small = shape(5); // [5] - only 1 dimension
@@ -376,7 +376,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param post whether to append dimensions at the end (true) or prepend at the beginning (false)
 	 * @return a new {@link TraversalPolicy} with the target number of dimensions
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Pad at the beginning (default behavior)
 	 * TraversalPolicy original = shape(3, 4); // [3, 4]
@@ -415,7 +415,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param values the double values to pack into a collection
 	 * @return a new {@link PackedCollection} containing the specified values
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a collection from double array
 	 * PackedCollection<?> collection = pack(1.0, 2.0, 3.0, 4.0);
@@ -438,7 +438,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param values the float values to pack into a collection
 	 * @return a new {@link PackedCollection} containing the converted double values
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a collection from float array
 	 * PackedCollection<?> collection = pack(1.5f, 2.5f, 3.5f);
@@ -463,7 +463,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param shape the {@link TraversalPolicy} defining the collection's shape
 	 * @return a new empty {@link PackedCollection} with the specified shape
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create empty 2D collection
 	 * PackedCollection<?> matrix = empty(shape(3, 4));
@@ -544,7 +544,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param values the double values to include in the producer
 	 * @return a {@link CollectionProducer} that generates the specified values
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a producer for multiple values
 	 * CollectionProducer<PackedCollection<?>> producer = c(1.0, 2.0, 3.0);
@@ -581,7 +581,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a {@link CollectionProducer} with the specified shape and values
 	 * @throws IllegalArgumentException if values.length doesn't match shape.getTotalSize()
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix producer
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
@@ -613,7 +613,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param value the constant value to produce
 	 * @return a {@link CollectionProducer} that always generates the specified constant
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a constant producer
 	 * CollectionProducer<PackedCollection<?>> pi = constant(Math.PI);
@@ -639,7 +639,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param value the constant value for all elements
 	 * @return a {@link CollectionProducer} that generates a constant-filled collection
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a 2x3 matrix filled with ones
 	 * CollectionProducer<PackedCollection<?>> ones = constant(shape(2, 3), 1.0);
@@ -714,7 +714,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param shape the desired shape for the zero-filled collection
 	 * @return a {@link CollectionProducerComputation} that generates zeros
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a zero vector
 	 * CollectionProducerComputation<PackedCollection<?>> zeroVector = zeros(shape(5));
@@ -983,7 +983,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param producer the collection producer to modify
 	 * @return a CollectionProducer with the specified traversal axis
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Create a 2D collection and change traversal axis
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 4), 
@@ -1016,7 +1016,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param producer the collection producer to modify
 	 * @return a Producer configured to traverse each element
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Set up element-wise traversal
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
@@ -1037,7 +1037,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param producer the collection producer to configure
 	 * @return a Producer configured for element-wise traversal
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Configure for element-wise processing
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
@@ -1065,7 +1065,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a Producer with the new shape
 	 * @throws IllegalArgumentException if the new shape has a different total size
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Reshape a 1D vector to a 2D matrix
 	 * CollectionProducer<PackedCollection<?>> vector = c(1, 2, 3, 4, 5, 6);
@@ -1104,7 +1104,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param position the integer coordinates specifying which elements to extract
 	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Extract subset from a 2D matrix
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(3, 3), 
@@ -1134,7 +1134,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param position the {@link Expression} objects specifying dynamic coordinates
 	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Extract subset using computed positions  
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(4, 4), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
@@ -1160,7 +1160,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param position a {@link Producer} that generates the position coordinates
 	 * @return a {@link CollectionProducerComputation} that generates the subset
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Extract subset using dynamically computed positions
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(5, 5), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25);
@@ -1188,7 +1188,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * pipeline when possible, and delegates to {@link PackedCollectionRepeat}
 	 * for general cases.</p>
 	 * 
-	 * <h4>Usage Examples:</h4>
 	 * <pre>{@code
 	 * // Repeat a collection 5 times along a new leading dimension
 	 * CollectionProducer<?> input = cp(someCollection);
@@ -1232,7 +1231,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * for repeating along specific dimensions rather than adding a new leading
 	 * dimension.</p>
 	 * 
-	 * <h4>Usage Example:</h4>
 	 * <pre>{@code
 	 * // Repeat along axis 1 (the second dimension) 3 times
 	 * CollectionProducer<?> input = cp(someCollection);  // Shape: (5, 7, 9)
@@ -1275,7 +1273,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
-	 * @example
+	 *
 	 * <p><strong>1D Vector Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
@@ -1285,7 +1283,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Creates 2 non-overlapping sequences of length 3
 	 * }</pre>
 	 * 
-	 * @example
+	 *
 	 * <p><strong>2D Matrix Column Enumeration:</strong></p>
 	 * <pre>{@code
 	 * // Input: 3x6 matrix (shape: [3, 6])
@@ -1318,7 +1316,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Overlapping Sliding Windows:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
@@ -1328,17 +1326,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Stride of 1 creates overlapping windows
 	 * }</pre>
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Strided Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 8x10 matrix for 2D stride enumeration
-	 * CollectionProducer<PackedCollection<?>> input = c(shape(8, 10), /* values */);
+	 * CollectionProducer<PackedCollection<?>> input = c(shape(8, 10), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection<?>> strided = enumerate(1, 2, 1, input);
 	 * // Output: shape [8, 9, 2] - sliding window of size 2 with stride 1 along axis 1
 	 * // Each row [a,b,c,d,e,f,g,h,i,j] becomes [[a,b], [b,c], [c,d], ..., [i,j]]
 	 * }</pre>
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Non-overlapping Blocks:</strong></p>
 	 * <pre>{@code
 	 * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
@@ -1371,7 +1369,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the multi-level enumerated sequences
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Double Enumeration for 2D Patches:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4x4 matrix 
@@ -1385,18 +1383,18 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: 4 non-overlapping 2x2 patches from the input matrix
 	 * }</pre>
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Multi-dimensional Convolution Pattern:</strong></p>
 	 * <pre>{@code
 	 * // Input: 4D tensor (batch, channels, height, width)
-	 * CollectionProducer<PackedCollection<?>> input = c(shape(2, 5, 10, 6), /* values */);
+	 * CollectionProducer<PackedCollection<?>> input = c(shape(2, 5, 10, 6), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection<?>> conv = 
 	 *     cp(input).traverse(2).enumerate(3, 3, 1, 2); // Extract 3x3 patches
 	 * // Applies enumerate twice along spatial dimensions
 	 * // Useful for 2D convolution operations
 	 * }</pre>
 	 * 
-	 * @example
+	 *
 	 * <p><strong>Attention Window Creation:</strong></p>
 	 * <pre>{@code
 	 * // Input: sequence of length 8
@@ -1441,10 +1439,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Enumerate 2D patches from a matrix
-	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(10, 10), /* values */);
+	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(10, 10), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection<?>> patches = 
 	 *     enumerate(shape(10, 2), matrix);
 	 * // Output: shape [5, 10, 2] - 5 slices of 10x2 from the input
@@ -1476,10 +1474,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param collection the collection to enumerate
 	 * @return a {@link CollectionProducerComputation} containing the enumerated sequences
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Custom stride enumeration for complex patterns
-	 * CollectionProducer<PackedCollection<?>> data = c(shape(8, 6), /* values */);
+	 * CollectionProducer<PackedCollection<?>> data = c(shape(8, 6), 1, 2, 3, ...);
 	 * CollectionProducerComputation<PackedCollection<?>> custom = 
 	 *     enumerate(shape(2, 3), shape(1, 1), data);
 	 * // Creates overlapping 2x3 patches with stride 1 in both dimensions
@@ -1508,6 +1506,19 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new CollectionPermute<>(collection, order);
 	}
 
+	/**
+	 * Pads a collection along specified axes with a uniform depth.
+	 * This convenience method applies symmetric padding (same amount on all sides) to selected dimensions.
+	 * 
+	 * @param axes Array of axis indices to pad (0-based)
+	 * @param depth Amount of padding to add on each side of the specified axes
+	 * @param collection The input collection to pad
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducerComputation that produces the padded collection
+	 * @throws UnsupportedOperationException if the input collection has a non-null traversal order
+	 * 
+	 * @see #pad(Producer, int...)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(int axes[], int depth, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
 		if (shape.getOrder() != null) {
@@ -1522,6 +1533,27 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return pad(collection, depths);
 	}
 
+	/**
+	 * Pads a collection with specified depths for each dimension.
+	 * This method applies symmetric padding where each dimension gets the specified amount
+	 * of padding on both sides (before and after the original data).
+	 * 
+	 * <p><strong>Example:</strong></p>
+	 * <pre>{@code
+	 * // Pad a 2x3 collection with 1 unit on all sides of both dimensions
+	 * PackedCollection<?> input = new PackedCollection<>(2, 3);
+	 * CollectionProducer<?> padded = pad(input, 1, 1); // Results in 4x5 collection
+	 * }</pre>
+	 * 
+	 * @param collection The input collection to pad
+	 * @param depths Padding depth for each dimension. depths[i] specifies how much padding
+	 *               to add before and after the data in dimension i
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducerComputation that produces the padded collection
+	 * 
+	 * @see PackedCollectionPad
+	 * @see #pad(TraversalPolicy, TraversalPolicy, Producer)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(Producer<?> collection, int... depths) {
 		TraversalPolicy shape = shape(collection);
 
@@ -1534,6 +1566,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return pad(shape, new TraversalPolicy(true, depths), collection);
 	}
 
+	/**
+	 * Pads a collection to a specific output shape with specified positioning.
+	 * This method provides fine-grained control over where the input data is placed
+	 * within the output shape.
+	 * 
+	 * <p><strong>Examples:</strong></p>
+	 * <pre>{@code
+	 * // Place a 2x3 input at position (1,1) within a 4x5 output
+	 * TraversalPolicy outputShape = new TraversalPolicy(4, 5);
+	 * TraversalPolicy position = new TraversalPolicy(1, 1);
+	 * CollectionProducer<?> padded = pad(outputShape, input, 1, 1);
+	 * 
+	 * // Asymmetric padding: 2 units before, 1 unit after in first dimension
+	 * CollectionProducer<?> asymmetric = pad(outputShape, input, 2, 0);
+	 * }</pre>
+	 * 
+	 * @param shape The desired output shape after padding
+	 * @param collection The input collection to pad  
+	 * @param pos Position offsets for placing the input within the output shape.
+	 *            pos[i] specifies how many zeros to add before the input data in dimension i
+	 * @param <T> The type of PackedCollection
+	 * @return A CollectionProducer that produces the padded collection
+	 * 
+	 * @see PackedCollectionPad
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> pad(TraversalPolicy shape,
 																				 Producer<?> collection,
 																				 int... pos) {
@@ -1547,6 +1604,34 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		}
 	}
 
+	/**
+	 * Creates a PackedCollectionPad computation with explicit shape and position policies.
+	 * This is the most flexible padding method, allowing complete control over the output shape
+	 * and input positioning through TraversalPolicy objects.
+	 * 
+	 * <p>This method directly instantiates a {@link PackedCollectionPad} computation that implements
+	 * the padding logic. If the input collection is known to be zero (via {@link Algebraic#isZero}),
+	 * this method optimizes by returning a zeros collection instead.</p>
+	 * 
+	 * <p><strong>Usage in Neural Networks:</strong></p>
+	 * <p>Padding is commonly used in convolutional neural networks to:</p>
+	 * <ul>
+	 * <li>Preserve spatial dimensions after convolution</li>
+	 * <li>Handle boundary conditions in image processing</li>
+	 * <li>Implement specific architectural patterns (e.g., "same" padding)</li>
+	 * </ul>
+	 * 
+	 * @param shape The complete output shape specification
+	 * @param position The positioning policy specifying where input data is placed
+	 * @param collection The input collection producer
+	 * @param <T> The type of PackedCollection  
+	 * @return A CollectionProducerComputation that implements the padding operation,
+	 *         or a zeros collection if the input is zero
+	 * 
+	 * @see PackedCollectionPad
+	 * @see TraversalPolicy
+	 * @see Algebraic#isZero(Producer)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
 																				 TraversalPolicy position,
 																				 Producer<?> collection) {
@@ -1719,7 +1804,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param b the second collection to add
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Add two vectors element-wise
 	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0, 3.0);
@@ -1748,7 +1833,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Add three vectors together
 	 * CollectionProducer<PackedCollection<?>> vec1 = c(1.0, 2.0);
@@ -1803,7 +1888,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param b the collection to subtract (subtrahend)
 	 * @return a {@link CollectionProducer} that generates the element-wise difference
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Subtract two vectors element-wise
 	 * CollectionProducer<PackedCollection<?>> vec1 = c(5.0, 8.0, 12.0);
@@ -1851,7 +1936,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param b the second collection to multiply
 	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Multiply two vectors element-wise
 	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0, 4.0);
@@ -1882,7 +1967,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param shortCircuit optional pre-computed result for optimization
 	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
 	 * CollectionProducer<PackedCollection<?>> vec1 = c(2.0, 3.0);
@@ -1938,7 +2023,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param a the collection to scale
 	 * @return a {@link CollectionProducer} that generates the scaled collection, or null if no optimization available
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Scale a vector by 2
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0);
@@ -1983,7 +2068,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @return a {@link CollectionProducer} that generates the element-wise quotient
 	 * @throws UnsupportedOperationException if attempting to divide by zero
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Divide two vectors element-wise
 	 * CollectionProducer<PackedCollection<?>> numerator = c(12.0, 15.0, 20.0);
@@ -2031,7 +2116,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param a the collection to negate
 	 * @return a {@link CollectionProducerComputationBase} that generates the negated collection
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Negate a vector
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0, -4.0);
@@ -2075,7 +2160,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param value the collection containing values to compute square roots for
 	 * @return a {@link CollectionProducer} that generates the element-wise square roots
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Compute square roots of elements
 	 * CollectionProducer<PackedCollection<?>> values = c(4.0, 9.0, 16.0, 25.0);
@@ -2108,7 +2193,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param exp the exponent collection (power values)
 	 * @return a {@link CollectionProducer} that generates the element-wise power results
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Raise elements to specified powers
 	 * CollectionProducer<PackedCollection<?>> base = c(2.0, 3.0, 4.0);
@@ -2242,7 +2327,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param value the collection containing values to compute absolute values for
 	 * @return a {@link CollectionProducer} that generates the element-wise absolute values
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Compute absolute values
 	 * CollectionProducer<PackedCollection<?>> values = c(-3.0, -1.0, 0.0, 2.0, -5.0);
@@ -2281,7 +2366,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param input the collection to find the maximum element in
 	 * @return a {@link CollectionProducerComputationBase} that generates the maximum value
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Find maximum in a vector
 	 * CollectionProducer<PackedCollection<?>> values = c(3.0, 7.0, 2.0, 9.0, 5.0);
@@ -2350,7 +2435,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param input the collection to sum
 	 * @return a {@link CollectionProducerComputation} that generates a single-element collection containing the sum
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Sum all elements in a vector
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, 2.0, 3.0, 4.0);
@@ -2392,7 +2477,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * @param input the collection to compute the mean for
 	 * @return a {@link CollectionProducer} that generates a single-element collection containing the mean
 	 * 
-	 * @example
+	 *
 	 * <pre>{@code
 	 * // Calculate mean of a vector
 	 * CollectionProducer<PackedCollection<?>> vector = c(2.0, 4.0, 6.0, 8.0);
