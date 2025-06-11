@@ -54,10 +54,33 @@ import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures {
 
+	/**
+	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value of -1.0.
+	 * This is a commonly used constant in mathematical operations.
+	 * 
+	 * @return An {@link ExpressionComputation} that evaluates to a {@link Scalar} containing -1.0
+	 * @see #of(double)
+	 */
 	static ExpressionComputation<Scalar> minusOne() { return of(-1.0); }
 
+	/**
+	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value.
+	 * This is a convenience method for creating scalar constants from primitive double values.
+	 * 
+	 * @param value The double value to be wrapped in a {@link Scalar}
+	 * @return An {@link ExpressionComputation} that evaluates to a {@link Scalar} containing the specified value
+	 * @see #of(Scalar)
+	 */
 	static ExpressionComputation<Scalar> of(double value) { return of(new Scalar(value)); }
 
+	/**
+	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value.
+	 * This method creates a computation that returns the values from the provided {@link Scalar},
+	 * effectively creating a constant computation that always returns the same values.
+	 * 
+	 * @param value The {@link Scalar} containing the constant values
+	 * @return An {@link ExpressionComputation} that evaluates to the specified {@link Scalar}
+	 */
 	static ExpressionComputation<Scalar> of(Scalar value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.getMem().toArray(value.getOffset() + i, 1)[0])));
@@ -68,6 +91,25 @@ public interface ScalarFeatures extends CollectionFeatures {
 
 	default CollectionProducer<Scalar> scalar(double value) { return value(new Scalar(value)); }
 
+	/**
+	 * Creates a {@link Scalar} producer from a generic {@link Producer}.
+	 * This method handles conversion of various producer types to {@link Scalar} computations,
+	 * with special handling for {@link ExpressionComputation} instances.
+	 * 
+	 * <p>For {@link ExpressionComputation} inputs:</p>
+	 * <ul>
+	 *   <li>If the expression has 1 element: creates a 2-element scalar with the expression and a constant 1.0</li>
+	 *   <li>If the expression has 2 elements: uses the expressions directly for the scalar components</li>
+	 *   <li>Other sizes: throws IllegalArgumentException</li>
+	 * </ul>
+	 * 
+	 * <p>For {@link Shape} inputs: extracts values up to 2 elements, padding with 1.0 if needed</p>
+	 * 
+	 * @param value The producer to convert to a {@link Scalar}
+	 * @return A {@link CollectionProducer} that produces {@link Scalar} values
+	 * @throws IllegalArgumentException if ExpressionComputation has unsupported size
+	 * @throws UnsupportedOperationException if the producer type is not supported
+	 */
 	default CollectionProducer<Scalar> scalar(Producer<?> value) {
 		if (value instanceof ExpressionComputation) {
 			ExpressionComputation<?> c = (ExpressionComputation) value;
