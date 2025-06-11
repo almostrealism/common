@@ -114,6 +114,39 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
 	}
 
+	/**
+	 * Creates an {@link Evaluable} instance for this collection producer computation.
+	 * This method instantiates a {@link DefaultCollectionEvaluable} configured with
+	 * the computation's context, shape, and processing functions, providing a ready-to-use
+	 * evaluable for executing the computation with hardware acceleration.
+	 * 
+	 * <p>The method performs the following steps:</p>
+	 * <ol>
+	 *   <li>Obtains a compute context from the local hardware for this computation</li>
+	 *   <li>Creates a new {@link DefaultCollectionEvaluable} with:
+	 *       <ul>
+	 *         <li>The obtained compute context</li>
+	 *         <li>This computation's shape via {@link #getShape()}</li>
+	 *         <li>This computation instance itself</li>
+	 *         <li>Method references to {@link #createDestination(int)} and {@link #postProcessOutput(MemoryData, int)}</li>
+	 *       </ul>
+	 *   </li>
+	 *   <li>Compiles the evaluable for execution</li>
+	 *   <li>Returns the compiled evaluable</li>
+	 * </ol>
+	 * 
+	 * <p>This is the standard factory method for creating evaluable instances in the
+	 * AlmostRealism collection computation framework. The resulting evaluable can be
+	 * used multiple times to evaluate the computation with different inputs.</p>
+	 * 
+	 * @return a compiled {@link Evaluable} instance ready for computation execution
+	 * 
+	 * @throws RuntimeException if hardware context cannot be obtained or compilation fails
+	 * 
+	 * @see DefaultCollectionEvaluable
+	 * @see Hardware#getLocalHardware()
+	 * @see AcceleratedComputationEvaluable#compile()
+	 */
 	@Override
 	default Evaluable<T> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
