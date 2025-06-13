@@ -14,16 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect.computations;
+package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionZerosComputation;
+import org.almostrealism.collect.computations.SingleConstantComputation;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 /**
  * Test cases demonstrating usage patterns and behavior of {@link CollectionZerosComputation}.
@@ -32,7 +33,7 @@ import static org.junit.Assert.*;
  * 
  * @author Michael Murray
  */
-public class CollectionZerosComputationTest {
+public class CollectionZerosComputationTest implements TestFeatures {
 
 	/**
 	 * Tests basic creation and evaluation of zero computations.
@@ -96,7 +97,8 @@ public class CollectionZerosComputationTest {
 		
 		assertTrue("Reshaped computation should still be zeros", 
 				reshapedZeros instanceof CollectionZerosComputation);
-		assertTrue("Reshaped zeros should be detected as zero", reshapedZeros.isZero());
+		assertTrue("Reshaped zeros should be detected as zero", 
+				((CollectionZerosComputation<?>) reshapedZeros).isZero());
 		assertEquals("Reshaped zeros should have new shape", 
 				matrixShape.getSize(), reshapedZeros.getShape().getSize());
 		assertEquals("Reshaped zeros should have correct dimensions", 
@@ -120,7 +122,8 @@ public class CollectionZerosComputationTest {
 		
 		assertTrue("Traversed computation should still be zeros", 
 				traversedZeros instanceof CollectionZerosComputation);
-		assertTrue("Traversed zeros should be detected as zero", traversedZeros.isZero());
+		assertTrue("Traversed zeros should be detected as zero", 
+				((CollectionZerosComputation<?>) traversedZeros).isZero());
 		
 		// The exact shape after traversal depends on the traversal policy implementation
 		// but it should maintain the zero property
@@ -147,7 +150,8 @@ public class CollectionZerosComputationTest {
 		CollectionProducer<PackedCollection<?>> delta = zeros.delta(mockTarget);
 		
 		assertTrue("Delta of zeros should still be zeros", delta instanceof CollectionZerosComputation);
-		assertTrue("Delta should be detected as zero", delta.isZero());
+		assertTrue("Delta should be detected as zero", 
+				((CollectionZerosComputation<?>) delta).isZero());
 		
 		// The delta should have expanded shape: original [3] + target [2] = [3,2]
 		TraversalPolicy expectedShape = zerosShape.append(targetShape);
@@ -170,7 +174,8 @@ public class CollectionZerosComputationTest {
 		
 		assertSame("Zero computation should serve as its own parallel process", 
 				zeros, parallelProcess);
-		assertTrue("Parallel process should still be zero", parallelProcess.isZero());
+		assertTrue("Parallel process should still be zero", 
+				((CollectionZerosComputation<?>) parallelProcess).isZero());
 	}
 
 	/**
@@ -242,15 +247,24 @@ public class CollectionZerosComputationTest {
 		// Zero property should be preserved through reshaping
 		CollectionProducerComputation<PackedCollection<?>> reshapedZeros = 
 				zeros.reshape(new TraversalPolicy(2, 8));
-		assertTrue("Reshaped zeros should maintain zero property", reshapedZeros.isZero());
+		assertTrue("Reshaped zeros should maintain zero property", 
+				((CollectionZerosComputation<?>) reshapedZeros).isZero());
 		
 		// Zero property should be preserved through traversal
 		CollectionProducer<PackedCollection<?>> traversedZeros = zeros.traverse(1);
-		assertTrue("Traversed zeros should maintain zero property", traversedZeros.isZero());
+		assertTrue("Traversed zeros should maintain zero property", 
+				((CollectionZerosComputation<?>) traversedZeros).isZero());
 		
 		// Delta of zeros should be zeros
 		Producer<?> target = new SingleConstantComputation<>(new TraversalPolicy(2), 1.0);
 		CollectionProducer<PackedCollection<?>> deltaZeros = zeros.delta(target);
-		assertTrue("Delta of zeros should be zero", deltaZeros.isZero());
+		assertTrue("Delta of zeros should be zero", 
+				((CollectionZerosComputation<?>) deltaZeros).isZero());
+	}
+
+	private void assertSame(String msg, Object expected, Object actual) {
+		if (expected != actual) {
+			throw new AssertionError(msg + ": Expected same object instance");
+		}
 	}
 }
