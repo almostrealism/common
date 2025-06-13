@@ -97,29 +97,7 @@ import java.util.function.Supplier;
  *     }
  * }
  * }</pre>
- * 
- * <h3>Complex Mathematical Expression</h3>
- * <pre>{@code
- * // Example implementation for dot product computation
- * public class DotProductComputation extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
- *     public DotProductComputation(TraversalPolicy outputShape,
- *                                 Supplier<Evaluable<? extends PackedCollection<?>>> vector1,
- *                                 Supplier<Evaluable<? extends PackedCollection<?>>> vector2) {
- *         super("dotProduct", outputShape, vector1, vector2);
- *     }
- *     
- *     @Override
- *     protected boolean isOutputRelative() {
- *         return false; // Single scalar output
- *     }
- *     
- *     @Override
- *     public Expression<Double> getValueAt(Expression<?> index) {
- *         TraversableExpression[] args = getTraversableArguments(index);
- *         return args[0].getValueAt(index).multiply(args[1].getValueAt(index));
- *     }
- * }
- * }</pre>
+
  * 
  * <h2>Integration with Automatic Differentiation</h2>
  * <p>This class provides seamless integration with automatic differentiation systems through
