@@ -68,7 +68,7 @@ import java.util.List;
  * 
  * <p><strong>Performance Considerations:</strong></p>
  * <ul>
- *   <li>Permutation is a zero-copy operation at the computation level - no data is physically moved</li>
+ *   <li>The permutation operation involves copying/moving data to achieve the dimensional reordering</li>
  *   <li>The transformation is applied through index mapping during evaluation</li>
  *   <li>Memory access patterns may change significantly depending on the permutation order</li>
  * </ul>
@@ -134,20 +134,20 @@ public class CollectionPermute<T extends PackedCollection<?>>
 
 	/**
 	 * Returns the memory length required for this computation.
-	 * For CollectionPermute, this is always 1 since it performs a direct index mapping
-	 * without requiring additional memory allocation.
+	 * For CollectionPermute, this is always 1 because each kernel thread of the computation 
+	 * operates on only a single element of the collection.
 	 * 
-	 * @return Always returns 1, indicating minimal memory requirements for index transformation
+	 * @return Always returns 1, indicating that each kernel thread processes one element
 	 */
 	@Override
 	public int getMemLength() { return 1; }
 
 	/**
-	 * Returns the total number of elements that will be processed by this computation.
+	 * Returns the total number of kernel threads that will be used for this computation.
 	 * This equals the total size of the output collection, which is the same as the
 	 * input collection size since permutation preserves all elements.
 	 * 
-	 * @return The total count of elements to be processed, obtained from the traversal
+	 * @return The total count of kernel threads to be used, obtained from the traversal
 	 *         policy of the permuted shape
 	 */
 	@Override
