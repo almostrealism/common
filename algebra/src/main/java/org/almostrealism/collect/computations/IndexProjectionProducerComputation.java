@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
  *   <li>Supporting automatic differentiation through delta computation</li>
  * </ul>
  * 
- * <h3>Index Projection Concept</h3>
+ * <h2>Index Projection Concept</h2>
  * 
  * <p>An index projection is a mathematical transformation that maps one set of indices to another.
  * For example, if you have a 4-element collection [a, b, c, d] and want to create a subset [a, c, d],
@@ -61,7 +61,7 @@ import java.util.stream.Collectors;
  *   <li>Output index 2 → Input index 3 (element d)</li>
  * </ul>
  * 
- * <h3>Usage Examples</h3>
+ * <h2>Usage Examples</h2>
  * 
  * <p><strong>Basic Subset Example:</strong></p>
  * <pre>{@code
@@ -116,7 +116,7 @@ import java.util.stream.Collectors;
  * // Result: produces [input[4], input[3], input[2], input[1], input[0]]
  * }</pre>
  * 
- * <h3>Advanced Features</h3>
+ * <h2>Advanced Features</h2>
  * 
  * <p>This computation supports several advanced features:</p>
  * <ul>
@@ -126,7 +126,7 @@ import java.util.stream.Collectors;
  *   <li><strong>Nested Projections:</strong> Support for chaining multiple index transformations</li>
  * </ul>
  * 
- * <h3>Related Classes</h3>
+ * <h2>Related Classes</h2>
  * 
  * <p>This class serves as the foundation for several specialized computations:</p>
  * <ul>
@@ -396,8 +396,8 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 	 *               the derivative is computed
 	 * @return A {@link CollectionProducer} representing the derivative of this computation
 	 * 
-	 * @see org.almostrealism.algebra.AlgebraFeatures#cannotMatch(Object, Object)
-	 * @see org.almostrealism.algebra.AlgebraFeatures#match(Object, Object)
+	 * @see org.almostrealism.algebra.AlgebraFeatures
+	
 	 */
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
