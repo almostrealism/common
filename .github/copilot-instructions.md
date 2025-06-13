@@ -1,3 +1,6 @@
+## Agent Instructions
+
+### Overview
 This repository provides data structures in Java for operations in algebra, geometry, and
 other mathematics along with datatypes for both video and audio that are useful in both
 scientific computations and the automated production of artwork. These libraries provide
@@ -5,9 +8,11 @@ abstractions that can be used at runtime with a whole range of different acceler
 strategies, so the developer does not have to make a commitment to a particular strategy
 for production use of your model code ahead of time.
 
-## Code Standards
+PLEASE suggest improvements to this document based on any PR comments you observe,
+and make sure to update relevant agent memory files when you need to remember information
+for future sessions.
 
-PLEASE suggest improvements to this document based on any PR comments you observe.
+## Development Standards
 
 ### Required Before Each Commit
 - Make sure that code compiles using mvn clean install.
@@ -27,12 +32,17 @@ PLEASE suggest improvements to this document based on any PR comments you observ
   that you want to remember for future session, make sure to include modifications to the memory
   file in the relevant module(s).
 
-## Key Guidelines
-1. Follow Java best practices and idiomatic patterns.
-2. Maintain existing code structure and organization.
-3. Do not introduce excessive comments, such as explaining each step of a process.
-4. Always review the `agent-memory.md` file in the module you plan to modify before making changes (see above).
-5. Write unit tests using junit for new functionality.
-6. Do not include complex messages in Exceptions. Use a single, simple sentence.
+## Guidance
+Follow Java best practices and idiomatic patterns, while maintaining the existing code structure and organization.
+
+### Key Principles
+1. Do not introduce excessive comments, such as explaining each step of a process.
+2. Always review the `agent-memory.md` file in the module you plan to modify before making changes (see above).
+3. Write unit tests using junit for new functionality.
+4. Do not include complex messages in Exceptions. Use a single, simple sentence.
    If there is a strong need to report the value of certain fields in an Exception, create a
    custom Exception class that tracks those values separately from the message.
+
+### Documentation
+1. Always refer to types referenced in javadoc documentation using their formal class name
+   along with `@link` so that the javadoc generator can link to the class.
