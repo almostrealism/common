@@ -289,7 +289,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			if (shape.equalsIgnoreAxis(shape(out))) {
 				op.add(a(name, traverse(axis, (Producer) out), traverse(axis, (Producer) in)));
 			} else {
-				warn(shape + " does not match " + shape(out) + " for " + name);
+				if (Layer.shapeWarnings)
+					warn(shape + " does not match " + shape(out) + " for " + name);
+
 				op.add(a(name, reshape(shape, out), in));
 			}
 		} else {

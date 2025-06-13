@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.SystemUtils;
 
@@ -27,6 +26,7 @@ public interface Layer extends Component, Setup {
 
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 	boolean propagationWarnings = SystemUtils.isEnabled("AR_GRAPH_PROPAGATION_WARNINGS").orElse(true);
+	boolean shapeWarnings = SystemUtils.isEnabled("AR_GRAPH_SHAPE_WARNINGS").orElse(true);
 
 	List<PackedCollection<?>> getWeights();
 }
