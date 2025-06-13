@@ -31,6 +31,9 @@ for future sessions.
 - Whenever you receive instructions from PR comments for changes, or when you notice something
   that you want to remember for future session, make sure to include modifications to the memory
   file in the relevant module(s).
+- DO NOT use the agent memory file to simple record the same information that is already available
+  in the javadoc documentation for the module; agent memory is for general concepts that are useful
+  to remember during development, NOT regurgitation of the documentation in markdown form.
 
 ## Guidance
 Follow Java best practices and idiomatic patterns, while maintaining the existing code structure and organization.
