@@ -99,8 +99,10 @@ import java.util.stream.Stream;
  * 
  * // Usage
  * TraversalPolicy shape = new TraversalPolicy(100, 50); // 100x50 matrix
+ * Producer<PackedCollection<?>> sourceA = ...; // First input producer
+ * Producer<PackedCollection<?>> sourceB = ...; // Second input producer
  * AdditionComputation computation = new AdditionComputation(shape, 
- *     () -> sourceA.get(), () -> sourceB.get());
+ *     () -> sourceA, () -> sourceB);
  * PackedCollection<?> result = computation.get().evaluate();
  * }</pre>
  * 
@@ -184,9 +186,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * 
 	 * @param name A human-readable name for this computation, used in debugging and profiling.
 	 *             May be null, in which case a default name will be generated.
-	 * @param outputShape The traversal policy defining the multi-dimensional shape of the output.
+	 * @param outputShape The {@link TraversalPolicy} defining the multi-dimensional shape of the output.
 	 *                   Must have a total size greater than zero.
-	 * @param arguments Variable argument list of suppliers that provide the input evaluables.
+	 * @param arguments Variable argument list of {@link Supplier}s that provide the input {@link Evaluable}s.
 	 *                 Each supplier must be non-null and produce a valid evaluable when called.
 	 * 
 	 * @throws IllegalArgumentException if the output shape has a total size of zero or less
@@ -234,10 +236,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Retrieves the input arguments as a list of double array variables.
+	 * Retrieves the input arguments as a {@link List} of {@link ArrayVariable} for {@link Double}s.
 	 * This is used internally for scope preparation and argument handling.
 	 * 
-	 * @return List of input argument variables
+	 * @return {@link List} of input argument variables
 	 */
 	protected List<ArrayVariable<Double>> getInputArguments() {
 		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
@@ -377,7 +379,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Determines the appropriate traversal policy for a given kernel length.
+	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
+	 * This will be the shape of the computation result.
 	 * This method handles the complex logic of adjusting shapes based on whether
 	 * the computation has a fixed count and the relationship between the kernel
 	 * length and the expected output count.
@@ -491,9 +494,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	/**
 	 * Returns the memory length required for this computation.
-	 * This represents the size of memory allocation needed for the output buffer.
+	 * This represents the number of elements operated on by one kernel thread.
 	 * 
-	 * @return The memory length in elements
+	 * @return The memory length in elements per kernel thread
 	 */
 	@Override
 	public int getMemLength() {
@@ -501,11 +504,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Returns the total number of elements in the output collection.
+	 * Returns the number of kernel threads that will be used for this computation.
 	 * This is derived from the traversal policy and represents the
-	 * total count of data elements that will be produced.
+	 * total count of kernel threads that will be executed.
 	 * 
-	 * @return The total count of output elements, or 0 if shape is null
+	 * @return The number of kernel threads that will be used, or 0 if shape is null
 	 */
 	@Override
 	public long getCountLong() {
