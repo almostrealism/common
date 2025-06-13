@@ -20,11 +20,19 @@ PLEASE suggest improvements to this document based on any PR comments you observ
 ## Repository Structure
 - This repository is organized according to the standard Maven directory layout.
 
+## Agent Memory
+- Every module contains a file named `agent-memory.md` that can be used to keep track of
+  information that seems relevant to agents working on code in that module.
+- Whenever you receive instructions from PR comments for changes, or when you notice something
+  that you want to remember for future session, make sure to include modifications to the memory
+  file in the relevant module(s).
+
 ## Key Guidelines
 1. Follow Java best practices and idiomatic patterns.
 2. Maintain existing code structure and organization.
 3. Do not introduce excessive comments, such as explaining each step of a process.
-4. Write unit tests using junit for new functionality.
-5. Do not include complex messages in Exceptions. Use a single, simple sentence.
+4. Always review the `agent-memory.md` file in the module you plan to modify before making changes (see above).
+5. Write unit tests using junit for new functionality.
+6. Do not include complex messages in Exceptions. Use a single, simple sentence.
    If there is a strong need to report the value of certain fields in an Exception, create a
    custom Exception class that tracks those values separately from the message.
