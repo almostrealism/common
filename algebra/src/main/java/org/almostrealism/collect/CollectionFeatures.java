@@ -1572,6 +1572,54 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return enumerate;
 	}
 
+	/**
+	 * Creates a computation that permutes (reorders) the dimensions of a collection.
+	 * This method provides a high-level interface to {@link CollectionPermute} for
+	 * dimension transposition and reordering operations.
+	 * 
+	 * <p>Dimension permutation allows you to rearrange the axes of a multi-dimensional
+	 * collection without changing the actual data values. This is commonly used for:</p>
+	 * <ul>
+	 *   <li>Matrix/tensor transposition</li>
+	 *   <li>Changing data layout for optimal access patterns</li>
+	 *   <li>Preparing data for operations that expect specific dimension orders</li>
+	 *   <li>Converting between different tensor format conventions (e.g., NCHW ↔ NHWC)</li>
+	 * </ul>
+	 * 
+	 * <p><strong>Usage Examples:</strong></p>
+	 * <pre>{@code
+	 * // Matrix transpose (2D)
+	 * Producer<?> matrix = ...; // Shape: (rows, cols)
+	 * Producer<?> transposed = permute(matrix, 1, 0); // Shape: (cols, rows)
+	 * 
+	 * // 3D tensor reordering  
+	 * Producer<?> tensor = ...; // Shape: (batch, height, width)
+	 * Producer<?> reordered = permute(tensor, 2, 0, 1); // Shape: (width, batch, height)
+	 * 
+	 * // 4D convolution format conversion
+	 * Producer<?> nchw = ...; // Shape: (N, C, H, W)
+	 * Producer<?> nhwc = permute(nchw, 0, 2, 3, 1); // Shape: (N, H, W, C)
+	 * }</pre>
+	 * 
+	 * <p><strong>Optimization:</strong> If the input collection is zero (as determined by
+	 * {@link Algebraic#isZero(Object)}), this method returns an optimized zero collection
+	 * with the permuted shape instead of creating a full computation.</p>
+	 * 
+	 * @param <T> The type of collection being permuted
+	 * @param collection The input collection to permute. Must implement {@link io.almostrealism.collect.Shape}
+	 *                  to provide dimensional information.
+	 * @param order The dimension permutation order. Each element specifies which input
+	 *              dimension should appear at that position in the output. Must be a
+	 *              valid permutation of dimension indices (0 to numDims-1).
+	 * @return A computation that produces the permuted collection
+	 * 
+	 * @throws IllegalArgumentException if the collection doesn't implement Shape
+	 * @throws IllegalArgumentException if the order array is not a valid permutation
+	 *
+	 * @see CollectionPermute
+	 * @see io.almostrealism.collect.TraversalPolicy#permute(int...)
+	 * @see #zeros(io.almostrealism.collect.TraversalPolicy)
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> permute(Producer<?> collection, int... order) {
 		if (Algebraic.isZero(collection)) {
 			return zeros(shape(collection).permute(order).extentShape());
