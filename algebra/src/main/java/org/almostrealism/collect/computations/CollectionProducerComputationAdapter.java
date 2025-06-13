@@ -69,12 +69,13 @@ import java.util.function.Supplier;
  * output positioning:</p>
  * 
  * <ul>
- *   <li><strong>Relative Output ({@link #isOutputRelative()} = true):</strong> Uses variable-sized
- *       positioning that adapts to different argument sizes. This provides greater flexibility but
- *       requires the parallelism to match the traversal policy exactly.</li>
- *   <li><strong>Absolute Output ({@link #isOutputRelative()} = false):</strong> Uses fixed positioning
- *       with single-element operations. This is more predictable but less flexible for varying
- *       argument sizes.</li>
+ *   <li><strong>Relative Output ({@link #isOutputRelative()} = true):</strong> Uses relative
+ *       {@link io.almostrealism.scope.ArrayVariable} positions in generated statements, allowing
+ *       greater flexibility when used with arguments of varying size. However, this requires
+ *       the parallelism to match the traversal policy exactly.</li>
+ *   <li><strong>Absolute Output ({@link #isOutputRelative()} = false):</strong> Uses absolute
+ *       {@link io.almostrealism.scope.ArrayVariable} positions, providing more predictable
+ *       behavior at the cost of reduced flexibility.</li>
  * </ul>
  * 
  * <h2>Usage Examples</h2>
@@ -95,14 +96,6 @@ import java.util.function.Supplier;
  *         return args[0].getValueAt(index).add(args[1].getValueAt(index));
  *     }
  * }
- * 
- * // Usage
- * TraversalPolicy shape = new TraversalPolicy(100, 50); // 100x50 matrix
- * Producer<PackedCollection<?>> sourceA = ...;
- * Producer<PackedCollection<?>> sourceB = ...;
- * AdditionComputation computation = new AdditionComputation(shape, 
- *     () -> sourceA, () -> sourceB);
- * PackedCollection<?> result = computation.get().evaluate();
  * }</pre>
  * 
  * <h3>Complex Mathematical Expression</h3>
@@ -112,7 +105,7 @@ import java.util.function.Supplier;
  *     public DotProductComputation(TraversalPolicy outputShape,
  *                                 Supplier<Evaluable<? extends PackedCollection<?>>> vector1,
  *                                 Supplier<Evaluable<? extends PackedCollection<?>>> vector2) {
- *         super("dot_product", outputShape, vector1, vector2);
+ *         super("dotProduct", outputShape, vector1, vector2);
  *     }
  *     
  *     @Override
@@ -184,20 +177,26 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * 
 	 * <p><strong>Example Usage:</strong></p>
 	 * <pre>{@code
-	 * // Create a simple element-wise computation
-	 * CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> computation = 
-	 *     new MyComputationImplementation(
-	 *         "my_operation",                    // Operation name for debugging
-	 *         new TraversalPolicy(10, 20),      // 10x20 output shape
-	 *         () -> inputProducer1,             // First input supplier
-	 *         () -> inputProducer2              // Second input supplier
-	 *     );
+	 * // Create a computation with input suppliers
+	 * public class MyComputationImplementation extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+	 *     public MyComputationImplementation(String name, TraversalPolicy shape,
+	 *                                       Supplier<Evaluable<? extends PackedCollection<?>>> a,
+	 *                                       Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	 *         super(name, shape, a, b);
+	 *     }
+	 *     
+	 *     @Override
+	 *     public Expression<Double> getValueAt(Expression<?> index) {
+	 *         // Implementation details...
+	 *         return null;
+	 *     }
+	 * }
 	 * }</pre>
 	 * 
 	 * @param name A human-readable name for this computation, used in debugging, profiling,
 	 *             and error messages. If null, a default name will be generated based on the
-	 *             class name. Recommended to use descriptive names like "matrix_multiply" or
-	 *             "element_wise_add".
+	 *             class name. Recommended to use descriptive names like "matrixMultiply" or
+	 *             "elementWiseAdd".
 	 * @param outputShape The {@link TraversalPolicy} that defines the multi-dimensional shape
 	 *                   and traversal pattern of the output collection. This determines how
 	 *                   the output data is structured and accessed. Must have a total size
@@ -535,19 +534,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * the target's gradient values at corresponding indices, enabling efficient gradient
 	 * propagation through complex computation graphs.</p>
 	 * 
-	 * <p><strong>Automatic Differentiation Example:</strong></p>
-	 * <pre>{@code
-	 * // Original computation: f(x) = x^2 + 2x + 1
-	 * CollectionProducerComputationAdapter<?, ?> computation = createQuadraticComputation();
-	 * Producer<?> variable = createVariableProducer();
-	 * 
-	 * // Compute derivative: f'(x) = 2x + 2
-	 * CollectionProducer<?> derivative = computation.delta(variable);
-	 * 
-	 * // The derivative can be evaluated to get gradient values
-	 * PackedCollection<?> gradientValues = derivative.get().evaluate();
-	 * }</pre>
-	 * 
 	 * <p><strong>Chain Rule Implementation:</strong></p>
 	 * <p>The delta computation automatically handles the chain rule by creating expressions
 	 * that access the target's gradient values using the same indexing scheme as the original
@@ -578,55 +564,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		return delta;
 	}
 
-	/**
-	 * Converts this computation to a repeated computation adapter that can process multiple
-	 * input sets in a single kernel invocation. This transformation is useful for batch
-	 * processing scenarios where the same operation needs to be applied to multiple
-	 * input collections simultaneously.
-	 * 
-	 * <p>The repeated computation adapter maintains the same mathematical operation but
-	 * modifies the execution strategy to handle batched inputs efficiently. This can
-	 * significantly improve performance for scenarios where many similar computations
-	 * need to be performed.</p>
-	 * 
-	 * <p><strong>Transformation Process:</strong></p>
-	 * <ol>
-	 *   <li>Creates a {@link RepeatedProducerComputationAdapter} with the same shape</li>
-	 *   <li>Transfers the computation logic to the repeated execution context</li>
-	 *   <li>Configures input handling for batch processing (skips the first input which
-	 *       is the destination buffer)</li>
-	 *   <li>Establishes a dependent lifecycle relationship to ensure proper resource management</li>
-	 * </ol>
-	 * 
-	 * <p><strong>Usage Example:</strong></p>
-	 * <pre>{@code
-	 * // Original computation for single operation
-	 * CollectionProducerComputationAdapter<?, ?> singleComputation = createComputation();
-	 * 
-	 * // Convert to repeated computation for batch processing
-	 * RepeatedProducerComputationAdapter<?> batchComputation = singleComputation.toRepeated();
-	 * 
-	 * // Now can process multiple input sets efficiently
-	 * PackedCollection<?> results = batchComputation.get().evaluate(
-	 *     inputBatch1, inputBatch2, inputBatch3);
-	 * }</pre>
-	 * 
-	 * <p><strong>Performance Benefits:</strong></p>
-	 * <ul>
-	 *   <li><strong>Kernel Reuse:</strong> Single kernel launch handles multiple operations</li>
-	 *   <li><strong>Memory Efficiency:</strong> Reduced memory allocation overhead</li>
-	 *   <li><strong>Hardware Utilization:</strong> Better GPU occupancy through batching</li>
-	 *   <li><strong>Compilation Efficiency:</strong> Single compilation for multiple operations</li>
-	 * </ul>
-	 * 
-	 * @return A {@link RepeatedProducerComputationAdapter} that can efficiently process
-	 *         multiple input sets using the same mathematical operation. The returned
-	 *         adapter maintains a dependent lifecycle relationship with this computation
-	 *         to ensure proper resource management.
-	 * 
-	 * @see RepeatedProducerComputationAdapter
-	 * @see io.almostrealism.code.ScopeLifecycle#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
-	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
