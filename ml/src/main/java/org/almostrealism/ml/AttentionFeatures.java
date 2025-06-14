@@ -21,7 +21,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -292,22 +291,9 @@ public interface AttentionFeatures extends RotationFeatures {
 		return inputShape -> gatedLinear(inputShape, weight, bias);
 	}
 
-	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection<?> weight,
-														 PackedCollection<?> bias,
-														 Function<TraversalPolicy, CollectionReceptor> monitor) {
-		return inputShape -> gatedLinear(inputShape, weight, bias, monitor);
-	}
-
 	default Block gatedLinear(TraversalPolicy inputShape,
 							  PackedCollection<?> weight,
 							  PackedCollection<?> bias) {
-		return gatedLinear(inputShape, weight, bias, null);
-	}
-
-	default Block gatedLinear(TraversalPolicy inputShape,
-							  PackedCollection<?> weight,
-							  PackedCollection<?> bias,
-							  Function<TraversalPolicy, CollectionReceptor> monitor) {
 		SequentialBlock glu = new SequentialBlock(inputShape);
 		glu.add(dense(weight, bias));
 
@@ -315,10 +301,6 @@ public interface AttentionFeatures extends RotationFeatures {
 		// the linear transform and one for the gate
 		List<Block> split = glu.split(2, glu.getOutputShape().getDimensions() - 1, 0);
 		Block gate = split.get(1).andThen(silu());
-
-		if (monitor != null) {
-			gate.branch().andThen(monitor.apply(gate.getOutputShape()));
-		}
 
 		// Apply activation to the gate and multiply
 		// it with the linear output
@@ -329,23 +311,21 @@ public interface AttentionFeatures extends RotationFeatures {
 	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 																	 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
 																	 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
-																	 Function<TraversalPolicy, CollectionReceptor> monitor,
-																	 ComputeRequirement... requirements) {
+																	ComputeRequirement... requirements) {
 		return inputShape ->
 				gatedLinearFeedForward(inputShape, normWeights, normBiases,
 										weightIn, biasIn, weightOut, biasOut,
-										monitor, requirements);
+										requirements);
 	}
 
 	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
 										 PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 										 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
 										 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
-										 Function<TraversalPolicy, CollectionReceptor> monitor,
 										 ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
 		feedForward.add(norm(normWeights, normBiases, requirements));
-		feedForward.add(gatedLinear(weightIn, biasIn, monitor));
+		feedForward.add(gatedLinear(weightIn, biasIn));
 		feedForward.add(dense(weightOut, biasOut));
 		return feedForward;
 	}
@@ -367,8 +347,7 @@ public interface AttentionFeatures extends RotationFeatures {
 								   // Feed-forward weights
 								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
 								   PackedCollection<?> w1, PackedCollection<?> w2,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
-								   Function<TraversalPolicy, CollectionReceptor> monitor) {
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Self-attention with pre-normalization inside residual branch
@@ -403,11 +382,7 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		// Feed-forward with normalization inside residual branch
 		block.add(residual(gatedLinearFeedForward(block.getOutputShape(),
-				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias, null)));
-
-		if (monitor != null) {
-			block.branch().andThen(monitor.apply(block.getOutputShape()));
-		}
+				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias)));
 
 		return block;
 	}

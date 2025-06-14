@@ -756,12 +756,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				shape(batchSize, seqLen, dim),
 				normWeight, normBias,
 				w1Weight, w1Bias,
-				w2Weight, w2Bias,
-				shape -> {
-					PackedCollection<?> transformerState = new PackedCollection<>(shape);
-					states.add(transformerState);
-					return into(transformerState);
-				}
+				w2Weight, w2Bias
 		));
 
 		// Compile and run the model
@@ -903,8 +898,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				// Feed-forward weights
 				ffnNormWeight, ffnNormBias,
 				w1Weight, w2Weight,
-				w1Bias, w2Bias,
-				null));
+				w1Bias, w2Bias
+		));
 
 		// Compile and run the model with both inputs
 		CompiledModel compiled = model.compile(false);
