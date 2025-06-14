@@ -901,8 +901,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				// Feed-forward weights
 				ffnNormWeight, ffnNormBias,
 				w1Weight, w2Weight, w3Weight,
-				w1Bias, w2Bias, w3Bias
-		));
+				w1Bias, w2Bias, w3Bias,
+				null));
 
 		// Compile and run the model with both inputs
 		CompiledModel compiled = model.compile(false);

@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -309,7 +310,8 @@ public interface AttentionFeatures extends RotationFeatures {
 								   // Feed-forward weights
 								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
 								   PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias) {
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
+								   Function<TraversalPolicy, CollectionReceptor> monitor) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Self-attention with pre-normalization inside residual branch
@@ -347,6 +349,10 @@ public interface AttentionFeatures extends RotationFeatures {
 				ffnNormWeight, ffnNormBias,
 				w1, w2, w3, w1Bias, w2Bias, w3Bias,
 				false)));
+
+		if (monitor != null) {
+			block.branch().andThen(monitor.apply(block.getOutputShape()));
+		}
 
 		return block;
 	}
