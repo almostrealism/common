@@ -266,7 +266,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		int dim = w2.getShape().length(0);
 		return feedForward(shape(dim), rms, null,
 				w1, w2, w3, null, null, null,
-				true, requirements);
+				requirements);
 	}
 
 	default Block feedForward(
@@ -274,15 +274,9 @@ public interface AttentionFeatures extends RotationFeatures {
 			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 			PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
-			boolean rmsNorm,
 			ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(shape);
-
-		if (rmsNorm) {
-			feedForward.add(rmsnorm(normWeights, normBiases, requirements));
-		} else {
-			feedForward.add(norm(normWeights, normBiases, requirements));
-		}
+		feedForward.add(rmsnorm(normWeights, normBiases, requirements));
 
 		SequentialBlock hidden = new SequentialBlock(shape);
 		hidden.add(dense(w1, w1Bias));
@@ -290,6 +284,69 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		feedForward.product(dense(w3, w3Bias), hidden);
 		feedForward.add(dense(w2, w2Bias));
+		return feedForward;
+	}
+
+	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection<?> weight,
+														 PackedCollection<?> bias) {
+		return inputShape -> gatedLinear(inputShape, weight, bias);
+	}
+
+	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection<?> weight,
+														 PackedCollection<?> bias,
+														 Function<TraversalPolicy, CollectionReceptor> monitor) {
+		return inputShape -> gatedLinear(inputShape, weight, bias, monitor);
+	}
+
+	default Block gatedLinear(TraversalPolicy inputShape,
+							  PackedCollection<?> weight,
+							  PackedCollection<?> bias) {
+		return gatedLinear(inputShape, weight, bias, null);
+	}
+
+	default Block gatedLinear(TraversalPolicy inputShape,
+							  PackedCollection<?> weight,
+							  PackedCollection<?> bias,
+							  Function<TraversalPolicy, CollectionReceptor> monitor) {
+		SequentialBlock glu = new SequentialBlock(inputShape);
+		glu.add(dense(weight, bias));
+
+		// Split the output into two parts, one for
+		// the linear transform and one for the gate
+		List<Block> split = glu.split(2, glu.getOutputShape().getDimensions() - 1, 0);
+		Block gate = split.get(1).andThen(silu());
+
+		if (monitor != null) {
+			gate.branch().andThen(monitor.apply(gate.getOutputShape()));
+		}
+
+		// Apply activation to the gate and multiply
+		// it with the linear output
+		glu.add(product(gate));
+		return glu;
+	}
+
+	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection<?> normWeights, PackedCollection<?> normBiases,
+																	 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
+																	 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
+																	 Function<TraversalPolicy, CollectionReceptor> monitor,
+																	 ComputeRequirement... requirements) {
+		return inputShape ->
+				gatedLinearFeedForward(inputShape, normWeights, normBiases,
+										weightIn, biasIn, weightOut, biasOut,
+										monitor, requirements);
+	}
+
+	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
+										 PackedCollection<?> normWeights, PackedCollection<?> normBiases,
+										 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
+										 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
+										 Function<TraversalPolicy, CollectionReceptor> monitor,
+										 ComputeRequirement... requirements) {
+		SequentialBlock feedForward = new SequentialBlock(inputShape);
+		feedForward.add(norm(normWeights, normBiases, requirements));
+		feedForward.add(gatedLinear(weightIn, biasIn, monitor));
+		feedForward.add(dense(weightOut, biasOut));
 		return feedForward;
 	}
 
@@ -309,8 +366,8 @@ public interface AttentionFeatures extends RotationFeatures {
 								   PackedCollection<?> crossKNormWeight, PackedCollection<?> crossKNormBias,
 								   // Feed-forward weights
 								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
-								   PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias, PackedCollection<?> w3Bias,
+								   PackedCollection<?> w1, PackedCollection<?> w2,
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
 								   Function<TraversalPolicy, CollectionReceptor> monitor) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
@@ -345,10 +402,8 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		// Feed-forward with normalization inside residual branch
-		block.add(residual(feedForward(block.getOutputShape(),
-				ffnNormWeight, ffnNormBias,
-				w1, w2, w3, w1Bias, w2Bias, w3Bias,
-				false)));
+		block.add(residual(gatedLinearFeedForward(block.getOutputShape(),
+				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias, null)));
 
 		if (monitor != null) {
 			block.branch().andThen(monitor.apply(block.getOutputShape()));

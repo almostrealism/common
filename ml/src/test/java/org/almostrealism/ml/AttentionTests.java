@@ -33,6 +33,7 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.Model;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class AttentionTests implements AttentionFeatures, TestFeatures {
@@ -728,8 +729,6 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		PackedCollection<?> w1Bias = referenceData.get("w1_bias");
 		PackedCollection<?> w2Weight = referenceData.get("w2_weight");
 		PackedCollection<?> w2Bias = referenceData.get("w2_bias");
-		PackedCollection<?> w3Weight = referenceData.get("w3_weight");
-		PackedCollection<?> w3Bias = referenceData.get("w3_bias");
 		PackedCollection<?> normWeight = referenceData.get("norm_weight");
 		PackedCollection<?> normBias = referenceData.get("norm_bias");
 
@@ -738,28 +737,31 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		assertNotNull("w1Bias not found", w1Bias);
 		assertNotNull("w2Weight not found", w2Weight);
 		assertNotNull("w2Bias not found", w2Bias);
-		assertNotNull("w3Weight not found", w3Weight);
-		assertNotNull("w3Bias not found", w3Bias);
 		assertNotNull("normWeight not found", normWeight);
 		assertNotNull("normBias not found", normBias);
 
 		log("Feed-forward weight shapes:");
 		log("  w1: " + w1Weight.getShape() + ", bias: " + w1Bias.getShape());
 		log("  w2: " + w2Weight.getShape() + ", bias: " + w2Bias.getShape());
-		log("  w3: " + w3Weight.getShape() + ", bias: " + w3Bias.getShape());
 		log("  norm: " + normWeight.getShape() + ", bias: " + normBias.getShape());
 
-		// Create test model with just feed-forward
+		// Create model with just feed-forward
 		Model model = new Model(shape(batchSize, seqLen, dim));
 		SequentialBlock main = model.sequential();
 
+		List<PackedCollection<?>> states = new ArrayList<>();
+
 		// Add feed-forward block
-		main.add(feedForward(
+		main.add(gatedLinearFeedForward(
 				shape(batchSize, seqLen, dim),
 				normWeight, normBias,
-				w1Weight, w2Weight, w3Weight,
-				w1Bias, w2Bias, w3Bias,
-				false  // Use layer norm, not RMS norm
+				w1Weight, w1Bias,
+				w2Weight, w2Bias,
+				shape -> {
+					PackedCollection<?> transformerState = new PackedCollection<>(shape);
+					states.add(transformerState);
+					return into(transformerState);
+				}
 		));
 
 		// Compile and run the model
@@ -900,8 +902,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				crossKNormWeight, crossKNormBias,
 				// Feed-forward weights
 				ffnNormWeight, ffnNormBias,
-				w1Weight, w2Weight, w3Weight,
-				w1Bias, w2Bias, w3Bias,
+				w1Weight, w2Weight,
+				w1Bias, w2Bias,
 				null));
 
 		// Compile and run the model with both inputs

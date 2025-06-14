@@ -190,4 +190,44 @@ public class LayersTests implements LayerFeatures, DistributionFeatures, TestFea
 			logKernelMetrics(profile);
 		}
 	}
+
+	@Test
+	public void siluTransformation() {
+		int size = 100;
+		
+		// Create random input values in range [-2, 2] for numerical stability
+		PackedCollection<?> input = new PackedCollection<>(shape(size));
+		input.fill(pos -> (Math.random() - 0.5) * 4.0);
+		
+		// Create SILU layer
+		SequentialBlock model = new SequentialBlock(shape(size));
+		model.add(silu());
+		
+		// Capture output
+		PackedCollection<?> actualOutput = new PackedCollection<>(shape(size));
+		model.getForward().setReceptor(out -> () -> () -> {
+			PackedCollection<?> result = out.get().evaluate();
+			actualOutput.setMem(0, result.toArray(0, size), 0, size);
+		});
+		
+		// Execute the model
+		OperationList op = (OperationList) model.getForward().push(p(input));
+		op.get().run();
+		
+		// Calculate expected output manually: silu(x) = x * sigmoid(x)
+		double[] inputArray = input.toArray(0, size);
+		double[] expectedOutput = new double[size];
+		
+		for (int i = 0; i < size; i++) {
+			double x = inputArray[i];
+			double sigmoid = 1.0 / (1.0 + Math.exp(-x));
+			expectedOutput[i] = x * sigmoid;
+		}
+		
+		// Compare results with tolerance for floating-point precision
+		double[] actualArray = actualOutput.toArray(0, size);
+		for (int i = 0; i < size; i++) {
+			assertEquals(expectedOutput[i], actualArray[i]);
+		}
+	}
 }

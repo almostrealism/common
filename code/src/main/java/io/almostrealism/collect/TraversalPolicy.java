@@ -625,6 +625,34 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return p;
 	}
 
+	public TraversalPolicy insertDimension(long size) {
+		return insertDimension(getTraversalAxis(), size);
+	}
+
+	public TraversalPolicy insertDimension(int axis, long size) {
+		// Create new dims with existing lengths plus new dimension
+		long newDims[] = new long[getDimensions() + 1];
+		for (int i = 0; i < axis; i++)
+			newDims[i] = lengthLong(i);
+		newDims[axis] = size;
+		for (int i = axis; i < getDimensions(); i++)
+			newDims[i + 1] = lengthLong(i);
+
+		// Create new dimsOrder with existing mappings plus new dimension
+		int newDimsOrder[] = new int[newDims.length];
+		for (int i = 0; i < axis; i++)
+			newDimsOrder[i] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
+		newDimsOrder[axis] = axis;
+		for (int i = axis; i < getDimensions(); i++)
+			newDimsOrder[i + 1] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
+
+		TraversalPolicy p = new TraversalPolicy(
+				order, true, false,
+				newDims, newDimsOrder, rateNumerator, rateDenominator);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
 	public TraversalPolicy stride(int stride) {
 		long newDims[] = new long[getDimensions()];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == traversalAxis ? stride : 0;

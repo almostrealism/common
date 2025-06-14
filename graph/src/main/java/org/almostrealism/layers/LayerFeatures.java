@@ -363,7 +363,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 	 * @return A Block that performs subset extraction forward and padding backward
 	 * 
 	 * @see #subset(TraversalPolicy, Producer, int...)
-	 * @see PackedCollectionSubset
+	 * @see CollectionFeatures#subset
 	 */
 	default Block subset(TraversalPolicy inputShape, TraversalPolicy subsetShape, int... pos) {
 		if (inputShape.getDimensions() != subsetShape.getDimensions()) {
@@ -810,6 +810,11 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
 			return ops;
 		}), null, requirements);
+	}
+
+	default Function<TraversalPolicy, CellularLayer> product(CellularPropagation<PackedCollection<?>> aux,
+								  							 ComputeRequirement... requirements) {
+		return shape -> product(shape, aux, requirements);
 	}
 
 	default CellularLayer product(TraversalPolicy shape,

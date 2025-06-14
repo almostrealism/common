@@ -140,6 +140,28 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return branch;
 	}
 
+	public List<Block> split(int count) { return split(count, 0); }
+
+	public List<Block> split(int count, int axis) {
+		return split(count, axis, -1);
+	}
+
+	public List<Block> split(int count, int axis, int mainIndex) {
+		if (count <= 0) {
+			throw new IllegalArgumentException("Count must be greater than zero");
+		}
+
+		TraversalPolicy superShape = getOutputShape();
+		long len = superShape.lengthLong(axis);
+		if (len % count != 0) {
+			throw new IllegalArgumentException("Count must evenly divide the length of the axis");
+		}
+
+		int splitLength = (int) (len / count);
+		TraversalPolicy splitShape = superShape.replaceDimension(axis, splitLength);
+		return split(splitShape, mainIndex);
+	}
+
 	public List<Block> split(TraversalPolicy subsetShape) {
 		return split(subsetShape, -1);
 	}
@@ -173,7 +195,7 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		Block main = null;
 
 		for (int i = 0; i < count; i++) {
-			int section = i;
+			int section = i * splitShape.length(axis);
 			int[] pos = IntStream.range(0, superShape.getDimensions()).map(j -> j == axis ? section : 0).toArray();
 
 			SequentialBlock sub = new SequentialBlock(superShape);
