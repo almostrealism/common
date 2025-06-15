@@ -24,6 +24,9 @@ for future sessions.
 
 ## Repository Structure
 - This repository is organized according to the standard Maven directory layout.
+- All tests should be located in the `utils` module (except for those that depend on code in the
+  `ml` module, which can remain in the `ml` module), because this module includes many helpful
+   utilities for testing across the data types from throughout the repository.
 
 ## Agent Memory
 - Every module contains a file named `agent-memory.md` that can be used to keep track of

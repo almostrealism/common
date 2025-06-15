@@ -489,10 +489,10 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param batchSize batch dimension
 	 * @param querySeqLen sequence length for queries
 	 * @param contextSeqLen sequence length for context (keys/values)
-	 * @param heads     number of attention heads
-	 * @param dimHead   dimension per head
-	 * @param k         key tensor data (batch, heads, seqLenK, dimHead)
-	 * @param v         value tensor data (batch, heads, seqLenV, dimHead)
+	 * @param heads number of attention heads
+	 * @param dimHead dimension per head
+	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
+	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
 	 */
 	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
 											PackedCollection<?> k, PackedCollection<?> v) {
