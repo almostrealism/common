@@ -14,12 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect.computations;
+package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
+import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.junit.Test;
