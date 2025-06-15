@@ -49,7 +49,7 @@ import java.util.stream.Stream;
  * 
  * <h4>Kernel-based Computation:</h4>
  * <pre>{@code
- * // Create a producer for GPU/parallel computation
+ * // Create a producer for kernel execution (single function call)
  * DynamicCollectionProducer<PackedCollection<?>> kernelProducer = 
  *     new DynamicCollectionProducer<>(shape, computationFunction, true);
  * }</pre>
@@ -78,7 +78,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	/** The shape/traversal policy that defines the dimensions of the output collection */
 	private TraversalPolicy shape;
 	
-	/** Whether this producer should use kernel-based (GPU/parallel) computation */
+	/** Whether this producer should use kernel execution (single function call) vs element-wise execution (multiple calls) */
 	private boolean kernel;
 	
 	/** Whether this producer has a fixed count (deterministic output size) */
@@ -106,7 +106,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 */
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function, boolean kernel) {
 		this(shape, function, kernel, true);
@@ -117,7 +117,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 */
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function,
@@ -132,7 +132,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function A function that takes input collections and returns a function for output generation
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 * @param argument The first producer argument to be evaluated as input
 	 * @param args Additional producer arguments to be evaluated as inputs
@@ -156,7 +156,7 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function A function that takes input collections and returns a function for output generation
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 * @param args Array of producers whose outputs will be used as inputs to the function
 	 */
@@ -262,9 +262,9 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	 * 
 	 * <ul>
 	 * <li><strong>Kernel mode (kernel=true):</strong> Uses the parent class implementation,
-	 *     which typically provides GPU/parallel execution capabilities</li>
+	 *     which applies the function once to produce the entire output collection</li>
 	 * <li><strong>Function mode (kernel=false):</strong> Returns a direct function reference
-	 *     that executes on the current thread</li>
+	 *     that executes multiple times (once per element) to build the output collection</li>
 	 * </ul>
 	 * 
 	 * @return An evaluable that produces collections of type T when executed

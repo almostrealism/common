@@ -942,14 +942,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	/**
 	 * Creates a {@link DynamicCollectionProducer} with specified kernel usage.
-	 * Use this when you need to control whether the computation runs on GPU/parallel hardware.
+	 * The kernel parameter controls the execution strategy: when true, the function runs once
+	 * to produce the entire output; when false, the function runs multiple times (possibly in parallel)
+	 * with each execution producing one element of the output collection.
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @return A new DynamicCollectionProducer with the specified kernel setting and fixedCount=true
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean)
+	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
 		return new DynamicCollectionProducer<>(shape, function, kernel);
@@ -961,11 +964,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
-	 * @param kernel Whether to use kernel-based (GPU/parallel) computation
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
 	 * @param fixedCount Whether this producer has a deterministic output size
 	 * @return A new DynamicCollectionProducer with the specified settings
 	 * 
 	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean)
+	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
 	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function,
 										   boolean kernel, boolean fixedCount) {

@@ -36,7 +36,7 @@ public class DynamicCollectionProducerTest {
 	 * This validates the basic usage pattern shown in the class documentation.
 	 */
 	@Test
-	public void testSimpleStaticFunction() {
+	public void simpleStaticFunction() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3);
 		
 		// Create a producer that generates a collection filled with sequential values
@@ -71,7 +71,7 @@ public class DynamicCollectionProducerTest {
 	 * This validates that the kernel parameter affects the execution path as documented.
 	 */
 	@Test
-	public void testKernelVsNonKernelMode() {
+	public void kernelVsNonKernelMode() {
 		TraversalPolicy shape = new TraversalPolicy(2, 2);
 		
 		// Create function-mode producer (kernel=false)
@@ -103,7 +103,7 @@ public class DynamicCollectionProducerTest {
 	 * This validates that the fixedCount setting correctly affects the isFixedCount() method.
 	 */
 	@Test
-	public void testFixedCountBehavior() {
+	public void fixedCountBehavior() {
 		TraversalPolicy shape = new TraversalPolicy(3);
 		
 		// Create producer with fixed count
@@ -123,7 +123,7 @@ public class DynamicCollectionProducerTest {
 	 * This validates that the documented reshape and traverse methods work correctly.
 	 */
 	@Test
-	public void testReshapeAndTraverse() {
+	public void reshapeAndTraverse() {
 		TraversalPolicy originalShape = new TraversalPolicy(2, 3);
 		
 		DynamicCollectionProducer<PackedCollection<?>> producer = 
@@ -147,7 +147,7 @@ public class DynamicCollectionProducerTest {
 	 * This validates the complex usage pattern with input dependencies as documented.
 	 */
 	@Test
-	public void testInputBasedFunction() {
+	public void inputBasedFunction() {
 		TraversalPolicy shape = new TraversalPolicy(2);
 		
 		// Create a simple input producer that produces a constant collection
