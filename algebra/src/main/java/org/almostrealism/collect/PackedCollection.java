@@ -597,10 +597,33 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		};
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} that generates blank (zero-filled) collections
+	 * with the specified dimensions. This is a convenience method for creating collections
+	 * that are initialized to zero values.
+	 * 
+	 * @param dims The dimensions of the collection to create
+	 * @return A DynamicCollectionProducer that generates zero-filled collections with the specified dimensions
+	 * 
+	 * @see #blank(TraversalPolicy)
+	 */
 	public static DynamicCollectionProducer blank(int... dims) {
 		return blank(new TraversalPolicy(dims));
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} that generates blank (zero-filled) collections
+	 * with the specified shape. The producer will create new PackedCollections with the given
+	 * shape and default (zero) values each time it is evaluated.
+	 * 
+	 * <p>This is useful for creating placeholder collections or initializing collections
+	 * that will be populated by subsequent operations.</p>
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the shape of collections to create
+	 * @return A DynamicCollectionProducer that generates zero-filled collections with the specified shape
+	 * 
+	 * @see DynamicCollectionProducer
+	 */
 	public static DynamicCollectionProducer blank(TraversalPolicy shape) {
 		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
 	}

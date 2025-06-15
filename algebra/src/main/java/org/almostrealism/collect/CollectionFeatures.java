@@ -925,25 +925,88 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						}), collection);
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} with the simplest configuration.
+	 * This is a convenience method for the most common use case of creating a collection
+	 * with a static function and kernel-based computation.
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
+	 * @param function The function that generates the output collection from input arguments
+	 * @return A new DynamicCollectionProducer with kernel=true and fixedCount=true
+	 * 
+	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function)
+	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
 		return new DynamicCollectionProducer<>(shape, function);
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} with specified kernel usage.
+	 * The kernel parameter controls the execution strategy: when true, the function runs once
+	 * to produce the entire output; when false, the function runs multiple times (possibly in parallel)
+	 * with each execution producing one element of the output collection.
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
+	 * @param function The function that generates the output collection from input arguments
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
+	 * @return A new DynamicCollectionProducer with the specified kernel setting and fixedCount=true
+	 * 
+	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean)
+	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
+	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function, boolean kernel) {
 		return new DynamicCollectionProducer<>(shape, function, kernel);
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} with full control over kernel usage and count behavior.
+	 * Use this when you need precise control over both execution mode and size determinism.
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
+	 * @param function The function that generates the output collection from input arguments
+	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
+	 * @param fixedCount Whether this producer has a deterministic output size
+	 * @return A new DynamicCollectionProducer with the specified settings
+	 * 
+	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean)
+	 * @see org.almostrealism.hardware.DestinationEvaluable#evaluate(Object...) for execution mechanism details
+	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function,
 										   boolean kernel, boolean fixedCount) {
 		return new DynamicCollectionProducer<>(shape, function, kernel, fixedCount);
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} that depends on input collections from other producers.
+	 * This method enables complex chained computations where the output depends on evaluating
+	 * multiple input producers. Uses function-based (non-kernel) execution by default.
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
+	 * @param function A function that takes input collections and returns a function for output generation
+	 * @param args Array of producers whose outputs will be used as inputs to the function
+	 * @return A new DynamicCollectionProducer with kernel=false, fixedCount=true, and the specified inputs
+	 * 
+	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer[])
+	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape,
 										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
 										   Producer[] args) {
 		return new DynamicCollectionProducer(shape, function, false, true, args);
 	}
 
+	/**
+	 * Creates a {@link DynamicCollectionProducer} that depends on input collections from other producers.
+	 * This is a convenience overload that takes a primary argument and varargs for additional arguments.
+	 * Uses function-based (non-kernel) execution by default.
+	 * 
+	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions  
+	 * @param function A function that takes input collections and returns a function for output generation
+	 * @param argument The first producer argument to be evaluated as input
+	 * @param args Additional producer arguments to be evaluated as inputs
+	 * @return A new DynamicCollectionProducer with kernel=false, fixedCount=true, and the specified inputs
+	 * 
+	 * @see DynamicCollectionProducer#DynamicCollectionProducer(TraversalPolicy, Function, boolean, boolean, Producer, Producer...)
+	 */
 	default DynamicCollectionProducer func(TraversalPolicy shape,
 										   Function<PackedCollection<?>[], Function<Object[], PackedCollection<?>>> function,
 										   Producer<?> argument, Producer<?>... args) {
