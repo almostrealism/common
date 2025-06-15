@@ -93,6 +93,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertTrue(msg, !condition);
 	}
 
+	default void assertFalse(boolean condition) {
+		assertTrue(!condition);
+	}
+
 	default void assertNotEquals(Object expected, Object actual) {
 		if (Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " == " + expected);

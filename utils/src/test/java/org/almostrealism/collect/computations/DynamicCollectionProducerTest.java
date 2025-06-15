@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -29,7 +30,7 @@ import static org.junit.Assert.*;
  * 
  * @author Michael Murray
  */
-public class DynamicCollectionProducerTest {
+public class DynamicCollectionProducerTest implements TestFeatures {
 
 	/**
 	 * Tests the simplest constructor that creates a collection with a static function.
@@ -62,7 +63,7 @@ public class DynamicCollectionProducerTest {
 		
 		// Verify the sequential values
 		for (int i = 0; i < 6; i++) {
-			assertEquals((double)(i + 1), result.toArray(0)[i], 0.001);
+			assertEquals(i + 1, result.toDouble(i));
 		}
 	}
 
@@ -76,11 +77,11 @@ public class DynamicCollectionProducerTest {
 		
 		// Create function-mode producer (kernel=false)
 		DynamicCollectionProducer<PackedCollection<?>> functionProducer = 
-			new DynamicCollectionProducer<>(shape, args -> new PackedCollection<>(shape, 1.0, 2.0, 3.0, 4.0), false);
+			new DynamicCollectionProducer<>(shape, args -> pack(shape, 1.0, 2.0, 3.0, 4.0), false);
 		
 		// Create kernel-mode producer (kernel=true) 
 		DynamicCollectionProducer<PackedCollection<?>> kernelProducer = 
-			new DynamicCollectionProducer<>(shape, args -> new PackedCollection<>(shape, 1.0, 2.0, 3.0, 4.0), true);
+			new DynamicCollectionProducer<>(shape, args -> pack(shape, 1.0, 2.0, 3.0, 4.0), true);
 		
 		// Both should have the same basic properties
 		assertEquals(shape, functionProducer.getShape());
@@ -119,7 +120,7 @@ public class DynamicCollectionProducerTest {
 	}
 
 	/**
-	 * Tests the reshape and traverse operations.
+	 * Tests reshape and traverse operations.
 	 * This validates that the documented reshape and traverse methods work correctly.
 	 */
 	@Test
@@ -152,7 +153,7 @@ public class DynamicCollectionProducerTest {
 		
 		// Create a simple input producer that produces a constant collection
 		Producer<PackedCollection<?>> inputProducer = new DynamicCollectionProducer<>(
-			shape, args -> new PackedCollection<>(shape, 5.0, 10.0));
+			shape, args -> pack(shape, 5.0, 10.0));
 		
 		// Create a producer that depends on the input producer
 		// The function receives the input collections and creates a function that processes them
@@ -164,7 +165,7 @@ public class DynamicCollectionProducerTest {
 					PackedCollection<?> result = new PackedCollection<>(shape);
 					// Double each value from the input
 					for (int i = 0; i < input.getMemLength(); i++) {
-						result.setMem(i, input.toArray(0)[i] * 2.0);
+						result.setMem(i, input.toDouble(i) * 2.0);
 					}
 					return result;
 				}, 
@@ -176,8 +177,8 @@ public class DynamicCollectionProducerTest {
 		assertEquals(2, result.getMemLength());
 		
 		// Should contain doubled values: 5*2=10, 10*2=20
-		double[] values = result.toArray(0);
-		assertEquals(10.0, values[0], 0.001);
-		assertEquals(20.0, values[1], 0.001);
+		double[] values = result.toArray();
+		assertEquals(10.0, values[0]);
+		assertEquals(20.0, values[1]);
 	}
 }

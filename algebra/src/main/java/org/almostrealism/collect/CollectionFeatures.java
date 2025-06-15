@@ -454,6 +454,58 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
+	 * Creates a {@link PackedCollection} from double values with a specified shape.
+	 * The values are arranged according to the provided shape, which must match
+	 * the total number of elements.
+	 *
+	 * <pre>{@code
+	 * // Create a 2x3 matrix from values
+	 * PackedCollection<?> matrix = pack(shape(2, 3), 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+	 * // Result: 2x3 matrix [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+	 *
+	 * // Create a 2x2 matrix (shape must match value count)
+	 * PackedCollection<?> square = pack(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * // Result: 2x2 matrix [[1.0, 2.0], [3.0, 4.0]]
+	 * }</pre>
+	 *
+	 * @param shape the {@link TraversalPolicy} defining the collection's dimensions
+	 * @param values the double values to pack into the shaped collection
+	 * @return a new {@link PackedCollection} with the specified shape and values
+	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
+	 */
+	default PackedCollection<?> pack(TraversalPolicy shape, double... values) {
+		if (values.length != shape.getTotalSize()) {
+			throw new IllegalArgumentException("Wrong number of values for shape");
+		}
+
+		return pack(values).reshape(shape);
+	}
+
+	/**
+	 * Creates a {@link PackedCollection} from float values with a specified shape.
+	 * The float values are converted to doubles and arranged according to the
+	 * provided shape.
+	 *
+	 * <pre>{@code
+	 * // Create a 2x2 matrix from float values
+	 * PackedCollection<?> matrix = pack(shape(2, 2), 1.5f, 2.5f, 3.5f, 4.5f);
+	 * // Result: 2x2 matrix of doubles [[1.5, 2.5], [3.5, 4.5]]
+	 * }</pre>
+	 *
+	 * @param shape  the {@link TraversalPolicy} defining the collection's dimensions
+	 * @param values the float values to convert and pack into the shaped collection
+	 * @return a new {@link PackedCollection} with the specified shape and converted values
+	 * @throws IllegalArgumentException if values.length doesn't match shape's total size
+	 */
+	default PackedCollection<?> pack(TraversalPolicy shape, float... values) {
+		if (values.length != shape.getTotalSize()) {
+			throw new IllegalArgumentException("Wrong number of values for shape");
+		}
+
+		return pack(values).reshape(shape);
+	}
+
+	/**
 	 * Creates an empty {@link PackedCollection} with the specified shape.
 	 * The collection will have the correct dimensions but all values
 	 * will be initialized to zero.
