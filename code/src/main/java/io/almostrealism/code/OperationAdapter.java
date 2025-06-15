@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;

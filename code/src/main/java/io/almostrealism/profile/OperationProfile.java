@@ -17,7 +17,6 @@
 package io.almostrealism.profile;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.uml.Nameable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

@@ -18,7 +18,7 @@ package org.almostrealism.generated;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 

@@ -18,7 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 
 import java.util.List;
 import java.util.function.Consumer;

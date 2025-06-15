@@ -18,7 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;

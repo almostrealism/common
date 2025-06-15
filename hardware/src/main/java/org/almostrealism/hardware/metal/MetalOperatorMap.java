@@ -17,13 +17,12 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * Wrapper for a {@link MTLFunction} and the {@link MetalOperator}s.

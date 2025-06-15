@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.Array;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArrayDeclaration;
@@ -43,6 +42,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -73,7 +73,7 @@ import java.util.stream.IntStream;
  */
 public class Scope<T> extends ArrayList<Scope<T>>
 		implements Fragment, KernelTree<Scope<T>>,
-					OperationInfo, Nameable,
+					OperationInfo, Signature, Nameable,
 					ConsoleFeatures {
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();

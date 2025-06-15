@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-// TODO  Move to io.almostrealism.profile (or some other package)
 public interface OperationInfo extends Describable {
 	OperationMetadata getMetadata();
 

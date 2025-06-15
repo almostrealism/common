@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.Scope;
@@ -22,7 +22,6 @@ import io.almostrealism.util.DescribableParent;
 
 import java.util.List;
 
-// TODO  Move to io.almostrealism.profile (or some other package)
 public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private static long opIndex = 0;
 

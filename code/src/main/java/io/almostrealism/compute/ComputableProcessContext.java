@@ -16,7 +16,7 @@
 
 package io.almostrealism.compute;
 
-import io.almostrealism.code.OperationInfo;
+import io.almostrealism.profile.OperationInfo;
 
 import java.util.Collections;
 import java.util.List;

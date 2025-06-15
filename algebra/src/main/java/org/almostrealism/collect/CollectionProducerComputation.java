@@ -19,7 +19,7 @@ package org.almostrealism.collect;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.OperationInfo;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;

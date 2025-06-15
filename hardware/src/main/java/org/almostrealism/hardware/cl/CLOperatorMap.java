@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.CLException;

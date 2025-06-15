@@ -17,8 +17,8 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;

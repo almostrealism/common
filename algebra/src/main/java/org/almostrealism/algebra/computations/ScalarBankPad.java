@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;

@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
