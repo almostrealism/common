@@ -2148,6 +2148,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 		return withShortCircuit(compute((shape, args) -> {
 					if (args.stream().anyMatch(Algebraic::isZero)) {
+						// Mathematical optimization: anything * 0 = 0
+						// Returns CollectionZerosComputation to avoid unnecessary computation
 						return zeros(shape);
 					}
 
@@ -2184,6 +2186,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> multiply(double scale, Producer<T> a) {
 		if (scale == 0) {
+			// Mathematical optimization: 0 * anything = 0
+			// Returns CollectionZerosComputation with same shape as input
 			return zeros(shape(a));
 		} else if (scale == 1.0) {
 			return c(a);
@@ -2230,6 +2234,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		if (Algebraic.isZero(b)) {
 			throw new UnsupportedOperationException();
 		} else if (Algebraic.isZero(a)) {
+			// Mathematical optimization: 0 / anything = 0
+			// Returns CollectionZerosComputation for efficiency
 			return zeros(outputShape(a, b));
 		}
 
@@ -2598,6 +2604,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sum(Producer<T> input) {
 		if (Algebraic.isZero(input)) {
+			// Mathematical optimization: sum(zeros) = 0
+			// Returns scalar zero using CollectionZerosComputation
 			return zeros(shape(input).replace(shape(1)));
 		}
 
