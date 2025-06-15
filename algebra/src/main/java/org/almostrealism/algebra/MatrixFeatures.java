@@ -206,22 +206,54 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
 			CollectionProducer<PackedCollection<?>> a,
 			CollectionProducer<PackedCollection<?>> b) {
+		return scaledDotProduct(a, b, false);
+	}
+
+	/**
+	 * Computes the scaled dot product of two collections.
+	 *
+	 * @param a          (batch, heads, seqLenA, dim)
+	 * @param b          (batch, heads, dim, seqLenB) or (batch, heads, seqLenB, dim)
+	 * @param transposeB  If true, b is transposed from (batch, heads, seqLenB, dim)
+	 *                    to (batch, heads, dim, seqLenB)
+	 */
+	// TODO  This should support any shapes that can be coerced to
+	// TODO  (N, A, D) and (N, D, B) for constant values N, D, A and B
+	default CollectionProducer<PackedCollection<?>> scaledDotProduct(
+			CollectionProducer<PackedCollection<?>> a,
+			CollectionProducer<PackedCollection<?>> b,
+			boolean transposeB) {
 		TraversalPolicy leftShape = a.getShape();
 		TraversalPolicy rightShape = b.getShape();
 
 		int batchSize = leftShape.length(0);
 		int heads = leftShape.length(1);
 		int seqLenA = leftShape.length(2);
-		int seqLenB = rightShape.length(3);
+		int seqLenB = transposeB ? rightShape.length(2) : rightShape.length(3);
 		int dim = leftShape.length(3);
 
-		leftShape = shape(batchSize, heads, seqLenA, dim, 1);
-		rightShape = shape(batchSize, heads, 1, dim, seqLenB);
+		TraversalPolicy resultShape;
+		TraversalPolicy leftPosition;
+		TraversalPolicy rightPosition;
+		TraversalPolicy groupShape;
 
-		TraversalPolicy resultShape = shape(batchSize, heads, seqLenA, 1, seqLenB);
-		TraversalPolicy leftPosition = leftShape.repeat(4, seqLenB);
-		TraversalPolicy rightPosition = rightShape.repeat(2, seqLenA);
-		TraversalPolicy groupShape = shape(1, 1, 1, dim, 1);
+		if (!transposeB) {
+			leftShape = shape(batchSize, heads, seqLenA, dim, 1);
+			rightShape = shape(batchSize, heads, 1, dim, seqLenB);
+
+			resultShape = shape(batchSize, heads, seqLenA, 1, seqLenB);
+			leftPosition = leftShape.repeat(4, seqLenB);
+			rightPosition = rightShape.repeat(2, seqLenA);
+			groupShape = shape(1, 1, 1, dim, 1);
+		} else {
+			leftShape = shape(batchSize, heads, seqLenA, 1, dim);
+			rightShape = shape(batchSize, heads, 1, seqLenB, dim);
+
+			resultShape = shape(batchSize, heads, seqLenA, seqLenB, 1);
+			leftPosition = leftShape.repeat(3, seqLenB);
+			rightPosition = rightShape.repeat(2, seqLenA);
+			groupShape = shape(1, 1, 1, 1, dim);
+		}
 
 		TraversalPolicy outputShape = shape(batchSize, heads, seqLenA, seqLenB).traverseEach();
 

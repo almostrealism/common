@@ -507,14 +507,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		attnBlock.add(layer("qkMatmul",
 				shape(batchSize, heads, querySeqLen, dimHead),
 				shape(batchSize, heads, querySeqLen, contextSeqLen),
-				q -> {
-					// K^T has shape (batch, heads, dimHead, seqLen)
-					CollectionProducer<PackedCollection<?>> kT =
-							cp(k).permute(0, 1, 3, 2);
-
-					// Batch matrix multiply Q @ K^T
-					return scaledDotProduct(c(q), kT);
-				}));
+				q -> scaledDotProduct(c(q), cp(k), true)));
 
 		// Scale by 1/sqrt(dimHead)
 		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
