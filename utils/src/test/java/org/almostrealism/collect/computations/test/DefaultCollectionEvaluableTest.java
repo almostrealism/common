@@ -237,7 +237,7 @@ public class DefaultCollectionEvaluableTest {
 		
 		// Test that the evaluable is properly configured
 		assertNotNull("Evaluable should be created", evaluable);
-		assertFalse("Evaluable should not be constant by default", evaluable.isConstant());
+		assertTrue("Evaluable should be constant", evaluable.isConstant());
 		
 		// For constant computations, test short-circuit evaluation
 		if (computation.getShortCircuit() != null) {
@@ -281,7 +281,7 @@ public class DefaultCollectionEvaluableTest {
 			
 			DefaultCollectionEvaluable<PackedCollection<?>> evaluable = 
 				new DefaultCollectionEvaluable<>(context, shape, computation, 
-					null, null);
+					PackedCollection::new, null);
 			
 			assertNotNull("Evaluable should be created for " + (i + 1) + "D shape", evaluable);
 			
