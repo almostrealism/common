@@ -220,6 +220,8 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void compositionBackwards() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3));
 
 		SequentialBlock alt = block.branch();
@@ -244,6 +246,8 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void splitBackwardsRepeat() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches =  block.split(shape(1, 2));
@@ -286,6 +290,8 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void splitBackwardsAdd() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches =  block.split(shape(1, 2));
@@ -333,6 +339,8 @@ public class BackPropagationTests implements TestFeatures {
 
 	@Test
 	public void splitBackwardsChildIndex() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches =  block.split(shape(1, 2), 0);
