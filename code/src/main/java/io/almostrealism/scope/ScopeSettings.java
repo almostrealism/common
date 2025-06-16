@@ -33,7 +33,7 @@ import java.util.stream.IntStream;
 public class ScopeSettings {
 	public static final boolean enableReplacements = true;
 
-	public static boolean enableInstructionSetReuse = true;
+	public static boolean enableInstructionSetReuse = false;
 
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
