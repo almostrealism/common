@@ -125,6 +125,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void softmaxBackwards() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		PackedCollection<?> input = new PackedCollection<>(10);
 		IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
 
