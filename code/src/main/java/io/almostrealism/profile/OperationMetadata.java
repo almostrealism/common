@@ -29,6 +29,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private String displayName, shortDescription, longDescription;
 	private TraversalPolicy shape;
 	private String contextName;
+	private String signature;
 
 	private List<OperationMetadata> children;
 
@@ -44,6 +45,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 			setLongDescription(from.getLongDescription());
 			setShape(from.getShape());
 			setContextName(from.getContextName());
+			setSignature(from.getSignature());
 			setChildren(from.getChildren());
 		}
 	}
@@ -102,6 +104,9 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 
 	public String getContextName() { return contextName; }
 	public void setContextName(String contextName) { this.contextName = contextName; }
+
+	public String getSignature() { return signature; }
+	public void setSignature(String signature) { this.signature = signature; }
 
 	public List<OperationMetadata> getChildren() { return children; }
 	public void setChildren(List<OperationMetadata> children) { this.children = children; }

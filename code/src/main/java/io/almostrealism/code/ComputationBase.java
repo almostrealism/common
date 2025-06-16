@@ -31,6 +31,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 
 import java.util.Collection;
 import java.util.List;
@@ -39,7 +40,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Process<?, ?>>
-					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T> {
+					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T>, Signature {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
@@ -52,7 +53,9 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return OperationInfo.metadataForProcess(this, metadata);
+		metadata = OperationInfo.metadataForProcess(this, metadata);
+		metadata.setSignature(signature());
+		return metadata;
 	}
 
 	@Override
@@ -176,6 +179,15 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}
+
+	/**
+	 * Subclasses should override this method to provide a meaningful
+	 * signature.
+	 *
+	 * @return  null
+	 */
+	@Override
+	public String signature() { return null; }
 
 	/**
 	 * Extends {@link ComputableParallelProcess#optimize(ProcessContext)} to ensure that

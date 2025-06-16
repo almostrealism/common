@@ -615,6 +615,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	@Override
+	public String signature() { return getMetadata().getSignature(); }
+
+	@Override
 	public boolean equals(Object o) {
 		return Objects.equals(getName(), ((Scope) o).getName());
 	}

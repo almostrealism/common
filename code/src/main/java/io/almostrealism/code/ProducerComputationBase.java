@@ -19,9 +19,12 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
@@ -41,6 +44,20 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 		} else {
 			return (Evaluable<O>) getInputs().get(0).get();
 		}
+	}
+
+	@Override
+	public String signature() {
+		List<String> signatures = getInputs().stream().skip(1)
+				.map(Signature::of).collect(Collectors.toList());
+		if (signatures.stream().anyMatch(Objects::isNull)) {
+			// If any of the inputs do not provide signatures,
+			// it is not possible to be certain about the signature
+			// of this computation
+			return null;
+		}
+
+		return Signature.md5(getName() + "|" + String.join(":", signatures));
 	}
 
 	@Override

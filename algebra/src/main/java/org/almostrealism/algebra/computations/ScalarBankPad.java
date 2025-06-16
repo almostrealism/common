@@ -33,6 +33,10 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemoryData;
 
+/**
+ * @deprecated  Use {@link org.almostrealism.collect.computations.PackedCollectionPad} instead.
+ */
+@Deprecated
 public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
 		implements ScalarBankProducerBase, ComputerFeatures {
 	private final int count;

@@ -27,8 +27,11 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Map;
+
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
+	public static boolean enableInstructionSetReuse = false;
 
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
@@ -90,9 +93,15 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
-		if (instructionSets.containsKey(scope.getName())) {
-			warn("Recompiling instruction set " + scope.getName());
-			instructionSets.evict(scope.getName());
+		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
+			if (enableInstructionSetReuse) {
+				warn("Compiling instruction set " + scope.getName() +
+						" with duplicate signature");
+			} else {
+				warn("Recompiling instruction set " + scope.getName());
+			}
+
+			instructionSets.evict(key(scope.getName(), scope.signature()));
 		}
 
 		long start = System.nanoTime();
@@ -106,14 +115,16 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			buf.append(enc.apply(scope));
 
 			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-			instructionSets.put(scope.getName(), instSet);
+			instructionSets.put(key(scope.getName(), scope.signature()), instSet);
 			return instSet;
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
 		}
 	}
 
-	protected void accessed(String key) { instructionSets.get(key); }
+	protected void accessed(String key, String signature) {
+		instructionSets.get(key(key, signature));
+	}
 
 	@Override
 	public boolean isCPU() { return false; }
@@ -136,4 +147,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	@Override
 	public Console console() { return Hardware.console; }
+
+	protected static String key(String name, String signature) {
+		return enableInstructionSetReuse ? signature : name;
+	}
 }

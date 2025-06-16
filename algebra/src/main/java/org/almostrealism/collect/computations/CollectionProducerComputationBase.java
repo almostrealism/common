@@ -71,8 +71,7 @@ import java.util.stream.Stream;
  * 
  * <h2>Key Features:</h2>
  * <ul>
- *   <li><strong>Hardware Acceleration:</strong> Leverages GPU and CPU parallelization through the 
- *       {@link ComputerFeatures} interface</li>
+ *   <li><strong>Hardware Acceleration:</strong> Leverages GPU and CPU parallelization</li>
  *   <li><strong>Memory Management:</strong> Intelligent destination buffer management and reuse</li>
  *   <li><strong>Shape Management:</strong> Flexible handling of multi-dimensional data structures via 
  *       {@link TraversalPolicy}</li>
@@ -101,8 +100,7 @@ import java.util.stream.Stream;
  * TraversalPolicy shape = new TraversalPolicy(100, 50); // 100x50 matrix
  * Producer<PackedCollection<?>> sourceA = ...; // First input producer
  * Producer<PackedCollection<?>> sourceB = ...; // Second input producer
- * AdditionComputation computation = new AdditionComputation(shape, 
- *     () -> sourceA, () -> sourceB);
+ * AdditionComputation computation = new AdditionComputation(shape, sourceA, sourceB);
  * PackedCollection<?> result = computation.get().evaluate();
  * }</pre>
  * 
@@ -177,7 +175,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Creates a new collection producer computation with the specified parameters.
+	 * Creates a new {@link CollectionProducerComputation} with the specified parameters.
 	 * This is the primary constructor used by concrete implementations.
 	 * 
 	 * <p>The output shape must have a positive total size, and all arguments must be non-null.
@@ -237,7 +235,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	/**
 	 * Retrieves the input arguments as a {@link List} of {@link ArrayVariable} for {@link Double}s.
-	 * This is used internally for scope preparation and argument handling.
+	 * This is used internally for {@link io.almostrealism.scope.Scope} preparation and argument handling.
 	 * 
 	 * @return {@link List} of input argument variables
 	 */
@@ -829,6 +827,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 
+	@Override
+	public String signature() {
+		return super.signature() + getShape().toStringDetail();
+	}
+
 	/**
 	 * Provides a description of this computation including its shape information.
 	 * Extends the parent class description with the output shape details.
@@ -869,7 +872,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Executes the given runnable with destination logging temporarily enabled.
+	 * Executes the given {@link Runnable} with destination logging temporarily enabled.
 	 * This utility method is useful for debugging memory allocation and shape
 	 * adjustment operations without permanently enabling global logging.
 	 * 
