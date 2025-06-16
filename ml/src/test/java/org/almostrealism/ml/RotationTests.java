@@ -26,6 +26,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
@@ -346,6 +347,8 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 
 	@Test
 	public void applyRotaryTransformCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/rotary_transform";
 
 		// Load reference data
@@ -399,6 +402,8 @@ public class RotationTests implements RotationFeatures, TestFeatures {
 
 	@Test
 	public void ropeRotation() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int heads = 12;
 		int headSize = 32;
 

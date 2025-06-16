@@ -31,6 +31,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -226,6 +227,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	 */
 	@Test
 	public void qkNormCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/qk_norm";
 
 		// Load reference data
@@ -291,6 +294,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	 */
 	@Test
 	public void scaledDotProductAttentionCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/scaled_dot_product_attention";
 
 		// Load reference data
@@ -405,6 +410,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	 */
 	@Test
 	public void sequenceAttentionCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/sequence_attention";
 
 		// Load reference data using StateDictionary
@@ -492,6 +499,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	*/
 	@Test
 	public void sequenceCrossAttentionCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/cross_attention";
 
 		// Load reference data using StateDictionary
@@ -598,6 +607,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	*/
 	@Test
 	public void feedForwardCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/feedforward";
 
 		// Load reference data using StateDictionary
@@ -678,6 +689,8 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 	*/
 	@Test
 	public void transformerBlockCompare() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		String referenceDir = "/Users/michael/Documents/AlmostRealism/models/transformer_block";
 
 		// Load reference data using StateDictionary
