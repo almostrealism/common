@@ -305,7 +305,11 @@ public class BackPropagationTests implements TestFeatures {
 				.compile(true, true);
 		model.forward(input).print();
 
+		log("Running backward pass on gradient: ");
+		gradient.print();
+
 		PackedCollection<?> result = model.backward(gradient);
+		log("Result of backward pass: ");
 		result.print();
 
 		for (int i = 0; i < result.getMemLength(); i++) {
