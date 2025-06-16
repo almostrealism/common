@@ -48,6 +48,8 @@ LD_LIBRARY_PATH=Extensions mvn test \
   -DAR_TEST_PROFILE=pipeline
 ```
 
+NOTE: Running this will generate dynamic libraries in the `Extensions` directory.
+DO NOT EVER COMMIT THESE FILES or ANY generated code.
 
 ## Agent Memory
 - Every module contains a file named `agent-memory.md` that can be used to keep track of

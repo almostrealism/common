@@ -17,3 +17,7 @@
 
 # Javac argument files
 javac.*.args
+
+# Generated code and libs
+Extensions/**
+**/Extensions/**
