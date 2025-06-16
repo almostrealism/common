@@ -25,6 +25,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -124,14 +125,14 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void softmaxBackwards() {
-		PackedCollection<?> input = new PackedCollection(10);
+		PackedCollection<?> input = new PackedCollection<>(10);
 		IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
 
 		PackedCollection<?> gradient = new PackedCollection<>(10);
 		gradient.setMem(3, 1.0);
 
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+		log("Input = " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		log("Gradient = " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
 		double result[] = new double[10];
 
@@ -147,14 +148,17 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 			};
 		});
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
-		layer.getBackward().push(p(gradient)).get().run();
+
+		HardwareOperator.verboseLog(() -> {
+			layer.getBackward().push(p(gradient)).get().run();
+		});
 
 		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
 				-6.67421149e-06, -1.81423878e-05, -4.93161231e-05, -1.34055121e-04,
 				-3.64399601e-04, -9.90540812e-04 };
 
 		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-5);
+			assertEquals(expected[i], result[i]);
 		}
 	}
 
@@ -162,7 +166,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	public void softmaxBackwardsLarge() throws IOException {
 		TraversalPolicy shape = shape(1, 4, 25088);
 
-		PackedCollection<?> input = new PackedCollection(shape);
+		PackedCollection<?> input = new PackedCollection<>(shape);
 		IntStream.range(0, shape.getTotalSize()).forEach(i -> input.setMem(i, i + 1.0));
 
 		PackedCollection<?> gradient = new PackedCollection<>(shape);
