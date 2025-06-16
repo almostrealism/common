@@ -490,6 +490,13 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	@Override
 	public TraversalPolicy traverse(int axis) {
 		TraversalPolicy p = new TraversalPolicy(order, true, true, dims, dimsOrder, rateNumerator, rateDenominator);
+
+		if (axis > dims.length) {
+			throw new IllegalArgumentException("Axis " + axis + " is greater than the number of dimensions (" + dims.length + ")");
+		} else if (axis < 0) {
+			throw new IllegalArgumentException("Axis " + axis + " is less than 0");
+		}
+
 		p.traversalAxis = axis;
 		return p;
 	}

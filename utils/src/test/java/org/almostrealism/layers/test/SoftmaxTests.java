@@ -200,10 +200,10 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	public void logSoftmaxBackwards1() {
 		int size = 2;
 
-		PackedCollection<?> input = new PackedCollection(size);
+		PackedCollection<?> input = new PackedCollection(shape(1, size));
 		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
 
-		PackedCollection<?> gradient = new PackedCollection<>(size).fill(0.0, -1.0);
+		PackedCollection<?> gradient = new PackedCollection<>(shape(1, size)).fill(0.0, -1.0);
 
 		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
 		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
@@ -226,7 +226,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 		layer.getBackward().push(p(gradient)).get().run();
 
-		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();
+		double expected[] = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(0, i)) / tot).toArray();
 		expected[1] -= 1.0;
 
 		for (int i = 0; i < result.length; i++) {
