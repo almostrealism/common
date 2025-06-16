@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,8 +23,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
-import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
-import org.almostrealism.hardware.instructions.DefaultExecutionKey;
+import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.function.IntFunction;
@@ -90,9 +89,9 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 
 		ComputableInstructionSetManager<?> manager = getInstructionSetManager();
 
-		if (manager instanceof ComputationInstructionsManager mgr) {
-			mgr.setOutputArgumentIndex((DefaultExecutionKey) getExecutionKey(), outputArgIndex);
-			mgr.setOutputOffset((DefaultExecutionKey) getExecutionKey(), offset);
+		if (manager instanceof ScopeInstructionsManager mgr) {
+			mgr.setOutputArgumentIndex(getExecutionKey(), outputArgIndex);
+			mgr.setOutputOffset(getExecutionKey(), offset);
 		} else {
 			warn("Compilation post processing on " + getName() +
 					" with unexpected InstructionSetManager (" +

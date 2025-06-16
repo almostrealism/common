@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,10 +24,14 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
 import org.almostrealism.hardware.arguments.AcceleratedSubstitutionEvaluable;
 import io.almostrealism.relation.ProducerSubstitution;
 import org.almostrealism.hardware.instructions.ProcessTreeInstructionsManager;
+import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
+import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -40,6 +44,7 @@ import java.util.Optional;
 import java.util.Stack;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private Hardware hardware;
@@ -47,13 +52,15 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
 
 	private Map<String, OperationContainer> operationsCache;
-	private Map<String, ProcessTreeInstructionsManager> instructionsCache;
+	private FrequencyCache<String, ProcessTreeInstructionsManager> processTreeCache;
+	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
 
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(Stack::new);
 		this.operationsCache = new HashMap<>();
-		this.instructionsCache = new HashMap<>();
+		this.processTreeCache = new FrequencyCache<>(500, 0.4);
+		this.instructionsCache = new FrequencyCache<>(500, 0.4);
 	}
 
 	@Override
@@ -93,8 +100,15 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		this.requirements.get().pop();
 	}
 
-	public ProcessTreeInstructionsManager getInstructionsManager(String key) {
-		return instructionsCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
+	public ProcessTreeInstructionsManager getProcessTreeInstructionsManager(String key) {
+		return processTreeCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
+	}
+
+	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
+																							ComputeContext<?> context,
+																							Supplier<Scope<?>> scope) {
+		return instructionsCache.computeIfAbsent(signature,
+				() -> new ScopeInstructionsManager<>(context, scope.get()));
 	}
 
 	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>
@@ -115,7 +129,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 			}
 
 			Process<?, ?> operation = applyInstructionsManager(key, (Process) producer);
-			AcceleratedOperationContainer c = getInstructionsManager(key).applyContainer(operation);
+			AcceleratedOperationContainer c = getProcessTreeInstructionsManager(key).applyContainer(operation);
 			if (c == null) {
 				return producer;
 			}
@@ -133,10 +147,10 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T>
 			applyInstructionsManager(String key, V process) {
-		if (instructionsCache.containsKey(key)) {
-			return getInstructionsManager(key).replaceAll(process);
+		if (processTreeCache.containsKey(key)) {
+			return getProcessTreeInstructionsManager(key).replaceAll(process);
 		} else {
-			return getInstructionsManager(key).extractAll(process);
+			return getProcessTreeInstructionsManager(key).extractAll(process);
 		}
 	}
 

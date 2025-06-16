@@ -25,7 +25,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Wrapper for a {@link MTLFunction} and the {@link MetalOperator}s.
+ * {@link MetalOperatorMap} manages a {@link MetalProgram} and
+ * the associated {@link MetalOperator}s.
  *
  * @author  Michael Murray
  */
