@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,9 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.DelegatedCollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -30,111 +26,93 @@ public class ReusableEvaluableTests implements TestFeatures {
 
 	@Test
 	public void add() {
-		HardwareOperator.enableInstructionSetMonitoring = true;
+		int n = 6;
 
-		try {
-			int n = 6;
+		PackedCollection<?> a = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> b = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> c = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
 
-			PackedCollection<?> a = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> b = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> c = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
+		Producer<PackedCollection<?>> sum = createSum(cp(a), cp(b), cp(c));
+		PackedCollection<?> out = sum.get().evaluate();
 
-			Producer<PackedCollection<?>> sum = createSum(cp(a), cp(b), cp(c));
-			PackedCollection<?> out = sum.get().evaluate();
+		for (int i = 0; i < n; i++) {
+			assertEquals(a.toDouble(i) + b.toDouble(i) + c.toDouble(i), out.toDouble(i));
+		}
 
-			for (int i = 0; i < n; i++) {
-				assertEquals(a.toDouble(i) + b.toDouble(i) + c.toDouble(i), out.toDouble(i));
-			}
+		PackedCollection<?> alt = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
 
-			PackedCollection<?> alt = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
+		sum = createSum(cp(alt), cp(b), cp(c));
+		out = sum.get().evaluate();
 
-			sum = createSum(cp(alt), cp(b), cp(c));
-			out = sum.get().evaluate();
-
-			for (int i = 0; i < n; i++) {
-				assertEquals(alt.toDouble(i) + b.toDouble(i) + c.toDouble(i), out.toDouble(i));
-			}
-		} finally {
-			HardwareOperator.enableInstructionSetMonitoring = false;
+		for (int i = 0; i < n; i++) {
+			assertEquals(alt.toDouble(i) + b.toDouble(i) + c.toDouble(i), out.toDouble(i));
 		}
 	}
 
 	@Test
 	public void multiply1() {
-		HardwareOperator.enableInstructionSetMonitoring = true;
+		int n = 6;
 
-		try {
-			int n = 6;
+		PackedCollection<?> a = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> b = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> c = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
 
-			PackedCollection<?> a = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> b = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> c = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
+		Producer<PackedCollection<?>> product = createProduct(cp(a), cp(b), cp(c));
+		PackedCollection<?> out = product.get().evaluate();
 
-			Producer<PackedCollection<?>> product = createProduct(cp(a), cp(b), cp(c));
-			PackedCollection<?> out = product.get().evaluate();
+		for (int i = 0; i < n; i++) {
+			assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
+		}
 
-			for (int i = 0; i < n; i++) {
-				assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
-			}
+		PackedCollection<?> alt = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
 
-			PackedCollection<?> alt = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
+		product = createProduct(cp(alt), cp(b), cp(c));
+		out = product.get().evaluate();
 
-			product = createProduct(cp(alt), cp(b), cp(c));
-			out = product.get().evaluate();
-
-			for (int i = 0; i < n; i++) {
-				assertEquals((alt.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
-			}
-		} finally {
-			HardwareOperator.enableInstructionSetMonitoring = false;
+		for (int i = 0; i < n; i++) {
+			assertEquals((alt.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
 		}
 	}
 
 	@Test
 	public void multiply2() {
-		HardwareOperator.enableInstructionSetMonitoring = true;
+		int n = 6;
+		int m = 10;
 
-		try {
-			int n = 6;
-			int m = 10;
+		PackedCollection<?> a = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> b = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
+		PackedCollection<?> c = new PackedCollection<>(shape(n))
+				.randFill().traverseEach();
 
-			PackedCollection<?> a = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> b = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
-			PackedCollection<?> c = new PackedCollection<>(shape(n))
-					.randFill().traverseEach();
+		Producer<PackedCollection<?>> product = createProduct(cp(a), cp(b), cp(c));
+		PackedCollection<?> out = product.get().evaluate();
 
-			Producer<PackedCollection<?>> product = createProduct(cp(a), cp(b), cp(c));
-			PackedCollection<?> out = product.get().evaluate();
+		for (int i = 0; i < n; i++) {
+			assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
+		}
 
-			for (int i = 0; i < n; i++) {
-				assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
-			}
+		a = new PackedCollection<>(shape(m))
+				.randFill().traverseEach();
+		b = new PackedCollection<>(shape(m))
+				.randFill().traverseEach();
+		c = new PackedCollection<>(shape(m))
+				.randFill().traverseEach();
 
-			a = new PackedCollection<>(shape(m))
-					.randFill().traverseEach();
-			b = new PackedCollection<>(shape(m))
-					.randFill().traverseEach();
-			c = new PackedCollection<>(shape(m))
-					.randFill().traverseEach();
+		product = createProduct(cp(a), cp(b), cp(c));
+		out = product.get().evaluate();
 
-			product = createProduct(cp(a), cp(b), cp(c));
-			out = product.get().evaluate();
-
-			for (int i = 0; i < m; i++) {
-				assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
-			}
-		} finally {
-			HardwareOperator.enableInstructionSetMonitoring = false;
+		for (int i = 0; i < m; i++) {
+			assertEquals((a.toDouble(i) + b.toDouble(i)) * c.toDouble(i), out.toDouble(i));
 		}
 	}
 

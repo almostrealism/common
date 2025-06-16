@@ -37,6 +37,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ExpressionCache;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
@@ -46,6 +47,7 @@ import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.instructions.ExecutionKey;
+import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -157,8 +159,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public <K extends ExecutionKey> ComputableInstructionSetManager<K> getInstructionSetManager() {
 		if (instructions == null && scope != null) {
-			instructions = new ComputationInstructionsManager(
-					getComputeContext(), scope);
+			if (ScopeSettings.enableInstructionSetReuse) {
+				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+				instructions = computer.getScopeInstructionsManager(
+						getMetadata().getSignature(), getComputeContext(), () -> scope);
+			} else {
+				instructions = new ComputationInstructionsManager(
+						getComputeContext(), scope);
+			}
 		}
 
 		return (ComputableInstructionSetManager) instructions;
@@ -166,9 +175,16 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public ExecutionKey getExecutionKey() {
-		return executionKey == null ?
-				new DefaultExecutionKey(getFunctionName(), getArgsCount()) :
-					executionKey;
+		if (executionKey != null)
+			return executionKey;
+
+		String signature = getMetadata().getSignature();
+
+		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+			return new ScopeSignatureExecutionKey(signature);
+		} else {
+			return new DefaultExecutionKey(getFunctionName(), getArgsCount());
+		}
 	}
 
 	@Override
