@@ -138,6 +138,7 @@ public class FourierTransformTests implements TestFeatures {
 			if (expected > 0) total++;
 		}
 
+		log("total = " + total);
 		Assert.assertTrue(total > 300);
 	}
 

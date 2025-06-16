@@ -1115,7 +1115,18 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
-			return multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss).add(traverseEach(cp(biases)));
+
+			if (weights == null) {
+				ss = ss.multiply(traverseEach(input));
+			} else {
+				ss = multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss);
+			}
+
+			if (biases != null) {
+				ss = ss.add(traverseEach(cp(biases)));
+			}
+
+			return ss;
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 

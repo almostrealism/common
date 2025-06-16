@@ -535,8 +535,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			throw new IllegalArgumentException();
 		} else if (value instanceof Shape) {
 			return new CollectionProviderProducer((Shape) value);
-		} else {
+		} else if (value != null) {
 			return () -> new Provider<>(value);
+		} else {
+			return null;
 		}
 	}
 

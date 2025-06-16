@@ -141,15 +141,15 @@ public class SingleConstantComputationTest implements TestFeatures {
 		SingleConstantComputation<PackedCollection<?>> original = 
 			new SingleConstantComputation<>(originalShape, constantValue);
 		
-		// Traverse along axis 0
+		// Traverse along axis 1
 		SingleConstantComputation<PackedCollection<?>> traversed = 
-			(SingleConstantComputation<PackedCollection<?>>) original.traverse(0);
+			(SingleConstantComputation<PackedCollection<?>>) original.traverse(1);
 		
 		// Verify the constant value is preserved
 		assertEquals(constantValue, traversed.getConstantValue());
 		
 		// The shape should be transformed according to traversal policy
-		assertNotEquals(originalShape.getTotalSize(), traversed.getShape().getTotalSize());
+		assertNotEquals(originalShape.getSize(), traversed.getShape().getSize());
 	}
 
 	/**

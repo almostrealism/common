@@ -201,14 +201,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
 					System.err.println("TestFeatures: " + b + " != " + a);
-					throw new AssertionError(msg);
+					throw new AssertionError(msg == null ? b + " != " + a : msg);
 				} else {
 					System.out.println("TestFeatures: " + b + " != " + a);
 				}
 			}
 		} else if (!positive) {
 			System.err.println("TestFeatures: " + b + " == " + a);
-			throw new AssertionError(msg);
+			throw new AssertionError(msg == null ? b + " == " + a : msg);
 		}
 	}
 
