@@ -799,11 +799,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	/**
 	 * Destroys this computation and frees associated resources.
 	 * This method performs cleanup of the destination producer, purges
-	 * cached evaluables, and calls the parent class cleanup.
+	 * cached {@link Evaluable}s, and calls the parent class cleanup.
 	 * 
 	 * <p>After calling this method, the computation should not be used again.</p>
 	 * 
-	 * @see ProducerCache#purgeEvaluableCache(Object)
+	 * @see ProducerCache#purgeEvaluableCache(Supplier)
 	 */
 	@Override
 	public void destroy() {
@@ -829,7 +829,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public String signature() {
-		return super.signature() + getShape().toStringDetail();
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		return signature + getShape().toStringDetail();
 	}
 
 	/**

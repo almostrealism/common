@@ -963,6 +963,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	@Override
 	public String describe() { return toStringDetail(); }
 
+	// TODO  This should include a description of the input space if it differs from the output space
 	public String toStringDetail() {
 		if (getSizeLong() == 0) {
 			return this + "[axis=" + getTraversalAxis() + "]";

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,17 +21,15 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.Map;
-
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
-	public static boolean enableInstructionSetReuse = false;
 
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
@@ -94,7 +92,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
-			if (enableInstructionSetReuse) {
+			if (ScopeSettings.enableInstructionSetReuse) {
 				warn("Compiling instruction set " + scope.getName() +
 						" with duplicate signature");
 			} else {
@@ -149,6 +147,6 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public Console console() { return Hardware.console; }
 
 	protected static String key(String name, String signature) {
-		return enableInstructionSetReuse ? signature : name;
+		return ScopeSettings.enableInstructionSetReuse ? signature : name;
 	}
 }

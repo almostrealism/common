@@ -33,6 +33,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -120,8 +121,9 @@ import java.util.Optional;
  */
 public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducerParallelProcess<T>,
-					TraversableExpression<Double>,
-					ScopeLifecycle, DescribableParent<Process<?, ?>>, CollectionFeatures {
+					TraversableExpression<Double>, ScopeLifecycle,
+					Signature, DescribableParent<Process<?, ?>>,
+					CollectionFeatures {
 	/** 
 	 * Controls whether traversal-based reshape operations should isolate their delegate producers.
 	 * When enabled, allows for better optimization and isolation of computational processes.
@@ -625,6 +627,11 @@ public class ReshapeProducer<T extends Shape<T>>
 			return apply(out);
 		});
 		return hev;
+	}
+
+	@Override
+	public String signature() {
+		return Signature.of(getComputation()) + "|" + getShape().toStringDetail();
 	}
 
 	/**
