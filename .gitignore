@@ -17,3 +17,6 @@
 
 # Javac argument files
 javac.*.args
+
+# Generated native extensions
+utils/Extensions/**

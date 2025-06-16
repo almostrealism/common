@@ -2692,6 +2692,40 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c;
 	}
 
+	/**
+	 * Creates a computation that finds the index of the maximum value in a collection.
+	 * This method demonstrates practical usage of {@link RepeatedProducerComputation} subclasses
+	 * for implementing iterative algorithms that scan through data to find optimal values.
+	 * 
+	 * <p>The implementation uses either {@link TraversableRepeatedProducerComputation} or
+	 * {@link ConstantRepeatedProducerComputation} depending on the {@code enableTraversableRepeated}
+	 * flag, showcasing different approaches to repeated computation:</p>
+	 * 
+	 * <ul>
+	 *   <li><strong>TraversableRepeatedProducerComputation:</strong> Provides inline evaluation
+	 *       with direct expression access, suitable for small to medium datasets</li>
+	 *   <li><strong>ConstantRepeatedProducerComputation:</strong> Uses kernel compilation
+	 *       for better performance on large datasets</li>
+	 * </ul>
+	 * 
+	 * <h3>Algorithm:</h3>
+	 * <ol>
+	 *   <li><strong>Initialize:</strong> Start with index 0 as the current maximum position</li>
+	 *   <li><strong>Iterate:</strong> Compare each element with the current maximum value</li>
+	 *   <li><strong>Update:</strong> If a larger value is found, update the maximum index</li>
+	 *   <li><strong>Continue:</strong> Process all elements in the collection</li>
+	 * </ol>
+	 * 
+	 * @param <T>   The type of {@link PackedCollection} to process
+	 * @param input The {@link Producer} providing the input collection to search
+	 * 
+	 * @return A {@link CollectionProducerComputationBase} that produces a single-element
+	 *         collection containing the index of the maximum value
+	 * 
+	 * @see TraversableRepeatedProducerComputation
+	 * @see ConstantRepeatedProducerComputation
+	 * @see RepeatedProducerComputation
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();

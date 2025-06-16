@@ -32,10 +32,48 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+/**
+ * A specialized {@link ConstantRepeatedProducerComputation} that implements {@link TraversableExpression}
+ * for direct value access without kernel compilation. This class enables efficient inline evaluation
+ * of repeated computations, particularly useful for small-scale operations or when the computation
+ * needs to be embedded within larger expressions.
+ * 
+ * <p>This class bridges the gap between repeated computations and traversable expressions, allowing
+ * repeated operations to be used directly as expressions in larger computation graphs. It's particularly
+ * useful for:</p>
+ * <ul>
+ *   <li>Nested computations where repeated operations are part of larger expressions</li>
+ *   <li>Dynamic programming algorithms with recursive subproblems</li>
+ *   <li>Inline iterative refinements within complex mathematical expressions</li>
+ *   <li>Small-scale repeated operations that don't justify kernel compilation overhead</li>
+ * </ul>
+ * 
+ * <h2>Performance Considerations:</h2>
+ * <p>The {@code isolationCountThreshold} controls when this computation should be isolated
+ * for independent execution. Higher values favor inline evaluation, while lower values
+ * promote kernel compilation for better performance on large datasets.</p>
+ * 
+ * @param <T> The type of {@link PackedCollection} this computation produces
+ * 
+ * @see ConstantRepeatedProducerComputation
+ * @see TraversableExpression
+ */
 public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
+	/**
+	 * Threshold for determining when this computation should be isolated for independent execution.
+	 * Computations with iteration counts above this threshold are typically isolated to separate
+	 * kernels for better performance, while those below are evaluated inline.
+	 * 
+	 * @see #isIsolationTarget(ProcessContext)
+	 */
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
+	/**
+	 * The traversable expression function that defines the computation for each iteration step.
+	 * This function returns a {@link TraversableExpression} rather than a simple {@link Expression},
+	 * enabling more complex nested computations and direct value access.
+	 */
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
 	@SafeVarargs
