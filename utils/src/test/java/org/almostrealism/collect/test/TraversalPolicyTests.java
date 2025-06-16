@@ -56,7 +56,6 @@ public class TraversalPolicyTests implements TestFeatures {
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 4; j++) {
 				for (int k = 0; k < 3; k++) {
-					log("i: " + i + ", j: " + j + ", k: " + k);
 					assertEquals(shape.index(i, j, k), permuted.index(j, i, k));
 
 					int originalIndex = shape.index(i, j, k);
@@ -94,7 +93,6 @@ public class TraversalPolicyTests implements TestFeatures {
 			for (int j = 0; j < 4; j++) {
 				for (int k = 0; k < 3; k++) {
 					for (int l = 0; l < 8; l++) {
-						log("i: " + i + ", j: " + j + ", k: " + k + ", l: " + l);
 						assertEquals(shape.index(i, j, k, l), permuted.index(i, k, j, l));
 
 						int originalIndex = shape.index(i, j, k, l);
