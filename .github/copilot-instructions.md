@@ -125,3 +125,6 @@ Follow Java best practices and idiomatic patterns, while maintaining the existin
    along with `@link` so that the javadoc generator can link to the class.
 2. Always make sure that @param, @throws, and @return macros appear LAST in the javadoc
    documentation for a method, in that order; do NOT put examples or other text after these.
+3. Always make sure that @see, @param, and @author appear LAST in the javadoc documentation
+   for a class, in that order, with a single blank line separating @author from the rest of
+   the documentation.
