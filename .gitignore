@@ -5,6 +5,8 @@
 .idea/*.xml
 .idea/codeStyles/**
 
+**/.qodana/**
+
 /**/target/
 **/*.versionsBackup
 
