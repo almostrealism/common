@@ -97,7 +97,7 @@ import java.util.function.Supplier;
  * // Process multiple elements per kernel thread for better memory utilization
  * ConstantRepeatedProducerComputation<PackedCollection> optimized = 
  *     new ConstantRepeatedProducerComputation<>(
- *         "optimized_process", 
+ *         "optimizedProcess", 
  *         new TraversalPolicy(1000), 
  *         4, // Memory length - process 4 elements per thread
  *         25, // 25 iterations
@@ -161,7 +161,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * // Create a computation that doubles a value 3 times
 	 * ConstantRepeatedProducerComputation<PackedCollection> doubler = 
 	 *     new ConstantRepeatedProducerComputation<>(
-	 *         "triple_double",
+	 *         "tripleDouble",
 	 *         new TraversalPolicy(10), // Process 10 elements
 	 *         3, // Perform 3 iterations
 	 *         (args, index) -> args[0].getValueAt(index), // Initialize with input
@@ -207,13 +207,16 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * 
 	 * <p><strong>Memory optimization example:</strong></p>
 	 * <pre>{@code
-	 * // Process 4 elements per kernel thread for better memory utilization
+	 * // Process a 2D array (100x10) where each row has 10 elements
+	 * TraversalPolicy inputShape = new TraversalPolicy(100, 10); // 100 rows, 10 elements each
+	 * int finalDimSize = inputShape.getSize(); // 10 (size of final dimension)
+	 * 
 	 * ConstantRepeatedProducerComputation<PackedCollection> optimized = 
 	 *     new ConstantRepeatedProducerComputation<>(
-	 *         "optimized_sum",
-	 *         new TraversalPolicy(1000), // 1000 total elements
-	 *         4, // Process 4 elements per kernel thread
-	 *         100, // 100 iterations
+	 *         "rowWiseSum",
+	 *         new TraversalPolicy(100), // Output: 100 sums (one per row)
+	 *         2, // Process 2 elements per kernel thread (memory optimization)
+	 *         finalDimSize, // 10 iterations (matches final dimension size)
 	 *         (args, index) -> args[0].getValueAt(index), // Initialize with input
 	 *         (args, index) -> args[0].getValueAt(index).add(e(0.1)), // Add 0.1 each iteration
 	 *         dataProducer
