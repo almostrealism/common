@@ -2522,6 +2522,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			console.warn("Computing power of constants");
 		}
 
+		// When neither operand is constant or identity, delegate to CollectionExponentComputation
+		// for efficient element-wise power operations with support for automatic differentiation
 		return compute((shape, args) ->
 						new CollectionExponentComputation<>(largestTotalSize(args), args.get(0), args.get(1)),
 				args -> applyParentheses(args.get(0)) + " ^ " + applyParentheses(args.get(1)),
