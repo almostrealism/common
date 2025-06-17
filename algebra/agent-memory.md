@@ -43,6 +43,10 @@ Always run `mvn` commands from the root of the repository.
 ## Computation Classes
 
 - Computation names should always be camelCase like method names (NOT snake_case)
+- Computations often accept any Supplier of Evaluable as input, but when creating
+  examples for documentation or tests, you should always use Producer (or
+  CollectionProducer, if applicable) as an input since this is by far the most
+  common case
 
 ### ConstantRepeatedProducerComputation
 - Extends RepeatedProducerComputation with fixed iteration counts
