@@ -24,19 +24,40 @@ for future sessions.
 Do NOT consider any work complete until you CONFIRM that the pipeline will pass
 (see .github/workflows/analysis.yml for details if you are unsure of the process).
 
+Do NOT attempt to run `mvn` commands for a specific module by navigating to that
+module's directory as doing this will prevent the dependent modules from being
+loaded and respected. Always run `mvn` commands from the root of the repository.
+
 ### Build and Package
 
-To confirm that the code compiles, you can run the build process using mvn.
-You may not be able to figure out how to get every test to pass, but you should
-at least ensure that the code compiles before making a commit.
+To confirm that the code compiles, you can run the build process using mvn
+without running tets. You may not be able to figure out how to get every test
+to pass, but you should at least ensure that the code compiles before making
+a commit.
 
 ```shell
-mvn package
+mvn package -DskipTests
 ```
+
+If you want to run the build process on a specific module, you can use the `-pl` option:
+
+```shell
+mvn package -pl utils -DskipTests
+```
+
+Do NOT attempt to run the build for a specific module by navigating to that
+module's directory as doing this will prevent the dependent modules from being
+loaded and respected.
+
+Always run `mvn` commands from the root of the repository.
+
 
 ### Testing
 It may be okay for some tests to fail, because not all tests pass on all hardware platforms.
 However, all tests that run as part of the CI/CD pipeline MUST pass before a PR can be merged.
+
+NOTE: Running tests will generate dynamic libraries in the `Extensions` directory.
+DO NOT EVER COMMIT THESE FILES or ANY generated code.
 
 To confirm that the tests pass, you can run the test suite using mvn.
 
@@ -48,8 +69,34 @@ LD_LIBRARY_PATH=Extensions mvn test \
   -DAR_TEST_PROFILE=pipeline
 ```
 
-NOTE: Running this will generate dynamic libraries in the `Extensions` directory.
-DO NOT EVER COMMIT THESE FILES or ANY generated code.
+If you want to run the tests on a specific module, you can use the `-pl` option:
+
+```shell
+LD_LIBRARY_PATH=Extensions mvn test \
+  -pl utils \
+  -DAR_HARDWARE_DRIVER=native \
+  -DAR_HARDWARE_MEMORY_SCALE=7 \
+  -DAR_HARDWARE_LIBS=Extensions
+```
+
+If you want to run just one specific test class, you MUST specify it's module using the `-pl` option:
+
+```shell
+LD_LIBRARY_PATH=Extensions mvn test \
+  -pl utils \
+  -Dtest=MinMaxTests \
+  -DAR_HARDWARE_DRIVER=native \
+  -DAR_HARDWARE_MEMORY_SCALE=7 \
+  -DAR_HARDWARE_LIBS=Extensions \
+  -DAR_TEST_PROFILE=pipeline
+```
+
+Do NOT attempt to run the build for a specific module by navigating to that
+module's directory as doing this will prevent the dependent modules from being
+loaded and respected.
+
+Always run `mvn` commands from the root of the repository.
+
 
 ## Agent Memory
 - Every module contains a file named `agent-memory.md` that can be used to keep track of
