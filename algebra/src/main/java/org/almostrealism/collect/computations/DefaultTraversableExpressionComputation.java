@@ -215,6 +215,18 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	}
 
 	/**
+	 * Returns null, as it is not possible to compute a signature for this
+	 * computation due to the {@link CollectionExpression} being dynamically
+	 * specified on construction.
+	 *
+	 * @return  null
+	 */
+	@Override
+	public String signature() {
+		return null;
+	}
+
+	/**
 	 * Creates a computation that always returns a fixed collection value.
 	 * This is useful for creating constant computations that don't depend on any inputs.
 	 * 

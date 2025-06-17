@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Describable;
 
 import java.util.Collection;
@@ -30,7 +31,7 @@ import java.util.List;
 
 public class DelegatedProducer<T> implements
 		Process<Process<?, ?>, Evaluable<? extends T>>,
-		Producer<T>, Countable,
+		Producer<T>, Countable, Signature,
 		OperationInfo {
 	protected Producer<T> op;
 	protected boolean direct;
@@ -111,6 +112,9 @@ public class DelegatedProducer<T> implements
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return this;
 	}
+
+	@Override
+	public String signature() { return "delegate|" + getCountLong() + "|" + isFixedCount(); }
 
 	@Override
 	public String describe() {

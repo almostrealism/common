@@ -159,7 +159,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public <K extends ExecutionKey> ComputableInstructionSetManager<K> getInstructionSetManager() {
 		if (instructions == null && scope != null) {
-			if (ScopeSettings.enableInstructionSetReuse) {
+			if (ScopeSettings.enableInstructionSetReuse && getMetadata().getSignature() != null) {
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
 				instructions = computer.getScopeInstructionsManager(

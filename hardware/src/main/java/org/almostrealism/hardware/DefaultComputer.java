@@ -40,6 +40,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Stack;
 import java.util.function.BiFunction;
@@ -107,7 +108,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
-		return instructionsCache.computeIfAbsent(signature,
+		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
 				() -> new ScopeInstructionsManager<>(context, scope.get()));
 	}
 
