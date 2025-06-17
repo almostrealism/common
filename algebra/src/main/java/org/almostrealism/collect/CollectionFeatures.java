@@ -2692,6 +2692,24 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return c;
 	}
 
+	/**
+	 * Creates a computation that finds the index of the maximum value in a collection.
+	 * 
+	 * <p>This method demonstrates practical usage of {@link RepeatedProducerComputation}
+	 * subclasses for reduction operations. It uses either {@link TraversableRepeatedProducerComputation}
+	 * or {@link ConstantRepeatedProducerComputation} depending on the enableTraversableRepeated flag.
+	 * 
+	 * <p>The computation works by:
+	 * <ul>
+	 *   <li>Initializing with index 0 as the current maximum location</li>
+	 *   <li>Iterating through all elements comparing values</li>
+	 *   <li>Updating the stored index when a larger value is found</li>
+	 * </ul>
+	 * 
+	 * @param input The collection to find the maximum index in
+	 * @return A computation that produces the index of the maximum element
+	 * @param <T> The type of collection being processed
+	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();

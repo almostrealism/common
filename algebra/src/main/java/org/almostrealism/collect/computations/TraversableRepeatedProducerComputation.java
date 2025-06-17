@@ -32,6 +32,25 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+/**
+ * A specialized {@link RepeatedProducerComputation} that implements {@link TraversableExpression}
+ * for efficient traversal operations on collections.
+ * 
+ * <p>This class extends {@link ConstantRepeatedProducerComputation} to provide traversable
+ * functionality, allowing the computation to be used in expression trees that require
+ * efficient value access patterns. It is particularly useful for operations that need
+ * to access values at computed indices during repeated iterations.
+ * 
+ * <p>The key difference from the base {@link RepeatedProducerComputation} is that this
+ * class returns {@link TraversableExpression} results, enabling more efficient composition
+ * with other traversable operations in complex computation graphs.
+ * 
+ * @param <T> The type of {@link PackedCollection} this computation operates on
+ * 
+ * @see RepeatedProducerComputation
+ * @see ConstantRepeatedProducerComputation
+ * @see TraversableExpression
+ */
 public class TraversableRepeatedProducerComputation<T extends PackedCollection<?>>
 		extends ConstantRepeatedProducerComputation<T> implements TraversableExpression<Double> {
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;

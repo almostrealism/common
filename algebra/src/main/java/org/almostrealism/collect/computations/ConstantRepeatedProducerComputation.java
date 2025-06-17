@@ -31,6 +31,27 @@ import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+/**
+ * A {@link RepeatedProducerComputation} with a fixed, constant number of iterations.
+ * 
+ * <p>This class extends the base {@link RepeatedProducerComputation} to provide a
+ * concrete implementation where the number of iterations is known at construction time.
+ * This allows for optimizations and simplifications in the iteration logic since
+ * the loop bounds are constant rather than dynamically computed.
+ * 
+ * <p>The constant iteration count is particularly useful for:
+ * <ul>
+ *   <li>Mathematical algorithms with predetermined iteration requirements</li>
+ *   <li>Fixed-step refinement processes</li>  
+ *   <li>Accumulation operations with known bounds</li>
+ *   <li>Performance optimization where loop unrolling is beneficial</li>
+ * </ul>
+ * 
+ * @param <T> The type of {@link PackedCollection} this computation operates on
+ * 
+ * @see RepeatedProducerComputation
+ * @see TraversableRepeatedProducerComputation
+ */
 public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 		extends RepeatedProducerComputation<T> {
 	protected int count;
