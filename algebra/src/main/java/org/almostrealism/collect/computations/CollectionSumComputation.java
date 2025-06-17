@@ -166,8 +166,11 @@ public class CollectionSumComputation<T extends PackedCollection<?>> extends Tra
 	 * <p><strong>Example:</strong></p>
 	 * <pre>{@code
 	 * TraversalPolicy shape = shape(2, 4);
-	 * Supplier<Evaluable<PackedCollection<?>>> supplier1 = () -> someComputation.get();
-	 * Supplier<Evaluable<PackedCollection<?>>> supplier2 = () -> anotherComputation.get();
+	 * CollectionProducer<PackedCollection<?>> producer1 = cp(new PackedCollection<>(shape).randFill());
+	 * CollectionProducer<PackedCollection<?>> producer2 = cp(new PackedCollection<>(shape).randFill());
+	 * 
+	 * Supplier<Evaluable<PackedCollection<?>>> supplier1 = producer1::get;
+	 * Supplier<Evaluable<PackedCollection<?>>> supplier2 = producer2::get;
 	 * 
 	 * CollectionSumComputation<?> sum = new CollectionSumComputation<>(shape, supplier1, supplier2);
 	 * }</pre>
