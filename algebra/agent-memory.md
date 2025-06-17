@@ -1,5 +1,7 @@
 # Algebra Module Agent Memory
 
+## Computation Classes
+
 # Build
 
 ```shell
@@ -32,7 +34,22 @@ from being loaded and respected.
 
 Always run `mvn` commands from the root of the repository.
 
+## Documentation Patterns
+- Use comprehensive examples showing practical applications
+- Include performance considerations and optimization notes
+- Document parameter relationships and their effects on performance
+- Use @link for class references in javadoc
+- Include code examples that demonstrate realistic usage patterns from the codebase
+
+
 ## Key Components
+
+### ConstantRepeatedProducerComputation
+- Extends RepeatedProducerComputation with fixed iteration counts
+- Used primarily for reduction operations (e.g., finding max index in CollectionFeatures)
+- Enables compiler optimizations through constant iteration bounds
+- Has specialized delta computation via ConstantRepeatedDeltaComputation
+- Constructor with memory length parameter (size) controls elements per kernel thread
 
 ### CollectionExponentComputation
 - Implements element-wise exponentiation (power operations) on multi-dimensional collections
@@ -59,7 +76,7 @@ Always run `mvn` commands from the root of the repository.
 - Supports multi-dimensional tensor operations
 - Efficient for large-scale scientific computing
 
-## Development Notes
+#### Development Notes
 - All power operations should use CollectionExponentComputation for consistency
 - Test edge cases: x^0, x^1, 1^x, fractional exponents, negative exponents
 - Custom delta is critical for ML applications - avoid disabling unless necessary
