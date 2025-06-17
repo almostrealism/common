@@ -21,6 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -44,9 +45,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		
 		PackedCollection<?> result = power.get().evaluate();
 		
-		assertEquals(4.0, result.valueAt(0), 1e-10);
-		assertEquals(9.0, result.valueAt(1), 1e-10);
-		assertEquals(16.0, result.valueAt(2), 1e-10);
+		Assert.assertEquals(4.0, result.valueAt(0), 1e-10);
+		Assert.assertEquals(9.0, result.valueAt(1), 1e-10);
+		Assert.assertEquals(16.0, result.valueAt(2), 1e-10);
 	}
 
 	/**
@@ -61,9 +62,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> cubed = cp(base).pow(c(3.0));
 		PackedCollection<?> result = cubed.get().evaluate();
 		
-		assertEquals(8.0, result.valueAt(0), 1e-10);
-		assertEquals(27.0, result.valueAt(1), 1e-10);
-		assertEquals(64.0, result.valueAt(2), 1e-10);
+		Assert.assertEquals(8.0, result.valueAt(0), 1e-10);
+		Assert.assertEquals(27.0, result.valueAt(1), 1e-10);
+		Assert.assertEquals(64.0, result.valueAt(2), 1e-10);
 	}
 
 	/**
@@ -86,12 +87,12 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		PackedCollection<?> squared = matrixPower.get().evaluate();
 		
 		// Expected result: [[1,4,9], [4,9,16]]
-		assertEquals(1.0, squared.valueAt(0, 0), 1e-10);
-		assertEquals(4.0, squared.valueAt(0, 1), 1e-10);
-		assertEquals(9.0, squared.valueAt(0, 2), 1e-10);
-		assertEquals(4.0, squared.valueAt(1, 0), 1e-10);
-		assertEquals(9.0, squared.valueAt(1, 1), 1e-10);
-		assertEquals(16.0, squared.valueAt(1, 2), 1e-10);
+		Assert.assertEquals(1.0, squared.valueAt(0, 0), 1e-10);
+		Assert.assertEquals(4.0, squared.valueAt(0, 1), 1e-10);
+		Assert.assertEquals(9.0, squared.valueAt(0, 2), 1e-10);
+		Assert.assertEquals(4.0, squared.valueAt(1, 0), 1e-10);
+		Assert.assertEquals(9.0, squared.valueAt(1, 1), 1e-10);
+		Assert.assertEquals(16.0, squared.valueAt(1, 2), 1e-10);
 	}
 
 	/**
@@ -105,26 +106,26 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		// Square roots (x^0.5)
 		CollectionProducer<PackedCollection<?>> sqrt = cp(values).pow(c(0.5));
 		PackedCollection<?> sqrtResult = sqrt.get().evaluate();
-		assertEquals(2.0, sqrtResult.valueAt(0), 1e-10);
-		assertEquals(2.828427124746, sqrtResult.valueAt(1), 1e-10); // sqrt(8)
-		assertEquals(4.0, sqrtResult.valueAt(2), 1e-10);
-		assertEquals(5.0, sqrtResult.valueAt(3), 1e-10);
+		Assert.assertEquals(2.0, sqrtResult.valueAt(0), 1e-10);
+		Assert.assertEquals(2.828427124746, sqrtResult.valueAt(1), 1e-10); // sqrt(8)
+		Assert.assertEquals(4.0, sqrtResult.valueAt(2), 1e-10);
+		Assert.assertEquals(5.0, sqrtResult.valueAt(3), 1e-10);
 		
 		// Cubes (x^3)
 		CollectionProducer<PackedCollection<?>> cubes = cp(values).pow(c(3.0));
 		PackedCollection<?> cubeResult = cubes.get().evaluate();
-		assertEquals(64.0, cubeResult.valueAt(0), 1e-10);    // 4^3
-		assertEquals(512.0, cubeResult.valueAt(1), 1e-10);   // 8^3
-		assertEquals(4096.0, cubeResult.valueAt(2), 1e-10);  // 16^3
-		assertEquals(15625.0, cubeResult.valueAt(3), 1e-10); // 25^3
+		Assert.assertEquals(64.0, cubeResult.valueAt(0), 1e-10);    // 4^3
+		Assert.assertEquals(512.0, cubeResult.valueAt(1), 1e-10);   // 8^3
+		Assert.assertEquals(4096.0, cubeResult.valueAt(2), 1e-10);  // 16^3
+		Assert.assertEquals(15625.0, cubeResult.valueAt(3), 1e-10); // 25^3
 		
 		// Reciprocals (x^-1)
 		CollectionProducer<PackedCollection<?>> reciprocals = cp(values).pow(c(-1.0));
 		PackedCollection<?> recipResult = reciprocals.get().evaluate();
-		assertEquals(0.25, recipResult.valueAt(0), 1e-10);    // 1/4
-		assertEquals(0.125, recipResult.valueAt(1), 1e-10);   // 1/8
-		assertEquals(0.0625, recipResult.valueAt(2), 1e-10);  // 1/16
-		assertEquals(0.04, recipResult.valueAt(3), 1e-10);    // 1/25
+		Assert.assertEquals(0.25, recipResult.valueAt(0), 1e-10);    // 1/4
+		Assert.assertEquals(0.125, recipResult.valueAt(1), 1e-10);   // 1/8
+		Assert.assertEquals(0.0625, recipResult.valueAt(2), 1e-10);  // 1/16
+		Assert.assertEquals(0.04, recipResult.valueAt(3), 1e-10);    // 1/25
 	}
 
 	/**
@@ -143,9 +144,9 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		PackedCollection<?> derivative = df_dx.get().evaluate();
 		
 		// Expected: 3*x^2 = [3*1^2, 3*2^2, 3*3^2] = [3, 12, 27]
-		assertEquals(3.0, derivative.valueAt(0), 1e-10);
-		assertEquals(12.0, derivative.valueAt(1), 1e-10);
-		assertEquals(27.0, derivative.valueAt(2), 1e-10);
+		Assert.assertEquals(3.0, derivative.valueAt(0), 1e-10);
+		Assert.assertEquals(12.0, derivative.valueAt(1), 1e-10);
+		Assert.assertEquals(27.0, derivative.valueAt(2), 1e-10);
 	}
 
 	/**
@@ -157,24 +158,24 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		PackedCollection<?> nonZeroValues = pack(2.0, 5.0, 10.0);
 		CollectionProducer<PackedCollection<?>> powerZero = cp(nonZeroValues).pow(c(0.0));
 		PackedCollection<?> result = powerZero.get().evaluate();
-		assertEquals(1.0, result.valueAt(0), 1e-10);
-		assertEquals(1.0, result.valueAt(1), 1e-10);
-		assertEquals(1.0, result.valueAt(2), 1e-10);
+		Assert.assertEquals(1.0, result.valueAt(0), 1e-10);
+		Assert.assertEquals(1.0, result.valueAt(1), 1e-10);
+		Assert.assertEquals(1.0, result.valueAt(2), 1e-10);
 		
 		// Test x^1 = x
 		CollectionProducer<PackedCollection<?>> powerOne = cp(nonZeroValues).pow(c(1.0));
 		PackedCollection<?> identityResult = powerOne.get().evaluate();
-		assertEquals(2.0, identityResult.valueAt(0), 1e-10);
-		assertEquals(5.0, identityResult.valueAt(1), 1e-10);
-		assertEquals(10.0, identityResult.valueAt(2), 1e-10);
+		Assert.assertEquals(2.0, identityResult.valueAt(0), 1e-10);
+		Assert.assertEquals(5.0, identityResult.valueAt(1), 1e-10);
+		Assert.assertEquals(10.0, identityResult.valueAt(2), 1e-10);
 		
 		// Test 1^x = 1
 		PackedCollection<?> exponents = pack(2.0, 10.0, 100.0);
 		CollectionProducer<PackedCollection<?>> oneToX = c(1.0).pow(cp(exponents));
 		PackedCollection<?> onesResult = oneToX.get().evaluate();
-		assertEquals(1.0, onesResult.valueAt(0), 1e-10);
-		assertEquals(1.0, onesResult.valueAt(1), 1e-10);
-		assertEquals(1.0, onesResult.valueAt(2), 1e-10);
+		Assert.assertEquals(1.0, onesResult.valueAt(0), 1e-10);
+		Assert.assertEquals(1.0, onesResult.valueAt(1), 1e-10);
+		Assert.assertEquals(1.0, onesResult.valueAt(2), 1e-10);
 	}
 
 	/**
@@ -197,8 +198,8 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			PackedCollection<?> customResult = df_dx_custom.get().evaluate();
 			
 			// Expected: 2*x = [4, 6]
-			assertEquals(4.0, customResult.valueAt(0), 1e-10);
-			assertEquals(6.0, customResult.valueAt(1), 1e-10);
+			Assert.assertEquals(4.0, customResult.valueAt(0), 1e-10);
+			Assert.assertEquals(6.0, customResult.valueAt(1), 1e-10);
 			
 			// Test with custom delta disabled
 			CollectionExponentComputation.enableCustomDelta = false;
@@ -206,8 +207,8 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			PackedCollection<?> defaultResult = df_dx_default.get().evaluate();
 			
 			// Should still compute correctly but potentially less efficiently
-			assertEquals(4.0, defaultResult.valueAt(0), 1e-8);
-			assertEquals(6.0, defaultResult.valueAt(1), 1e-8);
+			Assert.assertEquals(4.0, defaultResult.valueAt(0), 1e-8);
+			Assert.assertEquals(6.0, defaultResult.valueAt(1), 1e-8);
 			
 		} finally {
 			// Restore original state
