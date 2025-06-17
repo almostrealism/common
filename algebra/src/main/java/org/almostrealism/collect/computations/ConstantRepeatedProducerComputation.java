@@ -213,12 +213,12 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * 
 	 * ConstantRepeatedProducerComputation<PackedCollection> optimized = 
 	 *     new ConstantRepeatedProducerComputation<>(
-	 *         "rowWiseSum",
+	 *         "repeatedProduct",
 	 *         new TraversalPolicy(100), // Output: 100 sums (one per row)
-	 *         2, // Process 2 elements per kernel thread (memory optimization)
-	 *         finalDimSize, // 10 iterations (matches final dimension size)
+	 *         finalDimSize, // Process 10 elements per kernel thread
+	 *         5, // 5 iterations
 	 *         (args, index) -> args[0].getValueAt(index), // Initialize with input
-	 *         (args, index) -> args[0].getValueAt(index).add(e(0.1)), // Add 0.1 each iteration
+	 *         (args, index) -> args[0].getValueAt(index).multiply(e(2.0))), // Multiply each element by 2
 	 *         dataProducer
 	 *     );
 	 * }</pre>

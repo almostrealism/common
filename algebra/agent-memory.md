@@ -1,8 +1,6 @@
 # Algebra Module Agent Memory
 
-## Computation Classes
-
-# Build
+## Build
 
 ```shell
 mvn package -pl algebra -DskipTests
@@ -14,7 +12,7 @@ from being loaded and respected.
 
 Always run `mvn` commands from the root of the repository.
 
-# Test
+## Test
 
 Tests are always located in the utils module, so you should always run tests from there.
 
@@ -42,7 +40,9 @@ Always run `mvn` commands from the root of the repository.
 - Include code examples that demonstrate realistic usage patterns from the codebase
 
 
-## Key Components
+## Computation Classes
+
+- Computation names should always be camelCase like method names (NOT snake_case)
 
 ### ConstantRepeatedProducerComputation
 - Extends RepeatedProducerComputation with fixed iteration counts
