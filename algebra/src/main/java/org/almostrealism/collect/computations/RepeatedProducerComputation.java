@@ -75,7 +75,7 @@ import java.util.function.Supplier;
  * // Create a computation with specific memory length for optimization
  * RepeatedProducerComputation<PackedCollection> optimized = 
  *     new RepeatedProducerComputation<>(
- *         "optimized_sum",
+ *         "optimizedSum",
  *         shape(100),
  *         4,  // Process 4 elements per kernel thread
  *         (args, index) -> args[0].valueAt(index),  // Initialize with input
