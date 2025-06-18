@@ -64,3 +64,22 @@ Always run `mvn` commands from the root of the repository.
   - Optimized derivative computation using analytical power rule
 - Delta computation implements power rule for derivatives
 - Available through CollectionFeatures.pow() and CollectionProducer.pow()
+
+### TraversableRepeatedProducerComputation
+- Specialized RepeatedProducerComputation implementing TraversableExpression interface
+- Enables efficient index-based value access during repeated iterations
+- Key characteristics:
+  - Fixed iteration count (constant) for optimization opportunities
+  - Traversable results enable composition with other traversable operations
+  - Isolation control based on iteration count threshold and memory requirements
+  - Expression flattening at each iteration for kernel optimization
+- Common usage patterns:
+  - Reduction operations (indexOfMax, sum accumulation)
+  - Iterative refinement algorithms
+  - Accumulation computations with known bounds
+- Performance considerations:
+  - Isolation threshold (isolationCountThreshold = 16) for resource management
+  - Memory checks against MemoryProvider.MAX_RESERVATION
+  - Expression generation and flattening for GPU/parallel execution
+- Extended by AggregatedProducerComputation for aggregation operations
+- Primary usage through CollectionFeatures.indexOfMax() method
