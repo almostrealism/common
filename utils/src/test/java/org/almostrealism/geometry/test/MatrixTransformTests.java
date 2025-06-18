@@ -53,24 +53,17 @@ public class MatrixTransformTests implements TestFeatures {
 	}
 
 	@Test
-	public void transformAsOffset1() {
+	public void transformAsOffset() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		TransformMatrix matrix = new TranslationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
 		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-
 		assertEquals(1.0, v.getX());
 		assertEquals(2.0, v.getY());
 		assertEquals(3.0, v.getZ());
-	}
 
-	@Test
-	public void transformAsOffset2() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
-		TransformMatrix matrix = new ScaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-
+		matrix = new ScaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
+		v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
 		assertEquals(2.0, v.getX());
 		assertEquals(2.0, v.getY());
 		assertEquals(9.0, v.getZ());

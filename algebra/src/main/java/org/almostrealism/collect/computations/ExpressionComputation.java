@@ -321,6 +321,16 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	/**
+	 * Returns null, as it is not possible to compute a signature for this
+	 * computation due to the {@link Expression}s being dynamically specified
+	 * on construction.
+	 *
+	 * @return  null
+	 */
+	@Override
+	public String signature() { return null; }
+
+	/**
 	 * Creates a {@link CollectionProducer} that always returns the specified constant values.
 	 * This is a convenience method for creating computations with fixed, predetermined results.
 	 * 

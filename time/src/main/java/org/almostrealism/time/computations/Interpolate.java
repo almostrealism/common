@@ -203,6 +203,15 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		return scope;
 	}
 
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		// TODO
+		return null;
+	}
+
 	protected static TraversalPolicy computeShape(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position) {
 		if (enableAtomicShape) {
 			return new TraversalPolicy(1);

@@ -246,10 +246,10 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 		int size = 10;
 
-		PackedCollection<?> input = new PackedCollection(size);
+		PackedCollection<?> input = new PackedCollection(1, size);
 		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
 
-		PackedCollection<?> gradient = new PackedCollection<>(size);
+		PackedCollection<?> gradient = new PackedCollection<>(1, size);
 		gradient.setMem(3, 1.0);
 
 		// log("Input = " + Arrays.toString(input.toArray(0, input.getMemLength())));
@@ -274,7 +274,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = IntStream.range(0, size)
-				.mapToDouble(i -> -Math.exp(input.valueAt(i)) / tot)
+				.mapToDouble(i -> -Math.exp(input.valueAt(0, i)) / tot)
 				.toArray();
 		int idx = gradient.argmax();
 		log("Gradient max idx = " + idx);
