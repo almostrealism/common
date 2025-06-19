@@ -62,9 +62,6 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
-
-	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 		ScopeLifecycle.prepareArguments(conjuncts.stream(), map);

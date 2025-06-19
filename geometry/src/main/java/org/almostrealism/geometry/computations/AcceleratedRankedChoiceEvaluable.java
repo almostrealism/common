@@ -240,7 +240,6 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 			newArgs.add(getDefaultValue());
 
 			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 

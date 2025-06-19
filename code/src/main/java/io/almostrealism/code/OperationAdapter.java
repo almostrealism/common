@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,7 +53,6 @@ public abstract class OperationAdapter<T, C> implements
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
-	private boolean sortedArguments;
 
 	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
@@ -106,10 +105,6 @@ public abstract class OperationAdapter<T, C> implements
 	}
 
 	public synchronized List<Argument<? extends T>> getArguments() {
-//		if (!sortedArguments) {
-//			sortedArguments = Scope.sortArguments(arguments);
-//		}
-
 		return arguments;
 	}
 
@@ -144,15 +139,15 @@ public abstract class OperationAdapter<T, C> implements
 	}
 
 	/**
-	 * Presently this serves a dual purpose: to do actual compilation of Scope
-	 * from Computation in implementors that facilitate the invocation of a
-	 * Computation, but also to do necessary initialization even in cases where
-	 * a Computation is not being prepared for invocation. This is likely
-	 * adding to the confusion of having a shared parent between the two types
-	 * of accelerated operations (those compiling a Computation vs those that
-	 * simply execute code). There seems to be no reason to deal with this now,
-	 * as there will eventually be no need for accelerated operations which
-	 * are not Computation based, so when that process is over one of the two
+	 * Presently this serves a dual purpose: to do actual compilation of {@link Scope}
+	 * from {@link Computation} in implementors that facilitate the invocation of a
+	 * {@link Computation}, but also to do necessary initialization even in cases where
+	 * a {@link Computation} is not being prepared for invocation.
+	 * This is likely adding to the confusion of having a shared parent between the
+	 * two types of accelerated operations (those compiling a {@link Computation} vs
+	 * those that simply execute code). There seems to be no reason to deal with this
+	 * now, as there will eventually be no need for accelerated operations which
+	 * are not {@link Computation} based; when that process is over, one of the two
 	 * roles this method plays won't exist, and it will be clear what it is for.
 	 */
 	public abstract Scope compile();
@@ -195,9 +190,6 @@ public abstract class OperationAdapter<T, C> implements
 	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
 
 	public void purgeVariables() { this.variables = null; }
-
-	@Deprecated
-	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
 
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
