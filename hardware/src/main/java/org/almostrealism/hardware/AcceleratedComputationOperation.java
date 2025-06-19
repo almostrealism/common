@@ -59,9 +59,9 @@ import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
-		implements NameProvider, KernelStructureContext, Countable {
+		implements NameProvider, KernelStructureContext, Countable, Signature {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
-	public static boolean enablePostConversionSimplify = true;
+
 	public static ScopeTimingListener timing;
 
 	private Computation<T> computation;
@@ -281,9 +281,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 							"getScope", System.nanoTime() - start);
 				}
 
-				if (!enablePostConversionSimplify)
-					scope = scope.simplify(this);
-
 				start = System.nanoTime();
 				scope.convertArgumentsToRequiredScopes(this);
 				if (timing != null) {
@@ -291,8 +288,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 							"convertRequired", System.nanoTime() - start);
 				}
 
-				if (enablePostConversionSimplify)
-					scope = scope.simplify(this);
+				scope = scope.simplify(this);
 
 				postCompile();
 
@@ -338,8 +334,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 		if ((getKernelMaximum().isPresent() && process.getKernelSize() !=
 					getKernelMaximum().getAsLong()) ||
-				(kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
-					kernelSeriesCache.getMaximumLength().getAsInt())) {
+				(kernelSeriesCache != null && kernelSeriesCache.getMaximumLength().isPresent() &&
+						process.getKernelSize() != kernelSeriesCache.getMaximumLength().getAsInt())) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -353,6 +349,23 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public boolean isAggregatedInput() { return true; }
+
+	@Override
+	public String signature() {
+		String signature = getMetadata().getSignature();
+		if (signature == null) return null;
+
+		if (computation instanceof Process<?,?>) {
+			// TODO  This may not be enough information to distinguish between
+			// TODO  operations, as a Process that had arguments (A, A, B) and
+			// TODO  (A, B, B) would retain the same signature
+			int distinct = ((Process<?,?>) computation).children()
+					.collect(Collectors.toSet()).size();
+			return signature + "&distinct=" + distinct + ";";
+		}
+
+		return signature;
+	}
 
 	@Override
 	public String describe() {
