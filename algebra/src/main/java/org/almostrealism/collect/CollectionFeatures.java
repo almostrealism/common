@@ -1957,7 +1957,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Function<List<String>, String> description, Producer<T>... arguments) {
 		return compute((shape, args) -> new DefaultTraversableExpressionComputation(
-				name, largestTotalSize(args), deltaStrategy, expression.apply(shape),
+				name, largestTotalSize(args), deltaStrategy, true, expression.apply(shape),
 				args.toArray(Supplier[]::new)), description, arguments);
 	}
 

@@ -37,6 +37,9 @@ import java.util.function.Supplier;
  * a function to define the expression logic. This is the most commonly used implementation
  * for creating custom traversable expression computations without needing to extend
  * the abstract base class.
+ * By default, instances of {@link DefaultTraversableExpressionComputation} will not have
+ * signatures generated as there may be details of the {@link CollectionExpression} which
+ * would not be captured in the signature.
  * 
  * <p>This class allows users to provide a {@link Function} that transforms input
  * {@link TraversableExpression} arguments into a {@link CollectionExpression}, making it
@@ -87,6 +90,8 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 */
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
+	private boolean generateSignature;
+
 	/**
 	 * Constructs a DefaultTraversableExpressionComputation with default delta strategy.
 	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} for automatic differentiation.
@@ -95,24 +100,13 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param expression A function that transforms input {@link TraversableExpression} arrays
 	 *                   into a {@link CollectionExpression} representing the computation logic
-	 * @param args Variable number of {@link Producer} arguments providing input collections
-	 */
-	/**
-	 * Constructs a DefaultTraversableExpressionComputation with default delta strategy.
-	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} for automatic differentiation
-	 * and accepts {@link Producer} arguments directly.
-	 * 
-	 * @param name The name of this computation for debugging and identification
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param expression A function that transforms input {@link TraversableExpression} arrays
-	 *                   into a {@link CollectionExpression} representing the computation logic
-	 * @param args Variable number of {@link Producer} arguments providing input collections
+	 * @param args Variable number of {@link Producer}s providing input collections
 	 */
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Producer<? extends PackedCollection<?>>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, expression, args);
+		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
 	}
 
 	/**
@@ -123,22 +117,24 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param expression A function that transforms input {@link TraversableExpression} arrays
 	 *                   into a {@link CollectionExpression} representing the computation logic
-	 * @param args Variable number of {@link Supplier} arguments providing evaluable input collections
+	 * @param args Variable number of {@link Supplier}s of {@link Evaluable} input collections
 	 */
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, expression, args);
+		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
 	}
 
 	/**
 	 * Constructs a DefaultTraversableExpressionComputation with a specified delta strategy.
-	 * This constructor allows full control over automatic differentiation behavior.
+	 * This constructor allows configuration of automatic differentiation behavior.
 	 * 
 	 * @param name The name of this computation for debugging and identification
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param deltaStrategy The {@link MultiTermDeltaStrategy} to use for handling derivatives
+	 * @param generateSignature Whether to generate a signature for identifying the generated
+	 *                         program for reuse
 	 * @param expression A function that transforms input {@link TraversableExpression} arrays
 	 *                   into a {@link CollectionExpression} representing the computation logic
 	 * @param args Variable number of {@link Supplier} arguments providing evaluable input collections
@@ -146,10 +142,12 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   MultiTermDeltaStrategy deltaStrategy,
+												   boolean generateSignature,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
+		this.generateSignature = generateSignature;
 	}
 
 	/**
@@ -206,7 +204,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (DefaultTraversableExpressionComputation<T>) new DefaultTraversableExpressionComputation(getName(), getShape(),
-						getDeltaStrategy(), expression,
+						getDeltaStrategy(), generateSignature, expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
@@ -215,15 +213,18 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	}
 
 	/**
-	 * Returns null, as it is not possible to compute a signature for this
-	 * computation due to the {@link CollectionExpression} being dynamically
-	 * specified on construction.
+	 * Delegates to {@link TraversableExpressionComputation#signature()}
+	 * if the computation is configured to generate a signature.
 	 *
-	 * @return  null
+	 * @return The signature string, or null if signature is disabled
 	 */
 	@Override
 	public String signature() {
-		return null;
+		if (generateSignature) {
+			return super.signature();
+		} else {
+			return null;
+		}
 	}
 
 	/**
