@@ -108,7 +108,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = Math.max(input.valueAt(j, 0, copy), input.valueAt(j, 1, copy));
 					double actual = output.toDouble(output.getShape().index(j, copy));
 
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -133,7 +132,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 			for (int j = 0; j < c; j++) {
 				double expected = input.valueAt(0, j, copy);
 				double actual = output.valueAt(0, 0, j, copy);
-				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		}
@@ -170,7 +168,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 				double actual = output.valueAt(copy, 0);
 
-				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		}
@@ -206,7 +203,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 				double actual = output.valueAt(copy, 0);
 
-				System.out.println("EmbeddedCollectionMapTests[" + copy + "]: Expected " + expected + " vs actual " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		}
@@ -242,7 +238,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 
 					double actual = output.valueAt(j, copy);
 
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -274,7 +269,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(j, 0, copy);
 					double actual = output.toDouble(output.getShape().index(j, copy));
 
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -302,11 +296,9 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(i, j);
 
 					double actual = output.valueAt(i, 0, j);
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 
 					actual = output.valueAt(i, 1, j);
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -334,7 +326,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				for (int j = 0; j < n; j++) {
 					double expected = input.valueAt(i) * filter.valueAt(j, i);
 					double actual = output.valueAt(j, i);
-					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -365,7 +356,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					for (int k = 0; k < d; k++) {
 						double expected = input.valueAt(i, k) * filter.valueAt(j, k);
 						double actual = output.valueAt(i, j, k);
-						System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -397,7 +387,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(i, j);
 					double actual = output.valueAt(i, 0, j);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -427,7 +416,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				double expected = Math.max(input.valueAt(i, 0), input.valueAt(i, 1));
 				double actual = output.valueAt(i, 0);
 
-				System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		});
@@ -461,7 +449,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(i, 0, j);
 					double actual = output.valueAt(i, j);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -496,7 +483,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 						double expected = input.valueAt(i, j, k);
 						double actual = output.valueAt(i, k, 0, j, 0);
 
-						System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -531,7 +517,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(i, 0);
 					double actual = output.valueAt(i, 0, j);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -560,7 +545,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 					double expected = input.valueAt(i, j);
 					double actual = output.valueAt(j / w, i, j % w);
 
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -592,8 +576,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				for (int j = 0; j < d; j++) {
 					double expected = a.valueAt(i, j) * b.valueAt(i, j);
 					double actual = output.valueAt(j / w, i, j % w);
-
-					log("[" + i + "]: Expected " + expected + " vs actual " + actual);
 					assertEquals(expected, actual);
 				}
 			}
@@ -630,9 +612,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				for (int j = 0; j < c; j++) {
 					double expected = input.valueAt(i, 2 * j);
 					double actual = output.valueAt(i, j, 0);
-
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+					assertEquals(expected, actual);
 				}
 			}
 		});
@@ -665,9 +645,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				for (int j = 0; j < d; j++) {
 					double expected = input.valueAt(i, 0, j);
 					double actual = output.valueAt(i, j, 0);
-
-					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+					assertEquals(expected, actual);
 				}
 			}
 		});
@@ -697,8 +675,6 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				for (int j = 0; j < d; j++) {
 					double expected = Math.max(input.valueAt(i, 0, j), input.valueAt(i, 1, j));
 					double actual = output.valueAt(i, j);
-
-					log("[" + i + "]: Expected " + expected + " vs actual " + actual);
 					assertEquals(expected, actual);
 				}
 			}
@@ -735,9 +711,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 				}
 
 				double actual = output.valueAt(j, copy);
-
-				System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
-				Assert.assertEquals(expected, actual, 0.0001);
+				assertEquals(expected, actual);
 			}
 		}
 	}

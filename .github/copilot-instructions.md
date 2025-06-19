@@ -115,9 +115,15 @@ Follow Java best practices and idiomatic patterns, while maintaining the existin
 ### Key Principles
 1. Do not introduce excessive comments, such as explaining each step of a process.
 2. Always review the `agent-memory.md` file in the module you plan to modify before making changes (see above).
-3. Write unit tests using junit for new functionality.
-4. Do not include complex messages in Exceptions. Use a single, simple sentence.
-   If there is a strong need to report the value of certain fields in an Exception, create a
+
+### Tests
+1. Always write unit tests using junit for new functionality.
+2. Try to use the utilities in TestFeatures (assertEquals, compare, etc) rather than
+   relying on those from junit or implementing your own, if possible.
+
+### Error Handling
+1. Do not include complex messages in Exceptions; use a single, simple sentence. 
+2. If there is a strong need to report the value of certain fields in an Exception, create a
    custom Exception class that tracks those values separately from the message.
 
 ### Documentation

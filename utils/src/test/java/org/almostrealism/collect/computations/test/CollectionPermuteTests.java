@@ -47,7 +47,6 @@ public class CollectionPermuteTests implements TestFeatures {
 
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 4; j++) {
-				log("i: " + i + ", j: " + j);
 				int originalIndex = input.getShape().index(i, j);
 				int permutedIndex = input.getShape().permute(1, 0).index(i, j);
 
@@ -78,7 +77,6 @@ public class CollectionPermuteTests implements TestFeatures {
 			for (int j = 0; j < 4; j++) {
 				for (int k = 0; k < 3; k++) {
 					for (int l = 0; l < 8; l++) {
-						log("i: " + i + ", j: " + j + ", k: " + k + ", l: " + l);
 						assertEquals(input.valueAt(i, j, k, l), out.valueAt(i, k, j, l));
 					}
 				}
