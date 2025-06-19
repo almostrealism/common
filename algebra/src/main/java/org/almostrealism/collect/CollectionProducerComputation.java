@@ -153,7 +153,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(
 				ctx, getShape(), this,
 				this::createDestination, this::postProcessOutput);
-		ev.compile();
+		ev.load();
 		return ev;
 	}
 

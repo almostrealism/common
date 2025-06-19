@@ -109,7 +109,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
 		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
-				() -> new ScopeInstructionsManager<>(context, scope.get()));
+				() -> new ScopeInstructionsManager<>(context, scope));
 	}
 
 	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>

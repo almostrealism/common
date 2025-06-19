@@ -20,6 +20,8 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.scope.Scope;
 
+import java.util.function.Supplier;
+
 /**
  * NOTE: This class may be unnecessary, as the only case where it matters is
  * when the {@link Scope} contains multiple functions that can be called by
@@ -29,7 +31,7 @@ import io.almostrealism.scope.Scope;
 public class ComputationInstructionsManager extends ScopeInstructionsManager<DefaultExecutionKey> {
 
 	public ComputationInstructionsManager(ComputeContext<?> computeContext,
-										  Scope<?> scope) {
+										  Supplier<Scope<?>> scope) {
 		super(computeContext, scope);
 	}
 

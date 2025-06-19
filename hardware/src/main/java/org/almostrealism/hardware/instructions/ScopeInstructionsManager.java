@@ -19,27 +19,34 @@ package org.almostrealism.hardware.instructions;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 public class ScopeInstructionsManager<K extends ExecutionKey>
 		extends AbstractInstructionSetManager<K>
-		implements ComputableInstructionSetManager<K> {
+		implements ComputableInstructionSetManager<K>, ConsoleFeatures {
 
-	// TODO  It is probably not necessary to store the entire Scope,
-	// TODO  and there may be a lot of memory to save by storing only
-	// TODO  the signature, function name, and argument count
-	private Scope<?> scope;
+	private Supplier<Scope<?>> scope;
 	private InstructionSet operators;
+	private String scopeName;
+	private List<Supplier<Evaluable<?>>> inputs;
+	private List<Argument<?>> arguments;
 
 	private Map<K, Integer> outputArgIndices;
 	private Map<K, Integer> outputOffsets;
 
 	public ScopeInstructionsManager(ComputeContext<?> computeContext,
-									Scope<?> scope) {
+									Supplier<Scope<?>> scope) {
 		super(computeContext);
 		this.scope = scope;
 		this.outputArgIndices = new HashMap<>();
@@ -69,9 +76,25 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		this.outputOffsets.put(key, outputOffset);
 	}
 
+	public List<Supplier<Evaluable<?>>> getScopeInputs() { return inputs; }
+
+	public List<Argument<?>> getScopeArguments() { return arguments; }
+
+	protected Scope<?> getScope() {
+		if (scopeName != null) {
+			warn("Repeated attempt to retrieve Scope");
+		}
+
+		Scope<?> s = scope.get();
+		scopeName = s.getName();
+		inputs = s.getInputs();
+		arguments = s.getArguments();
+		return s;
+	}
+
 	protected synchronized InstructionSet getInstructionSet() {
 		if (operators == null || operators.isDestroyed()) {
-			operators = getComputeContext().deliver(scope);
+			operators = getComputeContext().deliver(getScope());
 			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
 
@@ -81,10 +104,13 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	@Override
 	public synchronized Execution getOperator(K key) {
 		if (operators == null || operators.isDestroyed()) {
-			operators = getComputeContext().deliver(scope);
+			operators = getComputeContext().deliver(getScope());
 			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
 
-		return operators.get(scope.getName(), scope.getArguments().size());
+		return operators.get(scopeName, arguments.size());
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

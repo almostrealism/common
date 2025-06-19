@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
@@ -36,6 +37,7 @@ import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
@@ -43,6 +45,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
@@ -57,6 +60,7 @@ import org.almostrealism.io.SystemUtils;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
 		implements NameProvider, KernelStructureContext, Countable, Signature {
@@ -158,17 +162,18 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public <K extends ExecutionKey> ComputableInstructionSetManager<K> getInstructionSetManager() {
-		if (instructions == null && scope != null) {
-			String signature = scope.signature();
+		if (instructions == null) {
+			String signature = signature();
 
 			if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
 				instructions = computer.getScopeInstructionsManager(
-						signature, getComputeContext(), () -> scope);
+						signature, getComputeContext(), this::getScope);
 			} else {
 				instructions = new ComputationInstructionsManager(
-						getComputeContext(), scope);
+						getComputeContext(), this::getScope);
+				compile();
 			}
 		}
 
@@ -257,6 +262,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 	}
 
+	protected Scope<?> getScope() {
+		if (scope == null) {
+			compile();
+		}
+
+		return scope;
+	}
+
 	@Override
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
@@ -307,9 +320,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public synchronized void postCompile() {
-		setInputs(scope.getInputs());
-		setArguments(scope.getArguments());
-		outputVariable = getComputation().getOutputVariable();
+		setupArguments(scope);
 
 		if (getComputation() instanceof Shape) {
 			TraversalPolicy shape = scope.getMetadata().getShape();
@@ -324,6 +335,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		// kernelSeriesCache.destroy();
 		super.postCompile();
+	}
+
+	protected void setupArguments(Scope<?> scope) {
+		setupArguments(scope.getInputs(), scope.getArguments());
+		outputVariable = getComputation().getOutputVariable();
+	}
+
+	protected void setupArguments(List<Supplier<Evaluable<? extends MemoryData>>> inputs,
+								  List<Argument<? extends MemoryData>> arguments) {
+		setInputs(inputs);
+		setArguments(arguments);
 	}
 
 	@Override

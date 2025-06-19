@@ -106,9 +106,9 @@ public abstract class OperationAdapter<T, C> implements
 	}
 
 	public synchronized List<Argument<? extends T>> getArguments() {
-		if (!sortedArguments) {
-			sortedArguments = Scope.sortArguments(arguments);
-		}
+//		if (!sortedArguments) {
+//			sortedArguments = Scope.sortArguments(arguments);
+//		}
 
 		return arguments;
 	}

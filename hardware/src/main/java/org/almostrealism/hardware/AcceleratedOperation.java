@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -190,6 +190,38 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		prepareScope(manager, null);
 	}
 
+	/**
+	 * Prepare the {@link Execution} for this {@link AcceleratedOperation}.
+	 * This will obtain the {@link #getInstructionSetManager()} InstructionSetManager}
+	 * and either {@link #compile() compile} the operation or prepare the
+	 * operation to use an {@link Execution} from a previously compiled
+	 * {@link io.almostrealism.code.InstructionSet}.
+	 *
+	 * @return  An {@link Execution} for performing this operation
+	 */
+	public Execution load() {
+		try {
+			long start = System.nanoTime();
+			InstructionSetManager<?> manager = getInstructionSetManager();
+			Execution operator = manager.getOperator(getExecutionKey());
+			retrieveOperatorMetric.addEntry(System.nanoTime() - start);
+			return operator;
+		} catch (HardwareException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new HardwareException("Could not obtain operator", e);
+		} finally {
+			if (getArguments() == null) {
+				// TODO This is overkill, but at the moment it is the most direct
+				// TODO way to accomplish the basic function of this entire class:
+				// TODO to determine the inputs for the final compiled program
+				// eg, ProcessDetailsFactory cannot function without the information
+				// that is derived from actually creating the Scope
+				compile();
+			}
+		}
+	}
+
 	@Override
 	public Scope<?> compile() {
 		prepareScope();
@@ -333,11 +365,9 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 
 	protected Execution setupOperator(AcceleratedProcessDetails process) {
 		try {
-			long start = System.nanoTime();
-			Execution operator = getInstructionSetManager().getOperator(getExecutionKey());
-			retrieveOperatorMetric.addEntry(System.nanoTime() - start);
-			start = System.nanoTime();
+			Execution operator = load();
 
+			long start = System.nanoTime();
 			if (!(operator instanceof KernelWork)) {
 				throw new UnsupportedOperationException();
 			} else if (operator.isDestroyed()) {
@@ -352,7 +382,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		} catch (HardwareException e) {
 			throw e;
 		} catch (Exception e) {
-			throw new HardwareException("Could not obtain operator", e);
+			throw new HardwareException("Could not setup operator", e);
 		}
 	}
 
