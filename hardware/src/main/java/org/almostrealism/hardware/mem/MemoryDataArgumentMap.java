@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,10 +28,13 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -242,18 +245,10 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	}
 
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
-		if (!enableArgumentAggregation || aggregateGenerator == null) return null;
-		if (md.getMemLength() > maxAggregateLength) {
-			if (enableWarnings) {
-				log("Unable to aggregate " + md.getMem().getProvider().getName() +
-						" argument (" + md.getMemLength() + " > " + maxAggregateLength + ")");
-			}
+		if (aggregateGenerator == null || !isAggregationTarget(md)) return null;
 
+		if (md.getMem().getProvider() == context.getDataContext().getKernelMemoryProvider())
 			return null;
-		}
-
-		if (!enableOffHeapAggregation && !(md.getMem().getProvider() instanceof JVMMemoryProvider)) return null;
-		if (md.getMem().getProvider() == context.getDataContext().getKernelMemoryProvider()) return null;
 
 		if (aggregatePositions.containsKey(new MemoryDataRef(md))) {
 			// If aggregation has already occurred for this MemoryData,
@@ -303,6 +298,26 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 //		if (aggregateLength > 0) {
 //			aggregateData = aggregateGenerator.apply(aggregateLength);
 //		}
+	}
+
+	public static boolean isAggregationTarget(MemoryData md) {
+		if (!enableArgumentAggregation || md == null || md.getMem() == null)
+			return false;
+
+		if (md.getMemLength() > maxAggregateLength) {
+			if (enableWarnings) {
+				Hardware.console.features(MemoryDataArgumentMap.class)
+						.log("Unable to aggregate " + md.getMem().getProvider().getName() +
+							" argument (" + md.getMemLength() + " > " + maxAggregateLength + ")");
+			}
+
+			return false;
+		}
+
+		if (!enableOffHeapAggregation && !(md.getMem().getProvider() instanceof JVMMemoryProvider))
+			return false;
+
+		return true;
 	}
 
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {

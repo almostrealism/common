@@ -19,18 +19,17 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * A computation that extracts a subset (slice) from a {@link PackedCollection} based on specified
@@ -173,6 +172,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		this.pos = pos;
+		init();
 	}
 
 	/**
@@ -309,5 +309,15 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null || pos == null)
+			return signature;
+
+		return signature + "{" + Stream.of(pos).map(Expression::signature)
+						.collect(Collectors.joining("[%]")) + "}";
 	}
 }

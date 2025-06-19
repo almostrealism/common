@@ -234,7 +234,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return 0;
 		} else {
 			long s = sizeLong(depth + 1, input);
-			if (s <= 0) {
+			if (s < 0) {
 				throw new UnsupportedOperationException();
 			}
 

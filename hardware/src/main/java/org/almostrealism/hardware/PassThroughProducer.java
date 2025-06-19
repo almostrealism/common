@@ -53,17 +53,18 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
+		init();
 	}
 
 	public PassThroughProducer(int size, int argIndex) {
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
+		init();
 	}
 
 	private PassThroughProducer() {
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
-		init();
 	}
 
 	/**
@@ -192,6 +193,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return false;
+	}
+
+	@Override
+	public String signature() {
+		return "param(" + getReferencedArgumentIndex() + "{" + getShape().toStringDetail() + "})";
 	}
 
 	@Override

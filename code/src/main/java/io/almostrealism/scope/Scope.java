@@ -615,7 +615,18 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	@Override
-	public String signature() { return getMetadata().getSignature(); }
+	public String signature() {
+		String signature = getMetadata().getSignature();
+		if (signature == null) signature = getName();
+
+		return signature + "(" +
+				getArguments().stream()
+						.map(Argument::getVariable)
+						.map(v -> v instanceof ArrayVariable ?
+								String.valueOf(((ArrayVariable) v).getOffset()) :
+								v.getName())
+						.collect(Collectors.joining(", ")) + ")";
+	}
 
 	@Override
 	public boolean equals(Object o) {

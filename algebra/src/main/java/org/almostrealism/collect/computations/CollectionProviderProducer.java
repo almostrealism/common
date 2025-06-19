@@ -30,6 +30,7 @@ import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -93,6 +94,14 @@ public class CollectionProviderProducer<T extends Shape>
 		String shape = "|" + value.getShape().toStringDetail();
 
 		if (value instanceof MemoryData) {
+			if (MemoryDataArgumentMap.isAggregationTarget((MemoryData) value)) {
+				// It should actually be possible to compute a valid signature
+				// for this anyway, but because argument aggregation for
+				// Computations depends on the other Computation arguments,
+				// it requires more information than is available here
+				return null;
+			}
+
 			return ((MemoryData) value).getOffset() + ":" +
 				((MemoryData) value).getMemLength() + shape;
 		}

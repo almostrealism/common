@@ -631,7 +631,10 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public String signature() {
-		return Signature.of(getComputation()) + "|" + getShape().toStringDetail();
+		String signature = Signature.of(getComputation());
+		if (signature == null) return null;
+
+		return signature + "|" + getShape().toStringDetail();
 	}
 
 	/**

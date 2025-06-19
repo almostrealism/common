@@ -75,12 +75,12 @@ public class CollectionExponentComputationTest implements TestFeatures {
 	public void matrixPower() {
 		PackedCollection<?> matrix = new PackedCollection<>(shape(2, 3));
 		// Fill with [[1,2,3], [2,3,4]]
-		matrix.set(0, 0, 1.0);
-		matrix.set(0, 1, 2.0);
-		matrix.set(0, 2, 3.0);
-		matrix.set(1, 0, 2.0);
-		matrix.set(1, 1, 3.0);
-		matrix.set(1, 2, 4.0);
+		matrix.setValueAt(1.0, 0, 0);
+		matrix.setValueAt(2.0, 0, 1);
+		matrix.setValueAt(3.0, 0, 2);
+		matrix.setValueAt(2.0, 1, 0);
+		matrix.setValueAt(3.0, 1, 1);
+		matrix.setValueAt(4.0, 1, 2);
 		
 		CollectionExponentComputation<PackedCollection<?>> matrixPower = 
 			new CollectionExponentComputation<>(shape(2, 3), p(matrix), c(2.0));
@@ -106,26 +106,26 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		// Square roots (x^0.5)
 		CollectionProducer<PackedCollection<?>> sqrt = cp(values).pow(c(0.5));
 		PackedCollection<?> sqrtResult = sqrt.get().evaluate();
-		Assert.assertEquals(2.0, sqrtResult.valueAt(0), 1e-10);
-		Assert.assertEquals(2.828427124746, sqrtResult.valueAt(1), 1e-10); // sqrt(8)
-		Assert.assertEquals(4.0, sqrtResult.valueAt(2), 1e-10);
-		Assert.assertEquals(5.0, sqrtResult.valueAt(3), 1e-10);
+		assertEquals(2.0, sqrtResult.valueAt(0));
+		assertEquals(2.828427124746, sqrtResult.valueAt(1)); // sqrt(8)
+		assertEquals(4.0, sqrtResult.valueAt(2));
+		assertEquals(5.0, sqrtResult.valueAt(3));
 		
 		// Cubes (x^3)
 		CollectionProducer<PackedCollection<?>> cubes = cp(values).pow(c(3.0));
 		PackedCollection<?> cubeResult = cubes.get().evaluate();
-		Assert.assertEquals(64.0, cubeResult.valueAt(0), 1e-10);    // 4^3
-		Assert.assertEquals(512.0, cubeResult.valueAt(1), 1e-10);   // 8^3
-		Assert.assertEquals(4096.0, cubeResult.valueAt(2), 1e-10);  // 16^3
-		Assert.assertEquals(15625.0, cubeResult.valueAt(3), 1e-10); // 25^3
+		assertEquals(64.0, cubeResult.valueAt(0));    // 4^3
+		assertEquals(512.0, cubeResult.valueAt(1));   // 8^3
+		assertEquals(4096.0, cubeResult.valueAt(2));  // 16^3
+		assertEquals(15625.0, cubeResult.valueAt(3)); // 25^3
 		
 		// Reciprocals (x^-1)
 		CollectionProducer<PackedCollection<?>> reciprocals = cp(values).pow(c(-1.0));
 		PackedCollection<?> recipResult = reciprocals.get().evaluate();
-		Assert.assertEquals(0.25, recipResult.valueAt(0), 1e-10);    // 1/4
-		Assert.assertEquals(0.125, recipResult.valueAt(1), 1e-10);   // 1/8
-		Assert.assertEquals(0.0625, recipResult.valueAt(2), 1e-10);  // 1/16
-		Assert.assertEquals(0.04, recipResult.valueAt(3), 1e-10);    // 1/25
+		assertEquals(0.25, recipResult.valueAt(0));    // 1/4
+		assertEquals(0.125, recipResult.valueAt(1));   // 1/8
+		assertEquals(0.0625, recipResult.valueAt(2));  // 1/16
+		assertEquals(0.04, recipResult.valueAt(3));    // 1/25
 	}
 
 	/**
@@ -142,11 +142,13 @@ public class CollectionExponentComputationTest implements TestFeatures {
 		// Compute derivative
 		CollectionProducer<PackedCollection<?>> df_dx = f.delta(x);
 		PackedCollection<?> derivative = df_dx.get().evaluate();
-		
+
+		derivative.print();
+
 		// Expected: 3*x^2 = [3*1^2, 3*2^2, 3*3^2] = [3, 12, 27]
-		Assert.assertEquals(3.0, derivative.valueAt(0), 1e-10);
-		Assert.assertEquals(12.0, derivative.valueAt(1), 1e-10);
-		Assert.assertEquals(27.0, derivative.valueAt(2), 1e-10);
+		assertEquals(3.0, derivative.valueAt(0, 0));
+		assertEquals(12.0, derivative.valueAt(1, 1));
+		assertEquals(27.0, derivative.valueAt(2, 2));
 	}
 
 	/**
@@ -196,10 +198,12 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			
 			CollectionProducer<PackedCollection<?>> df_dx_custom = f.delta(x);
 			PackedCollection<?> customResult = df_dx_custom.get().evaluate();
-			
+
+			customResult.print();
+
 			// Expected: 2*x = [4, 6]
-			Assert.assertEquals(4.0, customResult.valueAt(0), 1e-10);
-			Assert.assertEquals(6.0, customResult.valueAt(1), 1e-10);
+			assertEquals(4.0, customResult.valueAt(0, 0));
+			assertEquals(6.0, customResult.valueAt(1, 1));
 			
 			// Test with custom delta disabled
 			CollectionExponentComputation.enableCustomDelta = false;
@@ -207,9 +211,8 @@ public class CollectionExponentComputationTest implements TestFeatures {
 			PackedCollection<?> defaultResult = df_dx_default.get().evaluate();
 			
 			// Should still compute correctly but potentially less efficiently
-			Assert.assertEquals(4.0, defaultResult.valueAt(0), 1e-8);
-			Assert.assertEquals(6.0, defaultResult.valueAt(1), 1e-8);
-			
+			assertEquals(4.0, defaultResult.valueAt(0, 0));
+			assertEquals(6.0, defaultResult.valueAt(1, 1));
 		} finally {
 			// Restore original state
 			CollectionExponentComputation.enableCustomDelta = originalCustomDelta;

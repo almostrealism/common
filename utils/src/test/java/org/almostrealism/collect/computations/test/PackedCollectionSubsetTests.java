@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -331,6 +332,24 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	/**
+	 * This test groups together a few of the other tests to ensure
+	 * that automatic compiled program reuse does not cause issues.
+	 *
+	 * @see #subsetHalfPad2dSum1()
+	 * @see #subsetHalfPad2dSum2()
+	 * @see #subsetHalfPad2dSum3()
+	 */
+	@Test
+	public void subsetHalfPad2dSumAll() {
+		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		subsetHalfPad2dSum1();
+		subsetHalfPad2dSum2();
+		subsetHalfPad2dSum3();
 	}
 
 	@Test

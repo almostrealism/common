@@ -124,6 +124,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		super("pad", shape, (Supplier) input);
 		this.inputShape = shape(input);
 		this.position = position;
+		init();
 
 		if (shape.getDimensions() != position.getDimensions()) {
 			throw new IllegalArgumentException();
@@ -231,5 +232,15 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 		}
 
 		return pad(deltaShape, position, delta((Producer) in, target));
+	}
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null || inputShape == null || position == null)
+			return null;
+
+		return signature + "{" + inputShape.toStringDetail() +
+						"|" + position.toStringDetail() + "}";
 	}
 }
