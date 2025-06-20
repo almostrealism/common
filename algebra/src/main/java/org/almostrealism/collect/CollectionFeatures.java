@@ -2038,11 +2038,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This is one of the fundamental arithmetic operations for collections,
 	 * adding corresponding elements from each input collection.
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * <p>This method delegates to {@link #add(List)} which internally uses
+	 * {@link org.almostrealism.collect.computations.CollectionSumComputation} to
+	 * perform the actual computation with hardware acceleration support.</p>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param a the first collection to add
 	 * @param b the second collection to add
-	 * @return a CollectionProducer that generates the element-wise sum
+	 * @return a {@link CollectionProducer} that generates the element-wise sum
 	 * 
+	 * @see #add(List)
+	 * @see org.almostrealism.collect.computations.CollectionSumComputation
 	 *
 	 * <pre>{@code
 	 * // Add two vectors element-wise
@@ -2067,16 +2073,26 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * This method can add any number of collections together by summing
 	 * corresponding elements across all input collections.
 	 * 
-	 * <p>This method includes optimizations for constant operations:
-	 * when all operands are {@link SingleConstantComputation} instances,
-	 * the method computes the sum directly and returns a new constant
-	 * computation, avoiding the overhead of the full computation pipeline.</p>
+	 * <p>This method is the core implementation for all addition operations and
+	 * includes several important optimizations:</p>
+	 * <ul>
+	 *   <li><strong>Constant Optimization:</strong> When all operands are {@link SingleConstantComputation}
+	 *       instances, the sum is computed at construction time rather than runtime</li>
+	 *   <li><strong>Zero Filtering:</strong> Zero-valued operands are automatically filtered out</li>
+	 *   <li><strong>Single Operand:</strong> When only one non-zero operand remains, it's returned directly</li>
+	 *   <li><strong>CollectionSumComputation:</strong> For multiple operands, creates a
+	 *       {@link org.almostrealism.collect.computations.CollectionSumComputation} for hardware-accelerated execution</li>
+	 * </ul>
 	 * 
-	 * @param <T> the type of PackedCollection
+	 * <p>The actual computation is performed by {@link org.almostrealism.collect.computations.CollectionSumComputation}
+	 * which supports automatic differentiation and parallel execution on various hardware platforms.</p>
+	 * 
+	 * @param <T> the type of {@link PackedCollection}
 	 * @param operands the list of collections to add together
-	 * @return a CollectionProducer that generates the element-wise sum
+	 * @return a {@link CollectionProducer} that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
 	 * 
+	 * @see org.almostrealism.collect.computations.CollectionSumComputation
 	 * @see SingleConstantComputation
 	 *
 	 * <pre>{@code
@@ -2093,6 +2109,9 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * );
 	 * CollectionProducer<PackedCollection<?>> total = add(constants);
 	 * // Result: Producer that generates [6.0] (computed at construction time)
+	 * 
+	 * // The underlying CollectionSumComputation handles the actual computation:
+	 * // new CollectionSumComputation<>(shape, filteredOperands)
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> add(List<Producer<?>> operands) {

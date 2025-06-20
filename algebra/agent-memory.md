@@ -55,6 +55,17 @@ Always run `mvn` commands from the root of the repository.
 - Has specialized delta computation via ConstantRepeatedDeltaComputation
 - Constructor with memory length parameter (size) controls elements per kernel thread
 
+### CollectionSumComputation
+- Primary implementation for element-wise addition of PackedCollection instances
+- Extends TransitiveDeltaExpressionComputation for automatic differentiation support
+- Used internally by CollectionFeatures.add() methods
+- Supports variable number of operands through varargs constructors
+- Key methods:
+  - `getExpression()`: Creates sum expression using ExpressionFeatures.sum()
+  - `generate()`: Creates CollectionProducerParallelProcess for hardware execution
+- Examples and usage patterns documented in comprehensive javadoc
+- Optimized for parallel execution and hardware acceleration
+
 ### CollectionExponentComputation
 - Implements element-wise exponentiation (power operations) on multi-dimensional collections
 - Extends TraversableExpressionComputation for parallel processing capabilities
