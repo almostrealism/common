@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.almostrealism.hardware.arguments;
 
 import io.almostrealism.relation.Evaluable;
-
-import java.util.function.Supplier;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 
 public interface ProcessArgumentEvaluator {
-	<T> Evaluable<? extends T> getEvaluable(Supplier<Evaluable<? extends T>> producer);
+	<T> Evaluable<? extends Multiple<T>> getEvaluable(ArrayVariable<T> argument);
 }

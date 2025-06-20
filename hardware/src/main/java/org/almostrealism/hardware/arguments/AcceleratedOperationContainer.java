@@ -19,6 +19,8 @@ package org.almostrealism.hardware.arguments;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerSubstitution;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
@@ -28,6 +30,7 @@ import org.almostrealism.hardware.instructions.InstructionSetManager;
 import java.util.List;
 import java.util.function.Supplier;
 
+@Deprecated
 public class AcceleratedOperationContainer<T extends MemoryData>
 		implements Countable, Evaluable<T>, ProcessArgumentEvaluator {
 	private AcceleratedOperation<T> operation;
@@ -64,6 +67,10 @@ public class AcceleratedOperationContainer<T extends MemoryData>
 	public long getCountLong() { return operation.getCountLong(); }
 
 	@Override
+	public <V> Evaluable<? extends Multiple<V>> getEvaluable(ArrayVariable<V> argument) {
+		return getEvaluable(argument.getProducer());
+	}
+
 	public <V> Evaluable<? extends V> getEvaluable(Supplier<Evaluable<? extends V>> producer) {
 		List<ProducerSubstitution<?>> subs = substitutions.get();
 

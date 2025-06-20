@@ -210,15 +210,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 			throw e;
 		} catch (Exception e) {
 			throw new HardwareException("Could not obtain operator", e);
-		} finally {
-			if (getArguments() == null) {
-				// TODO This is overkill, but at the moment it is the most direct
-				// TODO way to accomplish the basic function of this entire class:
-				// TODO to determine the inputs for the final compiled program
-				// eg, ProcessDetailsFactory cannot function without the information
-				// that is derived from actually creating the Scope
-				compile();
-			}
 		}
 	}
 

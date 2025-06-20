@@ -281,4 +281,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		c.setReplaceLoop(replaceLoop);
 		return c;
 	}
+
+	@Override
+	public String signature() { return null; }
 }

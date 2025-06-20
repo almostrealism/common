@@ -208,6 +208,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		this.traversalDepth = traversalDepth;
 		this.subsetShape = shape;
 		this.strideShape = stride;
+		init();
 	}
 
 	/**
@@ -440,6 +441,16 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 				new PackedCollectionEnumerate<>(subsetShape, strideShape,
 								(Producer) children.get(1), traversalDepth)
 						.addAllDependentLifecycles(getDependentLifecycles());
+	}
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null || strideShape == null || subsetShape == null)
+			return signature;
+
+		return signature + "{" + subsetShape.toStringDetail() + "|" +
+				strideShape.toStringDetail() + "|" + traversalDepth + "}";
 	}
 
 	/**

@@ -191,7 +191,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (aggregateData != null) aggregateData.destroy();
 	}
 
-	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
+	public class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
 															Delegated<Provider>, OperationInfo {
 		private Provider provider;
 		private OperationMetadata metadata;
@@ -230,7 +230,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	protected Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
-			aggregateSupplier = () -> new Provider<>(getAggregateData());
+			aggregateSupplier = new AggregateProducer();
 		}
 
 		return aggregateSupplier;
@@ -298,6 +298,21 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 //		if (aggregateLength > 0) {
 //			aggregateData = aggregateGenerator.apply(aggregateLength);
 //		}
+	}
+
+	private class AggregateProducer implements Producer<MemoryData> {
+		@Override
+		public Evaluable<MemoryData> get() {
+			return new Provider<>(getAggregateData());
+		}
+	}
+
+	public static boolean isAggregationTarget(Producer<?> p) {
+		Evaluable<?> eval = p.get();
+		if (!(eval instanceof Provider)) return false;
+
+		Object v = ((Provider<?>) eval).get();
+		return v instanceof MemoryData && isAggregationTarget((MemoryData) v);
 	}
 
 	public static boolean isAggregationTarget(MemoryData md) {

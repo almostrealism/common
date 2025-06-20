@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.fixedCount = fixedCount;
 		this.count = count;
 
-		this.evaluator = ProducerCache::getEvaluableForSupplier;
+		this.evaluator = ProducerCache::getEvaluableForArrayVariable;
 
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
@@ -165,7 +165,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			i: for (int i = 0; i < arguments.size(); i++) {
 				if (kernelArgs[i] != null) continue i;
 
-				kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i).getProducer());
+				kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i));
 				if (kernelArgEvaluables[i] == null) {
 					throw new UnsupportedOperationException();
 				}

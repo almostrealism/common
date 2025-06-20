@@ -23,6 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 
 import java.util.Collection;
@@ -114,7 +115,17 @@ public class DelegatedProducer<T> implements
 	}
 
 	@Override
-	public String signature() { return "delegate|" + getCountLong() + "|" + isFixedCount(); }
+	public String signature() {
+		if (MemoryDataArgumentMap.isAggregationTarget(op)) {
+			// It should actually be possible to compute a valid signature
+			// for this anyway, but because argument aggregation for
+			// Computations depends on the other Computation arguments,
+			// it requires more information than is available here
+			return null;
+		}
+
+		return "delegate|" + getCountLong() + "|" + isFixedCount();
+	}
 
 	@Override
 	public String describe() {

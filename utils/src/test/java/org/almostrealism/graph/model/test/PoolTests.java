@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,21 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 
 public class PoolTests implements TestFeatures, KernelAssertions {
+
+	@Test
+	public void pool2dSquareAndOptimize() {
+		pool2dSquareOptimize();
+
+		Hardware.console.flag();
+		pool2dSquare();
+	}
 
 	@Test
 	public void pool2d() {

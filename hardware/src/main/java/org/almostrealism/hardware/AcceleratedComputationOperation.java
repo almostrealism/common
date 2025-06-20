@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.Execution;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.ExpressionAssignment;
@@ -46,10 +47,12 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
+import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.instructions.ExecutionKey;
+import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
@@ -169,7 +172,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
 				instructions = computer.getScopeInstructionsManager(
-						signature, getComputeContext(), this::getScope);
+						signature, getComputation(), getComputeContext(), this::getScope);
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
@@ -268,6 +271,31 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 
 		return scope;
+	}
+
+	@Override
+	public Execution load() {
+		Execution operator = super.load();
+
+		if (getArguments() == null) {
+			if (getComputation() instanceof Process<?,?>) {
+				// If the Computation is a Process, the structure of the Process
+				// tree can be used to substitute arguments from this Computation
+				// for those in the shared Execution
+				ScopeInstructionsManager manager = (ScopeInstructionsManager) getInstructionSetManager();
+				setupArguments(manager.getScopeInputs(), manager.getScopeArguments());
+
+				ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
+				map.putSubstitutions((Process<?,?>) getComputation());
+				setEvaluator(map);
+			} else {
+				warn("Unable to reuse instructions for " + getFunctionName() +
+						" because " + getComputation() + " is not a Process");
+				compile();
+			}
+		}
+
+		return operator;
 	}
 
 	@Override

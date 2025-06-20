@@ -106,10 +106,19 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	}
 
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
+																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
 		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
-				() -> new ScopeInstructionsManager<>(context, scope));
+				() -> {
+					ScopeInstructionsManager mgr = new ScopeInstructionsManager<>(context, scope);
+
+					if (computation instanceof Process<?, ?>) {
+						mgr.setProcess((Process<?, ?>) computation);
+					}
+
+					return mgr;
+				});
 	}
 
 	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>

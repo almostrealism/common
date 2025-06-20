@@ -19,31 +19,40 @@ package org.almostrealism.hardware.instructions;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class ScopeInstructionsManager<K extends ExecutionKey>
 		extends AbstractInstructionSetManager<K>
 		implements ComputableInstructionSetManager<K>, ConsoleFeatures {
 
 	private Supplier<Scope<?>> scope;
-	private InstructionSet operators;
+	private Process<?, ?> process;
+
 	private String scopeName;
 	private List<Supplier<Evaluable<?>>> inputs;
 	private List<Argument<?>> arguments;
+	private ProcessArgumentMap argumentMap;
 
 	private Map<K, Integer> outputArgIndices;
 	private Map<K, Integer> outputOffsets;
+
+	private InstructionSet operators;
 
 	public ScopeInstructionsManager(ComputeContext<?> computeContext,
 									Supplier<Scope<?>> scope) {
@@ -52,6 +61,20 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		this.outputArgIndices = new HashMap<>();
 		this.outputOffsets = new HashMap<>();
 	}
+
+	public Process<?, ?> getProcess() { return process; }
+
+	public void setProcess(Process<?, ?> process) { this.process = process; }
+
+	public void populateArgumentMap(Process<?, ?> process) {
+		this.argumentMap = new ProcessArgumentMap(process,
+				arguments.stream().map(Argument::getVariable)
+						.map(arg -> arg instanceof ArrayVariable<?> ? (ArrayVariable<?>) arg : null)
+						.filter(Objects::nonNull)
+						.collect(Collectors.toList()));
+	}
+
+	public ProcessArgumentMap getArgumentMap() { return argumentMap; }
 
 	@Override
 	public int getOutputArgumentIndex(K key) {
@@ -89,6 +112,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		scopeName = s.getName();
 		inputs = s.getInputs();
 		arguments = s.getArguments();
+
+		if (process != null) {
+			populateArgumentMap(process);
+		}
+
 		return s;
 	}
 
