@@ -86,17 +86,8 @@ public abstract class OperationComputationAdapter<T>
 	@Override
 	public Runnable get() {
 		Runnable r = compileRunnable(this);
-		if (r instanceof OperationAdapter) {
-			((OperationAdapter) r).compile();
-		}
-		return r;
-	}
-
-	@Deprecated
-	public Runnable getKernel() {
-		Runnable r = Hardware.getLocalHardware().getComputer().compileRunnable(this, true);
-		if (r instanceof OperationAdapter) {
-			((OperationAdapter) r).compile();
+		if (r instanceof AcceleratedComputationOperation<?>) {
+			((AcceleratedComputationOperation<?>) r).load();
 		}
 		return r;
 	}

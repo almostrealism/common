@@ -92,11 +92,11 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 				.findFirst().orElse(null);
 	}
 
-	public Supplier getProducerForPosition(ProcessTreePositionKey key) {
+	public Supplier<Evaluable<?>> getProducerForPosition(ProcessTreePositionKey key, boolean allowFallback) {
 		if (substitutions.containsKey(key)) {
 			return substitutions.get(key);
-		} else if (argumentsByPosition.containsKey(key)) {
-			return argumentsByPosition.get(key).getProducer();
+		} else if (allowFallback && argumentsByPosition.containsKey(key)) {
+			return (Supplier) argumentsByPosition.get(key).getProducer();
 		}
 
 		return null;
@@ -122,15 +122,22 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 
 	@Override
 	public <T> Evaluable<? extends Multiple<T>> getEvaluable(ArrayVariable<T> argument) {
+		Supplier producer;
+
 		if (positionsForArguments.containsKey(argument)) {
-			return ProducerCache.getEvaluableForSupplier(getProducerForPosition(positionsForArguments.get(argument)));
+			producer = getProducerForPosition(positionsForArguments.get(argument),
+						enableSubstitutionFallback || substitutions.isEmpty());
+		} else {
+			// The argument isn't associated with a position,
+			// so no substitution should be expected
+			producer = argument.getProducer();
 		}
 
-		if (enableSubstitutionFallback || substitutions.isEmpty()) {
-			return ProducerCache.getEvaluableForSupplier(argument.getProducer());
+		if (producer == null) {
+			throw new IllegalArgumentException();
 		}
 
-		throw new IllegalArgumentException();
+		return ProducerCache.getEvaluableForSupplier(producer);
 	}
 
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {
