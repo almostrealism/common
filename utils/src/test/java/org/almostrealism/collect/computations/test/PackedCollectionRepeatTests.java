@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,7 +53,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 				for (int z = 0; z < h; z++) {
 					double expected = v.valueAt(y, z);
 					double actual = out.valueAt(x, y, z);
-					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}
@@ -80,7 +79,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 				for (int z = 0; z < h; z++) {
 					double expected = v.valueAt(x, z);
 					double actual = out.valueAt(x, y, z);
-					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}
@@ -104,7 +102,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 					for (int z = 0; z < d; z++) {
 						double expected = v.valueAt(x, y);
 						double actual = out.valueAt(x, y, z);
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -135,8 +132,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 				}
 
 				double actual = output.valueAt(i);
-
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		};
@@ -171,7 +166,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 
 				double actual = output.valueAt(i);
 
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		};
@@ -212,7 +206,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 				Assert.assertNotEquals(expected, actual, 0.0001);
 
 				expected += biases.valueAt(i);
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
 				Assert.assertEquals(expected, actual, 0.0001);
 			}
 		};
@@ -239,7 +232,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 
 			for (int i = 0; i < 3; i++) {
 				double actual = o.valueAt(h, i, 0);
-				System.out.println("CollectionRepeatTests[" + h + "] " + max + " vs " + actual);
 				assertEquals(max, actual);
 			}
 		}
@@ -260,7 +252,6 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 			for (int j = 0; j < 4; j++) {
 				double expected = input.valueAt(0, 0, i / 2, j / 2);
 				double actual = out.valueAt(0, 0, i, j);
-				System.out.println("CollectionRepeatTests[" + i + "][" + j + "] " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		}

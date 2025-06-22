@@ -21,7 +21,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -32,8 +31,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	@Test
 	public void pool2dSquareAndOptimize() {
 		pool2dSquareOptimize();
-
-		Hardware.console.flag();
+		pool2dSquare();
 		pool2dSquare();
 	}
 
@@ -87,8 +85,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	}
 
 	public void pool(int r, int c, int d, int w, boolean kernel) {
-		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
-		input.fill(pos -> Math.random());
+		PackedCollection<?> input = new PackedCollection<>(shape(r, c, d)).randFill();
 
 		Supplier<CollectionProducer<PackedCollection<?>>> pool =
 				() -> cp(input)

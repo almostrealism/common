@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -47,6 +48,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+		init();
 
 		if (memLength > ScopeSettings.maxStatements) {
 			throw new IllegalArgumentException();
@@ -151,6 +153,21 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return result;
+	}
+
+	@Override
+	public String signature() {
+		if (Signature.of(getInputs().get(0)) == null) {
+			// If the destination does not provide a signature,
+			// it is not possible to be certain about the signature
+			// for the assignment operation
+			return null;
+		}
+
+		String signature = Signature.of(getInputs().get(1));
+		if (signature == null || memLength == 0) return null;
+
+		return "assign" + memLength + "->" + signature;
 	}
 
 	@Override

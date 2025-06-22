@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,6 +46,18 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 		}
 	}
 
+	/**
+	 * Generates a unique signature for this {@link Computation} based on its name
+	 * the signatures of its inputs.
+	 * The signature is created by combining the computation name with the signatures
+	 * of all inputs except the first one (assumed to be the destination), joined
+	 * with colons.
+	 *
+	 * @return An MD5 hash of the combined signature string, or null if any input signature is null
+	 *
+	 * @see Signature#of(Object)
+	 * @see Signature#md5(String)
+	 */
 	@Override
 	public String signature() {
 		List<String> signatures = getInputs().stream().skip(1)

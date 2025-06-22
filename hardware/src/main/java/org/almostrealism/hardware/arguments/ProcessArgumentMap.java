@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.arguments;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -142,6 +143,11 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {
 		if (argumentProducer instanceof MemoryDataArgumentMap<?,?>.RootDelegateProviderSupplier) {
+			if (process instanceof Computation) {
+				// A Computation will never produce a Provider
+				return false;
+			}
+
 			Provider p = ((MemoryDataArgumentMap<?, ?>.RootDelegateProviderSupplier) argumentProducer).getDelegate();
 
 			Evaluable<?> ev = (Evaluable) process.get();
