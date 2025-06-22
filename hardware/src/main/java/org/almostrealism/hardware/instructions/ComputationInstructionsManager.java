@@ -32,7 +32,7 @@ public class ComputationInstructionsManager extends ScopeInstructionsManager<Def
 
 	public ComputationInstructionsManager(ComputeContext<?> computeContext,
 										  Supplier<Scope<?>> scope) {
-		super(computeContext, scope);
+		super(computeContext, scope, null);
 	}
 
 	@Override

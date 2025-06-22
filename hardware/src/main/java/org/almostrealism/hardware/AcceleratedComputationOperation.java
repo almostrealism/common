@@ -361,7 +361,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			}
 		}
 
-		// kernelSeriesCache.destroy();
+		scope.setMetadata(scope.getMetadata().withSignature(signature()));
 		super.postCompile();
 	}
 

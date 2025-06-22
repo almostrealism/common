@@ -53,6 +53,8 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 		this.src = src;
 	}
 
+	public String getName() { return func; }
+
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 

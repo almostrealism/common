@@ -22,11 +22,15 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.ScopeSettings;
-import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
@@ -52,12 +56,11 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	private MetalCommandRunner runner;
 
-	private FrequencyCache<String, MetalOperatorMap> instructionSets;
+	private Map<String, MetalOperatorMap> instructionSets;
 
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
-		this.instructionSets = new FrequencyCache<>(500, 0.4);
-		this.instructionSets.setEvictionListener((name, inst) -> inst.destroy());
+		this.instructionSets = new HashMap<>();
 	}
 
 	protected void init(MTLDevice mainDevice) {
@@ -99,7 +102,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 				warn("Recompiling instruction set " + scope.getName());
 			}
 
-			instructionSets.evict(key(scope.getName(), scope.signature()));
+			instructionSets.get(key(scope.getName(), scope.signature())).destroy();
 		}
 
 		long start = System.nanoTime();
@@ -120,10 +123,6 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		}
 	}
 
-	protected void accessed(String key, String signature) {
-		instructionSets.get(key(key, signature));
-	}
-
 	@Override
 	public boolean isCPU() { return false; }
 
@@ -131,9 +130,21 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public MTLCommandQueue getMtlQueue() { return queue; }
 	public MetalCommandRunner getCommandRunner() { return runner; }
 
+	protected void destroyed(String name, String signature) {
+		if (instructionSets != null) {
+			String key = key(name, signature);
+
+			if (instructionSets.remove(key) == null) {
+				throw new IllegalArgumentException("No instruction set found for " + key);
+			}
+		}
+	}
+
 	@Override
 	public void destroy() {
-		this.instructionSets.forEach((name, inst) -> inst.destroy());
+		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
+		toDestroy.forEach(MetalOperatorMap::destroy);
+
 		this.instructionSets = null;
 
 		if (queue != null) queue.release();
@@ -147,6 +158,10 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public Console console() { return Hardware.console; }
 
 	protected static String key(String name, String signature) {
-		return ScopeSettings.enableInstructionSetReuse ? signature : name;
+		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+			return signature;
+		}
+
+		return name;
 	}
 }

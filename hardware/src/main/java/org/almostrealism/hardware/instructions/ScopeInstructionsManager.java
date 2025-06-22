@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -42,6 +43,7 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		implements ComputableInstructionSetManager<K>, ConsoleFeatures {
 
 	private Supplier<Scope<?>> scope;
+	private Consumer<ScopeInstructionsManager<K>> accessListener;
 	private Process<?, ?> process;
 
 	private String scopeName;
@@ -55,9 +57,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	private InstructionSet operators;
 
 	public ScopeInstructionsManager(ComputeContext<?> computeContext,
-									Supplier<Scope<?>> scope) {
+									Supplier<Scope<?>> scope,
+									Consumer<ScopeInstructionsManager<K>> accessListener) {
 		super(computeContext);
 		this.scope = scope;
+		this.accessListener = accessListener;
 		this.outputArgIndices = new HashMap<>();
 		this.outputOffsets = new HashMap<>();
 	}
@@ -131,12 +135,26 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	@Override
 	public synchronized Execution getOperator(K key) {
-		if (operators == null || operators.isDestroyed()) {
-			operators = getComputeContext().deliver(getScope());
-			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
-		}
+		try {
+			if (operators == null || operators.isDestroyed()) {
+				operators = getComputeContext().deliver(getScope());
+				HardwareOperator.recordCompilation(!getComputeContext().isCPU());
+			}
 
-		return operators.get(scopeName, arguments.size());
+			return operators.get(scopeName, arguments.size());
+		} finally {
+			if (accessListener != null) {
+				accessListener.accept(this);
+			}
+		}
+	}
+
+	@Override
+	public void destroy() {
+		if (operators != null) {
+			operators.destroy();
+			operators = null;
+		}
 	}
 
 	@Override

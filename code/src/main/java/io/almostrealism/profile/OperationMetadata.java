@@ -129,6 +129,12 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 		return metadata;
 	}
 
+	public OperationMetadata withSignature(String signature) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setSignature(signature);
+		return metadata;
+	}
+
 	public OperationMetadata appendShortDescription(String desc) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShortDescription(metadata.getShortDescription() + desc);

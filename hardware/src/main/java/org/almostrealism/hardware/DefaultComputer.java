@@ -44,6 +44,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Stack;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -62,6 +63,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		this.operationsCache = new HashMap<>();
 		this.processTreeCache = new FrequencyCache<>(500, 0.4);
 		this.instructionsCache = new FrequencyCache<>(500, 0.4);
+		this.instructionsCache.setEvictionListener(
+				(key, mgr) -> mgr.destroy());
 	}
 
 	@Override
@@ -109,9 +112,19 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
+		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
+				accessListener =mgr -> {
+					// Ensure that usage of any InstructionSets updates
+					// the access frequency in the cache if it is present
+					// or restores it to the cache if it had previously
+					// been evicted
+					instructionsCache.computeIfAbsent(signature, () -> mgr);
+				};
+
 		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
 				() -> {
-					ScopeInstructionsManager mgr = new ScopeInstructionsManager<>(context, scope);
+					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
+							new ScopeInstructionsManager<>(context, scope, accessListener);
 
 					if (computation instanceof Process<?, ?>) {
 						mgr.setProcess((Process<?, ?>) computation);

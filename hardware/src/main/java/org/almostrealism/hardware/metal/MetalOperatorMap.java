@@ -87,8 +87,6 @@ public class MetalOperatorMap implements InstructionSet {
 			allOperators.add(op);
 		}
 
-		context.accessed(key, prog.signature());
-
 		return ops.get(key);
 	}
 
@@ -107,7 +105,14 @@ public class MetalOperatorMap implements InstructionSet {
 	 */
 	@Override
 	public void destroy() {
-		if (prog != null) prog.destroy();
+		String name = null;
+		String signature = null;
+
+		if (prog != null) {
+			name = prog.getName();
+			signature = prog.signature();
+			prog.destroy();
+		}
 
 		if (operators != null) {
 			operators.remove();
@@ -117,6 +122,10 @@ public class MetalOperatorMap implements InstructionSet {
 		if (allOperators != null) {
 			allOperators.forEach(MetalOperator::destroy);
 			allOperators = null;
+		}
+
+		if (name != null || signature != null) {
+			context.destroyed(name, signature);
 		}
 	}
 }
