@@ -514,11 +514,9 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		};
 
 		OperationList setup = new OperationList();
-		Random randn = randn(filterShape);
-		setup.add(() -> randn::refresh);
-		setup.add(a(p(filters.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
+		setup.add(randnInit(filters, 1.0 / (channels * size * size)));
 		if (biases != null) {
-			setup.add(a(p(biases.each()), divide(randn.traverseEach(), c(channels * size * size).traverse(0))));
+			setup.add(randnInit(biases, 1.0 / (channels * size * size)));
 		}
 
 		TraversalPolicy convInputShape = shape(batch, channels, height, width);
@@ -1128,6 +1126,14 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 			return ss;
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
+	}
+
+	default Supplier<Runnable> randnInit(PackedCollection<?> weights, double scale) {
+		OperationList setup = new OperationList();
+		Random randn = randn(shape(weights));
+		setup.add(() -> randn::refresh);
+		setup.add(a(p(weights.each()), multiply(randn.traverseEach(), c(scale).traverse(0))));
+		return setup;
 	}
 
 	interface LearningCell extends Cell<PackedCollection<?>>, Learning { }
