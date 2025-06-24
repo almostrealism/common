@@ -86,6 +86,8 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		return this;
 	}
 
+	protected boolean isSignatureSupported() { return false; }
+
 	@Override
 	public boolean isChainRuleSupported() {
 		return enableChainRule || super.isChainRuleSupported();
@@ -283,5 +285,5 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	}
 
 	@Override
-	public String signature() { return null; }
+	public String signature() { return isSignatureSupported() ? super.signature() : null; }
 }

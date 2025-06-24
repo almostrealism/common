@@ -63,6 +63,7 @@ import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.CollectionAddComputation;
+import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -2768,19 +2769,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sum(Producer<T> input) {
 		if (Algebraic.isZero(input)) {
 			// Mathematical optimization: sum(zeros) = 0
-			// Returns scalar zero using CollectionZerosComputation
 			return zeros(shape(input).replace(shape(1)));
 		}
 
-		TraversalPolicy shape = shape(input);
-		int size = shape.getSize();
-
-		AggregatedProducerComputation<T> sum = new AggregatedProducerComputation<>("sum", shape.replace(shape(1)), size,
-				(args, index) -> e(0.0),
-				(out, arg) -> out.add(arg),
-				(Supplier) input);
-		sum.setReplaceLoop(true);
-		return sum;
+		return new CollectionSumComputation(input);
 	}
 
 	/**
