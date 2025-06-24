@@ -87,7 +87,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	@Override
 	public long min() {
 		if (min == null) {
-			min = IndexSequence.super.max();
+			min = IndexSequence.super.min();
 		}
 
 		return min;

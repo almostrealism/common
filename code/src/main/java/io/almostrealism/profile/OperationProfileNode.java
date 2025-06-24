@@ -86,8 +86,16 @@ public class OperationProfileNode extends OperationProfile
 		super(key, name, identifier);
 	}
 
+	/**
+	 * Delegates to {@link #addAllChildren(List)} after removing any existing children.
+	 * This method is necessary for deserialization.
+	 */
 	public void setChildren(List<OperationProfileNode> children) {
-		children.forEach(this::addChild);
+		this.children = null;
+
+		if (children != null) {
+			addAllChildren(children);
+		}
 	}
 
 	@Override
@@ -95,16 +103,26 @@ public class OperationProfileNode extends OperationProfile
 		return getChildren(null);
 	}
 
+	/**
+	 * Returns a {@link Collection} of the children of this node, optionally sorted
+	 * by the provided {@link Comparator} if it is not null.
+	 * This method does not allow modification of the actual children, despite
+	 * returning a mutable {@link Collection} for compatibility with serialization.
+	 */
 	public Collection<OperationProfileNode> getChildren(Comparator<? super OperationProfileNode> comparator) {
 		if (children == null) return Collections.emptyList();
 
-		return comparator == null ? children : children.stream()
+		return comparator == null ? new ArrayList<>(children) : children.stream()
 				.sorted(comparator)
 				.collect(Collectors.toList());
 	}
 
 	public OperationProfileNode addChild(OperationMetadata metadata) {
 		return getProfileNode(metadata);
+	}
+
+	protected void addAllChildren(List<OperationProfileNode> children) {
+		children.forEach(this::addChild);
 	}
 
 	protected void addChild(OperationProfileNode node) {
@@ -214,7 +232,7 @@ public class OperationProfileNode extends OperationProfile
 				addChild(node.get());
 			}
 
-			if (nodeCache == null) nodeCache = new FrequencyCache(60, 0.5);
+			if (nodeCache == null) nodeCache = new FrequencyCache<>(60, 0.5);
 			nodeCache.put(metadataKey(metadata), node.get());
 		}
 
