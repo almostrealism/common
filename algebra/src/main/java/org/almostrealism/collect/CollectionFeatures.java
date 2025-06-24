@@ -62,7 +62,7 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
-import org.almostrealism.collect.computations.CollectionSumComputation;
+import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.ConstantRepeatedProducerComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -2118,7 +2118,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						return c(reshape(shape, p[0]));
 					}
 
-					return new CollectionSumComputation<>(shape, p);
+					return new CollectionAddComputation<>(shape, p);
 				},
 				args -> String.join(" + ", applyParentheses(args)),
 				operands.toArray(new Producer[0]));

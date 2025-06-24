@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -31,19 +30,19 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class CollectionSumComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
+public class CollectionAddComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
 
-	public CollectionSumComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
+	public CollectionAddComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
 		this("add", shape, arguments);
 	}
 
-	public CollectionSumComputation(TraversalPolicy shape,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	public CollectionAddComputation(TraversalPolicy shape,
+									Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		this("add", shape, arguments);
 	}
 
-	protected CollectionSumComputation(String name, TraversalPolicy shape,
-										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	protected CollectionAddComputation(String name, TraversalPolicy shape,
+									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(name, shape, arguments);
 	}
 
