@@ -18,6 +18,7 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -33,6 +34,9 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
+import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -124,6 +128,43 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return scope;
+	}
+
+	@Override
+	public Runnable get() {
+		Supplier<Evaluable<? extends T>> out = getInputs().get(0);
+		Supplier<Evaluable<? extends T>> in = getInputs().get(1);
+
+		if (out instanceof Shape && in instanceof Shape) {
+			TraversalPolicy inShape = ((Shape<?>) in).getShape();
+			TraversalPolicy outShape = ((Shape<?>) out).getShape();
+
+			if (inShape.getTotalSizeLong() != outShape.getTotalSizeLong() ||
+				inShape.getCountLong() != outShape.getCountLong()) {
+				// There are some cases where it makes sense to just generate a Scope
+				// here, because (for example) the alternative might be to provide an
+				// Evaluable that repeats the same value many times over
+				return super.get();
+			}
+		}
+
+		Evaluable<?> ev = in.get();
+
+		MemoryBank destination = (MemoryBank) out.get().evaluate();
+
+		if (ev instanceof HardwareEvaluable<?>) {
+			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
+		}
+
+		if (ev instanceof AcceleratedOperation<?>) {
+			return new DestinationEvaluable(ev, destination);
+		}
+
+		// TODO  It would be preferable to always use DestinationEvaluable, but it
+		// TODO  handles the evaluation of Producers which do not directly support
+		// TODO  kernel evaluation differently than ProcessDetailsFactory (which is
+		// TODO  sometimes not ideal - see DestinationEvaluable.evaluate)
+		return super.get();
 	}
 
 	@Override

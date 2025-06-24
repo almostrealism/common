@@ -38,6 +38,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 			// DestinationEvaluable is intended to be used only as an alternative
 			// to HardwareEvaluable, when it is not possible to use it
 			throw new UnsupportedOperationException();
+		} else if (!(operation instanceof AcceleratedOperation<?>)) {
+			warn("Creating DestinationEvaluable for " + operation.getClass().getSimpleName() +
+					" will not leverage hardware acceleration");
 		}
 	}
 
