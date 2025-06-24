@@ -815,6 +815,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			return a(traverse(axis, (Producer) result), value);
 		}
 
+		// TODO  Value should be repeated to ensure it is compatible with result
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 

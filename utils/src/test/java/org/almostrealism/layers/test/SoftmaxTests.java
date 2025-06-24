@@ -358,7 +358,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	}
 
 	@Test
-	public void softmaxLayerTest() {
+	public void softmaxLayer() {
 		int seqLength = 20;
 
 		PackedCollection<?> originalInput = new PackedCollection<>(shape(1, seqLength));
@@ -375,7 +375,7 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 	}
 
 	@Test
-	public void softmaxSubsetTest() {
+	public void softmaxSubset() {
 		int heads = 1;
 		int seqLength = 20;
 

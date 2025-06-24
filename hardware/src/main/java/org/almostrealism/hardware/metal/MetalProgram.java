@@ -112,8 +112,10 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 
 	@Override
 	public void destroy() {
-		function.release();
-		function = null;
+		if (function != null) {
+			function.release();
+			function = null;
+		}
 	}
 
 	@Override

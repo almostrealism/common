@@ -35,7 +35,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 		this.destination = destination;
 
 		if (operation instanceof HardwareEvaluable) {
-			// DestinationEvaluable is intended to be used only as an alternative\
+			// DestinationEvaluable is intended to be used only as an alternative
 			// to HardwareEvaluable, when it is not possible to use it
 			throw new UnsupportedOperationException();
 		}

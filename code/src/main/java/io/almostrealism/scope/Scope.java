@@ -619,13 +619,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		String signature = getMetadata().getSignature();
 		if (signature == null) signature = getName();
 
-		return signature + "(" +
-				getArguments().stream()
-						.map(Argument::getVariable)
-						.map(v -> v instanceof ArrayVariable ?
-								String.valueOf(((ArrayVariable) v).getOffset()) :
-								v.getName())
-						.collect(Collectors.joining(", ")) + ")";
+		return signature;
 	}
 
 	@Override
