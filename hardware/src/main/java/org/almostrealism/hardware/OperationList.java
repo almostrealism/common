@@ -179,6 +179,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				}
 
 				List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
+				if (run.size() == 1) {
+					return run.get(0);
+				}
+
 				run.stream()
 						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
 						.filter(Objects::nonNull)

@@ -108,7 +108,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			if (!isKernel()) {
 				kernelSize = 1;
-			} else if (!enableArgumentKernelSize && isFixedCount()) {
+			} else if (isFixedCount()) {
 				kernelSize = getCount();
 			} else if (output != null) {
 				kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());
