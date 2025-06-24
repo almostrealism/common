@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -442,6 +442,10 @@ public final class Hardware {
 		} catch (NullPointerException | NumberFormatException e) {
 			return 1024;
 		}
+	}
+
+	public List<DataContext<MemoryData>> getAllDataContexts() {
+		return Collections.unmodifiableList(contexts);
 	}
 
 	public DataContext<MemoryData> getDataContext(ComputeRequirement... requirements) {

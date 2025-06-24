@@ -31,7 +31,9 @@ import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public static boolean enableLargeAllocationLogging =
@@ -250,10 +252,23 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	@Override
 	public void destroy() {
-		// TODO  Deallocating all of these at once appears to produce SIGSEGV
-		// List<CLMemory> available = new ArrayList<>(allocated);
-		// available.forEach(mem -> deallocate(0, mem));
-		allocated = null;
+		if (allocated != null) {
+			allocated.stream()
+					.sorted(Comparator.comparing(MetalMemory::getSize).reversed())
+					.limit(10)
+					.forEach(memory -> {
+						warn(memory + " was not deallocated");
+						if (memory.getAllocationStackTrace() != null) {
+							Stream.of(memory.getAllocationStackTrace())
+									.forEach(stack -> warn("\tat " + stack));
+						}
+					});
+
+			// TODO  Deallocating all of these at once appears to produce SIGSEGV
+			// List<MetalMemory> available = new ArrayList<>(allocated);
+			// available.forEach(mem -> deallocate(0, mem));
+			allocated = null;
+		}
 	}
 
 	@Override
