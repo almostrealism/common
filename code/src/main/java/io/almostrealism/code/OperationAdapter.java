@@ -17,23 +17,18 @@
 package io.almostrealism.code;
 
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.uml.Named;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.util.DescribableParent;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -41,12 +36,12 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T, C> implements
-											NameProvider, DescribableParent<C>,
+public abstract class OperationAdapter<T> implements
+											ArgumentList<T>,
+											DescribableParent<Argument<? extends T>>,
 											Destroyable, OperationInfo,
 											NamedFunction, Named {
 
-	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
 
 	private String function;
@@ -75,22 +70,12 @@ public abstract class OperationAdapter<T, C> implements
 	public String getFunctionName() { return function; }
 
 	@Override
-	public String getVariablePrefix() {
-		if (enableFunctionPrefix) {
-			return getFunctionName();
-		} else {
-			String f = getFunctionName();
-			if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
-			return f;
-		}
-	}
-
-	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
+	@Override
 	public int getArgsCount() { return getArguments().size(); }
 
 	@SafeVarargs
@@ -193,8 +178,7 @@ public abstract class OperationAdapter<T, C> implements
 		}
 
 		String name = c.getSimpleName();
-		if (name == null || name.trim().length() <= 0) name = "anonymous";
-		if (name.equals("AcceleratedOperation") || name.equals("AcceleratedProducer")) name = functionName;
+		if (name.trim().length() <= 0) name = "anonymous";
 		return name;
 	}
 }

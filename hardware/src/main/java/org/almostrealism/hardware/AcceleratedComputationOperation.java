@@ -37,7 +37,6 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;

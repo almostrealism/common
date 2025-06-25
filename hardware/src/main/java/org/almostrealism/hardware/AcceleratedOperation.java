@@ -27,7 +27,6 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
@@ -59,8 +58,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class AcceleratedOperation<T extends MemoryData>
-									extends OperationAdapter<T, Argument<? extends T>>
-									implements Runnable, ArgumentList<T>, ScopeLifecycle,
+									extends OperationAdapter<T>
+									implements Runnable, ScopeLifecycle,
 											Countable, ComputerFeatures {
 	public static Console console = Computation.console.child();
 
