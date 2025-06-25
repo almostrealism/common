@@ -56,14 +56,11 @@ public abstract class OperationAdapter<T, C> implements
 
 	private OperationMetadata metadata;
 
+	public OperationAdapter() { }
+
 	@SafeVarargs
 	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
 		setInputs(input);
-	}
-
-	@SafeVarargs
-	public OperationAdapter(Argument<? extends T>... args) {
-		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
 	public void init() {
@@ -106,9 +103,7 @@ public abstract class OperationAdapter<T, C> implements
 		this.arguments = arguments;
 	}
 
-	public synchronized List<Argument<? extends T>> getArguments() {
-		return arguments;
-	}
+	public List<Argument<? extends T>> getArguments() { return arguments; }
 
 	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables() {
 		if (getArguments() == null) return null;

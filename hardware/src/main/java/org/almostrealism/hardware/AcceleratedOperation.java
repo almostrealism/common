@@ -54,7 +54,6 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -63,7 +62,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 									extends OperationAdapter<T, Argument<? extends T>>
 									implements Runnable, ArgumentList<T>, ScopeLifecycle,
 											Countable, ComputerFeatures {
-	public static final boolean enableArgumentMapping = true;
 	public static Console console = Computation.console.child();
 
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
@@ -105,9 +103,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		setFunctionName(function);
 	}
 
-	@SafeVarargs
-	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, ArrayVariable<T>... args) {
-		super(Arrays.stream(args).map(var -> new Argument(var, Expectation.EVALUATE_AHEAD)).toArray(Argument[]::new));
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel) {
 		setArgumentMapping(true);
 		this.context = context;
 		this.kernel = kernel;
@@ -165,15 +161,13 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		SupplierArgumentMap argumentMap = null;
 
 		if (argumentMapping) {
-			if (enableArgumentMapping) {
-				if (preOp != null || postOp != null) {
-					throw new UnsupportedOperationException("Redundant call to prepareScope");
-				}
-
-				argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
-				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
-				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
+			if (preOp != null || postOp != null) {
+				throw new UnsupportedOperationException("Redundant call to prepareScope");
 			}
+
+			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
+			preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
+			postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 		}
 
 		if (argumentMap != null) {
@@ -217,8 +211,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		prepareScope();
 		return null;
 	}
-
-	public boolean isCompiled() { return false; }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {

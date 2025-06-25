@@ -17,19 +17,14 @@
 package io.almostrealism.code;
 
 import io.almostrealism.compute.Process;
-import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.util.DescribableParent;
 
 import java.util.ArrayList;
@@ -38,7 +33,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -48,7 +42,6 @@ public abstract class ComputableBase<I, T> implements
 		Destroyable, OperationInfo, Named {
 
 	public static boolean enableFunctionPrefix = false;
-	private static long functionId = 0;
 
 	private String function;
 

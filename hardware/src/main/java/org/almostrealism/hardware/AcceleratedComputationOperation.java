@@ -66,7 +66,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private ExecutionKey executionKey;
 
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
-		super(context, kernel, new ArrayVariable[0]);
+		super(context, kernel);
 		this.computation = c;
 		this.compiler = new ComputationScopeCompiler<>(c, this);
 		init();
@@ -262,9 +262,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		setInputs(inputs);
 		setArguments(arguments);
 	}
-
-	@Override
-	public boolean isCompiled() { return compiler.isCompiled() || getInstructionSetManager() != null; }
 
 	@Override
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
