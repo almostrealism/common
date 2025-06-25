@@ -248,11 +248,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		this.executionKey = executionKey;
 	}
 
-	@Override
 	public synchronized void postCompile() {
 		setupArguments(compiler.getScope());
 		compiler.postCompile();
-		super.postCompile();
 	}
 
 	protected void setupArguments(Scope<?> scope) {

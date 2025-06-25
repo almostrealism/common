@@ -16,10 +16,10 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.Input;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
@@ -41,7 +41,7 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 				Input.value(Scalar.shape(), 0),
 				Input.value(Pair.shape(), 1));
 		((AcceleratedEvaluable) highestRank).setPostprocessor(Pair.postprocessor());
-		((OperationAdapter) highestRank).compile();
+		((AcceleratedOperation) highestRank).load();
 	}
 
 	public RankedChoiceEvaluable(double e) { this(e, true); }

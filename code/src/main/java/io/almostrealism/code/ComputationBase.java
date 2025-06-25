@@ -83,16 +83,6 @@ public abstract class ComputationBase<I, O, T>
 		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
 	}
 
-	@Override
-	public Scope compile() {
-		warn("Attempting to compile a Computation, " +
-			"rather than an Evaluable container for one");
-		return null;
-	}
-
-	@Override
-	public boolean isCompiled() { return false; }
-
 	protected LanguageOperations getLanguage() { return lang; }
 
 	@Override

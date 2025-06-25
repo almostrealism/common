@@ -127,15 +127,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return scope;
 	}
 
-	/**
-	 * This overrides the parent method to prevent recursion,
-	 * since the argument is a reference back to this producer.
-	 */
-	@Override
-	public void postCompile() {
-		// Do nothing
-	}
-
 	@Override
 	public Evaluable<T> get() {
 		return args -> (T) args[argIndex];

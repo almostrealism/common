@@ -109,7 +109,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 				warn("Instructions already available for " + getName() + " - but it will be redundantly compiled");
 			}
 
-			compile();
+			load();
 		}
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());

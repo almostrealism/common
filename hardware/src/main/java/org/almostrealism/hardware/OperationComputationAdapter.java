@@ -86,8 +86,8 @@ public abstract class OperationComputationAdapter<T>
 	@Override
 	public Runnable get() {
 		Runnable r = compileRunnable(this);
-		if (r instanceof AcceleratedComputationOperation<?>) {
-			((AcceleratedComputationOperation<?>) r).load();
+		if (r instanceof AcceleratedOperation<?>) {
+			((AcceleratedOperation<?>) r).load();
 		}
 		return r;
 	}

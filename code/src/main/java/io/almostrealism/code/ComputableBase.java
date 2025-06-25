@@ -85,9 +85,7 @@ public abstract class ComputableBase<I, T> implements
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
-	public String getName() { return operationName(null, getClass(), getFunctionName()); }
-
-	public int getArgsCount() { return getArguments().size(); }
+	public String getName() { return OperationAdapter.operationName(null, getClass(), getFunctionName()); }
 
 	@SafeVarargs
 	protected final void setInputs(Supplier<Evaluable<? extends I>>... input) { setInputs(Arrays.asList(input)); }
@@ -117,13 +115,13 @@ public abstract class ComputableBase<I, T> implements
 			throw new IllegalArgumentException(getName() + " is not compiled");
 		}
 
-		return getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
+		return OperationAdapter.getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
 	}
 
 	public void resetArguments() { this.arguments = null; }
 
 	public void init() {
-		if (function == null) setFunctionName(functionName(getClass()));
+		if (function == null) setFunctionName(OperationAdapter.functionName(getClass()));
 		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
 
 		purgeVariables();
@@ -131,43 +129,6 @@ public abstract class ComputableBase<I, T> implements
 
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
 		return metadata;
-	}
-
-	/**
-	 * Presently this serves a dual purpose: to do actual compilation of {@link Scope}
-	 * from {@link Computation} in implementors that facilitate the invocation of a
-	 * {@link Computation}, but also to do necessary initialization even in cases where
-	 * a {@link Computation} is not being prepared for invocation.
-	 * This is likely adding to the confusion of having a shared parent between the
-	 * two types of accelerated operations (those compiling a {@link Computation} vs
-	 * those that simply execute code). There seems to be no reason to deal with this
-	 * now, as there will eventually be no need for accelerated operations which
-	 * are not {@link Computation} based; when that process is over, one of the two
-	 * roles this method plays won't exist, and it will be clear what it is for.
-	 */
-	public abstract Scope compile();
-
-	public abstract boolean isCompiled();
-
-	/**
-	 * Take care of anything necessary after compilation. This may be called
-	 * when a parent operation (one that cites this as an argument, for example)
-	 * is compiled and the compile method was not called, but some work may
-	 * still need to be done. This implementation identifies any arguments that
-	 * are {@link OperationAdapter}s and calls their {@link #postCompile()}
-	 * method, so it should be delegated to in the case that this method is
-	 * overridden to do something else.
-	 */
-	public void postCompile() {
-		getArgumentVariables().stream()
-				.map(Variable::getProducer)
-				.map(arg -> arg instanceof OperationAdapter ? (OperationAdapter) arg : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::postCompile);
-	}
-
-	public void addVariable(Variable<?, ?> v) {
-		addVariable(new InstanceReference<>(v).assign(null));
 	}
 
 	public void addVariable(ExpressionAssignment<?> v) {
@@ -181,11 +142,6 @@ public abstract class ComputableBase<I, T> implements
 	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
 
 	public void purgeVariables() { this.variables = null; }
-
-	protected void waitFor(Semaphore semaphore) {
-		if (semaphore == null) return;
-		semaphore.waitFor();
-	}
 
 	@Override
 	public void destroy() {
@@ -202,57 +158,5 @@ public abstract class ComputableBase<I, T> implements
 	public String description(List<String> children) {
 		return Optional.ofNullable(getMetadata()).map(OperationMetadata::getShortDescription).orElse("null") +
 				"(" + String.join(", ", children) + ")";
-	}
-
-	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
-		if (input == null) return null;
-
-		// Check for argument variables for which the original producer is
-		// the specified input
-		Set<ArrayVariable> var = vars.stream()
-				.filter(arg -> arg != null && input.equals(arg.getProducer()))
-				.collect(Collectors.toSet());
-		if (var.size() == 1) return var.iterator().next();
-		if (var.size() > 1) {
-			throw new IllegalArgumentException("Multiple arguments match input");
-		}
-
-		// Additionally, check for variables for which the original producer
-		// delegates to the specified input
-		var = vars.stream()
-				.filter(Objects::nonNull)
-				.filter(arg -> arg.getProducer() instanceof Delegated)
-				.filter(arg -> input.equals(((Delegated) arg.getProducer()).getDelegate()))
-				.collect(Collectors.toSet());
-		if (var.size() == 1) return var.iterator().next();
-		if (var.size() > 1) {
-			throw new IllegalArgumentException("Multiple arguments match input");
-		}
-
-		return null;
-	}
-
-	protected static String functionName(Class c) {
-		String s = c.getSimpleName();
-		if (s.length() == 0) {
-			s = "anonymous";
-		}
-
-		if (s.length() < 2) {
-			throw new IllegalArgumentException(c.getName() + " has too short of a simple name to use for a function");
-		}
-
-		return "f_" + s.substring(0, 1).toLowerCase() + s.substring(1) + "_" + functionId++;
-	}
-
-	public static String operationName(Named named, Class c, String functionName) {
-		if (named != null && named.getName() != null) {
-			return named.getName();
-		}
-
-		String name = c.getSimpleName();
-		if (name == null || name.trim().length() <= 0) name = "anonymous";
-		if (name.equals("AcceleratedOperation") || name.equals("AcceleratedProducer")) name = functionName;
-		return name;
 	}
 }

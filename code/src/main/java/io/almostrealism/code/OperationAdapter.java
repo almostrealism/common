@@ -68,7 +68,7 @@ public abstract class OperationAdapter<T, C> implements
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
+		metadata = new OperationMetadata(getFunctionName(), getName());
 	}
 
 	@Override
@@ -87,8 +87,6 @@ public abstract class OperationAdapter<T, C> implements
 			return f;
 		}
 	}
-
-	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
@@ -131,43 +129,6 @@ public abstract class OperationAdapter<T, C> implements
 
 	public void resetArguments() { this.arguments = null; }
 
-	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return metadata;
-	}
-
-	/**
-	 * Presently this serves a dual purpose: to do actual compilation of {@link Scope}
-	 * from {@link Computation} in implementors that facilitate the invocation of a
-	 * {@link Computation}, but also to do necessary initialization even in cases where
-	 * a {@link Computation} is not being prepared for invocation.
-	 * This is likely adding to the confusion of having a shared parent between the
-	 * two types of accelerated operations (those compiling a {@link Computation} vs
-	 * those that simply execute code). There seems to be no reason to deal with this
-	 * now, as there will eventually be no need for accelerated operations which
-	 * are not {@link Computation} based; when that process is over, one of the two
-	 * roles this method plays won't exist, and it will be clear what it is for.
-	 */
-	public abstract Scope compile();
-
-	public abstract boolean isCompiled();
-
-	/**
-	 * Take care of anything necessary after compilation. This may be called
-	 * when a parent operation (one that cites this as an argument, for example)
-	 * is compiled and the compile method was not called, but some work may
-	 * still need to be done. This implementation identifies any arguments that
-	 * are {@link OperationAdapter}s and calls their {@link #postCompile()}
-	 * method, so it should be delegated to in the case that this method is
-	 * overridden to do something else.
-	 */
-	public void postCompile() {
-		getArgumentVariables().stream()
-				.map(Variable::getProducer)
-				.map(arg -> arg instanceof OperationAdapter ? (OperationAdapter) arg : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::postCompile);
-	}
-
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
 		semaphore.waitFor();
@@ -176,9 +137,9 @@ public abstract class OperationAdapter<T, C> implements
 	@Override
 	public void destroy() {
 		if (getInputs() != null) {
-			getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
+			getInputs().stream().map(in -> in instanceof Destroyable ? (Destroyable) in : null)
 					.filter(Objects::nonNull)
-					.forEach(Producer::destroy);
+					.forEach(Destroyable::destroy);
 		}
 
 		resetArguments();

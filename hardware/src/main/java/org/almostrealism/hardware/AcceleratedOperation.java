@@ -213,13 +213,11 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		}
 	}
 
-	@Override
 	public Scope<?> compile() {
 		prepareScope();
 		return null;
 	}
 
-	@Override
 	public boolean isCompiled() { return false; }
 
 	@Override

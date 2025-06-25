@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -29,7 +30,6 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -99,7 +99,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 
 	@Override
 	public Variable getOutputVariable() {
-		return getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
+		return OperationAdapter.getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
 	}
 
 	public synchronized List<ArrayVariable<Double>> getArgumentVariables(boolean includeConjuncts) {

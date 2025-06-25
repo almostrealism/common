@@ -170,10 +170,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			if (enableAutomaticOptimization && !isUniform()) {
 				return optimize().get();
 			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
-				OperationAdapter op = (OperationAdapter) compileRunnable(this);
+				AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
 				op.setFunctionName(functionName);
-				op.compile();
-				return (Runnable) op;
+				op.load();
+				return op;
 			} else {
 				if (isComputation()) {
 					warn("OperationList was not compiled (uniform = " + isUniform() + ")");
@@ -184,11 +184,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					return run.get(0);
 				}
 
-				run.stream()
-						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
-						.filter(Objects::nonNull)
-						.filter(Predicate.not(OperationAdapter::isCompiled))
-						.forEach(OperationAdapter::compile);
 				return new Runner(getMetadata(), run, getComputeRequirements(),
 						profile == null ? null : profile.getTimingListener());
 			}
