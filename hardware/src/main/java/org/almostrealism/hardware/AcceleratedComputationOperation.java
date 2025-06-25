@@ -78,7 +78,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private boolean kernelStructureSupported;
 
 	private Scope<T> scope;
-	private Variable outputVariable;
 	private ComputableInstructionSetManager<?> instructions;
 	private ExecutionKey executionKey;
 
@@ -351,7 +350,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	protected void setupArguments(Scope<?> scope) {
 		setupArguments(scope.getInputs(), scope.getArguments());
-		outputVariable = getComputation().getOutputVariable();
 	}
 
 	protected void setupArguments(List<Supplier<Evaluable<? extends MemoryData>>> inputs,
@@ -378,7 +376,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public Variable getOutputVariable() {
-		return outputVariable == null ? computation.getOutputVariable() : outputVariable;
+		return getComputation().getOutputVariable();
 	}
 
 	@Override
@@ -426,7 +424,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 
 		setInputs((List) null);
-		outputVariable = null;
 
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
