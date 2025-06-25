@@ -21,7 +21,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
@@ -39,7 +38,6 @@ import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
@@ -59,7 +57,7 @@ import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
-		implements NameProvider, KernelStructureContext, Countable, Signature {
+		implements KernelStructureContext, Countable, Signature {
 
 	private Computation<T> computation;
 	private ComputationScopeCompiler<T> compiler;
@@ -176,24 +174,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	protected int getOutputArgumentIndex() {
 		return getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
-	}
-
-	// TODO  Remove
-	@Override
-	public void addVariable(ExpressionAssignment<?> v) {
-		throw new UnsupportedOperationException();
-	}
-
-	// TODO  Remove
-	@Override
-	public List<ExpressionAssignment<?>> getVariables() {
-		return ((OperationAdapter) getComputation()).getVariables();
-	}
-
-	// TODO  Remove
-	@Override
-	public void purgeVariables() {
-		throw new UnsupportedOperationException();
 	}
 
 	@Override

@@ -79,6 +79,10 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		this.onNull = onNull;
 	}
 
+	public void addVariable(Variable<?, ?> v) {
+		// TODO
+	}
+
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);

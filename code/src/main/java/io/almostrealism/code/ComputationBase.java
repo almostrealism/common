@@ -40,17 +40,13 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T>
-					extends ComputableBase<I, O, T>
+					extends ComputableBase<I, T>
 					implements Computation<O>, Signature {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
 	private ProcessContext optimizationCtx;
 	protected ComputationBase<I, O, T> optimized;
-
-	public ComputationBase() {
-		super(new Supplier[0]);
-	}
 
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {

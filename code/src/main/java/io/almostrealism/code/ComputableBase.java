@@ -42,11 +42,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputableBase<I, O, T> implements
+public abstract class ComputableBase<I, T> implements
 		ComputableParallelProcess<Process<?, ?>, T>,
 		NameProvider, DescribableParent<Process<?, ?>>,
-		Destroyable, OperationInfo,
-		NamedFunction, Named {
+		Destroyable, OperationInfo, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -64,12 +63,6 @@ public abstract class ComputableBase<I, O, T> implements
 		setInputs(input);
 	}
 
-	@SafeVarargs
-	public ComputableBase(Argument<? extends I>... args) {
-		if (args.length > 0) setArguments(Arrays.asList(args));
-	}
-
-	@Override
 	public void setFunctionName(String name) { function = name; }
 
 	@Override

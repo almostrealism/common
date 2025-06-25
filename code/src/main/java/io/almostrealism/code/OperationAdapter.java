@@ -54,7 +54,6 @@ public abstract class OperationAdapter<T, C> implements
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
 
-	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
 
 	@SafeVarargs
@@ -65,6 +64,11 @@ public abstract class OperationAdapter<T, C> implements
 	@SafeVarargs
 	public OperationAdapter(Argument<? extends T>... args) {
 		if (args.length > 0) setArguments(Arrays.asList(args));
+	}
+
+	public void init() {
+		if (function == null) setFunctionName(functionName(getClass()));
+		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
 	}
 
 	@Override
@@ -127,13 +131,6 @@ public abstract class OperationAdapter<T, C> implements
 
 	public void resetArguments() { this.arguments = null; }
 
-	public void init() {
-		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
-
-		purgeVariables();
-	}
-
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
 		return metadata;
 	}
@@ -170,22 +167,6 @@ public abstract class OperationAdapter<T, C> implements
 				.filter(Objects::nonNull)
 				.forEach(OperationAdapter::postCompile);
 	}
-
-	public void addVariable(Variable<?, ?> v) {
-		addVariable(new InstanceReference<>(v).assign(null));
-	}
-
-	public void addVariable(ExpressionAssignment<?> v) {
-		if (variables == null) {
-			variables = new ArrayList<>();
-		}
-
-		variables.add(v);
-	}
-
-	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
-
-	public void purgeVariables() { this.variables = null; }
 
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
