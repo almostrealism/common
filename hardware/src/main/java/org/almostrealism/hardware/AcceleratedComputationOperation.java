@@ -181,11 +181,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	// TODO  Remove
 	@Override
 	public void addVariable(ExpressionAssignment<?> v) {
-		if (v.getProducer() == null) {
-			throw new IllegalArgumentException("Producer must be provided for variable");
-		}
-
-		((OperationAdapter) getComputation()).addVariable(v);
+		throw new UnsupportedOperationException();
 	}
 
 	// TODO  Remove
@@ -197,7 +193,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	// TODO  Remove
 	@Override
 	public void purgeVariables() {
-		((OperationAdapter) getComputation()).purgeVariables();
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

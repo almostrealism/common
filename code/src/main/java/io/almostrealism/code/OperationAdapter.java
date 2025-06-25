@@ -183,10 +183,6 @@ public abstract class OperationAdapter<T, C> implements
 		variables.add(v);
 	}
 
-	public boolean containsVariable(ExpressionAssignment<?> v) {
-		return getVariables().contains(v);
-	}
-
 	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
 
 	public void purgeVariables() { this.variables = null; }

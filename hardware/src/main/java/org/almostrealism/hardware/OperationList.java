@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
@@ -59,7 +60,7 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, HardwareFeatures {
+					NamedFunction, Destroyable, HardwareFeatures {
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
@@ -337,13 +338,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return op.optimize(context);
 	}
 
+	@Override
 	public void destroy() {
-		stream().map(o -> o instanceof OperationAdapter ? (OperationAdapter) o : null)
+		stream().map(o -> o instanceof Destroyable ? (Destroyable) o : null)
 				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::destroy);
-		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationList::destroy);
+				.forEach(Destroyable::destroy);
 	}
 
 	@Override
