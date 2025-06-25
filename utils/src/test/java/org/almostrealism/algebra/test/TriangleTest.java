@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.code.AdaptEvaluable;
-import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.ComputableBase;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -31,7 +31,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareOperator;
@@ -125,12 +124,12 @@ public class TriangleTest implements TestFeatures {
 
 	protected Producer<Vector> originPointProducer() {
 		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
-		return vector((Producer) ((OperationAdapter) origin).getInputs().get(1));
+		return vector((Producer) ((ComputableBase) origin).getInputs().get(1));
 	}
 
 	protected Producer<Vector> originDirectionProducer() {
 		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
-		return vector((Producer) ((OperationAdapter) origin).getInputs().get(2));
+		return vector((Producer) ((ComputableBase) origin).getInputs().get(2));
 	}
 
 	@Test

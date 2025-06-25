@@ -16,8 +16,8 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.ComputableBase;
 import io.almostrealism.lang.CodePrintWriter;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.profile.OperationMetadata;
 
 import java.util.List;
@@ -31,7 +31,7 @@ public class ExplicitScope<T> extends Scope<T> {
 	private Consumer<CodePrintWriter> writer;
 	private List<Argument<?>> arguments;
 
-	public ExplicitScope(OperationAdapter op) {
+	public ExplicitScope(ComputableBase op) {
 		this(op.getFunctionName(), op.getMetadata());
 		setArguments(op.getArguments());
 	}

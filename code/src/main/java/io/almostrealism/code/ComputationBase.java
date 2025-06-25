@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,8 +39,9 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Process<?, ?>>
-					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T>, Signature {
+public abstract class ComputationBase<I, O, T>
+					extends ComputableBase<I, O, T>
+					implements Computation<O>, Signature {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
@@ -200,7 +201,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 		if (optimized == null) {
 			optimizationCtx = ctx;
 			optimized = (ComputationBase<I, O, T>)
-					ComputableParallelProcess.super.optimize(ctx);
+					super.optimize(ctx);
 			optimized.setComputeRequirements(getComputeRequirements());
 		} else if (Countable.countLong(ctx) != Countable.countLong(optimizationCtx)) {
 			warn("Cached optimization may not be ideal for new ProcessContext count of " +
@@ -219,7 +220,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	 */
 	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ComputableParallelProcess.super.generateReplacement(inputs);
+				super.generateReplacement(inputs);
 		replacement.setComputeRequirements(getComputeRequirements());
 		return replacement;
 	}
