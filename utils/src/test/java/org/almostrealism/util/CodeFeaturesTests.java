@@ -173,7 +173,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		value.setValue(2);
 
 		Runnable r = s.get();
-		((OperationAdapter) r).compile();
 		r.run();
 		System.out.println(dest.getValue());
 		assertEquals(1.5, dest.getValue());

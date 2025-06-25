@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
@@ -32,7 +33,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
@@ -331,7 +331,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default <T extends OperationProfile> T initKernelMetrics(T profile) {
 		Hardware.getLocalHardware().assignProfile(profile);
-		AcceleratedComputationOperation.clearTimes();
+		KernelTraversalProvider.clearTimes();
 		return profile;
 	}
 
@@ -346,7 +346,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void logKernelMetrics(OperationProfile profile) {
 		if (profile != null) profile.print();
 
-		AcceleratedComputationOperation.printTimes();
+		KernelTraversalProvider.printTimes();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +

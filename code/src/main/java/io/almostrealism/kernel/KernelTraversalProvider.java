@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,4 +24,18 @@ public interface KernelTraversalProvider {
 	TimingMetric timing = Scope.console.timing("kernelTraversal");
 
 	Expression<?> generateReordering(Expression<?> expression);
+
+	static void clearTimes() {
+		KernelTraversalProvider.timing.clear();
+	}
+
+	static void printTimes() {
+		printTimes(false);
+	}
+
+	static void printTimes(boolean verbose) {
+		if (verbose || KernelTraversalProvider.timing.getTotal() > 10) {
+			KernelTraversalProvider.timing.print();
+		}
+	}
 }

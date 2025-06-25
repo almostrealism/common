@@ -220,9 +220,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	}
 
 	@Override
-	public boolean isCompiled() {
-		return false;
-	}
+	public boolean isCompiled() { return false; }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
