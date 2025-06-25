@@ -250,21 +250,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		this.kernelMaximum = null;
 	}
 
-	protected void setupOutputVariable() {
-		Variable<T, ?> output = null;
-
-		// TODO  Is this even necessary?
-		if (getComputation() instanceof OperationAdapter
-				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			OperationAdapter<T, ?> c = (OperationAdapter<T, ?>) getComputation();
-			output = c.getArgumentForInput(c.getInputs().get(0));
-		}
-
-		if (output != null) {
-			getComputation().setOutputVariable(output);
-		}
-	}
-
 	protected Scope<?> getScope() {
 		if (scope == null) {
 			compile();
@@ -310,7 +295,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		try {
 			return new ExpressionCache().use(getMetadata(), () -> {
 				prepareScope();
-				setupOutputVariable();
 
 				Computation<T> c = getComputation();
 

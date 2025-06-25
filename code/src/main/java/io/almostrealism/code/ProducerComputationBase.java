@@ -28,22 +28,12 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
-	public static boolean enableOutputVariableDestination = false;
-
-	private Variable outputVariable;
 
 	@Override
-	public void setOutputVariable(Variable out) { this.outputVariable = out; }
-
-	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument( 0) : outputVariable; }
+	public Variable getOutputVariable() { return getArgument( 0); }
 
 	public Evaluable<O> getDestination() {
-		if (enableOutputVariableDestination) {
-			return (Evaluable<O>) getOutputVariable().getProducer().get();
-		} else {
-			return (Evaluable<O>) getInputs().get(0).get();
-		}
+		return (Evaluable<O>) getInputs().get(0).get();
 	}
 
 	/**
