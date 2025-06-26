@@ -50,12 +50,12 @@ import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
-import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionLogarithmComputation;
+import org.almostrealism.collect.computations.CollectionMaxComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionPermute;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -1871,7 +1871,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * @see PackedCollectionPad
 	 * @see TraversalPolicy
-	 * @see Algebraic#isZero(Producer)
+	 * @see Algebraic#isZero(Object) 
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> pad(TraversalPolicy shape,
 																				 TraversalPolicy position,
@@ -2685,13 +2685,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						(args, idx) -> args[2].getValueAt(idx).toInt(),
 						true, input, indexOfMax(input));
 
-		TraversalPolicy shape = shape(input);
-		int size = shape.getSize();
-
-		AggregatedProducerComputation c = new AggregatedProducerComputation<>("max", shape.replace(shape(1)), size,
-				(args, index) -> minValue(),
-				(out, arg) -> Max.of(out, arg),
-				(Supplier) input);
+		CollectionMaxComputation<T> c = new CollectionMaxComputation(input);
 		if (enableIndexProjectionDeltaAlt) c.setDeltaAlternate(projection);
 		return c;
 	}
@@ -2699,7 +2693,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	/**
 	 * Creates a computation that finds the index of the maximum value in a collection.
 	 * 
-	 * <p>This method demonstrates practical usage of {@link RepeatedProducerComputation}
+	 * <p>This method demonstrates practical usage of {@link org.almostrealism.collect.computations.RepeatedProducerComputation}
 	 * subclasses for reduction operations. It uses either {@link TraversableRepeatedProducerComputation}
 	 * or {@link ConstantRepeatedProducerComputation} depending on the enableTraversableRepeated flag.
 	 * 
