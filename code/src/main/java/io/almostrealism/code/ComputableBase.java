@@ -41,8 +41,6 @@ public abstract class ComputableBase<I, T> implements
 		NameProvider, DescribableParent<Process<?, ?>>,
 		Destroyable, OperationInfo, Named {
 
-	public static boolean enableFunctionPrefix = false;
-
 	private String function;
 
 	private List<Supplier<Evaluable<? extends I>>> inputs;
@@ -63,13 +61,9 @@ public abstract class ComputableBase<I, T> implements
 
 	@Override
 	public String getVariablePrefix() {
-		if (enableFunctionPrefix) {
-			return getFunctionName();
-		} else {
-			String f = getFunctionName();
-			if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
-			return f;
-		}
+		String f = getFunctionName();
+		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+		return f;
 	}
 
 	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }

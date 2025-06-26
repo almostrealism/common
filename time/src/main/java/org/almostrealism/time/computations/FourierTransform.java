@@ -51,7 +51,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 	}
 
 	public FourierTransform(int count, int bins, boolean inverse, Producer<PackedCollection<?>> input) {
-		super("fourierTransform",
+		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
 				enableRelative ?
 						new TraversalPolicy(count, 2, bins).traverse(1) :
 						new TraversalPolicy(count, 2, bins),

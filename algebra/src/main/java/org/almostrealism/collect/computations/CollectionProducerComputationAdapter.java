@@ -314,7 +314,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see #isOutputRelative()
 	 * @see #getValueAt(Expression)
 	 * @see io.almostrealism.scope.ArrayVariable#referenceRelative(Expression, io.almostrealism.kernel.KernelIndex)
-	 * @see io.almostrealism.scope.ArrayVariable#referenceAbsolute(io.almostrealism.kernel.KernelIndex)
+	 * @see io.almostrealism.scope.ArrayVariable#referenceAbsolute(Expression)
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {

@@ -131,6 +131,10 @@ public interface CodePrintWriter {
 				comment(indentStr + "     " + metadata.getLongDescription());
 			}
 
+			if (metadata.getSignature() != null) {
+				comment(indentStr + "     " + metadata.getSignature());
+			}
+
 			if (metadata.getChildren() != null) {
 				metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
 			}

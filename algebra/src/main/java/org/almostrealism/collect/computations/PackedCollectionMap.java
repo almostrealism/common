@@ -45,7 +45,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
@@ -205,6 +204,9 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
 		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
 	}
+
+	@Override
+	public String signature() { return null; }
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
 		return DefaultCollectionExpression.create(sliceShape,

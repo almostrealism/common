@@ -17,14 +17,12 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.collect.CollectionScopeInputManager;
@@ -33,8 +31,6 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -158,12 +154,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 				if (generateArg) {
 					// If aggregation is desired for this MemoryData, try to
 					// generate the aggregate argument for the root delegate
-					var = generateArgument(p, new RootDelegateProviderSupplier(md), md.getRootDelegate());
+					var = generateArgument(p, createDelegate(md), md.getRootDelegate());
 				}
 
 				if (var == null) {
 					// Otherwise, just obtain the array variable for the root delegate
-					var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(md), null, -1);
+					var = delegateProvider.getArgument(p, createDelegate(md), null, -1);
 				}
 
 				// Record that this MemoryData has var as its root delegate
@@ -179,6 +175,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
+	private RootDelegateProviderSupplier createDelegate(MemoryData md) {
+		RootDelegateProviderSupplier d = new RootDelegateProviderSupplier(md);
+		rootDelegateSuppliers.add(d);
+		return d;
+	}
+
 	@Override
 	public void destroy() {
 		super.destroy();
@@ -189,35 +191,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		prepareData.destroy();
 		postprocessData.destroy();
 		if (aggregateData != null) aggregateData.destroy();
-	}
-
-	public class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>,
-															Delegated<Provider>, OperationInfo {
-		private Provider provider;
-		private OperationMetadata metadata;
-
-		public RootDelegateProviderSupplier(MemoryData mem) {
-			MemoryData root = mem.getRootDelegate();
-			this.provider = new Provider<>(root);
-			this.metadata = new OperationMetadata("rootDelegate", "RootDelegateProviderSupplier");
-			rootDelegateSuppliers.add(this);
-		}
-
-		@Override
-		public OperationMetadata getMetadata() { return metadata; }
-
-		@Override
-		public Evaluable<? extends MemoryData> get() { return provider; }
-
-		@Override
-		public Provider getDelegate() { return provider; }
-
-		@Override
-		public String describe() {
-			return getMetadata().describe();
-		}
-
-		public void destroy() { this.provider = null; }
 	}
 
 	protected MemoryData getAggregateData() {

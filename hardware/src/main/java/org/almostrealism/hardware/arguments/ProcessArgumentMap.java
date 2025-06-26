@@ -26,8 +26,8 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.instructions.ProcessTreePositionKey;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
+import org.almostrealism.hardware.mem.RootDelegateProviderSupplier;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -142,13 +142,13 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	}
 
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {
-		if (argumentProducer instanceof MemoryDataArgumentMap<?,?>.RootDelegateProviderSupplier) {
+		if (argumentProducer instanceof RootDelegateProviderSupplier) {
 			if (process instanceof Computation) {
 				// A Computation will never produce a Provider
 				return false;
 			}
 
-			Provider p = ((MemoryDataArgumentMap<?, ?>.RootDelegateProviderSupplier) argumentProducer).getDelegate();
+			Provider p = ((RootDelegateProviderSupplier) argumentProducer).getDelegate();
 
 			Evaluable<?> ev = (Evaluable) process.get();
 			if (!(ev instanceof Provider<?>)) return false;
