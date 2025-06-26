@@ -128,6 +128,16 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		if (positionsForArguments.containsKey(argument)) {
 			producer = getProducerForPosition(positionsForArguments.get(argument),
 						enableSubstitutionFallback || substitutions.isEmpty());
+
+			Supplier original = argument.getProducer();
+
+			if (original instanceof RootDelegateProviderSupplier) {
+				// When matching with a RootDelegateProviderSupplier,
+				// the assumption is that the correct substitution is
+				// the root delegate of the MemoryData
+				Evaluable ev = (Evaluable) producer.get();
+				return new Provider(((MemoryData) ev.evaluate()).getRootDelegate());
+			}
 		} else {
 			// The argument isn't associated with a position,
 			// so no substitution should be expected

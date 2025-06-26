@@ -37,18 +37,18 @@ public class RootDelegateProviderSupplier implements Supplier<Evaluable<? extend
 	}
 
 	@Override
-	public OperationMetadata getMetadata() {return metadata;}
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
-	public Evaluable<? extends MemoryData> get() {return provider;}
+	public Evaluable<? extends MemoryData> get() { return provider; }
 
 	@Override
-	public Provider getDelegate() {return provider;}
+	public Provider getDelegate() { return provider; }
 
 	@Override
 	public String describe() {
 		return getMetadata().describe();
 	}
 
-	public void destroy() {this.provider = null;}
+	public void destroy() { this.provider = null; }
 }
