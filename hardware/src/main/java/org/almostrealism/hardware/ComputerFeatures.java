@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,25 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Evaluable;
 
-public interface ComputerFeatures extends HardwareFeatures, NameProvider {
+import java.util.Optional;
+
+public interface ComputerFeatures extends HardwareFeatures {
+	default Runnable compileRunnable(Computation<Void> c) {
+		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
+	}
+
+	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
+		return Hardware.getLocalHardware().getComputer().compileProducer(c);
+	}
+
+	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
+		return Hardware.getLocalHardware().getComputer().decompile(r);
+	}
+
+	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
+		return Hardware.getLocalHardware().getComputer().decompile(r);
+	}
 }

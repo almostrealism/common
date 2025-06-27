@@ -30,7 +30,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 
 /**
@@ -38,7 +38,7 @@ import org.almostrealism.hardware.MemoryData;
  */
 @Deprecated
 public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
-		implements ScalarBankProducerBase, ComputerFeatures {
+		implements ScalarBankProducerBase, HardwareFeatures {
 	private final int count;
 	private final int total;
 

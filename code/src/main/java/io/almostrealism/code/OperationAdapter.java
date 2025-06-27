@@ -37,7 +37,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class OperationAdapter<T> implements
-											ArgumentList<T>,
+											ArgumentList<T>, NameProvider,
 											DescribableParent<Argument<? extends T>>,
 											Destroyable, OperationInfo,
 											NamedFunction, Named {

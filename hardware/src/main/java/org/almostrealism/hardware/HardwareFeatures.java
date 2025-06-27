@@ -32,22 +32,6 @@ import java.util.stream.IntStream;
 
 public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, ConsoleFeatures {
 
-	default Runnable compileRunnable(Computation<Void> c) {
-		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
-	}
-
-	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		return Hardware.getLocalHardware().getComputer().compileProducer(c);
-	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
-
 	default <T extends MemoryData> Producer<T> instruct(String key,
 														Function<Producer[], Producer<T>> func,
 														Producer... args) {

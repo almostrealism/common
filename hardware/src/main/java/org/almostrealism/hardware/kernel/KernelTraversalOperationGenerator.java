@@ -32,8 +32,8 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.mem.Bytes;
@@ -107,7 +107,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	public Console console() { return AcceleratedOperation.console; }
 
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
-			implements MemoryDataComputation<T>, ComputerFeatures {
+			implements MemoryDataComputation<T>, HardwareFeatures {
 		private List<Expression> expressions;
 		private MemoryDataDestinationProducer destination;
 

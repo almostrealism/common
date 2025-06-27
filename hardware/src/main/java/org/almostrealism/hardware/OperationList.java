@@ -60,7 +60,7 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, Destroyable, HardwareFeatures {
+					NamedFunction, Destroyable, ComputerFeatures {
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;

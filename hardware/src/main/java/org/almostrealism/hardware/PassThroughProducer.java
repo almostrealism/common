@@ -45,7 +45,7 @@ import java.util.function.Supplier;
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
-					DescribableParent<Process<?, ?>>, ComputerFeatures  {
+					DescribableParent<Process<?, ?>> {
 	private TraversalPolicy shape;
 	private int argIndex;
 

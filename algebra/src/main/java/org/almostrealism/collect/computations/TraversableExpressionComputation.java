@@ -26,8 +26,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.function.Supplier;
 
@@ -104,8 +104,7 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public abstract class TraversableExpressionComputation<T extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<T, T>
-		implements ComputerFeatures {
+		extends CollectionProducerComputationAdapter<T, T> implements HardwareFeatures {
 
 	/**
 	 * The strategy used for handling multi-term delta (derivative) computations.

@@ -528,7 +528,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see #attemptDelta(Producer)
 	 * @see TraversableDeltaComputation
 	 * @see io.almostrealism.collect.CollectionExpression
-	 * @see org.almostrealism.hardware.ComputerFeatures#shape(Producer)
+	 * @see org.almostrealism.collect.CollectionFeatures#shape(Supplier)
 	 */
 	@Override
 	public CollectionProducer<O> delta(Producer<?> target) {

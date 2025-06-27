@@ -40,8 +40,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -123,13 +123,12 @@ import java.util.stream.Stream;
  * @see CollectionProducerComputation
  * @see TraversalPolicy  
  * @see PackedCollection
- * @see ComputerFeatures
  */
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, IndexSet,
 															DeltaAlternate<O>, MemoryDataComputation<O>,
-															ComputerFeatures {
+															HardwareFeatures {
 	/**
 	 * Global flag to enable logging of destination buffer operations.
 	 * When enabled, provides detailed logging of memory allocation and shape adjustments

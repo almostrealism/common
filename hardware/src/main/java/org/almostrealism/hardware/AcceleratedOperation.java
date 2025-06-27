@@ -55,10 +55,8 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class AcceleratedOperation<T extends MemoryData>
-									extends OperationAdapter<T>
-									implements Runnable, ScopeLifecycle,
-											Countable, ComputerFeatures {
+public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
+							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
 	public static Console console = Computation.console.child();
 
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
