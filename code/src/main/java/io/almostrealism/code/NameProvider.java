@@ -22,7 +22,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
-// TODO  These capabilities should just become part of LanguageOperations
+// TODO  Most of these capabilities should just become part of LanguageOperations
 public interface NameProvider {
 
 	String getFunctionName();
@@ -59,8 +59,4 @@ public interface NameProvider {
 	default String getVariableName(int index) {
 		return getVariablePrefix() + "_l" + index;
 	}
-
-	String getVariableDimName(ArrayVariable v, int dim);
-
-	String getVariableSizeName(ArrayVariable v);
 }

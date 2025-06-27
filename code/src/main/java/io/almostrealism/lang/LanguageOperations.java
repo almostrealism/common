@@ -19,6 +19,7 @@ package io.almostrealism.lang;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.Precision;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 
 public interface LanguageOperations {
@@ -51,6 +52,14 @@ public interface LanguageOperations {
 	String nameForType(Class<?> type);
 
 	String renderMethod(Method<?> method);
+
+	default String getVariableDimName(ArrayVariable v, int dim) {
+		return v.getName() + "Dim" + dim;
+	}
+
+	default String getVariableSizeName(ArrayVariable v) {
+		return v.getName() + "Size";
+	}
 
 	default boolean isVariableOffsetSupported() {
 		return true;

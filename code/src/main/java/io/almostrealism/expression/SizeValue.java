@@ -19,24 +19,25 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 
-import java.util.OptionalInt;
 import java.util.OptionalLong;
 
-public class Epsilon extends StaticReference<Double> {
+public class SizeValue extends StaticReference<Integer> {
 
-	public Epsilon() {
-		super(Double.class, null);
+	public SizeValue(ArrayVariable<?> referent) {
+		super(Integer.class, null, referent);
 	}
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon(true));
+		return lang.getVariableSizeName((ArrayVariable) getReferent());
 	}
 
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
-		return OptionalLong.of(1);
+		// TODO  This value can probably be known
+		return OptionalLong.empty();
 	}
 
 	@Override
@@ -45,12 +46,8 @@ public class Epsilon extends StaticReference<Double> {
 	}
 
 	@Override
-	public ExpressionAssignment<Double> assign(Expression exp) {
+	public ExpressionAssignment<Integer> assign(Expression exp) {
 		throw new UnsupportedOperationException();
 	}
 
-	@Override
-	public Number evaluate(Number... children) {
-		return 0.0;
-	}
 }

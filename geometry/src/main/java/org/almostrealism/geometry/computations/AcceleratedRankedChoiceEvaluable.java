@@ -260,7 +260,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		}
 
 		return kernelIndex < 0 ? "" :
-				getKernelIndex(kernelIndex) + " * " + getVariableDimName(v, kernelIndex) + " + ";
+				getKernelIndex(kernelIndex) + " * " + getComputeContext().getLanguage().getVariableDimName(v, kernelIndex) + " + ";
 	}
 
 	private String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {

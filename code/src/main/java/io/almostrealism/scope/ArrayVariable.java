@@ -17,6 +17,8 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
+import io.almostrealism.expression.DimValue;
+import io.almostrealism.expression.SizeValue;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.PhysicalScope;
@@ -187,13 +189,13 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public Expression getDimValue() {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0), this);
+		return new DimValue(this, 0);
 	}
 
 	public Expression<Integer> length() {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		return new StaticReference<>(Integer.class, names.getVariableSizeName(this), this);
+		return new SizeValue(this);
 	}
 
 	@Override
@@ -212,7 +214,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {
-			Expression dim = new StaticReference(Integer.class, names.getVariableDimName(v, idx.getKernelAxis()));
+			Expression dim = new DimValue(v, idx.getKernelAxis());
 
 			Expression kernelOffset = idx.multiply(dim);
 			return kernelOffset.add(offset).add(pos.toInt());

@@ -20,14 +20,4 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
-
-	@Override
-	default String getVariableDimName(ArrayVariable v, int dim) {
-		return v.getName() + "Dim" + dim;
-	}
-
-	@Override
-	default String getVariableSizeName(ArrayVariable v) {
-		return v.getName() + "Size";
-	}
 }
