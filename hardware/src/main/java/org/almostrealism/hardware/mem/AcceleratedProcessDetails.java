@@ -44,7 +44,8 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	private Semaphore semaphore;
 
-	public AcceleratedProcessDetails(Object[] args, MemoryProvider target, TempMemoryFactory tempFactory, int kernelSize) {
+	public AcceleratedProcessDetails(Object[] args, MemoryProvider target,
+									 TempMemoryFactory tempFactory, int kernelSize) {
 		this.prepare = new OperationList();
 		this.postprocess = new OperationList();
 		this.originalArguments = args;

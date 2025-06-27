@@ -159,6 +159,9 @@ public class InterpolateTest implements TestFeatures {
 		dest.print();
 		assertEquals(9.0, dest.toDouble(0));
 		assertEquals(16.0, dest.toDouble(1));
+
+		// When the rate is 2.0, the final sample is beyond the end of the series,
+		// so it should be 0.0
 		assertEquals(0.0, dest.toDouble(3));
 	}
 }

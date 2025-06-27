@@ -14,14 +14,35 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package org.almostrealism.hardware.mem;
 
-import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.MemoryData;
 
-public interface ArgumentMap<K, V extends Variable> {
-	void add(K key);
+import java.util.Objects;
 
-	V get(K key, NameProvider p);
+public class MemoryDataRef {
+	private MemoryData md;
 
-	default void destroy() { }
+	public MemoryDataRef(MemoryData md) {
+		this.md = md;
+	}
+
+	public MemoryData getMemoryData() { return md; }
+
+	public int getMemLength() {
+		return md.getMemLength();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (!(o instanceof MemoryDataRef)) return false;
+		MemoryDataRef that = (MemoryDataRef) o;
+		return md == that.md;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(md);
+	}
 }

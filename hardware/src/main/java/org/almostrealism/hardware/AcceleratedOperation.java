@@ -34,7 +34,6 @@ import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.c.NativeMemoryProvider;
@@ -52,7 +51,6 @@ import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -77,13 +75,10 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	private final boolean kernel;
 	private boolean argumentMapping;
 	private ComputeContext<MemoryData> context;
-	private Class cls;
 
 	private ProcessArgumentEvaluator evaluator;
 	private ProcessDetailsFactory detailsFactory;
-	protected List<ArgumentMap> argumentMaps;
-	private OperationList preOp;
-	private OperationList postOp;
+	protected MemoryDataArgumentMap argumentMap;
 
 	@SafeVarargs
 	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel,
@@ -92,7 +87,6 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		setArgumentMapping(true);
 		this.context = context;
 		this.kernel = kernel;
-		this.argumentMaps = new ArrayList<>();
 	}
 
 	@SafeVarargs
@@ -106,13 +100,9 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		setArgumentMapping(true);
 		this.context = context;
 		this.kernel = kernel;
-		this.argumentMaps = new ArrayList<>();
 	}
 
-	public Class getSourceClass() {
-		if (cls != null) return cls;
-		return getClass();
-	}
+	public Class getSourceClass() { return getClass(); }
 
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
@@ -155,24 +145,16 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	public boolean isAggregatedInput() { return false; }
 
 	protected void prepareScope() {
-		resetArguments();
-
-		SupplierArgumentMap argumentMap = null;
-
-		if (argumentMapping) {
-			if (preOp != null || postOp != null) {
-				throw new UnsupportedOperationException("Redundant call to prepareScope");
-			}
-
-			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
-			preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
-			postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
+		if (argumentMap != null) {
+			throw new UnsupportedOperationException("Redundant call to prepareScope");
 		}
 
-		if (argumentMap != null) {
+		resetArguments();
+
+		if (argumentMapping) {
+			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(),
+					isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
 			prepareArguments(argumentMap);
-			argumentMaps.add(argumentMap);
-			argumentMap.confirmArguments();
 		}
 
 		prepareScope(argumentMap == null ?
@@ -230,8 +212,17 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 		}
 	}
 
-	public void preApply() { if (preOp != null) preOp.get().run(); }
-	public void postApply() { if (postOp != null) postOp.get().run(); }
+	public void preApply() {
+		if (argumentMap != null) {
+			argumentMap.getPrepareData().get().run();
+		}
+	}
+
+	public void postApply() {
+		if (argumentMap != null) {
+			argumentMap.getPostprocessData().get().run();
+		}
+	}
 
 	@Override
 	public void run() {
@@ -365,14 +356,10 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	}
 
 	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
-		if (!process.isEmpty()) return true;
-		if (preOp != null && !preOp.isEmpty()) return true;
-		if (postOp != null && !postOp.isEmpty()) return true;
-		return false;
-	}
+		if (!process.isEmpty())
+			return true;
 
-	private double sec(long nanos) {
-		return nanos / 1e9;
+		return argumentMap != null && !argumentMap.getReplacementMap().isEmpty();
 	}
 
 	public boolean isKernel() { return kernel; }
@@ -381,13 +368,7 @@ public abstract class AcceleratedOperation<T extends MemoryData>
 	public void destroy() {
 		super.destroy();
 
-		argumentMaps.forEach(ArgumentMap::destroy);
-		argumentMaps = new ArrayList<>();
-
-		preOp.destroy();
-		postOp.destroy();
-		preOp = null;
-		postOp = null;
+		argumentMap.destroy();
 	}
 
 	@Override

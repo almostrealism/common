@@ -39,6 +39,7 @@ import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.List;
 import java.util.OptionalLong;
@@ -46,6 +47,7 @@ import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableAdaptiveMemLength = true;
+	public static boolean enableAggregatedShortCircuit = false;
 
 	private final int memLength;
 
@@ -156,7 +158,21 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
 		}
 
-		if (ev instanceof AcceleratedOperation<?>) {
+		boolean shortCircuit = ev instanceof AcceleratedOperation<?>;
+
+		if (!enableAggregatedShortCircuit &&
+				MemoryDataArgumentMap.isAggregationTarget(destination)) {
+			// Assignment operations that compute a value which itself
+			// depends on the destination, have issues when the destination
+			// is aggregated (when using DestinationEvaluable it will
+			// be aggregated twice, leading to inconsistent evaluation)
+			// TODO  It would be better to actually determine whether
+			// TODO  the destination is referenced by the the assignment
+			// TODO  value, but for now this is sufficient
+			shortCircuit = false;
+		}
+
+		if (shortCircuit) {
 			return new DestinationEvaluable(ev, destination);
 		}
 
