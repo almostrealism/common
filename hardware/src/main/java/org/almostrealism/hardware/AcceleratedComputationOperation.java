@@ -29,9 +29,7 @@ import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
@@ -54,11 +52,10 @@ import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.Describable;
 
 import java.util.List;
-import java.util.OptionalLong;
 import java.util.function.Supplier;
 
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
-		implements KernelStructureContext, Countable, Signature {
+		implements Countable, Signature {
 
 	private Computation<T> computation;
 	private ComputationScopeCompiler<T> compiler;
@@ -131,21 +128,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public List<ComputeRequirement> getComputeRequirements() {
 		return getCompiler().getComputeRequirements();
-	}
-
-	@Override
-	public OptionalLong getKernelMaximum() {
-		return getCompiler().getKernelMaximum();
-	}
-
-	@Override
-	public KernelSeriesProvider getSeriesProvider() {
-		return getCompiler().getSeriesProvider();
-	}
-
-	@Override
-	public KernelTraversalProvider getTraversalProvider() {
-		return getCompiler().getTraversalProvider();
 	}
 
 	@Override
