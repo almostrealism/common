@@ -30,6 +30,7 @@ import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,7 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	private Supplier<Scope<?>> scope;
 	private Consumer<ScopeInstructionsManager<K>> accessListener;
+	private List<Runnable> destroyListeners;
 	private Process<?, ?> process;
 
 	private String scopeName;
@@ -62,6 +64,7 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		super(computeContext);
 		this.scope = scope;
 		this.accessListener = accessListener;
+		this.destroyListeners = new ArrayList<>();
 		this.outputArgIndices = new HashMap<>();
 		this.outputOffsets = new HashMap<>();
 	}
@@ -106,6 +109,10 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	public List<Supplier<Evaluable<?>>> getScopeInputs() { return inputs; }
 
 	public List<Argument<?>> getScopeArguments() { return arguments; }
+
+	public void addDestroyListener(Runnable listener) {
+		destroyListeners.add(listener);
+	}
 
 	protected Scope<?> getScope() {
 		if (scopeName != null) {
@@ -155,6 +162,8 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 			operators.destroy();
 			operators = null;
 		}
+
+		destroyListeners.forEach(Runnable::run);
 	}
 
 	@Override

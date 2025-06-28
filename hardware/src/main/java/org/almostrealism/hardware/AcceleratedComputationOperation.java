@@ -19,7 +19,9 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.NamedFunction;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.Process;
@@ -67,20 +69,36 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
 		super(context, kernel);
 		this.computation = c;
-		this.compiler = new ComputationScopeCompiler<>(c, getNameProvider());
 		init();
 	}
 
 	@Override
 	public void init() {
-		if (getComputation() instanceof NameProvider) {
-			setFunctionName(((NameProvider) getComputation()).getFunctionName());
+		if (getComputation() instanceof NamedFunction) {
+			setFunctionName(((NamedFunction) getComputation()).getFunctionName());
 		} else {
 			setFunctionName(functionName(getComputation().getClass()));
 		}
 	}
 
+	@Override
+	public NameProvider getNameProvider() {
+		if (getComputation() instanceof NamedFunction) {
+			return new DefaultNameProvider((NamedFunction) getComputation());
+		}
+
+		return super.getNameProvider();
+	}
+
 	public Computation<T> getComputation() { return computation; }
+
+	public ComputationScopeCompiler<T> getCompiler() {
+		if (compiler == null) {
+			compiler = new ComputationScopeCompiler<>(getComputation(), getNameProvider());
+		}
+
+		return compiler;
+	}
 
 	@Override
 	public OperationMetadata getMetadata() {
@@ -112,28 +130,22 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public List<ComputeRequirement> getComputeRequirements() {
-		return compiler != null ? compiler.getComputeRequirements() : super.getComputeRequirements();
+		return getCompiler().getComputeRequirements();
 	}
-
-	public void setKernelStructureSupported(boolean supported) {
-		this.compiler.setKernelStructureSupported(supported);
-	}
-
-	public boolean isKernelStructureSupported() { return compiler.isKernelStructureSupported(); }
 
 	@Override
 	public OptionalLong getKernelMaximum() {
-		return compiler.getKernelMaximum();
+		return getCompiler().getKernelMaximum();
 	}
 
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
-		return compiler.getSeriesProvider();
+		return getCompiler().getSeriesProvider();
 	}
 
 	@Override
 	public KernelTraversalProvider getTraversalProvider() {
-		return compiler.getTraversalProvider();
+		return getCompiler().getTraversalProvider();
 	}
 
 	@Override
@@ -146,6 +158,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 				instructions = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
+				((ScopeInstructionsManager) instructions).addDestroyListener(() -> {
+					instructions = null;
+					executionKey = null;
+					if (compiler != null) {
+						compiler.destroy();
+						compiler = null;
+					}
+				});
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
@@ -178,24 +198,24 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
-		compiler.prepareArguments(map);
+		getCompiler().prepareArguments(map);
 	}
 
 	@Override
 	protected void prepareScope(ScopeInputManager manager) {
-		compiler.prepareScope(manager);
+		getCompiler().prepareScope(manager);
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		compiler.prepareScope(manager, context);
+		getCompiler().prepareScope(manager, context);
 	}
 
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		compiler.resetArguments();
+		getCompiler().resetArguments();
 	}
 
 	@Override
@@ -224,32 +244,33 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	protected Scope<T> getScope() {
-		if (compiler.getScope() == null) {
+		if (getCompiler().getScope() == null) {
 			compile();
 		}
 
-		return compiler.getScope();
+		return getCompiler().getScope();
 	}
 
 	@Override
 	public synchronized Scope<T> compile() {
 		new ExpressionCache().use(getMetadata(), () -> {
 			prepareScope();
-			compiler.compile();
+			getCompiler().compile();
 			postCompile();
 		});
 
-		return compiler.getScope();
+		return getCompiler().getScope();
 	}
 
+	@Deprecated
 	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
 		this.instructions = instructions;
 		this.executionKey = executionKey;
 	}
 
 	public synchronized void postCompile() {
-		setupArguments(compiler.getScope());
-		compiler.postCompile();
+		setupArguments(getCompiler().getScope());
+		getCompiler().postCompile();
 	}
 
 	protected void setupArguments(Scope<?> scope) {
@@ -266,7 +287,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 
-		if (!compiler.isValidKernelSize(process.getKernelSize())) {
+		if (!getCompiler().isValidKernelSize(process.getKernelSize())) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -282,7 +303,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public boolean isAggregatedInput() { return true; }
 
 	@Override
-	public String signature() { return compiler.signature(); }
+	public String signature() { return getCompiler().signature(); }
 
 	@Override
 	public String describe() {
@@ -296,10 +317,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public void destroy() {
 		super.destroy();
-
-		if (compiler != null) {
-			compiler.destroy();
-		}
 
 		setInputs((List) null);
 

@@ -18,7 +18,9 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.NameProvider;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -101,6 +103,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public Class getSourceClass() { return getClass(); }
 
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
+
+	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
 
 	public abstract <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager();
 

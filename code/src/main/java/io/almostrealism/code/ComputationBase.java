@@ -85,6 +85,8 @@ public abstract class ComputationBase<I, O, T>
 
 	protected LanguageOperations getLanguage() { return lang; }
 
+	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
+
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getArgumentVariables() != null) return;

@@ -35,13 +35,13 @@ import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.hardware.kernel.KernelTraversalOperation;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -65,22 +65,23 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	private KernelSeriesCache kernelSeriesCache;
 	private KernelTraversalOperationGenerator traversalGenerator;
 	private OptionalLong kernelMaximum;
-	private boolean kernelStructureSupported;
 
 	private Scope<T> scope;
 
 	public ComputationScopeCompiler(Computation<T> computation, NameProvider nameProvider) {
 		this.computation = computation;
 		this.nameProvider = nameProvider;
-		this.kernelStructureSupported = true;
 	}
 
 	public boolean isKernelStructureSupported() {
-		return kernelStructureSupported;
-	}
+		if (computation instanceof KernelTraversalOperation) {
+			// Kernel traversal caching should not be recursively
+			// applied to the operation that generates traversal
+			// series data for another operation
+			return false;
+		}
 
-	public void setKernelStructureSupported(boolean kernelStructureSupported) {
-		this.kernelStructureSupported = kernelStructureSupported;
+		return true;
 	}
 
 	public Computation<T> getComputation() { return computation; }
@@ -222,6 +223,16 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	@Override
 	public void destroy() {
 		scope = null;
+
+		if (kernelSeriesCache != null) {
+			kernelSeriesCache.destroy();
+			kernelSeriesCache = null;
+		}
+
+		if (traversalGenerator != null) {
+			traversalGenerator.destroy();
+			traversalGenerator = null;
+		}
 	}
 
 	@Override
