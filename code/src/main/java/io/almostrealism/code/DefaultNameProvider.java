@@ -18,13 +18,18 @@ package io.almostrealism.code;
 
 public class DefaultNameProvider implements NameProvider {
 	private String function;
+	private NamedFunction named;
 
 	public DefaultNameProvider(String function) {
 		this.function = function;
 	}
 
+	public DefaultNameProvider(NamedFunction named) {
+		this.named = named;
+	}
+
 	@Override
 	public String getFunctionName() {
-		return function;
+		return named == null ? function : named.getFunctionName();
 	}
 }

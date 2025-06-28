@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -91,9 +92,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(new DefaultNameProvider(this), PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(new DefaultNameProvider(this), PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
+		addVariable(new ArrayVariable(new DefaultNameProvider(this), PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
 	}
 
 	@Override
@@ -210,9 +211,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected String getHighestRankResultVariable() { return getVariableName(0); }
-	protected String getHighestRankInputVariable() { return getVariableName(1); }
-	protected String getHighestRankConfVariable() { return getVariableName(2); }
+	protected String getHighestRankResultVariable() { return new DefaultNameProvider(this).getVariableName(0); }
+	protected String getHighestRankInputVariable() { return new DefaultNameProvider(this).getVariableName(1); }
+	protected String getHighestRankConfVariable() { return new DefaultNameProvider(this).getVariableName(2); }
 	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }

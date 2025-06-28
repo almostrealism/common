@@ -27,11 +27,16 @@ public interface NameProvider {
 	}
 
 	default String getArgumentName(int index) {
-		if (getVariablePrefix() == null) throw new UnsupportedOperationException();
+		if (getVariablePrefix() == null)
+			throw new UnsupportedOperationException();
+
 		return getVariablePrefix() + "_v" + index;
 	}
 
 	default String getVariableName(int index) {
+		if (getVariablePrefix() == null)
+			throw new UnsupportedOperationException();
+
 		return getVariablePrefix() + "_l" + index;
 	}
 }

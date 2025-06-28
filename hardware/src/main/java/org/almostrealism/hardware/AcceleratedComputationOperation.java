@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NameProvider;
@@ -67,7 +68,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
 		super(context, kernel);
 		this.computation = c;
-		this.compiler = new ComputationScopeCompiler<>(c, this);
+		this.compiler = new ComputationScopeCompiler<>(c, new DefaultNameProvider(this));
 		init();
 	}
 
