@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public class DefaultNameProvider implements NameProvider {
@@ -32,4 +33,9 @@ public class DefaultNameProvider implements NameProvider {
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
+
+	@Override
+	public ArrayVariable getArgument(int index) {
+		throw new UnsupportedOperationException();
+	}
 }

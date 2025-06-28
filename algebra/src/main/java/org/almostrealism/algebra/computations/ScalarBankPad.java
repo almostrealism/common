@@ -54,10 +54,10 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
 		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
-		Expression resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2));
-		Expression resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1));
-		Expression valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2));
-		Expression valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1));
+		Expression resultX = getArgument(0).referenceRelative(i.multiply(2));
+		Expression resultY = getArgument(0).referenceRelative(i.multiply(2).add(1));
+		Expression valueX = getArgument(1).referenceRelative(i.multiply(2));
+		Expression valueY = getArgument(1).referenceRelative(i.multiply(2).add(1));
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");

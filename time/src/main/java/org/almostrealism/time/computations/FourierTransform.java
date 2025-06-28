@@ -68,8 +68,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 		Expression outputPosition = kernel(context).multiply(e(size));
 
-		ArrayVariable<Double> output = getArgument(0, e(getShape().getTotalSize()));
-		ArrayVariable<Double> input = getArgument(1, e(getShape().getTotalSize()));
+		ArrayVariable<Double> output = getArgument(0);
+		ArrayVariable<Double> input = getArgument(1);
 
 		Scope<?> calculateTransform = calculateTransform(outputPosition, size, getShape().getTotalSize());
 		scope.getRequiredScopes().add(calculateTransform);
@@ -79,7 +79,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 		if (inverse) {
 			for (int i = 0; i < size; i++) {
-				Expression<?> arg = getArgument(0, e(size)).valueAt(i);
+				Expression<?> arg = getArgument(0).valueAt(i);
 				scope.getStatements().add(arg.assign(arg.divide(e(size / 2))));
 			}
 		}

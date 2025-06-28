@@ -31,23 +31,7 @@ public interface NameProvider {
 
 	default PhysicalScope getDefaultPhysicalScope() { return null; }
 
-	/**
-	 * Specifying the size is preferred, see {@link #getArgument(int, int)}.
-	 */
-	@Deprecated
-	default ArrayVariable getArgument(int index) {
-		return getArgument(index, null);
-	}
-
-	default ArrayVariable getArgument(int index, int size) {
-		return getArgument(index, new IntegerConstant(size));
-	}
-
-	default ArrayVariable getArgument(int index, Expression<Integer> size) {
-		ArrayVariable v = new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
-		v.setArraySize(size);
-		return v;
-	}
+	ArrayVariable getArgument(int index);
 
 	Variable getOutputVariable();
 

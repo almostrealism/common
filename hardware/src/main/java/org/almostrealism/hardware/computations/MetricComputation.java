@@ -42,8 +42,8 @@ public class MetricComputation<T> extends OperationComputationAdapter<T> {
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Scope<Void> scope = super.getScope(context);
-		Metric metric = new Metric(getArgument(0, 1).referenceRelative(0), logFrequency);
-		metric.addMonitoredVariable(message, getArgument(1, memLength).referenceRelative(pos));
+		Metric metric = new Metric(getArgument(0).referenceRelative(0), logFrequency);
+		metric.addMonitoredVariable(message, getArgument(1).referenceRelative(pos));
 		scope.getMetrics().add(metric);
 		return scope;
 	}

@@ -104,7 +104,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 		}
 
-		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, len);
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0);
 
 		for (int i = 0; i < len; i++) {
 			Expression index = new KernelIndex(context);

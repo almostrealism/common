@@ -51,16 +51,16 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 		super(arguments);
 	}
 
-	public ArrayVariable getOutput() { return getArgument(0, 2); }
+	public ArrayVariable getOutput() { return getArgument(0); }
 	public ArrayVariable getWave() { return getArgument(1); }
-	public ArrayVariable getWavePosition() { return getArgument(2, 2); }
-	public ArrayVariable getWaveLength() { return getArgument(3, 2); }
-	public ArrayVariable getWaveIndex() { return getArgument(4, 2); }
-	public ArrayVariable getWaveCount() { return getArgument(5, 2); }
-	public ArrayVariable getAmplitude() { return getArgument(6, 2); }
+	public ArrayVariable getWavePosition() { return getArgument(2); }
+	public ArrayVariable getWaveLength() { return getArgument(3); }
+	public ArrayVariable getWaveIndex() { return getArgument(4); }
+	public ArrayVariable getWaveCount() { return getArgument(5); }
+	public ArrayVariable getAmplitude() { return getArgument(6); }
 
 	@Deprecated
-	public ArrayVariable getDuration() { return getArgument(7, 2); }
+	public ArrayVariable getDuration() { return getArgument(7); }
 
 	@Override
 	public Scope getScope(KernelStructureContext context) { return scope == null ? super.getScope(context) : scope; }
