@@ -41,9 +41,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
 							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
-		this(np, name, shape,
-				np == null ? null : np.getDefaultPhysicalScope(),
-				Double.class, producer);
+		this(np, name, shape, PhysicalScope.GLOBAL, Double.class, producer);
 	}
 
 	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,

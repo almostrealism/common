@@ -53,11 +53,6 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		ArrayVariable arg = variableFactory.apply(p, (Supplier) input);
 		arg.setDelegate(delegate);
 		arg.setDelegateOffset(delegateOffset);
-
-		if (delegate == null) {
-			arg.setPhysicalScope(p.getDefaultPhysicalScope());
-		}
-
 		return arg;
 	}
 

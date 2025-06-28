@@ -123,7 +123,6 @@ public abstract class ComputationBase<I, O, T>
 				.collect(Collectors.toList()));
 	}
 
-	@Override
 	public ArrayVariable getArgument(int index) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");

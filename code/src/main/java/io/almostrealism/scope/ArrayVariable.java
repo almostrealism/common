@@ -46,7 +46,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	private boolean destroyed;
 
 	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
-		this(np, np == null ? null : np.getDefaultPhysicalScope(), type, name, arraySize, null);
+		this(np, PhysicalScope.GLOBAL, type, name, arraySize, null);
 	}
 
 	public ArrayVariable(NameProvider np, PhysicalScope scope,
@@ -59,7 +59,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), Double.class, producer);
+		this(np, name, PhysicalScope.GLOBAL, Double.class, producer);
 	}
 
 	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<?> type,

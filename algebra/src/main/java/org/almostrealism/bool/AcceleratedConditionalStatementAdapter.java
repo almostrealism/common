@@ -83,12 +83,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
 
-	/**
-	 * @return  GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;
 	}

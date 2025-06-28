@@ -59,13 +59,6 @@ public abstract class ComputableBase<I, T> implements
 	@Override
 	public String getFunctionName() { return function; }
 
-	@Override
-	public String getVariablePrefix() {
-		String f = getFunctionName();
-		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
-		return f;
-	}
-
 	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
 	@Override

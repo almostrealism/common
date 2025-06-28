@@ -644,16 +644,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Returns the default physical scope for kernel execution.
-	 * This implementation always returns {@link PhysicalScope#GLOBAL},
-	 * indicating that kernels should execute in global memory space.
-	 * 
-	 * @return {@link PhysicalScope#GLOBAL}
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	/**
 	 * Creates traversable expressions for the computation arguments.
 	 * This method sets up the argument access patterns for kernel execution,
 	 * allowing efficient traversal of multi-dimensional input data.

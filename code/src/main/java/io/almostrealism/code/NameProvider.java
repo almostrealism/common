@@ -16,24 +16,17 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.compute.PhysicalScope;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
-// TODO  Most of these capabilities should just become part of LanguageOperations
 public interface NameProvider {
 
 	String getFunctionName();
 
-	default String getVariablePrefix() { return getFunctionName(); }
-
-	default PhysicalScope getDefaultPhysicalScope() { return null; }
-
-	ArrayVariable getArgument(int index);
-
-	Variable getOutputVariable();
+	default String getVariablePrefix() {
+		String f = getFunctionName();
+		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+		return f;
+	}
 
 	default String getArgumentName(int index) {
 		if (getVariablePrefix() == null) throw new UnsupportedOperationException();
@@ -43,4 +36,6 @@ public interface NameProvider {
 	default String getVariableName(int index) {
 		return getVariablePrefix() + "_l" + index;
 	}
+
+	Variable getOutputVariable();
 }
