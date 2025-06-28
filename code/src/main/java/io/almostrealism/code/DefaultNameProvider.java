@@ -16,8 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.scope.Variable;
-
 public class DefaultNameProvider implements NameProvider {
 	private String function;
 
@@ -28,10 +26,5 @@ public class DefaultNameProvider implements NameProvider {
 	@Override
 	public String getFunctionName() {
 		return function;
-	}
-
-	@Override
-	public Variable getOutputVariable() {
-		throw new UnsupportedOperationException();
 	}
 }

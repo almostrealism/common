@@ -115,8 +115,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ArrayVariable getArgument(int index) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
-	
-	@Override
+
 	public Variable getOutputVariable() { return getArgument(getOutputArgumentIndex()); }
 	
 	/** @return  -1 */
