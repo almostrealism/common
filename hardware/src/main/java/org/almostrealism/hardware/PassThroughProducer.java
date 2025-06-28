@@ -67,12 +67,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
 	}
 
-	/**
-	 * @return  GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 

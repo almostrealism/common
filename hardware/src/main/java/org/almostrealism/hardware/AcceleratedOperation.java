@@ -112,7 +112,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		this.argumentMapping = enabled;
 	}
 
-	@Override
 	public ArrayVariable getArgument(int index) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
@@ -127,10 +126,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public List<Argument<? extends T>> getChildren() {
 		return getArguments();
 	}
-
-	/** @return  {@link PhysicalScope#GLOBAL} */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	/** @return  -1 */
 	@Override

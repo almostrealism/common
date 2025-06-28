@@ -40,12 +40,6 @@ public abstract class OperationComputationAdapter<T>
 	}
 
 	/**
-	 * @return  GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	/**
 	 * A {@link List} of any {@link Computation}s that this operation depends on
 	 * in addition to those which result from the {@link #getInputs() inputs}.
 	 */
