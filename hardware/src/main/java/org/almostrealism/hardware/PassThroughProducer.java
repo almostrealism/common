@@ -17,7 +17,6 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
@@ -107,7 +106,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
-		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
+		args.add(new Argument<>(manager.argumentForInput(getNameProvider()).apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 

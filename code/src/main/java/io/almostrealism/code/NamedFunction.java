@@ -20,4 +20,6 @@ public interface NamedFunction {
 	void setFunctionName(String name);
 
 	String getFunctionName();
+
+	default NameProvider getNameProvider() { return new DefaultNameProvider(this); }
 }

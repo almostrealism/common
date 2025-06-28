@@ -20,7 +20,6 @@ import io.almostrealism.code.Array;
 import io.almostrealism.expression.DimValue;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
@@ -34,43 +33,36 @@ import io.almostrealism.uml.Multiple;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-// TODO  This should actually extend Variable<Multiple<T>, ArrayVariable<T>>
-// TODO  because ArrayVariable type T is the type of the member of the array
-// TODO  not the type of the entire array
 public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	private final NameProvider names;
 
 	private Expression<Integer> delegateOffset;
 	private Expression<Integer> arraySize;
 	private boolean disableOffset;
 	private boolean destroyed;
 
-	public ArrayVariable(NameProvider np, Class<T> type, String name, Expression<Integer> arraySize) {
-		this(np, PhysicalScope.GLOBAL, type, name, arraySize, null);
+	public ArrayVariable(Class<T> type, String name, Expression<Integer> arraySize) {
+		this(PhysicalScope.GLOBAL, type, name, arraySize, null);
 	}
 
-	public ArrayVariable(NameProvider np, PhysicalScope scope,
+	public ArrayVariable(PhysicalScope scope,
 						 Class<T> type, String name,
 						 Expression<Integer> arraySize,
 						 Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(name, scope, type, p);
-		this.names = np;
 		setArraySize(arraySize);
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
-		this(np, name, PhysicalScope.GLOBAL, Double.class, producer);
+	public ArrayVariable(String name, Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(name, PhysicalScope.GLOBAL, Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<?> type,
+	public ArrayVariable(String name, PhysicalScope scope, Class<?> type,
 						 Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(name, scope, type, p);
-		this.names = np;
 	}
 
 	public ArrayVariable(ArrayVariable<T> delegate, Expression<Integer> delegateOffset) {
 		super(null, delegate.getPhysicalScope(), null, null);
-		this.names = delegate.names;
 		setDelegate(delegate);
 		setDelegateOffset(delegateOffset);
 	}

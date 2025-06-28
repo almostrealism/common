@@ -309,7 +309,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 		getStatements().add(new ArrayDeclaration(Double.class, name, size));
 
-		ArrayVariable v = new ArrayVariable<>(np, Double.class, name, size);
+		ArrayVariable v = new ArrayVariable<>(Double.class, name, size);
 		v.setDisableOffset(true);
 		return v;
 	}

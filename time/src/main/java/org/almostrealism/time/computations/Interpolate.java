@@ -105,16 +105,16 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 
-		Expression idx = new StaticReference(Integer.class, getVariableName(0));
-		Expression left = new StaticReference(Integer.class, getVariableName(1));
-		Expression right = new StaticReference(Integer.class, getVariableName(2));
-		Expression leftO = new StaticReference(Integer.class, getVariableName(3));
-		Expression rightO = new StaticReference(Integer.class, getVariableName(4));
-		Expression bi = new StaticReference(Double.class, getVariableName(5));
-		String v1 = getVariableName(6);
-		String v2 = getVariableName(7);
-		String t1 = getVariableName(8);
-		String t2 = getVariableName(9);
+		Expression idx = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
+		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(1));
+		Expression right = new StaticReference(Integer.class, getNameProvider().getVariableName(2));
+		Expression leftO = new StaticReference(Integer.class, getNameProvider().getVariableName(3));
+		Expression rightO = new StaticReference(Integer.class, getNameProvider().getVariableName(4));
+		Expression bi = new StaticReference(Double.class, getNameProvider().getVariableName(5));
+		String v1 = getNameProvider().getVariableName(6);
+		String v2 = getNameProvider().getVariableName(7);
+		String t1 = getNameProvider().getVariableName(8);
+		String t2 = getNameProvider().getVariableName(9);
 
 		scope.getVariables().add(new ExpressionAssignment(true, idx, e(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, left, e(-1)));

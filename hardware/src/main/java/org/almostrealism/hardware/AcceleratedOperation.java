@@ -18,11 +18,9 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
@@ -31,7 +29,6 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -198,7 +195,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (getInputs() != null) {
 			ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 			setArguments(getInputs().stream()
-					.map(manager.argumentForInput(new DefaultNameProvider(this)))
+					.map(manager.argumentForInput(getNameProvider()))
 					.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
 					.map(arg -> (Argument<? extends T>) arg)
 					.collect(Collectors.toList()));

@@ -82,10 +82,10 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 		args.add((ArrayVariable<Double>) getOutputVariable());
 		args.addAll(getOperands());
 
-		this.trueVar = (ArrayVariable)  manager.argumentForInput(this).apply(trueValue);
+		this.trueVar = (ArrayVariable)  manager.argumentForInput(getNameProvider()).apply(trueValue);
 		args.add(this.trueVar);
 
-		this.falseVar = (ArrayVariable) manager.argumentForInput(this).apply(falseValue);
+		this.falseVar = (ArrayVariable) manager.argumentForInput(getNameProvider()).apply(falseValue);
 		args.add(this.falseVar);
 
 		setArguments(args.stream()

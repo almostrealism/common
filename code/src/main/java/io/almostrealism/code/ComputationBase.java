@@ -114,7 +114,7 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	protected void assignArguments(ArgumentProvider provider) {
 		setArguments(getInputs().stream()
-				.map(provider.argumentForInput(this))
+				.map(provider.argumentForInput(getNameProvider()))
 				.map(var ->
 						Optional.ofNullable(var).map(v ->
 								new Argument<>(v, Expectation.EVALUATE_AHEAD))

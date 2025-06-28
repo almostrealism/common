@@ -53,7 +53,7 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 		HybridScope<PackedCollection<Scalar>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
-		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
+		Expression i = new StaticReference(Integer.class, getNameProvider().getVariablePrefix() + "_i");
 		Expression resultX = getArgument(0).referenceRelative(i.multiply(2));
 		Expression resultY = getArgument(0).referenceRelative(i.multiply(2).add(1));
 		Expression valueX = getArgument(1).referenceRelative(i.multiply(2));

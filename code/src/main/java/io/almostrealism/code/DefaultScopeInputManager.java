@@ -30,7 +30,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	private BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
 	protected DefaultScopeInputManager(LanguageOperations lang) {
-		variableFactory = (p, input) -> new ArrayVariable(p, p.getArgumentName(counter++), input);
+		variableFactory = (p, input) -> new ArrayVariable(p.getArgumentName(counter++), input);
 		this.lang = lang;
 	}
 

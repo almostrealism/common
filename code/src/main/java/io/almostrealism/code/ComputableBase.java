@@ -38,8 +38,8 @@ import java.util.stream.Collectors;
 
 public abstract class ComputableBase<I, T> implements
 		ComputableParallelProcess<Process<?, ?>, T>,
-		NameProvider, DescribableParent<Process<?, ?>>,
-		Destroyable, OperationInfo, Named {
+		DescribableParent<Process<?, ?>>,
+		Destroyable, OperationInfo, Named, NamedFunction {
 
 	private String function;
 
@@ -54,6 +54,7 @@ public abstract class ComputableBase<I, T> implements
 		setInputs(input);
 	}
 
+	@Override
 	public void setFunctionName(String name) { function = name; }
 
 	@Override

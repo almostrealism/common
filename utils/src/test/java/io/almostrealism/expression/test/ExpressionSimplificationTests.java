@@ -512,7 +512,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		// 		((v92[0] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[0] + (- ((v92[0] + v92[1]) / 2.0)))) +
 		// 		((v92[1] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[1] + (- ((v92[0] + v92[1]) / 2.0))))
 		// ) / 2.0
-		ArrayVariable v92 = new ArrayVariable(null, Double.class, "v92", e(4));
+		ArrayVariable v92 = new ArrayVariable(Double.class, "v92", e(4));
 		Expression ref0 = v92.valueAt(0);
 		Expression ref1 = v92.valueAt(1);
 		Expression e = ref0.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref0.add(ref0.add(ref1).divide(2.0).minus()))

@@ -355,8 +355,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		}
 
 		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
-		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
-		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
+		DefaultIndex g = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getNameProvider().getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
 
 		Expression idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
 		if (idx == null) return idx;

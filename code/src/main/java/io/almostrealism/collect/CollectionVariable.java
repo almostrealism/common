@@ -16,7 +16,6 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
@@ -39,15 +38,15 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	private CollectionVariable<T> parent;
 	private Expression pos[];
 
-	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
+	public CollectionVariable(String name, TraversalPolicy shape,
 							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
-		this(np, name, shape, PhysicalScope.GLOBAL, Double.class, producer);
+		this(name, shape, PhysicalScope.GLOBAL, Double.class, producer);
 	}
 
-	public CollectionVariable(NameProvider np, String name, TraversalPolicy shape,
+	public CollectionVariable(String name, TraversalPolicy shape,
 							  PhysicalScope scope, Class<?> type,
 							  Supplier<Evaluable<? extends Multiple<T>>> p) {
-		super(np, name, scope, type, p);
+		super(name, scope, type, p);
 		this.shape = shape;
 	}
 
@@ -209,14 +208,14 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		}
 	}
 
-	public static <T> ArrayVariable<T> create(NameProvider np, String name,
+	public static <T> ArrayVariable<T> create(String name,
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		if (p instanceof Shape) {
-			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
+			return new CollectionVariable(name, ((Shape) p).getShape(), p);
 		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {
-			return new CollectionVariable(np, name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
+			return new CollectionVariable(name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
 		} else {
-			return new ArrayVariable<>(np, name, p);
+			return new ArrayVariable<>(name, p);
 		}
 	}
 }

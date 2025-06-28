@@ -111,10 +111,10 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 				throw new UnsupportedOperationException();
 			}
 
-			row = new DefaultIndex(getVariablePrefix() + "_g");
+			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());
 
-			ref = new DefaultIndex(getVariablePrefix() + "_i");
+			ref = new DefaultIndex(getNameProvider().getVariablePrefix() + "_i");
 			getIndexLimit().ifPresent(ref::setLimit);
 
 			Expression index = Index.child(row, ref);
