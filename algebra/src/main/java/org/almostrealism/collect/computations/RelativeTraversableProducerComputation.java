@@ -115,6 +115,45 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Converts this relative traversable computation into a {@link RepeatedProducerComputationAdapter}
+	 * for execution using the repeated computation framework.
+	 * 
+	 * <p>This method enables relative traversable computations to be executed using the
+	 * repeated computation pattern, which can provide performance benefits for certain
+	 * types of operations and hardware platforms.
+	 * 
+	 * <p>The conversion is particularly useful for:
+	 * <ul>
+	 *   <li>Operations that benefit from sequential memory access patterns</li>
+	 *   <li>Integration with repeated computation pipelines</li>
+	 *   <li>Memory-optimized execution strategies</li>
+	 *   <li>Kernel optimization opportunities</li>
+	 * </ul>
+	 * 
+	 * <p><strong>Example Usage:</strong>
+	 * <pre>{@code
+	 * // Create a relative traversable computation
+	 * RelativeTraversableProducerComputation<PackedCollection<?>> relativeOp = 
+	 *     new RelativeTraversableProducerComputation<>(...);
+	 * 
+	 * // Convert to repeated computation for different execution strategy
+	 * RepeatedProducerComputationAdapter<PackedCollection<?>> repeatedOp = 
+	 *     relativeOp.toRepeated();
+	 * 
+	 * // Execute using repeated computation framework
+	 * PackedCollection<?> result = repeatedOp.get().evaluate(inputs...);
+	 * }</pre>
+	 * 
+	 * <p>The resulting adapter maintains a dependent lifecycle relationship with this
+	 * computation to ensure proper coordination of resource management and cleanup.
+	 * 
+	 * @return A new {@link RepeatedProducerComputationAdapter} that evaluates this
+	 *         relative traversable computation using the repeated computation framework
+	 * 
+	 * @see RepeatedProducerComputationAdapter
+	 * @see #addDependentLifecycle(Object)
+	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,

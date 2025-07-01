@@ -769,11 +769,37 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Converts this computation to a repeated computation adapter.
-	 * This operation is not supported by the base class implementation.
+	 * Converts this computation to a {@link RepeatedProducerComputationAdapter} for
+	 * execution using the repeated computation framework.
 	 * 
-	 * @return Never returns normally
-	 * @throws UnsupportedOperationException Always thrown as this operation is not supported
+	 * <p>This method provides a bridge between different computation paradigms by wrapping
+	 * traversable computations in an adapter that follows the repeated computation pattern.
+	 * The resulting adapter enables:
+	 * <ul>
+	 *   <li>Sequential processing with controlled memory usage</li>
+	 *   <li>Integration with repeated computation pipelines</li>
+	 *   <li>Kernel optimization opportunities</li>
+	 *   <li>Standardized computation interfaces across execution strategies</li>
+	 * </ul>
+	 * 
+	 * <p><strong>Note:</strong> This base class implementation does not support conversion
+	 * to repeated computation format. Subclasses that can be meaningfully converted should
+	 * override this method to provide the appropriate {@link RepeatedProducerComputationAdapter}
+	 * implementation.
+	 * 
+	 * <p>Subclasses that support this operation include:
+	 * <ul>
+	 *   <li>{@link CollectionProducerComputationAdapter}</li>
+	 *   <li>{@link RelativeTraversableProducerComputation}</li>
+	 * </ul>
+	 * 
+	 * @return Never returns normally in the base class implementation
+	 * @throws UnsupportedOperationException Always thrown as this operation is not
+	 *         supported by the base class
+	 * 
+	 * @see RepeatedProducerComputationAdapter
+	 * @see CollectionProducerComputationAdapter#toRepeated()
+	 * @see RelativeTraversableProducerComputation#toRepeated()
 	 */
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		throw new UnsupportedOperationException();

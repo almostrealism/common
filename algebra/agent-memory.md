@@ -65,6 +65,20 @@ Always run `mvn` commands from the root of the repository.
 - Delta computation implements power rule for derivatives
 - Available through CollectionFeatures.pow() and CollectionProducer.pow()
 
+### RepeatedProducerComputationAdapter
+- Implements Adapter pattern to convert TraversableExpression operations into RepeatedProducerComputation format
+- Key characteristics:
+  - Fixed initialization to 0.0 (works because expression evaluation replaces initial values)
+  - Condition: iterate while index < array length
+  - Expression: evaluates provided TraversableExpression at each index
+  - Simplified destination addressing using localIndex directly
+- Primary usage through toRepeated() methods in:
+  - CollectionProducerComputationAdapter.toRepeated()
+  - RelativeTraversableProducerComputation.toRepeated()
+- Enables bridge between traversable expressions and repeated computation pipelines
+- Performance benefits: sequential processing, reduced memory requirements, kernel optimizations
+- Common use cases: element-wise operations, computation strategy standardization, pipeline integration
+
 ### TraversableRepeatedProducerComputation
 - Specialized RepeatedProducerComputation implementing TraversableExpression interface
 - Enables efficient index-based value access during repeated iterations
