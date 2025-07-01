@@ -96,7 +96,7 @@ public class FrequencyCache<K, V> {
 		CacheEntry entry = reverseCache.get(value);
 
 		if (entry == null) {
-			prepareCapacity();
+			confirmCapacity();
 			cache.put(key, new CacheEntry(value));
 			reverseCache.put(value, cache.get(key));
 		} else {
@@ -141,7 +141,13 @@ public class FrequencyCache<K, V> {
 		cache.forEach((k, v) -> consumer.accept(k, v.value));
 	}
 
-	protected void prepareCapacity() {
+	protected void confirmCapacity() {
+		if (reverseCache.size() < capacity) return;
+
+		prepareCapacity();
+	}
+
+	protected synchronized void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
 					Comparator.comparing(e -> score(e.getValue())));

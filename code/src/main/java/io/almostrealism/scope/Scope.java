@@ -560,7 +560,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 		if (getKernelChildren() != null) {
 			for (KernelIndexChild c : getKernelChildren()) {
-				StaticReference ref = new StaticReference(Integer.class, c.getName());
+				StaticReference ref = new StaticReference(c.getAliasType(), c.getName());
 				w.println(new ExpressionAssignment(true, ref, c));
 			}
 		}

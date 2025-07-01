@@ -26,6 +26,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFeatures {
+	public static boolean enableLargeWarning = false;
+
 	private String name;
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
@@ -74,12 +76,14 @@ public class MonitorReceptor implements Receptor<PackedCollection<?>>, ConsoleFe
 				return;
 			}
 
-			boolean isLarge = out.doubleStream().map(Math::abs).sum() > 1e6 ||
-					out.doubleStream().map(Math::abs).max().getAsDouble() > 1e9;
-			if (isLarge) {
-				warn("Identified large output from " + name +
-						" layer (" + inputShape + " -> " + outputShape + ")");
-				return;
+			if (enableLargeWarning) {
+				boolean isLarge = out.doubleStream().map(Math::abs).sum() > 1e6 ||
+						out.doubleStream().map(Math::abs).max().getAsDouble() > 1e9;
+				if (isLarge) {
+					warn("Identified large output from " + name +
+							" layer (" + inputShape + " -> " + outputShape + ")");
+					return;
+				}
 			}
 
 			if (name != null && name.equals("softmax2d")) {

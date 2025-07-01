@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.function.DoublePredicate;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -160,6 +161,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
 		}
+	}
+
+	default int count(DoublePredicate predicate) {
+		return Math.toIntExact(doubleStream().filter(predicate).count());
 	}
 
 	default double toDouble(int index) {

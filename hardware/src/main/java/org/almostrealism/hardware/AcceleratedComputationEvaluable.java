@@ -118,10 +118,24 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		try {
 			AcceleratedProcessDetails process = apply(null, args);
 			waitFor(process.getSemaphore());
-			return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+
+			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+			return validate(result);
 		} catch (HardwareException e) {
 			throw new HardwareException("Failed to evaluate " + getName(), e);
 		}
+	}
+
+	protected T validate(T result) {
+		if (outputMonitoring) {
+			int nanCount = result.count(Double::isNaN);
+
+			if (nanCount > 0) {
+				warn("Output of " + getName() + " contains " + nanCount + " NaN values");
+			}
+		}
+
+		return result;
 	}
 
 	/**
