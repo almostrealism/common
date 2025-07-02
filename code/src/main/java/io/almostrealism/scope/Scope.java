@@ -596,11 +596,21 @@ public class Scope<T> extends ArrayList<Scope<T>>
 				.stream().map(simplification).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
 
-		List<KernelIndexChild> kernelChildren = new ArrayList<>();
+
+		Set<KernelIndexChild> kernelChildren = new HashSet<>();
 		if (getKernelChildren() != null) kernelChildren.addAll(getKernelChildren());
-		kernelChildren.addAll(generateKernelChildren(scope.getStatements()));
-		kernelChildren.addAll(generateKernelChildren(scope.getVariables()));
-		scope.setKernelChildren(kernelChildren.stream().map(KernelIndexChild::renderAlias).collect(Collectors.toSet()));
+
+		if (ScopeSettings.enableKernelIndexAliases) {
+			kernelChildren.addAll(generateKernelChildren(scope.getStatements()));
+			kernelChildren.addAll(generateKernelChildren(scope.getVariables()));
+
+			kernelChildren = kernelChildren.stream()
+					.map(KernelIndexChild::renderAlias)
+					.collect(Collectors.toSet());
+		}
+
+		scope.setKernelChildren(kernelChildren);
+
 		return scope;
 	}
 

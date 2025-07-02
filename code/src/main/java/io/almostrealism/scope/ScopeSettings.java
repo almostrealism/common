@@ -35,6 +35,8 @@ public class ScopeSettings {
 
 	public static boolean enableInstructionSetReuse = true;
 
+	public static boolean enableKernelIndexAliases = false;
+
 	public static boolean enableKernelSeqCache = false;
 	public static boolean enableBatchEvaluation = false;
 	public static boolean enableArithmeticSequence = true;

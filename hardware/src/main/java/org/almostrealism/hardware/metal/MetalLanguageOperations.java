@@ -35,7 +35,7 @@ public class MetalLanguageOperations extends CLanguageOperations {
 
 	@Override
 	public String kernelIndex(int index) {
-		return "(int)" + super.kernelIndex(index);
+		return "((long)" + super.kernelIndex(index) + ")";
 	}
 
 	@Override
@@ -51,6 +51,9 @@ public class MetalLanguageOperations extends CLanguageOperations {
 		if (enableThreadScope && type == Double.class) return "thread";
 		return super.annotationForLocalArray(type, length);
 	}
+
+	@Override
+	public boolean isInt64() { return true; }
 
 	@Override
 	public boolean isNumericBoolean() {
