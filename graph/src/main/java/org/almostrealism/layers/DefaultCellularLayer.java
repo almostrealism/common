@@ -24,6 +24,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collections;
@@ -121,7 +122,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 				OperationList op = new OperationList(getName() + " layer (Entry)");
 				op.add(into(getName() + " layer (Input Record)", in, p(input),
 						enableMemoryDataCopy, getComputeRequirements()));
-				if (LayerFeatures.enableMonitor) {
+				if (HardwareFeatures.outputMonitoring) {
 					op.add(new MonitorReceptor(getName() + " layer (Input Monitor)",
 							getInputShape(), getOutputShape())
 							.push(p(input)));
