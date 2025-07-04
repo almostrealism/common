@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persistence.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
 
@@ -28,11 +29,15 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * StateDictionary provides access to model weights stored in protobuf format.
- * It reads CollectionLibraryData from binary protobuf files named weights_0, weights_1, etc.
- * and uses CollectionEncoder to decode them into PackedCollection objects.
+ * {@link StateDictionary} provides access to model weights stored in protobuf format.
+ *
+ * It reads {@link org.almostrealism.protobuf.Collections.CollectionLibraryData}
+ * from binary protobuf files from a directory and uses {@link CollectionEncoder}
+ * to decode them into {@link PackedCollection}s.
+ *
+ * @author  Michael Murray
  */
-public class StateDictionary {
+public class StateDictionary implements ConsoleFeatures {
 	private final Map<String, PackedCollection<?>> weights;
 	private final String weightsDirectory;
 
@@ -55,11 +60,9 @@ public class StateDictionary {
 	private void loadWeightsFromDirectory() throws IOException {
 		int fileIndex = 0;
 
-		while (true) {
-			File weightFile = new File(weightsDirectory, "weights_" + fileIndex);
-			if (!weightFile.exists()) {
-				// No more weight files
-				break;
+		for (File weightFile : new File(weightsDirectory).listFiles()) {
+			if (!weightFile.exists() || weightFile.getName().startsWith(".")) {
+				continue;
 			}
 
 			// Read and parse protobuf
@@ -78,6 +81,8 @@ public class StateDictionary {
 
 				System.out.println("Loaded " + libraryData.getCollectionsCount() +
 						" weight tensors from " + weightFile.getName());
+			} catch (IOException e) {
+				warn("Error reading weights from file " + weightFile.getName() + ": " + e.getMessage());
 			}
 
 			fileIndex++;
