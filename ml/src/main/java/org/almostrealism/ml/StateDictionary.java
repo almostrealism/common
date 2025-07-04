@@ -18,6 +18,8 @@ package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.persistence.AssetGroup;
+import org.almostrealism.persistence.AssetGroupInfo;
 import org.almostrealism.persistence.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
 
@@ -30,41 +32,51 @@ import java.util.Set;
 
 /**
  * {@link StateDictionary} provides access to model weights stored in protobuf format.
- *
+ * <p>
  * It reads {@link org.almostrealism.protobuf.Collections.CollectionLibraryData}
  * from binary protobuf files from a directory and uses {@link CollectionEncoder}
  * to decode them into {@link PackedCollection}s.
  *
  * @author  Michael Murray
  */
-public class StateDictionary implements ConsoleFeatures {
-	private final Map<String, PackedCollection<?>> weights;
-	private final String weightsDirectory;
+public class StateDictionary extends AssetGroup implements ConsoleFeatures {
+	private Map<String, PackedCollection<?>> weights;
 
 	/**
-	 * Create a StateDictionary by loading weights from the specified directory.
-	 * Reads files named weights_0, weights_1, weights_2, etc. until no more files are found.
+	 * Create a {@link StateDictionary} by loading weights from the specified directory.
 	 *
 	 * @param weightsDirectory Directory containing protobuf weight files
 	 * @throws IOException if files cannot be read or parsed
 	 */
 	public StateDictionary(String weightsDirectory) throws IOException {
-		this.weightsDirectory = weightsDirectory;
+		super(weightsDirectory);
+		init();
+	}
+
+	/**
+	 * Create a {@link StateDictionary} by loading weights identified by an {@link AssetGroupInfo}.
+	 *
+	 * @param assets AssetGroupInfo containing the directory and other metadata.
+	 * @throws IOException  if the assets cannot be obtained, read or parsed
+	 */
+	public StateDictionary(AssetGroupInfo assets) throws IOException {
+		super(assets);
+		init();
+	}
+
+	protected void init() throws IOException {
 		this.weights = new HashMap<>();
-		loadWeightsFromDirectory();
+		loadWeights();
 	}
 
 	/**
 	 * Load weights from protobuf files in the directory.
 	 */
-	private void loadWeightsFromDirectory() throws IOException {
-		int fileIndex = 0;
-
-		for (File weightFile : new File(weightsDirectory).listFiles()) {
-			if (!weightFile.exists() || weightFile.getName().startsWith(".")) {
-				continue;
-			}
-
+	private void loadWeights() throws IOException {
+		int total = files()
+				.filter(File::exists)
+				.filter(f -> !f.getName().startsWith("."))
+				.mapToInt(weightFile -> {
 			// Read and parse protobuf
 			try (FileInputStream fis = new FileInputStream(weightFile)) {
 				Collections.CollectionLibraryData libraryData = Collections.CollectionLibraryData.parseFrom(fis);
@@ -81,15 +93,15 @@ public class StateDictionary implements ConsoleFeatures {
 
 				System.out.println("Loaded " + libraryData.getCollectionsCount() +
 						" weight tensors from " + weightFile.getName());
+				return 1;
 			} catch (IOException e) {
 				warn("Error reading weights from file " + weightFile.getName() + ": " + e.getMessage());
+				return 0;
 			}
-
-			fileIndex++;
-		}
+		}).sum();
 
 		System.out.println("StateDictionary loaded " + weights.size() +
-				" total weight tensors from " + fileIndex + " protobuf files");
+				" total weight tensors from " + total + " protobuf files");
 	}
 
 	/**
@@ -128,15 +140,6 @@ public class StateDictionary implements ConsoleFeatures {
 	 */
 	public int size() {
 		return weights.size();
-	}
-
-	/**
-	 * Get the weights directory path.
-	 *
-	 * @return Directory path
-	 */
-	public String getWeightsDirectory() {
-		return weightsDirectory;
 	}
 
 	/**
