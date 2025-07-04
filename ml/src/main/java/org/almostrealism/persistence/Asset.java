@@ -32,6 +32,7 @@ public class Asset {
 
 	public Asset(File file) {
 		this.file = file;
+		this.name = file.getName();
 	}
 
 	public Asset(String group, AssetInfo info) {

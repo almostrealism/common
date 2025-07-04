@@ -35,8 +35,23 @@ public class AssetGroup {
 				.collect(Collectors.toList()));
 	}
 
+	public AssetGroup(Asset... assets) {
+		this(List.of(assets));
+	}
+
 	public AssetGroup(List<Asset> assets) {
 		this.assets = assets;
+	}
+
+	public Asset getAsset(String name) {
+		return assets.stream()
+				.filter(asset -> asset.getName().equals(name))
+				.findFirst().orElse(null);
+	}
+
+	public String getAssetPath(String name) {
+		Asset asset = getAsset(name);
+		return asset != null ? asset.getFile().getAbsolutePath() : null;
 	}
 
 	public Stream<File> files() {
