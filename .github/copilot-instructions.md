@@ -107,6 +107,8 @@ Always run `mvn` commands from the root of the repository.
 - DO NOT use the agent memory file to simple record the same information that is already available
   in the javadoc documentation for the module; agent memory is for general concepts that are useful
   to remember during development, NOT regurgitation of the documentation in markdown form.
+- If something is obvious from looking at the code (which a future agent clearly will do!),
+  then it DOES NOT need to be recorded in the agent memory file.
 
 
 ## Guidance

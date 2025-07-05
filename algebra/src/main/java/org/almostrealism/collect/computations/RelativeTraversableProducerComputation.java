@@ -106,29 +106,20 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	@Deprecated
 	public abstract IntFunction<Expression<Double>> getValueFunction();
 
-	// TODO
-//	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
-
-	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
-		// System.out.println("WARN: Using default getValue implementation");
-		// return getValueFunction().apply(index);
-		throw new UnsupportedOperationException();
-	}
+	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
 
 	/**
-	 * Converts this relative traversable computation into a {@link RepeatedProducerComputationAdapter}
-	 * for execution using the repeated computation framework.
-	 * 
-	 * <p>This method enables relative traversable computations to be executed using the
-	 * repeated computation pattern, which can provide performance benefits for certain
-	 * types of operations and hardware platforms.
-	 * 
-	 * <p>The conversion is particularly useful for:
+	 * Converts this {@link RelativeTraversableProducerComputation} into a
+	 * {@link RepeatedProducerComputationAdapter} for execution using a loop.
+	 *
+	 * <p>This method provides an alternative execution strategy by wrapping this traversable
+	 * computation in an adapter that follows the repeated computation pattern. The resulting
+	 * adapter will:
 	 * <ul>
-	 *   <li>Operations that benefit from sequential memory access patterns</li>
-	 *   <li>Integration with repeated computation pipelines</li>
-	 *   <li>Memory-optimized execution strategies</li>
-	 *   <li>Kernel optimization opportunities</li>
+	 *   <li>Initialize output elements to zero</li>
+	 *   <li>Iterate through each index position</li>
+	 *   <li>Evaluate this computation's expression at each position</li>
+	 *   <li>Write results directly to the output array</li>
 	 * </ul>
 	 * 
 	 * <p><strong>Example Usage:</strong>
@@ -144,15 +135,23 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	 * // Execute using repeated computation framework
 	 * PackedCollection<?> result = repeatedOp.get().evaluate(inputs...);
 	 * }</pre>
-	 * 
+	 *
+	 * <p><strong>When to Use:</strong>
+	 * <ul>
+	 *   <li>Integration with systems expecting repeated computation interfaces</li>
+	 *   <li>Memory optimization scenarios where sequential processing is preferred</li>
+	 *   <li>Optimization opportunities when used with other repeated computations</li>
+	 *   <li>Circumstances where kernel parallelism needs to be avoided</li>
+	 * </ul>
+	 *
 	 * <p>The resulting adapter maintains a dependent lifecycle relationship with this
-	 * computation to ensure proper coordination of resource management and cleanup.
-	 * 
+	 * computation, ensuring proper resource management and cleanup coordination.
+	 *
 	 * @return A new {@link RepeatedProducerComputationAdapter} that evaluates this
-	 *         relative traversable computation using the repeated computation framework
-	 * 
+	 *         computation sequentially.
+	 *
 	 * @see RepeatedProducerComputationAdapter
-	 * @see #addDependentLifecycle(Object)
+	 * @see CollectionProducerComputationBase#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
 	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {

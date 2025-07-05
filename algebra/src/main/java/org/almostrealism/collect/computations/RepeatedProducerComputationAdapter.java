@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,50 +24,31 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
- * An adapter that converts {@link TraversableExpression} operations into 
- * {@link RepeatedProducerComputation} format, enabling traversable computations
- * to be executed as repeated iterative operations.
+ * An adapter that can be used to evaluate {@link TraversableExpression} operations as
+ * {@link RepeatedProducerComputation}s, enabling execution as sequential steps in a
+ * loop.
  * 
- * <p>This class implements the Adapter pattern to bridge the gap between two
- * different computation paradigms:
+ * <p>This class bridges the gap between two different computation paradigms:
  * <ul>
  *   <li><strong>Traversable expressions:</strong> Direct value access at specific indices</li>
  *   <li><strong>Repeated computations:</strong> Iterative processing with initialization, 
- *       conditions, and incremental operations</li>
+ *       conditions, and an increment operation</li>
  * </ul>
  * 
  * <p>The adapter automatically configures the repeated computation with:
  * <ul>
  *   <li><strong>Initialization:</strong> Sets all values to 0.0 at the start</li>
- *   <li><strong>Condition:</strong> Continues iteration while index is less than array length</li>
+ *   <li><strong>Condition:</strong> Continues iteration while output index is less than
+ *   the {@link #getOutputVariable() output variable} length</li>
  *   <li><strong>Expression:</strong> Evaluates the provided {@link TraversableExpression} 
- *       at each index position</li>
+ *       at each index</li>
  * </ul>
  * 
  * <p><strong>Usage Examples:</strong>
- * 
- * <p>Basic adapter usage for element-wise operations:
- * <pre>{@code
- * // Create input data
- * PackedCollection<?> input = new PackedCollection<>(shape(100)).randFill();
- * 
- * // Create a traversable expression (e.g., multiplication by 2)
- * TraversableExpression expression = input.multiply(c(2.0));
- * 
- * // Convert to repeated computation using adapter
- * RepeatedProducerComputationAdapter<PackedCollection<?>> adapter = 
- *     new RepeatedProducerComputationAdapter<>(
- *         shape(100),           // Output shape matches input
- *         expression,           // The traversable expression to adapt
- *         () -> input.get()     // Input data supplier
- *     );
- * 
- * // Execute the repeated computation
- * PackedCollection<?> result = adapter.get().evaluate();
- * }</pre>
  * 
  * <p>Integration with existing computations via {@code toRepeated()}:
  * <pre>{@code
@@ -84,41 +65,18 @@ import java.util.function.Supplier;
  * PackedCollection<?> repeatedResult = repeated.get().evaluate(a, b);
  * }</pre>
  * 
- * <p>Advanced usage with custom shapes and multiple inputs:
- * <pre>{@code
- * // Multi-dimensional data processing
- * TraversalPolicy shape = new TraversalPolicy(10, 20);  // 2D: 10x20 matrix
- * 
- * // Complex expression involving multiple traversable inputs
- * TraversableExpression complexExpr = 
- *     input1.add(input2).multiply(input3.pow(c(2.0)));
- * 
- * RepeatedProducerComputationAdapter<PackedCollection<?>> matrixAdapter = 
- *     new RepeatedProducerComputationAdapter<>(
- *         shape,
- *         complexExpr,
- *         () -> input1.get(),
- *         () -> input2.get(), 
- *         () -> input3.get()
- *     );
- * 
- * PackedCollection<?> matrixResult = matrixAdapter.get().evaluate();
- * }</pre>
- * 
  * <p><strong>Performance Characteristics:</strong>
  * <ul>
  *   <li><strong>Memory Usage:</strong> Processes elements sequentially, reducing peak memory requirements</li>
- *   <li><strong>Execution Pattern:</strong> Fixed iteration count based on output array length</li>
- *   <li><strong>Optimization:</strong> Enables kernel-level optimizations through repeated computation framework</li>
- *   <li><strong>Thread Safety:</strong> Safe for concurrent execution on GPU kernels</li>
+ *   <li><strong>Execution Pattern:</strong> Fixed iteration count based on {@link #getOutputVariable() output variable} length</li>
  * </ul>
- * 
+ *
  * <p><strong>When to Use:</strong>
  * <ul>
- *   <li>Converting traversable operations for execution in repeated computation pipelines</li>
- *   <li>Standardizing computation interfaces across different execution strategies</li>
- *   <li>Enabling iterative optimizations on traversable expressions</li>
- *   <li>Integration with frameworks that expect repeated computation patterns</li>
+ *   <li>Integration with systems expecting repeated computation interfaces</li>
+ *   <li>Memory optimization scenarios where sequential processing is preferred</li>
+ *   <li>Optimization opportunities when used with other repeated computations</li>
+ *   <li>Circumstances where kernel parallelism needs to be avoided</li>
  * </ul>
  * 
  * <p><strong>Implementation Details:</strong>
@@ -140,61 +98,26 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 
 	/**
 	 * Creates a new adapter that converts the specified {@link TraversableExpression}
-	 * into a {@link RepeatedProducerComputation} format.
+	 * into a {@link RepeatedProducerComputation}.
 	 * 
 	 * <p>This constructor establishes the computational pattern where:
 	 * <ol>
 	 *   <li><strong>Initialization:</strong> All output elements start as 0.0</li>
 	 *   <li><strong>Iteration:</strong> The provided expression is evaluated at each index</li>
-	 *   <li><strong>Termination:</strong> Processing stops when all array elements are filled</li>
+	 *   <li><strong>Termination:</strong> Processing stops when all output positions are filled</li>
 	 * </ol>
 	 * 
-	 * <p>The adapter automatically configures the underlying {@link RepeatedProducerComputation}
-	 * with appropriate functions for initialization, condition checking, and expression evaluation.
-	 * 
-	 * <p><strong>Example Usage:</strong>
-	 * <pre>{@code
-	 * // Element-wise multiplication of an array by a constant
-	 * PackedCollection<?> data = new PackedCollection<>(shape(1000)).randFill();
-	 * TraversableExpression multiplyBy3 = data.multiply(c(3.0));
-	 * 
-	 * RepeatedProducerComputationAdapter<PackedCollection<?>> adapter = 
-	 *     new RepeatedProducerComputationAdapter<>(
-	 *         shape(1000),        // Match input data shape
-	 *         multiplyBy3,        // Expression to evaluate
-	 *         () -> data.get()    // Data source
-	 *     );
-	 * 
-	 * PackedCollection<?> result = adapter.get().evaluate();
-	 * // result[i] = data[i] * 3.0 for all i
-	 * }</pre>
-	 * 
-	 * <p><strong>Multi-input Operations:</strong>
-	 * <pre>{@code
-	 * // Complex expression with multiple data sources
-	 * TraversableExpression complexOp = 
-	 *     vectorA.add(vectorB).multiply(vectorC);
-	 * 
-	 * RepeatedProducerComputationAdapter<PackedCollection<?>> multiInputAdapter = 
-	 *     new RepeatedProducerComputationAdapter<>(
-	 *         shape(vectorA.length()),
-	 *         complexOp,
-	 *         () -> vectorA.get(),  // First input
-	 *         () -> vectorB.get(),  // Second input  
-	 *         () -> vectorC.get()   // Third input
-	 *     );
-	 * }</pre>
-	 * 
+	 * <p>The adapter configures the {@link RepeatedProducerComputation} with appropriate
+	 * functions for initialization, condition checking, and expression evaluation.
+	 *
 	 * @param shape The {@link TraversalPolicy} defining the multi-dimensional shape and
 	 *              access pattern of the output data. This determines the iteration space
 	 *              and how elements are addressed during computation.
 	 * @param expression The {@link TraversableExpression} to be evaluated at each iteration.
 	 *                   This expression defines the actual computation performed at each
 	 *                   index position and can reference the provided arguments.
-	 * @param arguments Variable number of {@link Supplier}s providing {@link Evaluable}
-	 *                  collections that serve as input data for the expression. These
-	 *                  suppliers are called to obtain the actual data collections during
-	 *                  computation execution.
+	 * @param arguments {@link Evaluable} {@link Supplier}s providing any collection data
+	 *                  referenced by the {@code expression}.
 	 * 
 	 * @see TraversalPolicy
 	 * @see TraversableExpression#getValueAt(Expression)

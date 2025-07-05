@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -544,7 +544,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	/**
 	 * Converts this collection computation into a {@link RepeatedProducerComputationAdapter}
-	 * for execution using the repeated computation framework.
+	 * for execution using a loop.
 	 * 
 	 * <p>This method provides an alternative execution strategy by wrapping this traversable
 	 * computation in an adapter that follows the repeated computation pattern. The resulting
@@ -576,18 +576,18 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * <ul>
 	 *   <li>Integration with systems expecting repeated computation interfaces</li>
 	 *   <li>Memory optimization scenarios where sequential processing is preferred</li>
-	 *   <li>Kernel optimization opportunities in repeated computation pipelines</li>
-	 *   <li>Standardizing computation interfaces across different execution strategies</li>
+	 *   <li>Optimization opportunities when used with other repeated computations</li>
+	 *   <li>Circumstances where kernel parallelism needs to be avoided</li>
 	 * </ul>
 	 * 
 	 * <p>The resulting adapter maintains a dependent lifecycle relationship with this
 	 * computation, ensuring proper resource management and cleanup coordination.
-	 * 
+	 *
 	 * @return A new {@link RepeatedProducerComputationAdapter} that evaluates this
-	 *         computation using the repeated computation framework
+	 *         computation sequentially.
 	 * 
 	 * @see RepeatedProducerComputationAdapter
-	 * @see #addDependentLifecycle(Object)
+	 * @see CollectionProducerComputationBase#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
 	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
