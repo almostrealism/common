@@ -769,11 +769,20 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Converts this computation to a repeated computation adapter.
-	 * This operation is not supported by the base class implementation.
+	 * Attempt to convert this computation to a {@link RepeatedProducerComputationAdapter} for
+	 * sequential execution in a loop.
 	 * 
-	 * @return Never returns normally
-	 * @throws UnsupportedOperationException Always thrown as this operation is not supported
+	 * <p><strong>Note:</strong> Subclasses that can be meaningfully converted should
+	 * override this method to provide the appropriate {@link RepeatedProducerComputationAdapter}
+	 * implementation.
+	 *
+	 * @return Never returns normally in the base class implementation
+	 * @throws UnsupportedOperationException Always thrown, as this operation is not
+	 *         directly supported by the base class
+	 * 
+	 * @see RepeatedProducerComputationAdapter
+	 * @see CollectionProducerComputationAdapter#toRepeated()
+	 * @see RelativeTraversableProducerComputation#toRepeated()
 	 */
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		throw new UnsupportedOperationException();

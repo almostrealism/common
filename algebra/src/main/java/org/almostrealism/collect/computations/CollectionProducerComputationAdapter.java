@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -542,6 +542,53 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		return delta;
 	}
 
+	/**
+	 * Converts this collection computation into a {@link RepeatedProducerComputationAdapter}
+	 * for execution using a loop.
+	 * 
+	 * <p>This method provides an alternative execution strategy by wrapping this traversable
+	 * computation in an adapter that follows the repeated computation pattern. The resulting
+	 * adapter will:
+	 * <ul>
+	 *   <li>Initialize output elements to zero</li>
+	 *   <li>Iterate through each index position</li>
+	 *   <li>Evaluate this computation's expression at each position</li>
+	 *   <li>Write results directly to the output array</li>
+	 * </ul>
+	 * 
+	 * <p><strong>Usage Example:</strong>
+	 * <pre>{@code
+	 * // Original computation using traversable approach
+	 * CollectionProducerComputationAdapter<PackedCollection<?>> addOp = 
+	 *     add(v(shape(1000), 0), v(shape(1000), 1));
+	 * 
+	 * // Convert to repeated computation approach
+	 * RepeatedProducerComputationAdapter<PackedCollection<?>> repeatedAdd = 
+	 *     addOp.toRepeated();
+	 * 
+	 * // Both produce identical results but use different execution patterns
+	 * PackedCollection<?> result1 = addOp.get().evaluate(dataA, dataB);
+	 * PackedCollection<?> result2 = repeatedAdd.get().evaluate(dataA, dataB);
+	 * // result1 equals result2
+	 * }</pre>
+	 * 
+	 * <p><strong>When to Use:</strong>
+	 * <ul>
+	 *   <li>Integration with systems expecting repeated computation interfaces</li>
+	 *   <li>Memory optimization scenarios where sequential processing is preferred</li>
+	 *   <li>Optimization opportunities when used with other repeated computations</li>
+	 *   <li>Circumstances where kernel parallelism needs to be avoided</li>
+	 * </ul>
+	 * 
+	 * <p>The resulting adapter maintains a dependent lifecycle relationship with this
+	 * computation, ensuring proper resource management and cleanup coordination.
+	 *
+	 * @return A new {@link RepeatedProducerComputationAdapter} that evaluates this
+	 *         computation sequentially.
+	 * 
+	 * @see RepeatedProducerComputationAdapter
+	 * @see CollectionProducerComputationBase#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
+	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
