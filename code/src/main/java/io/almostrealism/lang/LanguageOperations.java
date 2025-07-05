@@ -26,7 +26,15 @@ public interface LanguageOperations {
 
 	Precision getPrecision();
 
+	default boolean isInt64() {
+		return getPrecision() == Precision.FP64;
+	}
+
 	default String stringForLong(long value) {
+		if (isInt64()) {
+			return Precision.FP64.stringForLong(value);
+		}
+
 		return getPrecision().stringForLong(value);
 	}
 

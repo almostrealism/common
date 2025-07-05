@@ -600,14 +600,23 @@ public abstract class Expression<T> implements
 		return Cast.of(Double.class, Cast.FP_NAME, this);
 	}
 
+	// TODO  This should also return Expression<? extends Number>
 	public Expression<Integer> toInt() {
-		return toInt(false);
+		return (Expression) toInt(false);
 	}
 
-	public Expression<Integer> toInt(boolean requireInt) {
-		boolean cast = requireInt ? getType() != Integer.class : isFP();
-		if (getType() == Integer.class) return (Expression<Integer>) this;
-		return cast ? Cast.of(Integer.class, Cast.INT_NAME, this) : (Expression<Integer>) this;
+	public Expression<? extends Number> toInt(boolean require32) {
+		boolean cast = require32 ? getType() != Integer.class : isFP();
+		return cast ? Cast.of(Integer.class, Cast.INT_NAME, this) : (Expression) this;
+	}
+
+	public Expression<? extends Number> toLong() {
+		return toLong(false);
+	}
+
+	public Expression<? extends Number> toLong(boolean require64) {
+		boolean cast = require64 ? getType() != Long.class : isFP();
+		return cast ? Cast.of(Long.class, Cast.LONG_NAME, this) : (Expression) this;
 	}
 
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {

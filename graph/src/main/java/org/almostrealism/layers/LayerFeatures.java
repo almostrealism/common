@@ -36,6 +36,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
@@ -55,7 +56,6 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 
 	boolean allowNonComposites = false;
 	boolean enableWeightedSum = true;
-	boolean enableMonitor = false;
 
 	boolean enableIgnoreZero = true;
 	boolean enableLogStability = true;
@@ -137,7 +137,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
 		layer.init(inputShape, Layer.ioTracking, true);
-		if (enableMonitor)
+		if (HardwareFeatures.outputMonitoring)
 			layer.setMonitor(new MonitorReceptor(
 					name, inputShape, outputShape,
 					weights.toArray(PackedCollection[]::new)));
