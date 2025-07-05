@@ -22,6 +22,12 @@ public class AssetInfo {
 	private long size;
 	private String md5;
 
+	public AssetInfo() { }
+
+	public AssetInfo(String name) {
+		setName(name);
+	}
+
 	public String getName() { return name; }
 	public void setName(String name) {
 		this.name = name;

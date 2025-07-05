@@ -19,8 +19,11 @@ package org.almostrealism.persistence;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
+import java.nio.file.Path;
 
 public class Asset {
+	public static final String ASSETS_DIRECTORY = "assets";
+
 	private String group;
 	private String name;
 	private String url;
@@ -62,14 +65,20 @@ public class Asset {
 		this.md5 = md5;
 	}
 
+	public boolean isLoaded() {
+		if (getUrl() == null) {
+			return file != null && file.exists();
+		}
+
+		return confirmFile();
+	}
+
 	public File getFile() {
 		if (file != null) return file;
 
 		if (group == null || name == null) return null;
 
-		file = new File(SystemUtils.getLocalDestination(group, name));
-
-		if (file.exists() && (getMd5() == null || getMd5().equals(SystemUtils.md5(file)))) {
+		if (confirmFile()) {
 			return file;
 		}
 
@@ -78,5 +87,21 @@ public class Asset {
 		}
 
 		return file;
+	}
+
+	private File ensureFile() {
+		return getAssetsDirectory(group).resolve(name).toFile();
+	}
+
+	private boolean confirmFile() {
+		file = ensureFile();
+		return file.exists() &&
+				(getMd5() == null || getMd5().equals(SystemUtils.md5(file)));
+	}
+
+	public static Path getAssetsDirectory(String group) {
+		Path groupDir = Path.of(SystemUtils.getLocalDestination(ASSETS_DIRECTORY, group));
+		SystemUtils.ensureDirectoryExists(groupDir);
+		return groupDir;
 	}
 }

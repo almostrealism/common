@@ -43,6 +43,8 @@ public class AssetGroup {
 		this.assets = assets;
 	}
 
+	public List<Asset> getAllAssets() { return assets; }
+
 	public Asset getAsset(String name) {
 		return assets.stream()
 				.filter(asset -> asset.getName().equals(name))
@@ -54,7 +56,15 @@ public class AssetGroup {
 		return asset != null ? asset.getFile().getAbsolutePath() : null;
 	}
 
+	public Stream<Asset> assets() {
+		return assets.stream();
+	}
+
 	public Stream<File> files() {
 		return assets.stream().map(Asset::getFile);
+	}
+
+	public boolean isLoaded() {
+		return assets().allMatch(Asset::isLoaded);
 	}
 }

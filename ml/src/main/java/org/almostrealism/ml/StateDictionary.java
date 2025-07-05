@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persistence.AssetGroup;
@@ -39,7 +40,7 @@ import java.util.Set;
  *
  * @author  Michael Murray
  */
-public class StateDictionary extends AssetGroup implements ConsoleFeatures {
+public class StateDictionary extends AssetGroup implements Destroyable, ConsoleFeatures {
 	private Map<String, PackedCollection<?>> weights;
 
 	/**
@@ -149,5 +150,19 @@ public class StateDictionary extends AssetGroup implements ConsoleFeatures {
 	 */
 	public Map<String, PackedCollection<?>> getAllWeights() {
 		return new HashMap<>(weights);
+	}
+
+	/**
+	 * Destroy all loaded weight data.
+	 *
+	 * @see PackedCollection#destroy()
+	 */
+	@Override
+	public void destroy() {
+		if (weights != null) {
+			weights.values().forEach(PackedCollection::destroy);
+			weights.clear();
+			weights = null;
+		}
 	}
 }

@@ -16,12 +16,29 @@
 
 package org.almostrealism.persistence;
 
+import java.io.File;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class AssetGroupInfo {
 	private String name;
 	private String version;
 	private Map<String, AssetInfo> assets;
+
+	public AssetGroupInfo() {}
+
+	public AssetGroupInfo(String name, String version, List<AssetInfo> assets) {
+		setName(name);
+		setVersion(version);
+		this.assets = new HashMap<>();
+		if (assets != null) {
+			assets.forEach(asset -> this.assets.put(asset.getName(), asset));
+		}
+	}
 
 	public String getName() { return name; }
 	public void setName(String name) {
@@ -34,5 +51,32 @@ public class AssetGroupInfo {
 	public Map<String, AssetInfo> getAssets() { return assets; }
 	public void setAssets(Map<String, AssetInfo> assets) {
 		this.assets = assets;
+	}
+
+	public long getTotalSize() {
+		if (assets == null) return 0;
+
+		return assets.values().stream()
+				.mapToLong(AssetInfo::getSize)
+				.sum();
+	}
+
+	public AssetGroupInfo subset(String name, Predicate<AssetInfo> filter) {
+		return new AssetGroupInfo(name, getVersion(),
+				getAssets().values().stream()
+						.filter(filter)
+						.collect(Collectors.toList()));
+	}
+
+	public static AssetGroupInfo forDirectory(File directory) {
+		return forDirectory(directory.getName(), directory);
+	}
+
+	public static AssetGroupInfo forDirectory(String name, File directory) {
+		return new AssetGroupInfo(name, null,
+				Stream.of(directory.listFiles())
+						.map(File::getName)
+						.map(AssetInfo::new)
+						.collect(Collectors.toList()));
 	}
 }
