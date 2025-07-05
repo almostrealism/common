@@ -259,19 +259,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
 
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
-
-		try {
-			WeightedSumExpression.enableCollectionExpression = false;
-
-			int dim = 28;
-			int filters = 8;
-			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, filters, 2, 10));
-		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
-		}
+		int dim = 28;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
 	@Test
