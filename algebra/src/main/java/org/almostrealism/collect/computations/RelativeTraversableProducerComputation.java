@@ -106,15 +106,53 @@ public abstract class RelativeTraversableProducerComputation<I extends PackedCol
 	@Deprecated
 	public abstract IntFunction<Expression<Double>> getValueFunction();
 
-	// TODO
-//	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
+	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
 
-	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
-		// System.out.println("WARN: Using default getValue implementation");
-		// return getValueFunction().apply(index);
-		throw new UnsupportedOperationException();
-	}
-
+	/**
+	 * Converts this {@link RelativeTraversableProducerComputation} into a
+	 * {@link RepeatedProducerComputationAdapter} for execution using a loop.
+	 *
+	 * <p>This method provides an alternative execution strategy by wrapping this traversable
+	 * computation in an adapter that follows the repeated computation pattern. The resulting
+	 * adapter will:
+	 * <ul>
+	 *   <li>Initialize output elements to zero</li>
+	 *   <li>Iterate through each index position</li>
+	 *   <li>Evaluate this computation's expression at each position</li>
+	 *   <li>Write results directly to the output array</li>
+	 * </ul>
+	 * 
+	 * <p><strong>Example Usage:</strong>
+	 * <pre>{@code
+	 * // Create a relative traversable computation
+	 * RelativeTraversableProducerComputation<PackedCollection<?>> relativeOp = 
+	 *     new RelativeTraversableProducerComputation<>(...);
+	 * 
+	 * // Convert to repeated computation for different execution strategy
+	 * RepeatedProducerComputationAdapter<PackedCollection<?>> repeatedOp = 
+	 *     relativeOp.toRepeated();
+	 * 
+	 * // Execute using repeated computation framework
+	 * PackedCollection<?> result = repeatedOp.get().evaluate(inputs...);
+	 * }</pre>
+	 *
+	 * <p><strong>When to Use:</strong>
+	 * <ul>
+	 *   <li>Integration with systems expecting repeated computation interfaces</li>
+	 *   <li>Memory optimization scenarios where sequential processing is preferred</li>
+	 *   <li>Optimization opportunities when used with other repeated computations</li>
+	 *   <li>Circumstances where kernel parallelism needs to be avoided</li>
+	 * </ul>
+	 *
+	 * <p>The resulting adapter maintains a dependent lifecycle relationship with this
+	 * computation, ensuring proper resource management and cleanup coordination.
+	 *
+	 * @return A new {@link RepeatedProducerComputationAdapter} that evaluates this
+	 *         computation sequentially.
+	 *
+	 * @see RepeatedProducerComputationAdapter
+	 * @see CollectionProducerComputationBase#addDependentLifecycle(io.almostrealism.code.ScopeLifecycle)
+	 */
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
