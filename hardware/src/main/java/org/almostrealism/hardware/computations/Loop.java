@@ -74,7 +74,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	public Scope<Void> getScope(KernelStructureContext context) {
 		if (enableRepeated) {
 			Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
-			Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
+			Variable<Integer, ?> i = Variable.integer(getNameProvider().getVariablePrefix() + "_i");
 			scope.setInterval(e(1));
 			scope.setIndex(i);
 			scope.setCondition(i.ref().lessThan(e(iterations)));
@@ -88,7 +88,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 			scope.setMetadata(getMetadata());
 			scope.getRequiredScopes().add(atomScope);
 
-			String i = getVariablePrefix() + "_i";
+			String i = getNameProvider().getVariablePrefix() + "_i";
 
 			scope.setSource((s, lang) -> {
 				StringBuilder code = new StringBuilder();

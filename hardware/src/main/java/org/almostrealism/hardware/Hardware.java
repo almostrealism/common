@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
+import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
@@ -342,7 +343,7 @@ public final class Hardware {
 		} else {
 			HardwareOperator.timingListener = profile.getRuntimeListener();
 			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
-			AcceleratedComputationOperation.timing = profile.getScopeListener(true);
+			ComputationScopeCompiler.timing = profile.getScopeListener(true);
 			Scope.timing = profile.getScopeListener(true);
 			ScopeSettings.timing = profile.getScopeListener(false);
 			Expression.timing = profile.getScopeListener(false);
@@ -352,7 +353,7 @@ public final class Hardware {
 	public void clearProfile() {
 		HardwareOperator.timingListener = null;
 		AbstractComputeContext.compilationTimingListener = null;
-		AcceleratedComputationOperation.timing = null;
+		ComputationScopeCompiler.timing = null;
 		Scope.timing = null;
 		ScopeSettings.timing = null;
 		Expression.timing = null;
@@ -442,6 +443,10 @@ public final class Hardware {
 		} catch (NullPointerException | NumberFormatException e) {
 			return 1024;
 		}
+	}
+
+	public List<DataContext<MemoryData>> getAllDataContexts() {
+		return Collections.unmodifiableList(contexts);
 	}
 
 	public DataContext<MemoryData> getDataContext(ComputeRequirement... requirements) {

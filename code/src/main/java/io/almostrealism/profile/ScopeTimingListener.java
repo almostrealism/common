@@ -16,8 +16,6 @@
 
 package io.almostrealism.profile;
 
-import io.almostrealism.code.OperationMetadata;
-
 import java.util.function.Supplier;
 
 @FunctionalInterface

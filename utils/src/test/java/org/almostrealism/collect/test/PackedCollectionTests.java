@@ -35,7 +35,6 @@ public class PackedCollectionTests implements TestFeatures {
 		// Assert transposed values
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 10; j++) {
-				log("i: " + i + ", j: " + j);
 				assertEquals(data.valueAt(j, i), transposed.valueAt(i, j));
 			}
 		}

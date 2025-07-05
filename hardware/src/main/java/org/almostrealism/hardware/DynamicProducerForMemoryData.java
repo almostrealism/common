@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;

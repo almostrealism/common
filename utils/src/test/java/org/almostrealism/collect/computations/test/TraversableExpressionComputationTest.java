@@ -33,7 +33,29 @@ import org.junit.Test;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+/**
+ * Test class demonstrating usage patterns for {@link TraversableExpressionComputation}
+ * and its concrete implementation {@link DefaultTraversableExpressionComputation}.
+ * 
+ * <p>This class provides practical examples of how to create and use traversable
+ * expression computations for common mathematical operations on multi-dimensional collections.
+ * 
+ * @author Michael Murray
+ */
 public class TraversableExpressionComputationTest implements TestFeatures {
+	
+	/**
+	 * Creates a computation that sums pairs of adjacent elements in a collection.
+	 * This is a practical example of how to implement reduction operations using
+	 * {@link DefaultTraversableExpressionComputation}.
+	 * 
+	 * <p>The computation takes a 2D input collection and produces a 1D output where
+	 * each element is the sum of two adjacent elements from the input row.
+	 * 
+	 * @param <T> The type of {@link PackedCollection} to process
+	 * @param a The input producer providing the collection to process
+	 * @return A computation that sums pairs of elements
+	 */
 	protected <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> pairSum(Producer a) {
 		TraversalPolicy shape = shape(a).replace(shape(1));
 
@@ -46,6 +68,15 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 										args[1].getValueRelative(new IntegerConstant(1)))), a);
 	}
 
+	/**
+	 * Tests the basic pairSum operation on a 3x2 matrix.
+	 * Demonstrates how to create and execute a TraversableExpressionComputation
+	 * that performs element-wise reduction (summing pairs).
+	 * 
+	 * <p>Expected behavior:
+	 * - Input: 3x2 matrix with random values
+	 * - Output: 3x1 matrix where each element is the sum of the corresponding row pair
+	 */
 	@Test
 	public void pair() {
 		int r = 3;
@@ -64,6 +95,19 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 		}
 	}
 
+	/**
+	 * Tests the pairSum operation used within a map operation.
+	 * Demonstrates how TraversableExpressionComputation can be used as part of
+	 * higher-order operations like mapping across collection elements.
+	 * 
+	 * <p>This test shows a more complex usage pattern where the pairSum computation
+	 * is applied through a map operation, demonstrating composition of computations.
+	 * 
+	 * <p>Expected behavior:
+	 * - Input: 3x2 matrix with random values  
+	 * - Process: Map pairSum across the input using traversal
+	 * - Output: 3x1 matrix with summed pairs (same as pair() test but through mapping)
+	 */
 	@Test
 	public void map() {
 		int r = 3;

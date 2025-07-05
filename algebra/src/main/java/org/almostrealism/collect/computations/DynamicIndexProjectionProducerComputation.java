@@ -30,14 +30,106 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+/**
+ * A specialized {@link IndexProjectionProducerComputation} that supports dynamic, runtime-computed
+ * index projections. Unlike the base class which uses static projection functions, this computation
+ * allows the index projection to depend on the input data and additional runtime arguments.
+ * 
+ * <p>This class is particularly useful for operations where the index mapping cannot be determined
+ * at compilation time, such as:</p>
+ * <ul>
+ *   <li>Argmax/argmin operations where indices depend on data values</li>
+ *   <li>Conditional indexing based on runtime criteria</li>
+ *   <li>Advanced sorting and ranking operations</li>
+ *   <li>Data-dependent sampling and selection</li>
+ * </ul>
+ * 
+ * <p><strong>Key Differences from Base Class:</strong></p>
+ * <ul>
+ *   <li>Uses {@link BiFunction} for projection instead of {@link java.util.function.UnaryOperator}</li>
+ *   <li>Projection function receives {@link TraversableExpression} arguments for runtime computation</li>
+ *   <li>Supports relative indexing for memory-efficient operations</li>
+ *   <li>Provides specialized delta computation for machine learning applications</li>
+ * </ul>
+ * 
+ * <p><strong>Usage Example - Finding Maximum Elements:</strong></p>
+ * <pre>{@code
+ * // Create a dynamic projection that finds the index of maximum value in each row
+ * TraversalPolicy inputShape = shape(4, 5);   // 4x5 matrix
+ * TraversalPolicy outputShape = shape(4, 1);  // 4x1 result (one index per row)
+ * 
+ * BiFunction<TraversableExpression[], Expression, Expression> maxProjection = 
+ *     (args, idx) -> {
+ *         TraversableExpression input = args[1];  // The input collection
+ *         Expression row = idx;  // Output row index
+ *         
+ *         // Find column index with maximum value in this row
+ *         Expression maxIndex = e(0);
+ *         for (int col = 1; col < 5; col++) {
+ *             Expression currentIdx = inputShape.index(row, e(col));
+ *             Expression prevMaxIdx = inputShape.index(row, maxIndex);
+ *             maxIndex = conditional(
+ *                 input.getValueAt(currentIdx).greaterThan(input.getValueAt(prevMaxIdx)),
+ *                 e(col), maxIndex);
+ *         }
+ *         
+ *         return inputShape.index(row, maxIndex);
+ *     };
+ * 
+ * DynamicIndexProjectionProducerComputation<?> maxFinder = 
+ *     new DynamicIndexProjectionProducerComputation<>("findRowMax", outputShape, 
+ *                                                     maxProjection, matrixProducer);
+ * }</pre>
+ * 
+ * @param <T> The type of {@link PackedCollection} produced by this computation
+ * 
+ * @see IndexProjectionProducerComputation
+ * @see TraversableExpression
+ * @see BiFunction
+ * 
+ * @author Michael Murray
+ * @since 0.68
+ */
 public class DynamicIndexProjectionProducerComputation<T extends PackedCollection<?>>
 		extends IndexProjectionProducerComputation<T> {
+	/**
+	 * Enables specialized delta computation for traverse-each operations.
+	 * When true, allows optimized gradient computation for operations that 
+	 * traverse each element of the input collection.
+	 */
 	public static boolean enableDeltaTraverseEach = false;
+	
+	/**
+	 * Enables chained delta computation for nested dynamic projections.
+	 * When true, allows optimization of gradient computation through
+	 * multiple levels of dynamic index projections.
+	 */
 	public static boolean enableChainDelta = false;
 
+	/**
+	 * The dynamic index projection function that computes projections at runtime.
+	 * This function receives both the traversable arguments and the output index,
+	 * allowing it to compute projections based on actual data values.
+	 */
 	private BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
+	
+	/**
+	 * Indicates whether this computation uses relative indexing.
+	 * When true, the computation uses {@link TraversableExpression#getValueRelative}
+	 * for more memory-efficient access patterns.
+	 */
 	private boolean relative;
 
+	/**
+	 * Creates a dynamic index projection computation with absolute indexing.
+	 * This is the standard constructor for most dynamic projection operations.
+	 * 
+	 * @param name A descriptive name for this computation
+	 * @param shape The {@link TraversalPolicy} defining the output dimensions
+	 * @param indexExpression The function that computes index projections at runtime
+	 * @param collection The input {@link Producer} providing the source collection
+	 * @param inputs Additional input {@link Producer}s that the projection may reference
+	 */
 	public DynamicIndexProjectionProducerComputation(String name, TraversalPolicy shape,
 													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
 													 Producer<?> collection,
@@ -45,6 +137,17 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 		this(name, shape, indexExpression, false, collection, inputs);
 	}
 
+	/**
+	 * Creates a dynamic index projection computation with configurable indexing mode.
+	 * This constructor allows specification of relative vs. absolute indexing.
+	 * 
+	 * @param name A descriptive name for this computation
+	 * @param shape The {@link TraversalPolicy} defining the output dimensions
+	 * @param indexExpression The function that computes index projections at runtime
+	 * @param relative Whether to use relative indexing for memory efficiency
+	 * @param collection The input {@link Producer} providing the source collection
+	 * @param inputs Additional input {@link Producer}s that the projection may reference
+	 */
 	public DynamicIndexProjectionProducerComputation(String name, TraversalPolicy shape,
 													 BiFunction<TraversableExpression[], Expression, Expression> indexExpression,
 													 boolean relative,

@@ -83,15 +83,6 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		super.prepareScope(manager, context);
-
-		// Result should always be first
-		ArrayVariable arg = getArgumentForInput((Supplier) getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
-	}
-
-	@Override
 	public Scope<?> compile() {
 		instructions = new CLInstructionsManager(getComputeContext(), getSourceClass());
 		return super.compile();

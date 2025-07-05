@@ -16,7 +16,7 @@
 
 package io.almostrealism.kernel;
 
-import io.almostrealism.code.OperationInfo;
+import io.almostrealism.profile.OperationInfo;
 
 import java.util.OptionalLong;
 

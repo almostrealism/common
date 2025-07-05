@@ -17,7 +17,6 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.Index;
@@ -45,7 +44,7 @@ import java.util.function.Supplier;
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
-					DescribableParent<Process<?, ?>>, ComputerFeatures  {
+					DescribableParent<Process<?, ?>> {
 	private TraversalPolicy shape;
 	private int argIndex;
 
@@ -53,24 +52,19 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
+		init();
 	}
 
 	public PassThroughProducer(int size, int argIndex) {
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
+		init();
 	}
 
 	private PassThroughProducer() {
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
-		init();
 	}
-
-	/**
-	 * @return  GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public TraversalPolicy getShape() { return shape; }
@@ -112,7 +106,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
-		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
+		args.add(new Argument<>(manager.argumentForInput(getNameProvider()).apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 
@@ -124,15 +118,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return scope;
-	}
-
-	/**
-	 * This overrides the parent method to prevent recursion,
-	 * since the argument is a reference back to this producer.
-	 */
-	@Override
-	public void postCompile() {
-		// Do nothing
 	}
 
 	@Override
@@ -192,6 +177,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return false;
+	}
+
+	@Override
+	public String signature() {
+		return "param(" + getReferencedArgumentIndex() + "{" + getShape().toStringDetail() + "})";
 	}
 
 	@Override

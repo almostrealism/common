@@ -50,7 +50,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 		this.len = len;
 	}
 
-	public ArrayVariable getTime() { return getArgument(0, 2); }
+	public ArrayVariable getTime() { return getArgument(0); }
 	public ArrayVariable getResets() { return getArgument(1); }
 
 	@Override

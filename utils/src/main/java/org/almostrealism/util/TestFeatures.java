@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -28,22 +29,25 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
@@ -63,6 +67,82 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		return e.getExpression(Expression.defaultLanguage()) + " | " + options;
 	}
 
+	default void assertNotNull(Object o) {
+		if (o == null) {
+			throw new NullPointerException();
+		}
+	}
+
+	default void assertNotNull(String msg, Object o) {
+		if (o == null) {
+			throw new NullPointerException(msg);
+		}
+	}
+
+	default void assertTrue(boolean condition) {
+		assertTrue(null, condition);
+	}
+
+	default void assertTrue(String msg, boolean condition) {
+		if (!condition) {
+			throw new AssertionError(msg);
+		}
+	}
+
+	default void assertFalse(String msg, boolean condition) {
+		assertTrue(msg, !condition);
+	}
+
+	default void assertFalse(boolean condition) {
+		assertTrue(!condition);
+	}
+
+	default void assertNotEquals(Object expected, Object actual) {
+		if (Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " == " + expected);
+		}
+	}
+
+	default void assertEquals(Object expected, Object actual) {
+		if (!Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	default void assertEquals(String msg, PackedCollection<?> expected, PackedCollection<?> actual) {
+		try {
+			assertEquals(expected, actual);
+		} catch (AssertionError e) {
+			if (msg != null) {
+				throw new AssertionError(msg, e);
+			}
+
+			throw e;
+		}
+	}
+
+	default double compare(PackedCollection<?> expected, PackedCollection<?> actual) {
+		double exp[] = expected.toArray();
+		double act[] = actual.toArray();
+		return IntStream.range(0, exp.length)
+				.mapToDouble(i -> Math.abs(exp[i] - act[i]))
+				.average().orElseThrow();
+	}
+
+	default void assertEquals(PackedCollection<?> expected, PackedCollection<?> actual) {
+		if (!expected.getShape().equalsIgnoreAxis(actual.getShape())) {
+			throw new AssertionError(actual.getShape() + " != " + expected.getShape());
+		}
+
+		double[] ev = expected.toArray();
+		double[] ov = actual.toArray();
+		assertEquals(ev.length, ov.length);
+
+		for (int i = 0; i < ev.length; i++) {
+			assertEquals(ev[i], ov[i]);
+		}
+	}
+
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());
 	}
@@ -75,9 +155,25 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, true);
 	}
 
-	default void assertEquals(int a, int b) {
-		if (a != b) {
-			throw new AssertionError();
+	default void assertEquals(String msg, double a, double b) {
+		assertEquals(msg, a, b, true);
+	}
+
+	default void assertEquals(String msg, int expected, int actual) {
+		try {
+			assertEquals(expected, actual);
+		} catch (AssertionError e) {
+			if (msg != null) {
+				throw new AssertionError(msg, e);
+			}
+
+			throw e;
+		}
+	}
+
+	default void assertEquals(int expected, int actual) {
+		if (actual != expected) {
+			throw new AssertionError(actual + " != " + expected);
 		}
 	}
 
@@ -94,8 +190,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	private static void assertEquals(double a, double b, boolean positive) {
-//		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
-//		double fallbackGap = Math.pow(10, -3);
+		assertEquals(null, a, b, positive);
+	}
+
+	private static void assertEquals(String msg, double a, double b, boolean positive) {
 		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
 
@@ -103,14 +201,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
 					System.err.println("TestFeatures: " + b + " != " + a);
-					throw new AssertionError();
+					throw new AssertionError(msg == null ? b + " != " + a : msg);
 				} else {
 					System.out.println("TestFeatures: " + b + " != " + a);
 				}
 			}
 		} else if (!positive) {
 			System.err.println("TestFeatures: " + b + " == " + a);
-			throw new AssertionError();
+			throw new AssertionError(msg == null ? b + " == " + a : msg);
 		}
 	}
 
@@ -129,6 +227,27 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			double s = c / gap;
 			warn(b + " != " + a + " (" + s + " > " + r + ")");
 			throw new AssertionError();
+		}
+	}
+
+	default void compare(CollectionProducer<PackedCollection<?>> expected,
+						 CollectionProducer<PackedCollection<?>> result) {
+		PackedCollection<?> e = expected.evaluate();
+		PackedCollection<?> o = result.evaluate();
+
+		if (!e.getShape().equals(o.getShape())) {
+			log(o.getShape().toStringDetail() + " != " + e.getShape().toStringDetail());
+			throw new AssertionError();
+		}
+
+		log(o.getShape());
+
+		double ev[] = e.toArray();
+		double ov[] = o.toArray();
+
+		for (int i = 0; i < ev.length; i++) {
+			log(ev[i] + " vs " + ov[i]);
+			assertEquals(ev[i], ov[i]);
 		}
 	}
 
@@ -212,8 +331,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	default <T extends OperationProfile> T initKernelMetrics(T profile) {
 		Hardware.getLocalHardware().assignProfile(profile);
-		AcceleratedComputationOperation.clearTimes();
+		KernelTraversalProvider.clearTimes();
 		return profile;
+	}
+
+	default String s(int[] a) {
+		return Arrays.toString(a);
 	}
 
 	default void logKernelMetrics() {
@@ -223,7 +346,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	default void logKernelMetrics(OperationProfile profile) {
 		if (profile != null) profile.print();
 
-		AcceleratedComputationOperation.printTimes();
+		KernelTraversalProvider.printTimes();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +

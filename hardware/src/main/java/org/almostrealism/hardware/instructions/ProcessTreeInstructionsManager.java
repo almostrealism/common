@@ -38,6 +38,7 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Deprecated
 public class ProcessTreeInstructionsManager implements
 		ComputableInstructionSetManager<ProcessTreePositionKey>, ConsoleFeatures {
 	public static boolean verboseLogs = false;

@@ -34,6 +34,11 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public String kernelIndex(int index) {
+		return "((long)" + super.kernelIndex(index) + ")";
+	}
+
+	@Override
 	public String annotationForPhysicalScope(Accessibility access, PhysicalScope scope) {
 		if (scope != null)
 			return (!enableThreadScope || access == Accessibility.EXTERNAL) ? "device" : "thread";
@@ -46,6 +51,9 @@ public class MetalLanguageOperations extends CLanguageOperations {
 		if (enableThreadScope && type == Double.class) return "thread";
 		return super.annotationForLocalArray(type, length);
 	}
+
+	@Override
+	public boolean isInt64() { return true; }
 
 	@Override
 	public boolean isNumericBoolean() {

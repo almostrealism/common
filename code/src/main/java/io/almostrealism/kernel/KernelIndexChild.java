@@ -39,6 +39,14 @@ public class KernelIndexChild extends IndexChild {
 		return new KernelIndexChild(context, getChildIndex());
 	}
 
+	public Class<? extends Number> getAliasType() {
+		if (upperBound().orElse(Long.MAX_VALUE) > Integer.MAX_VALUE) {
+			return Long.class;
+		} else {
+			return Integer.class;
+		}
+	}
+
 	public int kernelIndex(int index) {
 		return Math.toIntExact(index / getChildIndex().getLimit().getAsLong());
 	}

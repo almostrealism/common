@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,13 @@ import org.junit.Test;
 import java.util.function.Supplier;
 
 public class PoolTests implements TestFeatures, KernelAssertions {
+
+	@Test
+	public void pool2dSquareAndOptimize() {
+		pool2dSquareOptimize();
+		pool2dSquare();
+		pool2dSquare();
+	}
 
 	@Test
 	public void pool2d() {
@@ -78,8 +85,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	}
 
 	public void pool(int r, int c, int d, int w, boolean kernel) {
-		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
-		input.fill(pos -> Math.random());
+		PackedCollection<?> input = new PackedCollection<>(shape(r, c, d)).randFill();
 
 		Supplier<CollectionProducer<PackedCollection<?>>> pool =
 				() -> cp(input)

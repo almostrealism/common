@@ -120,14 +120,12 @@ public class ComplexMathTests implements TestFeatures {
 						a.valueAt(i, 0), a.valueAt(i, 1),
 						b.valueAt(i, 0), b.valueAt(i, 1));
 				double actual = result.valueAt(i, 0);
-				System.out.println("ComplexMathTests[" + i + "] " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 
 				expected = multiplyComplexR(
 						a.valueAt(i, 0), a.valueAt(i, 1),
 						b.valueAt(i, 0), b.valueAt(i, 1));
 				actual = result.valueAt(i, 1);
-				System.out.println("ComplexMathTests[" + i + "] " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		});
@@ -151,14 +149,12 @@ public class ComplexMathTests implements TestFeatures {
 							in.valueAt(n, i, 0), in.valueAt(n, i, 1),
 							x.valueAt(i, 0), x.valueAt(i, 1));
 					double actual = result.valueAt(n, i, 0);
-					System.out.println("ComplexMathTests[" + i + "] " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 
 					expected = multiplyComplexR(
 							in.valueAt(n, i, 0), in.valueAt(n, i, 1),
 							x.valueAt(i, 0), x.valueAt(i, 1));
 					actual = result.valueAt(n, i, 1);
-					System.out.println("ComplexMathTests[" + i + "] " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}

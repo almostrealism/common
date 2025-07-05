@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,6 +37,11 @@ public class Epsilon extends StaticReference<Double> {
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
+	}
+
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		return OptionalLong.of(0);
 	}
 
 	@Override

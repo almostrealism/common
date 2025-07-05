@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,60 +18,25 @@ package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.HardwareOperator;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.function.Supplier;
 
-public class ComputationInstructionsManager
-		extends AbstractInstructionSetManager<DefaultExecutionKey>
-		implements ComputableInstructionSetManager<DefaultExecutionKey> {
-	private Scope<?> scope;
-	private InstructionSet operators;
-
-	private Map<DefaultExecutionKey, Integer> outputArgIndices;
-	private Map<DefaultExecutionKey, Integer> outputOffsets;
+/**
+ * NOTE: This class may be unnecessary, as the only case where it matters is
+ * when the {@link Scope} contains multiple functions that can be called by
+ * name and/or arg count and this is not something that is done in practice
+ * beyond in OpenCL (which already has a dedicated {@link InstructionSetManager}).
+ */
+public class ComputationInstructionsManager extends ScopeInstructionsManager<DefaultExecutionKey> {
 
 	public ComputationInstructionsManager(ComputeContext<?> computeContext,
-										  Scope<?> scope) {
-		super(computeContext);
-		this.scope = scope;
-		this.outputArgIndices = new HashMap<>();
-		this.outputOffsets = new HashMap<>();
-	}
-
-	@Override
-	public int getOutputArgumentIndex(DefaultExecutionKey key) {
-		Integer argIndex = outputArgIndices.get(key);
-		if (argIndex == null) {
-			return -1;
-		}
-
-		return argIndex;
-	}
-
-	public void setOutputArgumentIndex(DefaultExecutionKey key, int outputArgIndex) {
-		this.outputArgIndices.put(key, outputArgIndex);
-	}
-
-	@Override
-	public int getOutputOffset(DefaultExecutionKey key) {
-		return outputOffsets.get(key);
-	}
-
-	public void setOutputOffset(DefaultExecutionKey key, int outputOffset) {
-		this.outputOffsets.put(key, outputOffset);
+										  Supplier<Scope<?>> scope) {
+		super(computeContext, scope, null);
 	}
 
 	@Override
 	public synchronized Execution getOperator(DefaultExecutionKey key) {
-		if (operators == null || operators.isDestroyed()) {
-			operators = getComputeContext().deliver(scope);
-			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
-		}
-
-		return operators.get(key.getFunctionName(), key.getArgsCount());
+		return getInstructionSet().get(key.getFunctionName(), key.getArgsCount());
 	}
 }

@@ -39,6 +39,16 @@ import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * A {@link TraversalPolicy} defines how a sequence of elements should be
+ * traversed to form a multidimensional collection.
+ * It specifies the dimensions of the collection and the rate at which data
+ * is traversed along each axis. This information can then be used to transform
+ * a position in the output space (the space of the collection) into an
+ * index in the input space (the natural order of elements) and vice versa.
+ *
+ * @author  Michael Murray
+ */
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
 	public static boolean enableStrictSizes = true;
 	public static boolean enableDivisibleSizes = true;
@@ -46,9 +56,35 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
 
 	private TraversalOrdering order;
+
+	/**
+	 * Dimensions of the output space.
+	 */
 	private long dims[];
+
+	/**
+	 * Order of the output space dimensions with respect
+	 * to the input space.
+	 */
+	private int dimsOrder[];
+
+	/**
+	 * Numerator for the rate of traversal through the input space
+	 * across each dimension of the output space.
+	 */
 	private long rateNumerator[];
+
+	/**
+	 * Denominator for the rate of traversal through the input space
+	 * across each dimension of the output space.
+	 */
 	private long rateDenominator[];
+
+	/**
+	 * Axis used to determine the {@link #getCountLong() count} and
+	 * {@link #getSizeLong() size} of the collection when perform
+	 * traversal operations in parallel.
+	 */
 	private int traversalAxis;
 
 	public TraversalPolicy(int... dims) {
@@ -77,13 +113,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 
 	public TraversalPolicy(TraversalOrdering order, boolean tolerateZero, boolean tolerateLarge, long... dims) {
-		this(order, tolerateZero, tolerateLarge, dims, null, null);
+		this(order, tolerateZero, tolerateLarge, dims,
+				null, null, null);
 	}
 
 	public TraversalPolicy(TraversalOrdering order, boolean tolerateZero, boolean tolerateLarge,
-						   long[] dims, long[] rateNumerator, long[] rateDenominator) {
+						   long[] dims, int[] dimsOrder, long[] rateNumerator, long[] rateDenominator) {
 		this.order = order;
 		this.dims = dims;
+		this.dimsOrder = dimsOrder == null ? IntStream.range(0, dims.length).toArray() : dimsOrder;
 		this.rateNumerator = rateNumerator;
 		this.rateDenominator = rateDenominator;
 
@@ -112,30 +150,44 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	public TraversalOrdering getOrder() { return order; }
 
+	/**
+	 * The length of the collection along the specified axis
+	 * of the output space.
+	 */
 	public int length(int axis) {
-		return Math.toIntExact(dims[axis]);
+		return Math.toIntExact(lengthLong(axis));
 	}
 
-	public int inputLength(int axis) {
-		return Math.toIntExact(inputLengthLong(axis));
-	}
-
+	/**
+	 * The length of the collection along the specified axis
+	 * of the output space.
+	 */
 	public long lengthLong(int axis) {
 		return lengthLong(axis, false);
 	}
 
+	/**
+	 * The length along the specified axis of the input space being
+	 * traversed to form the collection.
+	 */
+	public int inputLength(int axis) {
+		return Math.toIntExact(inputLengthLong(axis));
+	}
+
+	/**
+	 * The length along the specified axis of the input space being
+	 * traversed to form the collection.
+	 */
 	public long inputLengthLong(int axis) {
 		return lengthLong(axis, true);
 	}
 
 	private long lengthLong(int axis, boolean input) {
-		long len =  dims[axis];
+		if (!input) return dims[axis];
 
-		if (input) {
-			len = len * rateNumeratorLong(axis);
-			len = len / rateDenominatorLong(axis);
-		}
-
+		long len = dims[dimsOrder[axis]];
+		len = len * rateNumeratorLong(axis);
+		len = len / rateDenominatorLong(axis);
 		return len;
 	}
 
@@ -182,7 +234,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return 0;
 		} else {
 			long s = sizeLong(depth + 1, input);
-			if (s <= 0) {
+			if (s < 0) {
 				throw new UnsupportedOperationException();
 			}
 
@@ -242,9 +294,20 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * return an index in the input space.
 	 */
 	public int index(int... pos) {
-		int index = 0;
+		// Reorder the position array from the order of the
+		// output space to the order of the input space
+		int[] internalPos = new int[pos.length];
 		for (int i = 0; i < pos.length; i++) {
-			index += (pos[i] / rateDenominator(i)) * rateNumerator(i) * inputSize(i + 1);
+			internalPos[dimsOrder[i]] = pos[i];
+		}
+		
+		// Calculate index using internal positions
+		int index = 0;
+		for (int i = 0; i < internalPos.length; i++) {
+			// Use the internal dimension index for rate calculations
+			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
+			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
+			index += (internalPos[i] / rateDen) * rateNum * inputSize(i + 1);
 		}
 		return index;
 	}
@@ -258,14 +321,25 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			throw new IllegalArgumentException();
 		}
 
+		// Reorder the position array from the order of the
+		// output space to the order of the input space
+		Expression[] internalPos = new Expression[pos.length];
+		for (int i = 0; i < pos.length; i++) {
+			internalPos[dimsOrder[i]] = pos[i];
+		}
+
 		Expression index = new IntegerConstant(0);
 
-		for (int i = 0; i < pos.length; i++) {
-			Expression p = pos[i];
-			p = Quotient.of(p, new IntegerConstant(rateDenominator(i)));
-			p = Product.of(p, new IntegerConstant(rateNumerator(i)));
+		for (int i = 0; i < internalPos.length; i++) {
+			Expression p = internalPos[i];
+			// Use the internal dimension index for rate calculations
+			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
+			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
+			
+			p = Quotient.of(p, e(rateDen));
+			p = Product.of(p, e(rateNum));
 
-			Expression s = new IntegerConstant(inputSize(i + 1));
+			Expression s = e(inputSizeLong(i + 1));
 			index = Sum.of(index, Product.of(p, s));
 		}
 
@@ -281,13 +355,19 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			throw new IllegalArgumentException();
 		}
 
-		int pos[] = new int[getDimensions()];
-
+		int internalPos[] = new int[getDimensions()];
+		
 		int remaining = index;
-		for (int i = 0; i < pos.length; i++) {
+		for (int i = 0; i < internalPos.length; i++) {
 			int s = inputSize(i + 1);
-			pos[i] = remaining / s;
-			remaining = remaining - pos[i] * s;
+			internalPos[i] = remaining / s;
+			remaining = remaining - internalPos[i] * s;
+		}
+		
+		// Permute to external order
+		int pos[] = new int[getDimensions()];
+		for (int i = 0; i < pos.length; i++) {
+			pos[i] = internalPos[dimsOrder[i]];
 		}
 
 		return pos;
@@ -298,13 +378,19 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * return a position in the output space.
 	 */
 	public Expression[] position(Expression index) {
-		Expression pos[] = new Expression[getDimensions()];
+		Expression internalPos[] = new Expression[getDimensions()];
 
 		Expression remaining = index;
-		for (int i = 0; i < pos.length; i++) {
+		for (int i = 0; i < internalPos.length; i++) {
 			Expression s = e(inputSizeLong(i + 1));
-			pos[i] = Quotient.of(remaining, s);
-			remaining = Sum.of(remaining, Minus.of(Product.of(pos[i], s)));
+			internalPos[i] = Quotient.of(remaining, s);
+			remaining = Sum.of(remaining, Minus.of(Product.of(internalPos[i], s)));
+		}
+		
+		// Permute to external order
+		Expression pos[] = new Expression[getDimensions()];
+		for (int i = 0; i < pos.length; i++) {
+			pos[i] = internalPos[dimsOrder[i]];
 		}
 
 		return pos;
@@ -315,19 +401,47 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return index(new TraversalPolicy(dims).position(index));
 	}
 
+	/**
+	 * Convenience method for subset index calculation with integer index and location values.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, int index, int... loc) {
 		return subset(shape, new IntegerConstant(index), loc);
 	}
 
+	/**
+	 * Convenience method for subset index calculation with Expression index and integer locations.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, Expression index, int... loc) {
 		return subset(shape, index,
 				IntStream.of(loc).mapToObj(i -> new IntegerConstant(i)).toArray(Expression[]::new));
 	}
 
+	/**
+	 * Convenience method for subset index calculation with integer index and Expression locations.
+	 * @see #subset(TraversalPolicy, Expression, Expression...)
+	 */
 	public Expression subset(TraversalPolicy shape, int index, Expression... loc) {
 		return subset(shape, new IntegerConstant(index), loc);
 	}
 
+	/**
+	 * Creates an expression that computes the index in this TraversalPolicy's coordinate system
+	 * corresponding to a subset operation. This is the core mathematical method used by 
+	 * {@link org.almostrealism.collect.computations.PackedCollectionSubset} to map indices
+	 * from subset space to input collection space.
+	 *
+	 * <p>Given an index in the subset coordinate system and the location offset where the subset
+	 * starts, this method computes the equivalent index in the parent collection's coordinate system.</p>
+	 *
+	 * @param shape The shape/dimensions of the subset being extracted
+	 * @param index The index within the subset coordinate system
+	 * @param loc The starting location/offset where the subset begins in each dimension
+	 * @return An expression that computes the corresponding index in the parent collection
+	 * 
+	 * @see org.almostrealism.collect.computations.PackedCollectionSubset#projectIndex(Expression)
+	 */
 	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {
 		if (shape.getDimensions() != getDimensions()) {
 			System.out.println("WARN: Obtaining a " + shape.getDimensions() +
@@ -345,13 +459,44 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return index(pos);
 	}
 
+	public TraversalPolicy permute(int... order) {
+		if (order.length != getDimensions()) {
+			throw new IllegalArgumentException("Order length (" + order.length +
+					") must match the number of dimensions (" + getDimensions() + ")");
+		}
+
+		long newDims[] = new long[getDimensions()];
+		int newOrder[] = new int[getDimensions()];
+		for (int i = 0; i < order.length; i++) {
+			if (order[i] >= getDimensions()) {
+				throw new IllegalArgumentException("Dimension index " + order[i] + " is out of bounds");
+			}
+
+			newDims[i] = lengthLong(order[i]);
+			newOrder[i] = dimsOrder[order[i]];
+		}
+
+		TraversalPolicy p = new TraversalPolicy(
+				this.order, true, false,
+				newDims, newOrder, rateNumerator, rateDenominator);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
 	public TraversalPolicy consolidate() { return traverse(getTraversalAxis() - 1); }
 
 	public TraversalPolicy traverse() { return traverse(getTraversalAxis() + 1); }
 
 	@Override
 	public TraversalPolicy traverse(int axis) {
-		TraversalPolicy p = new TraversalPolicy(order, true, true, dims, rateNumerator, rateDenominator);
+		TraversalPolicy p = new TraversalPolicy(order, true, true, dims, dimsOrder, rateNumerator, rateDenominator);
+
+		if (axis > dims.length) {
+			throw new IllegalArgumentException("Axis " + axis + " is greater than the number of dimensions (" + dims.length + ")");
+		} else if (axis < 0) {
+			throw new IllegalArgumentException("Axis " + axis + " is less than 0");
+		}
+
 		p.traversalAxis = axis;
 		return p;
 	}
@@ -363,7 +508,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	public TraversalPolicy traverse(TraversalOrdering order) {
 		TraversalPolicy p = new TraversalPolicy(
 				order == null ? getOrder() : order.compose(getOrder()),
-				true, true, dims, rateNumerator, rateDenominator);
+				true, true, dims, dimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -372,7 +517,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		if (this.order == order) return this;
 		return new TraversalPolicy(
 					order, true, true,
-					dims, rateNumerator, rateDenominator)
+					dims, dimsOrder, rateNumerator, rateDenominator)
 				.traverse(traversalAxis);
 	}
 
@@ -391,7 +536,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		return new TraversalPolicy(
 				order, true, true,
-				dims, newNumerator, newDenominator)
+				dims, dimsOrder, newNumerator, newDenominator)
 				.traverse(traversalAxis);
 	}
 
@@ -427,9 +572,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		newDims[0] = size;
 		for (int i = 0; i < getDimensions(); i++) newDims[i + 1] = lengthLong(i);
 
+		// Create new dimsOrder with shifted indices
+		int newDimsOrder[] = new int[newDims.length];
+		newDimsOrder[0] = 0; // New dimension maps to itself
+		for (int i = 0; i < getDimensions(); i++) {
+			newDimsOrder[i + 1] = dimsOrder[i] + 1;
+		}
+
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, newDimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis + 1;
 		return p;
 	}
@@ -441,7 +593,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, null, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -451,9 +603,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
 		newDims[newDims.length - 1] = size;
 
+		// Create new dimsOrder with existing mappings plus new dimension
+		int newDimsOrder[] = new int[newDims.length];
+		for (int i = 0; i < getDimensions(); i++) {
+			newDimsOrder[i] = dimsOrder[i];
+		}
+		newDimsOrder[newDims.length - 1] = newDims.length - 1; // New dimension maps to itself
+
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, newDimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -468,7 +627,35 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, dimsOrder, rateNumerator, rateDenominator);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
+	public TraversalPolicy insertDimension(long size) {
+		return insertDimension(getTraversalAxis(), size);
+	}
+
+	public TraversalPolicy insertDimension(int axis, long size) {
+		// Create new dims with existing lengths plus new dimension
+		long newDims[] = new long[getDimensions() + 1];
+		for (int i = 0; i < axis; i++)
+			newDims[i] = lengthLong(i);
+		newDims[axis] = size;
+		for (int i = axis; i < getDimensions(); i++)
+			newDims[i + 1] = lengthLong(i);
+
+		// Create new dimsOrder with existing mappings plus new dimension
+		int newDimsOrder[] = new int[newDims.length];
+		for (int i = 0; i < axis; i++)
+			newDimsOrder[i] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
+		newDimsOrder[axis] = axis;
+		for (int i = axis; i < getDimensions(); i++)
+			newDimsOrder[i + 1] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
+
+		TraversalPolicy p = new TraversalPolicy(
+				order, true, false,
+				newDims, newDimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -479,7 +666,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, dimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -488,9 +675,15 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		long newDims[] = new long[getDimensions() - depth];
 		for (int i = 0; i < newDims.length; i++) newDims[i] = lengthLong(i + depth);
 
+		// Create subset of dimsOrder
+		int newDimsOrder[] = new int[newDims.length];
+		for (int i = 0; i < newDims.length; i++) {
+			newDimsOrder[i] = dimsOrder[i + depth] - depth;
+		}
+
 		TraversalPolicy p = new TraversalPolicy(
 				order, true, false,
-				newDims, rateNumerator, rateDenominator);
+				newDims, newDimsOrder, rateNumerator, rateDenominator);
 		p.traversalAxis = traversalAxis > depth ? traversalAxis - depth : 0;
 		return p;
 	}
@@ -521,6 +714,53 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return this;
 	}
 
+	public TraversalPolicy flatten(int... requiredDims) {
+		return flatten(false, requiredDims);
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which contains only one
+	 * dimension in addition to those specified by requiredDims.
+	 * If this process is strict, the dimensions of the original
+	 * must actually match the required dimensions. This process
+	 * will attempt to preserve the traversal axis of the original,
+	 * but this may not result in the same count and size if the
+	 * specified required dimensions make that impossible.
+	 */
+	public TraversalPolicy flatten(boolean strict, int... requiredDims) {
+		if (requiredDims.length == 0) {
+			return flatten(false);
+		}
+
+		TraversalPolicy targetItem = new TraversalPolicy(requiredDims);
+		long count = getTotalSizeLong() / targetItem.getTotalSizeLong();
+
+		int offset = getDimensions() - requiredDims.length;
+		int axis = 0;
+
+		long newDims[] = new long[requiredDims.length + 1];
+
+		for (int i = 0; i < requiredDims.length + 1; i++) {
+			int pos = i - 1;
+			int origPos = pos + offset;
+
+			if (i > 0) {
+				newDims[i] = requiredDims[pos];
+
+				if (strict && lengthLong(origPos) != requiredDims[pos]) {
+					throw new IllegalArgumentException();
+				} else if (getTraversalAxis() == origPos) {
+					axis = i;
+				}
+			} else {
+				newDims[i] = count;
+			}
+		}
+
+		return new TraversalPolicy(order, true, true, newDims)
+						.traverse(axis);
+	}
+
 	public TraversalPolicy flatten() {
 		return flatten(false);
 	}
@@ -533,10 +773,22 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 	}
 
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same
+	 * dimensions, but with a traversal axis which results in
+	 * a {@link #getCountLong() count} that matches that of the
+	 * specified {@link TraversalPolicy}.
+	 */
 	public TraversalPolicy alignCount(TraversalPolicy alt) {
 		return alignCount(alt.getCountLong());
 	}
 
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same
+	 * dimensions, but with a traversal axis which results in
+	 * a {@link #getCountLong() count} that matches the specified
+	 * value (if possible).
+	 */
 	public TraversalPolicy alignCount(long count) {
 		int axis = getTraversalAxis();
 
@@ -549,6 +801,32 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 
 		return this;
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same dimensions,
+	 * but with a {@link #getTraversalAxis() traversal axis} which results
+	 * in a {@link #getSizeLong() size} that matches that of the specified
+	 * {@link TraversalPolicy}.
+	 */
+	public TraversalPolicy alignSize(TraversalPolicy alt) {
+		return alignSize(alt.getSizeLong());
+	}
+
+	/**
+	 * Create a new {@link TraversalPolicy} which has the same dimensions,
+	 * but with a {@link #getTraversalAxis() traversal axis} which results
+	 * in a {@link #getSizeLong() size} that matches the specified value
+	 * (if possible).
+	 */
+	public TraversalPolicy alignSize(long size) {
+		int axis = 0;
+
+		while (traverse(axis).getSizeLong() > size && axis < getDimensions()) {
+			axis++;
+		}
+
+		return getTraversalAxis() != axis ? traverse(axis) : this;
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }
@@ -650,6 +928,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		dos.flush();
 	}
 
+	public int[] differingAxes(TraversalPolicy p) {
+		if (p.getDimensions() != getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+
+		return IntStream.range(0, getDimensions())
+				.filter(i -> lengthLong(i) != p.lengthLong(i))
+				.toArray();
+	}
+
 	@Override
 	public int hashCode() {
 		return Arrays.hashCode(dims);
@@ -657,6 +945,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	public boolean equalsIgnoreAxis(TraversalPolicy p) {
 		return Arrays.equals(dims, p.dims) &&
+				Arrays.equals(dimsOrder, p.dimsOrder) &&
 				Arrays.equals(rateNumerator, p.rateNumerator) &&
 				Arrays.equals(rateDenominator, p.rateDenominator);
 	}
@@ -674,6 +963,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	@Override
 	public String describe() { return toStringDetail(); }
 
+	// TODO  This should include a description of the input space if it differs from the output space
 	public String toStringDetail() {
 		if (getSizeLong() == 0) {
 			return this + "[axis=" + getTraversalAxis() + "]";
@@ -687,7 +977,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		for (int i = 0; i < dims.length; i++) {
-			sb.append(dims[i]);
+			sb.append(lengthLong(i));
 			if (i < dims.length - 1) sb.append(", ");
 		}
 		sb.append(")");

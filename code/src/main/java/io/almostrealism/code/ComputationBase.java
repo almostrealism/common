@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -29,6 +31,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 
 import java.util.Collection;
 import java.util.List;
@@ -36,21 +39,20 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Process<?, ?>>
-					implements Computation<O>, ComputableParallelProcess<Process<?, ?>, T> {
+public abstract class ComputationBase<I, O, T>
+					extends ComputableBase<I, T>
+					implements Computation<O>, Signature {
 	private LanguageOperations lang;
 	private List<ComputeRequirement> requirements;
 
 	private ProcessContext optimizationCtx;
 	protected ComputationBase<I, O, T> optimized;
 
-	public ComputationBase() {
-		super(new Supplier[0]);
-	}
-
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return OperationInfo.metadataForProcess(this, metadata);
+		metadata = OperationInfo.metadataForProcess(this, metadata);
+		metadata.setSignature(signature());
+		return metadata;
 	}
 
 	@Override
@@ -81,17 +83,9 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
 	}
 
-	@Override
-	public Scope compile() {
-		warn("Attempting to compile a Computation, " +
-			"rather than an Evaluable container for one");
-		return null;
-	}
-
-	@Override
-	public boolean isCompiled() { return false; }
-
 	protected LanguageOperations getLanguage() { return lang; }
+
+	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -122,7 +116,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	 */
 	protected void assignArguments(ArgumentProvider provider) {
 		setArguments(getInputs().stream()
-				.map(provider.argumentForInput(this))
+				.map(provider.argumentForInput(getNameProvider()))
 				.map(var ->
 						Optional.ofNullable(var).map(v ->
 								new Argument<>(v, Expectation.EVALUATE_AHEAD))
@@ -131,8 +125,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 				.collect(Collectors.toList()));
 	}
 
-	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(int index) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}
@@ -176,6 +169,15 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	}
 
 	/**
+	 * Subclasses should override this method to provide a meaningful
+	 * signature.
+	 *
+	 * @return  null
+	 */
+	@Override
+	public String signature() { return null; }
+
+	/**
 	 * Extends {@link ComputableParallelProcess#optimize(ProcessContext)} to ensure that
 	 * the {@link ComputeRequirement}s are preserved.
 	 *
@@ -186,7 +188,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 		if (optimized == null) {
 			optimizationCtx = ctx;
 			optimized = (ComputationBase<I, O, T>)
-					ComputableParallelProcess.super.optimize(ctx);
+					super.optimize(ctx);
 			optimized.setComputeRequirements(getComputeRequirements());
 		} else if (Countable.countLong(ctx) != Countable.countLong(optimizationCtx)) {
 			warn("Cached optimization may not be ideal for new ProcessContext count of " +
@@ -205,7 +207,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I, Proce
 	 */
 	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
-				ComputableParallelProcess.super.generateReplacement(inputs);
+				super.generateReplacement(inputs);
 		replacement.setComputeRequirements(getComputeRequirements());
 		return replacement;
 	}

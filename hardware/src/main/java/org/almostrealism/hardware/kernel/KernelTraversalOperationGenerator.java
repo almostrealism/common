@@ -17,38 +17,25 @@
 package org.almostrealism.hardware.kernel;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.MemoryDataComputation;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
-public class KernelTraversalOperationGenerator implements KernelTraversalProvider, ConsoleFeatures {
+public class KernelTraversalOperationGenerator implements KernelTraversalProvider, Destroyable, ConsoleFeatures {
 	public static boolean enableGeneration = true;
 	public static boolean enableVerbose = false;
 	public static int defaultMaxEntries = 128;
@@ -59,7 +46,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	private int count;
 	private boolean fixed;
 	private Function<Producer<?>, ArrayVariable<?>> variableFactory;
-	private Map<String, TraversalOperation> operations;
+	private Map<String, KernelTraversalOperation> operations;
 	private Map<String, ArrayVariable> variables;
 
 	protected KernelTraversalOperationGenerator(int count, boolean fixed, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
@@ -89,7 +76,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 				return expression;
 			}
 
-			TraversalOperation<?> operation = new TraversalOperation<>();
+			KernelTraversalOperation<?> operation = new KernelTraversalOperation<>();
 			IntStream.range(0, count)
 					.mapToObj(i -> expression.withIndex(new KernelIndex(), i).getSimplified())
 					.forEach(operation.getExpressions()::add);
@@ -104,53 +91,13 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	}
 
 	@Override
-	public Console console() { return AcceleratedOperation.console; }
-
-	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
-			implements MemoryDataComputation<T>, ComputerFeatures {
-		private List<Expression> expressions;
-		private MemoryDataDestinationProducer destination;
-
-		public TraversalOperation() {
-			this.expressions = new ArrayList<>();
-			this.destination = new MemoryDataDestinationProducer<>(this, i -> new Bytes(expressions.size()));
-			setInputs(destination);
-			init();
-		}
-
-		protected List<Expression> getExpressions() { return expressions; }
-
-		@Override
-		public int getMemLength() { return expressions.size(); }
-
-		@Override
-		public long getCountLong() { return 1; }
-
-		@Override
-		public boolean isFixedCount() { return true; }
-
-		@Override
-		public Scope<T> getScope(KernelStructureContext context) {
-			Scope<T> scope = super.getScope(context);
-			ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
-
-			for (int i = 0; i < getMemLength(); i++) {
-				scope.getVariables().add(output.referenceRelative(i).assign(expressions.get(i)));
-			}
-
-			return scope;
-		}
-
-		@Override
-		public Evaluable<T> get() {
-			ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
-			AcceleratedComputationEvaluable<T> ev = new AcceleratedComputationEvaluable<>(ctx, this);
-			ev.setKernelStructureSupported(false);
-			ev.setDestinationFactory(destination.getDestinationFactory());
-			ev.compile();
-			return ev;
-		}
+	public void destroy() {
+		operations.forEach((k, v) -> v.destroy());
+		operations.clear();
 	}
+
+	@Override
+	public Console console() { return AcceleratedOperation.console; }
 
 	public static KernelTraversalOperationGenerator create(Computation<?> c, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
 		int count = Countable.count(c);

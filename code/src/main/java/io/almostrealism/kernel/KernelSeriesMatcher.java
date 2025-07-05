@@ -17,7 +17,7 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;

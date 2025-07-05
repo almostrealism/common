@@ -79,6 +79,10 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		this.onNull = onNull;
 	}
 
+	public void addVariable(Variable<?, ?> v) {
+		// TODO
+	}
+
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
@@ -87,9 +91,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
-		addVariable(new ArrayVariable(this, PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(PhysicalScope.LOCAL, Double.class, getHighestRankResultVariable(), e(2), () -> this));
+		addVariable(new ArrayVariable(PhysicalScope.LOCAL, Double.class, getHighestRankInputVariable(), e(2 * valueCount), () -> this));
+		addVariable(new ArrayVariable(PhysicalScope.LOCAL, Double.class, getHighestRankConfVariable(), e(2), () -> this));
 	}
 
 	@Override
@@ -206,9 +210,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected String getHighestRankResultVariable() { return getVariableName(0); }
-	protected String getHighestRankInputVariable() { return getVariableName(1); }
-	protected String getHighestRankConfVariable() { return getVariableName(2); }
+	protected String getHighestRankResultVariable() { return getNameProvider().getVariableName(0); }
+	protected String getHighestRankInputVariable() { return getNameProvider().getVariableName(1); }
+	protected String getHighestRankConfVariable() { return getNameProvider().getVariableName(2); }
 	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
@@ -240,7 +244,6 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 			newArgs.add(getDefaultValue());
 
 			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 
@@ -257,7 +260,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		}
 
 		return kernelIndex < 0 ? "" :
-				getKernelIndex(kernelIndex) + " * " + getVariableDimName(v, kernelIndex) + " + ";
+				getKernelIndex(kernelIndex) + " * " + getComputeContext().getLanguage().getVariableDimName(v, kernelIndex) + " + ";
 	}
 
 	private String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {

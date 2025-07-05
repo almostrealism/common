@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.mem.Heap;
 
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -40,6 +41,10 @@ public class ProducerCache {
 
 	/** This type is not to be instantiated. */
 	private ProducerCache() { }
+
+	public static <T> Evaluable<? extends Multiple<T>> getEvaluableForArrayVariable(ArrayVariable<T> argument) {
+		return getEvaluableForSupplier(argument.getProducer());
+	}
 
 	/**
 	 * This provides a way to obtain an already available {@link Evaluable} for

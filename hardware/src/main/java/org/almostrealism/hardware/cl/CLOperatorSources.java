@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import io.almostrealism.code.Precision;
 import org.almostrealism.io.Console;

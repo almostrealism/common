@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,10 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.ComputableBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.DefaultCollectionExpression;
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -46,7 +45,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
@@ -100,8 +98,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			Expression<Double> value = getValueAt(index);
 
-			if (value == null && mapped instanceof OperationAdapter) {
-				OperationAdapter<?, ?> op = (OperationAdapter) mapped;
+			if (value == null && mapped instanceof ComputableBase) {
+				ComputableBase<?, ?> op = (ComputableBase) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
 				value = v.referenceRelative(e(i));
@@ -206,6 +204,9 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
 		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
 	}
+
+	@Override
+	public String signature() { return null; }
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
 		return DefaultCollectionExpression.create(sliceShape,

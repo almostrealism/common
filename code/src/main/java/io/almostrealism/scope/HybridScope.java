@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.ComputableBase;
 import io.almostrealism.lang.CodePrintWriter;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Parent;
 
 import java.util.ArrayList;
@@ -31,7 +31,7 @@ public class HybridScope<T> extends Scope<T> {
 	private final ExplicitScope<T> explicit;
 	private CodeGenerator codeGenerator;
 
-	public HybridScope(OperationAdapter operation) {
+	public HybridScope(ComputableBase operation) {
 		super(operation.getFunctionName(), operation.getMetadata());
 		this.explicit = new ExplicitScope<T>(operation);
 

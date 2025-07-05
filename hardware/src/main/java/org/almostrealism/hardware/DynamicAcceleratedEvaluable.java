@@ -70,38 +70,6 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 		return (O) process.getOriginalArguments()[0];
 	}
 
-	@Deprecated
-	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {
-		getVariables().stream()
-				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
-			if (var.getPhysicalScope() != null) {
-				out.accept(var.getPhysicalScope() == PhysicalScope.LOCAL ? "__local" : "__global");
-				out.accept(" ");
-			}
-
-			out.accept(lang.getPrecision().typeName());
-			out.accept(" ");
-			out.accept(var.getDestination().getSimpleExpression(lang));
-
-			if (var.getExpression().isNull()) {
-				if (var.getArraySize() != null) {
-					out.accept("[");
-					out.accept(var.getArraySize().getSimpleExpression(lang));
-					out.accept("]");
-				}
-			} else {
-				if (var.getArraySize() != null) {
-					throw new RuntimeException("Not implemented");
-				} else {
-					out.accept(" = ");
-					out.accept(var.getExpression().getSimpleExpression(lang));
-				}
-			}
-
-			out.accept(";\n");
-		});
-	}
-
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
 }

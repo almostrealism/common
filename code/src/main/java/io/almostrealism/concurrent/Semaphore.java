@@ -16,7 +16,7 @@
 
 package io.almostrealism.concurrent;
 
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 
 public interface Semaphore {
 	OperationMetadata getRequester();

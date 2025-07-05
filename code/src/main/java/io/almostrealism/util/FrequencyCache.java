@@ -22,7 +22,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.IntPredicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -53,6 +55,10 @@ public class FrequencyCache<K, V> {
 	private final int capacity;
 
 	private BiConsumer<K, V> evictionListener;
+
+	public FrequencyCache() {
+		this(200, 0.5);
+	}
 
 	public FrequencyCache(int capacity, double frequencyBias) {
 		if (frequencyBias > 1 || frequencyBias < 0) throw new IllegalArgumentException();
@@ -90,13 +96,27 @@ public class FrequencyCache<K, V> {
 		CacheEntry entry = reverseCache.get(value);
 
 		if (entry == null) {
-			prepareCapacity();
+			confirmCapacity();
 			cache.put(key, new CacheEntry(value));
 			reverseCache.put(value, cache.get(key));
 		} else {
 			cache.put(key, entry);
 			entry.accessed();
 		}
+	}
+
+	public V computeIfAbsent(K key, Supplier<V> supplier) {
+		return computeIfAbsent(key, k -> supplier.get());
+	}
+
+	public V computeIfAbsent(K key, Function<K, V> supplier) {
+		if (cache.containsKey(key)) {
+			return get(key);
+		}
+
+		V value = supplier.apply(key);
+		put(key, value);
+		return value;
 	}
 
 	public void evict(K key) {
@@ -121,7 +141,13 @@ public class FrequencyCache<K, V> {
 		cache.forEach((k, v) -> consumer.accept(k, v.value));
 	}
 
-	protected void prepareCapacity() {
+	protected void confirmCapacity() {
+		if (reverseCache.size() < capacity) return;
+
+		prepareCapacity();
+	}
+
+	protected synchronized void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
 					Comparator.comparing(e -> score(e.getValue())));

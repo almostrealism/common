@@ -20,8 +20,9 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -59,7 +60,7 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, HardwareFeatures {
+					NamedFunction, Destroyable, ComputerFeatures {
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
@@ -169,21 +170,20 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			if (enableAutomaticOptimization && !isUniform()) {
 				return optimize().get();
 			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
-				OperationAdapter op = (OperationAdapter) compileRunnable(this);
+				AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
 				op.setFunctionName(functionName);
-				op.compile();
-				return (Runnable) op;
+				op.load();
+				return op;
 			} else {
 				if (isComputation()) {
 					warn("OperationList was not compiled (uniform = " + isUniform() + ")");
 				}
 
 				List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
-				run.stream()
-						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
-						.filter(Objects::nonNull)
-						.filter(Predicate.not(OperationAdapter::isCompiled))
-						.forEach(OperationAdapter::compile);
+				if (run.size() == 1) {
+					return run.get(0);
+				}
+
 				return new Runner(getMetadata(), run, getComputeRequirements(),
 						profile == null ? null : profile.getTimingListener());
 			}
@@ -333,13 +333,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return op.optimize(context);
 	}
 
+	@Override
 	public void destroy() {
-		stream().map(o -> o instanceof OperationAdapter ? (OperationAdapter) o : null)
+		stream().map(o -> o instanceof Destroyable ? (Destroyable) o : null)
 				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::destroy);
-		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationList::destroy);
+				.forEach(Destroyable::destroy);
 	}
 
 	@Override

@@ -71,7 +71,6 @@ public class StandardMathTests implements TestFeatures {
 					for (int j = 0; j < 2; j++) {
 						double expected = in.valueAt(n, i, j) * x.valueAt(i, j);
 						double actual = result.valueAt(n, i, j);
-						log("StandardMathTests[" + i + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -91,7 +90,6 @@ public class StandardMathTests implements TestFeatures {
 		for (int i = 0; i < dim; i++) {
 			double expected = in.valueAt(i) / (1.0f + Math.exp(-in.valueAt(i)));
 			double actual = out.valueAt(i);
-			log("StandardMathTests[" + i + "] " + expected + " vs " + actual);
 			assertEquals(expected, actual);
 		}
 	}

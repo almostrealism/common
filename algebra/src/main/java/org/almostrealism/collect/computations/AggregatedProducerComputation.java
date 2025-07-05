@@ -86,6 +86,8 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		return this;
 	}
 
+	protected boolean isSignatureSupported() { return false; }
+
 	@Override
 	public boolean isChainRuleSupported() {
 		return enableChainRule || super.isChainRuleSupported();
@@ -109,10 +111,10 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 				throw new UnsupportedOperationException();
 			}
 
-			row = new DefaultIndex(getVariablePrefix() + "_g");
+			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());
 
-			ref = new DefaultIndex(getVariablePrefix() + "_i");
+			ref = new DefaultIndex(getNameProvider().getVariablePrefix() + "_i");
 			getIndexLimit().ifPresent(ref::setLimit);
 
 			Expression index = Index.child(row, ref);
@@ -281,4 +283,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		c.setReplaceLoop(replaceLoop);
 		return c;
 	}
+
+	@Override
+	public String signature() { return isSignatureSupported() ? super.signature() : null; }
 }

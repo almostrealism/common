@@ -26,6 +26,17 @@ public interface KernelStructureContext {
 	KernelSeriesProvider getSeriesProvider();
 	KernelTraversalProvider getTraversalProvider();
 
+	default boolean isValidKernelSize(long size) {
+		if ((getKernelMaximum().isPresent() && size !=
+				getKernelMaximum().getAsLong()) ||
+				(getSeriesProvider() != null && getSeriesProvider().getMaximumLength().isPresent() &&
+						size != getSeriesProvider().getMaximumLength().getAsInt())) {
+			return false;
+		}
+
+		return true;
+	}
+
 	default Expression<?> simplify(Expression<?> expression) {
 		Expression<?> e = expression.simplify(this);
 		if (getSeriesProvider() != null) {

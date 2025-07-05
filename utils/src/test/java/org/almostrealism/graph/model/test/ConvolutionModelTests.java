@@ -223,7 +223,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 						}
 
 						double actual = outputGradient.valueAt(n, inCh, y, x);
-						log("[" + n + ", " + inCh + ", " + y + ", " + x + "] " + expected + " vs " + actual);
+						if (verboseLogs)
+							log("[" + n + ", " + inCh + ", " + y + ", " + x + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}

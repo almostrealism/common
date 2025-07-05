@@ -50,9 +50,9 @@ public class Choice<T extends PackedCollection<?>> extends CollectionProducerCom
 		scope.getVariables().addAll(getVariables());
 		Consumer<String> code = scope.code();
 
-		ArrayVariable<?> output = getArgument(0, getMemLength());
-		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
-		Expression decision = getArgument(1, 2).valueAt(0);
+		ArrayVariable<?> output = getArgument(0);
+		ArrayVariable<?> input = getArgument(2);
+		Expression decision = getArgument(1).valueAt(0);
 		Expression choices = new DoubleConstant((double) choiceCount);
 		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 

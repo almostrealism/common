@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.function.DoublePredicate;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -162,6 +163,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
+	default int count(DoublePredicate predicate) {
+		return Math.toIntExact(doubleStream().filter(predicate).count());
+	}
+
 	default double toDouble(int index) {
 		if (getMemOrdering() == null) {
 			return index < 0 ? 0.0 : toArray(index, 1)[0];
@@ -192,6 +197,30 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default double[] toArray() {
 		return toArray(0, getMemLength());
+	}
+
+	default float[] toFloatArray(int offset, int length) {
+		if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
+		if (getMemOrdering() == null) {
+			float out[] = new float[length];
+			getMem(0, out, offset, length);
+			return out;
+		} else {
+			double raw[] = toArray(offset, length);
+			float out[] = new float[raw.length];
+			for (int i = 0; i < raw.length; i++) {
+				out[i] = (float) raw[i];
+			}
+
+			return out;
+		}
+	}
+
+	default float[] toFloatArray() {
+		return toFloatArray(0, getMemLength());
 	}
 
 	default String toArrayString(int offset, int length) {

@@ -257,28 +257,155 @@ public class WeightedSumTests implements TestFeatures {
 		compare(out, result.reshape(bs, c, s1, s2));
 	}
 
-	// TODO  Move to TestFeatures
-	protected void compare(CollectionProducer<PackedCollection<?>> expected, CollectionProducer<PackedCollection<?>> result) {
-		PackedCollection<?> e = expected.evaluate();
-		PackedCollection<?> o = result.evaluate();
 
-		if (!e.getShape().equals(o.getShape())) {
-			log(o.getShape().toStringDetail() + " != " + e.getShape().toStringDetail());
-			throw new AssertionError();
+	@Test
+	public void scaledDotProduct() {
+		int batchSize = 2;
+		int heads = 3;
+		int seqLenA = 5;
+		int seqLenB = 7;
+		int dim = 4;
+
+		// Create input tensors
+		// a: (batch, heads, seqLenA, dim)
+		// b: (batch, heads, dim, seqLenB)
+		PackedCollection<?> a = new PackedCollection<>(shape(batchSize, heads, seqLenA, dim))
+				.fill(pos -> Math.random());
+		PackedCollection<?> b = new PackedCollection<>(shape(batchSize, heads, dim, seqLenB))
+				.fill(pos -> Math.random());
+
+		// Compute expected result manually
+		// Result should have shape (batch, heads, seqLenA, seqLenB)
+		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLenA, seqLenB));
+
+		for (int batch = 0; batch < batchSize; batch++) {
+			for (int head = 0; head < heads; head++) {
+				for (int i = 0; i < seqLenA; i++) {
+					for (int j = 0; j < seqLenB; j++) {
+						double sum = 0.0;
+						for (int k = 0; k < dim; k++) {
+							sum += a.valueAt(batch, head, i, k) * b.valueAt(batch, head, k, j);
+						}
+						expected.setValueAt(sum, batch, head, i, j);
+					}
+				}
+			}
 		}
 
-		log(o.getShape());
+		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(a), cp(b));
+		PackedCollection<?> actual = result.evaluate();
 
-		double ev[] = e.toArray();
-		double ov[] = o.toArray();
+		// Verify shapes match
+		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));
 
-		for (int i = 0; i < ev.length; i++) {
-			log(ev[i] + " vs " + ov[i]);
-			assertEquals(ev[i], ov[i]);
+		for (int batch = 0; batch < batchSize; batch++) {
+			for (int head = 0; head < heads; head++) {
+				for (int i = 0; i < seqLenA; i++) {
+					for (int j = 0; j < seqLenB; j++) {
+						assertEquals(expected.valueAt(batch, head, i, j), actual.valueAt(batch, head, i, j));
+					}
+				}
+			}
 		}
 	}
 
-	private String s(int[] a) {
-		return Arrays.toString(a);
+	@Test
+	public void scaledDotProductPermute() {
+		int batchSize = 2;
+		int heads = 3;
+		int seqLen = 6;
+		int dim = 4;
+
+		// Test case for Q @ K^T pattern used in attention
+		// q: (batch, heads, seqLen, dim)
+		// k: (batch, heads, seqLen, dim)
+		// Result after k transpose: (batch, heads, seqLen, seqLen)
+		PackedCollection<?> q = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+				.fill(pos -> Math.random());
+		PackedCollection<?> k = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+				.fill(pos -> Math.random());
+
+		// Compute expected result for Q @ K^T
+		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, seqLen));
+
+		for (int batch = 0; batch < batchSize; batch++) {
+			for (int head = 0; head < heads; head++) {
+				for (int i = 0; i < seqLen; i++) {
+					for (int j = 0; j < seqLen; j++) {
+						double sum = 0.0;
+						for (int d = 0; d < dim; d++) {
+							// Q[i,d] * K[j,d] (K transposed)
+							sum += q.valueAt(batch, head, i, d) * k.valueAt(batch, head, j, d);
+						}
+
+						expected.setValueAt(sum, batch, head, i, j);
+					}
+				}
+			}
+		}
+
+		// Test with transposed K
+		// We need to transpose last two dimensions of k: (batch, heads, seqLen, dim) -> (batch, heads, dim, seqLen)
+		CollectionProducer<PackedCollection<?>> kTransposed = cp(k)
+				.reshape(batchSize, heads, seqLen, dim)
+				.permute(0, 1, 3, 2);
+
+		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(q), kTransposed);
+		PackedCollection<?> actual = result.evaluate();
+
+		// Verify shapes match
+		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));
+
+		// Compare results
+		double diff = compare(expected, actual);
+		log("batchMatrixMultiply with transpose difference: " + diff);
+		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
+	}
+
+	@Test
+	public void scaledDotProductTranspose() {
+		int batchSize = 2;
+		int heads = 3;
+		int seqLen = 6;
+		int dim = 4;
+
+		// Test case for Q @ K^T pattern used in attention
+		// q: (batch, heads, seqLen, dim)
+		// k: (batch, heads, seqLen, dim)
+		// Result after k transpose: (batch, heads, seqLen, seqLen)
+		PackedCollection<?> q = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+				.fill(pos -> Math.random());
+		PackedCollection<?> k = new PackedCollection<>(shape(batchSize, heads, seqLen, dim))
+				.fill(pos -> Math.random());
+
+		// Compute expected result for Q @ K^T
+		PackedCollection<?> expected = new PackedCollection<>(shape(batchSize, heads, seqLen, seqLen));
+
+		for (int batch = 0; batch < batchSize; batch++) {
+			for (int head = 0; head < heads; head++) {
+				for (int i = 0; i < seqLen; i++) {
+					for (int j = 0; j < seqLen; j++) {
+						double sum = 0.0;
+						for (int d = 0; d < dim; d++) {
+							// Q[i,d] * K[j,d] (K transposed)
+							sum += q.valueAt(batch, head, i, d) * k.valueAt(batch, head, j, d);
+						}
+
+						expected.setValueAt(sum, batch, head, i, j);
+					}
+				}
+			}
+		}
+		
+		CollectionProducer<PackedCollection<?>> result = scaledDotProduct(cp(q), cp(k), true);
+		PackedCollection<?> actual = result.evaluate();
+
+		// Verify shapes match
+		assertEquals(expected.getShape().traverse(0), actual.getShape().traverse(0));
+
+		// Compare results
+		double diff = compare(expected, actual);
+		log("batchMatrixMultiply with transpose difference: " + diff);
+		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
 	}
 }

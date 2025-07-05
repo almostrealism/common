@@ -1,9 +1,8 @@
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationWithInfo;
-import io.almostrealism.relation.Parent;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.compute.Process;
 import org.almostrealism.hardware.MemoryData;
 

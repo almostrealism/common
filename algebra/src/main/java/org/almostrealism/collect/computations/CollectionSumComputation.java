@@ -1,61 +1,49 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducerParallelProcess;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-public class CollectionSumComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
-
-	public CollectionSumComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
-		this("add", shape, arguments);
+public class CollectionSumComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
+	public CollectionSumComputation(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
-	public CollectionSumComputation(TraversalPolicy shape,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		this("add", shape, arguments);
-	}
-
-	protected CollectionSumComputation(String name, TraversalPolicy shape,
-										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(name, shape, arguments);
+	protected CollectionSumComputation(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
+				(args, index) -> new DoubleConstant(0.0),
+				(out, arg) -> out.add(arg),
+				input);
+		setReplaceLoop(true);
 	}
 
 	@Override
-	protected CollectionExpression getExpression(TraversableExpression... args) {
-		return sum(getShape(), Stream.of(args).skip(1).toArray(TraversableExpression[]::new));
+	public CollectionSumComputation<T> generate(List<Process<?, ?>> children) {
+		return new CollectionSumComputation(children.get(1));
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
-		List<Producer<?>> args = children.stream().skip(1)
-				.map(p -> (Producer<?>) p).collect(Collectors.toList());
-		return (CollectionProducerParallelProcess) add(args);
-	}
+	protected boolean isSignatureSupported() { return true; }
 }

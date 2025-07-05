@@ -62,7 +62,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> imp
 
 		double interval = 1.0 / choices.size();
 
-		ArrayVariable<?> decisionValue = getArgument(0, 2);
+		ArrayVariable<?> decisionValue = getArgument(0);
 
 		IntStream.range(0, choices.size()).forEach(i -> {
 			double val = (i + 1) * interval;

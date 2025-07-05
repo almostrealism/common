@@ -32,6 +32,5 @@ public class BinaryOperatorTests implements CodeFeatures {
 				vector(4.0, 5.0, 6.0));
 
 		// TODO Assertions
-		operation.compile();
 	}
 }

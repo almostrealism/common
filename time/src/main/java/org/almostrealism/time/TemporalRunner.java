@@ -17,8 +17,8 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.compute.Process;
@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class TemporalRunner implements Setup, Temporal, OperationComputation<Void> {
+public class TemporalRunner implements OperationComputation<Void>, Setup, Temporal, Destroyable {
 	public static boolean enableFlatten = true;
 	public static boolean enableOptimization = false;
 	public static boolean enableIsolation = false;
@@ -143,19 +143,13 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 				.collect(Collectors.toList());
 	}
 
+	@Override
 	public void destroy() {
-		Stream.of(setup).map(o -> o instanceof OperationAdapter ? (OperationAdapter) o : null)
+		Stream.of(setup).map(o -> o instanceof Destroyable ? (Destroyable) o : null)
 				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::destroy);
-		Stream.of(setup).map(o -> o instanceof OperationList ? (OperationList) o : null)
+				.forEach(Destroyable::destroy);
+		Stream.of(run).map(o -> o instanceof Destroyable ? (Destroyable) o : null)
 				.filter(Objects::nonNull)
-				.forEach(OperationList::destroy);
-
-		Stream.of(run).map(o -> o instanceof OperationAdapter ? (OperationAdapter) o : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::destroy);
-		Stream.of(run).map(o -> o instanceof OperationList ? (OperationList) o : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationList::destroy);
+				.forEach(Destroyable::destroy);
 	}
 }

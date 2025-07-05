@@ -173,7 +173,8 @@ public class CompiledModel implements CodeFeatures {
 			if (input == null) {
 				warn("null input");
 			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
-				throw new IllegalArgumentException();
+				throw new IllegalArgumentException("Provided " + input.getShape() +
+						" input when " + shape + " was expected");
 			}
 
 			this.input = input;

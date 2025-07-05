@@ -77,7 +77,7 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
 	}
 
 	@Override

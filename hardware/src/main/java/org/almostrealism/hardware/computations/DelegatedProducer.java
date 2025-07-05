@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 
 import java.util.Collection;
@@ -31,7 +32,7 @@ import java.util.List;
 
 public class DelegatedProducer<T> implements
 		Process<Process<?, ?>, Evaluable<? extends T>>,
-		Producer<T>, Countable,
+		Producer<T>, Countable, Signature,
 		OperationInfo {
 	protected Producer<T> op;
 	protected boolean direct;
@@ -111,6 +112,19 @@ public class DelegatedProducer<T> implements
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return this;
+	}
+
+	@Override
+	public String signature() {
+		if (MemoryDataArgumentMap.isAggregationTarget(op)) {
+			// It should actually be possible to compute a valid signature
+			// for this anyway, but because argument aggregation for
+			// Computations depends on the other Computation arguments,
+			// it requires more information than is available here
+			return null;
+		}
+
+		return "delegate|" + getCountLong() + "|" + isFixedCount();
 	}
 
 	@Override

@@ -305,6 +305,24 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void kernelModSum1() {
+		int m = 257;
+		int n = 128;
+		int k = 64;
+		int d1 = m * n;
+		int d2 = m * k;
+		int d3 = m * n * 4;
+
+//		((((kernel0 % d1) / n) * k) + ((kernel0 / d1) * d2) + (kernel0 % n)) / d3;
+		KernelIndex kernel = kernel().withLimit(d3 * 2);
+		Expression<?> e = kernel.imod(d1).divide(n).multiply(k)
+				.add(kernel.divide(d1).multiply(d2))
+				.add(kernel.imod(n)).divide(d3);
+		log(e);
+		// TODO  This can potentially be simplified to an expression of the form a >= x > b
+	}
+
+	@Test
 	public void modSumSeq1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2));
@@ -494,7 +512,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 		// 		((v92[0] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[0] + (- ((v92[0] + v92[1]) / 2.0)))) +
 		// 		((v92[1] + (- ((v92[0] + v92[1]) / 2.0))) * (v92[1] + (- ((v92[0] + v92[1]) / 2.0))))
 		// ) / 2.0
-		ArrayVariable v92 = new ArrayVariable(null, Double.class, "v92", e(4));
+		ArrayVariable v92 = new ArrayVariable(Double.class, "v92", e(4));
 		Expression ref0 = v92.valueAt(0);
 		Expression ref1 = v92.valueAt(1);
 		Expression e = ref0.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref0.add(ref0.add(ref1).divide(2.0).minus()))

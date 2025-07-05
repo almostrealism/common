@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,51 +16,27 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.compute.PhysicalScope;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
-
-// TODO  These capabilities should just become part of LanguageOperations
 public interface NameProvider {
 
 	String getFunctionName();
 
-	default String getVariablePrefix() { return getFunctionName(); }
-
-	default PhysicalScope getDefaultPhysicalScope() { return null; }
-
-	/**
-	 * Specifying the size is preferred, see {@link #getArgument(int, int)}.
-	 */
-	@Deprecated
-	default ArrayVariable getArgument(int index) {
-		return getArgument(index, null);
+	default String getVariablePrefix() {
+		String f = getFunctionName();
+		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+		return f;
 	}
-
-	default ArrayVariable getArgument(int index, int size) {
-		return getArgument(index, new IntegerConstant(size));
-	}
-
-	default ArrayVariable getArgument(int index, Expression<Integer> size) {
-		ArrayVariable v = new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
-		v.setArraySize(size);
-		return v;
-	}
-
-	Variable getOutputVariable();
 
 	default String getArgumentName(int index) {
-		if (getVariablePrefix() == null) throw new UnsupportedOperationException();
+		if (getVariablePrefix() == null)
+			throw new UnsupportedOperationException();
+
 		return getVariablePrefix() + "_v" + index;
 	}
 
 	default String getVariableName(int index) {
+		if (getVariablePrefix() == null)
+			throw new UnsupportedOperationException();
+
 		return getVariablePrefix() + "_l" + index;
 	}
-
-	String getVariableDimName(ArrayVariable v, int dim);
-
-	String getVariableSizeName(ArrayVariable v);
 }
