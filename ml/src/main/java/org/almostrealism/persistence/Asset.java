@@ -74,28 +74,24 @@ public class Asset {
 	}
 
 	public File getFile() {
-		if (file != null) return file;
-
-		if (group == null || name == null) return null;
-
 		if (confirmFile()) {
 			return file;
+		} else if (getUrl() != null) {
+			return SystemUtils.download(getUrl(), ensureFile().getAbsolutePath(), getMd5());
 		}
 
-		if (getUrl() != null) {
-			SystemUtils.download(getUrl(), file.getAbsolutePath(), getMd5());
-		}
-
-		return file;
+		return null;
 	}
 
 	private File ensureFile() {
+		if (file != null) return file;
+		if (group == null || name == null) return null;
 		return getAssetsDirectory(group).resolve(name).toFile();
 	}
 
 	private boolean confirmFile() {
 		file = ensureFile();
-		return file.exists() &&
+		return file != null && file.exists() &&
 				(getMd5() == null || getMd5().equals(SystemUtils.md5(file)));
 	}
 

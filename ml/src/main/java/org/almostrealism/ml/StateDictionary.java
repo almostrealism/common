@@ -71,7 +71,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	}
 
 	/**
-	 * Load weights from protobuf files in the directory.
+	 * Load weights from protobuf {@link org.almostrealism.persistence.Asset}s.
 	 */
 	private void loadWeights() throws IOException {
 		int total = files()
@@ -95,7 +95,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 				System.out.println("Loaded " + libraryData.getCollectionsCount() +
 						" weight tensors from " + weightFile.getName());
 				return 1;
-			} catch (IOException e) {
+			} catch (Exception e) {
 				warn("Error reading weights from file " + weightFile.getName() + ": " + e.getMessage());
 				return 0;
 			}

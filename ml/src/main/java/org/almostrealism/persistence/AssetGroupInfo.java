@@ -61,8 +61,8 @@ public class AssetGroupInfo {
 				.sum();
 	}
 
-	public AssetGroupInfo subset(String name, Predicate<AssetInfo> filter) {
-		return new AssetGroupInfo(name, getVersion(),
+	public AssetGroupInfo subset(Predicate<AssetInfo> filter) {
+		return new AssetGroupInfo(getName(), getVersion(),
 				getAssets().values().stream()
 						.filter(filter)
 						.collect(Collectors.toList()));
