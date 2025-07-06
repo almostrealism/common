@@ -68,14 +68,20 @@ Always run `mvn` commands from the root of the repository.
 - Enables compiler optimizations through constant iteration bounds
 - Constructor with memory length parameter (size) controls elements per kernel thread
 
-### TraversableRepeatedProducerComputation
-- Specialized RepeatedProducerComputation implementing TraversableExpression interface
-- Fixed iteration count (constant) for optimization opportunities
-- Traversable results enable composition with other traversable operations
-- Isolation control based on iteration count threshold and memory requirements
-- Common usage patterns:
-  - Reduction operations (indexOfMax, sum accumulation)
-  - Iterative refinement algorithms
-  - Accumulation computations with known bounds
-- Extended by AggregatedProducerComputation for aggregation operations
-- Primary usage through CollectionFeatures.indexOfMax() method
+### TraversableDeltaComputation
+- Core class for automatic differentiation (gradient computation) in the almostrealism framework
+- Computes partial derivatives of mathematical expressions with respect to target producers
+- Essential for machine learning algorithms and gradient-based optimization
+- Usage pattern: Created via CollectionProducer.delta(target) method
+- Key methods:
+  - getExpression(Expression index): Core delta computation implementation
+  - permitOptimization(): Controls optimization to preserve gradient computation integrity
+- Configuration flags for performance tuning:
+  - enableOptimization: Controls computational graph optimization
+  - enableStubOptimization: Optimizes non-expression processes safely
+  - enableAtomicScope: Reduces memory usage for large tensor operations
+  - enableIsolate: Controls process isolation for parallel execution
+- Common use cases: polynomial differentiation, matrix operations, normalization gradients, convolution gradients
+- Mathematical foundation: Implements chain rule of calculus for automatic differentiation
+- Output shape: deltaShape.append(targetShape) - combines expression and target dimensions
+- Cannot compute nested deltas (throws UnsupportedOperationException for second-order derivatives)
