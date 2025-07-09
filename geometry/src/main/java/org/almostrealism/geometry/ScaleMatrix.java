@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class ScaleMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public ScaleMatrix(Supplier<Evaluable<? extends Vector>> s) {
-		super("scaleMatrix", () -> new IdentityMatrix(), s);
+		super("scaleMatrix", TransformMatrix.blank(), s);
 		setKernelDestination(TransformMatrix::bank);
 		setPostprocessor(TransformMatrix.postprocessor());
 	}

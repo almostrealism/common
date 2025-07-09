@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class TranslationMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
-		super("translationMatrix", IdentityMatrix::new, t);
+		super("translationMatrix", TransformMatrix.blank(), t);
 		setKernelDestination(TransformMatrix::bank);
 		setPostprocessor(TransformMatrix.postprocessor());
 	}

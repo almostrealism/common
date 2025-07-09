@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -29,7 +28,6 @@ import org.almostrealism.geometry.computations.MatrixProduct;
 import org.almostrealism.geometry.computations.MatrixToUpperTriangle;
 import org.almostrealism.geometry.computations.MatrixTranspose;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -89,7 +87,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	private void initMem(boolean identity) {
 		init();
 		if (identity) {
-			new IdentityMatrix(() -> new Provider<>(this)).evaluate();
+			setMatrix(TransformMatrix.identity);
 		}
 	}
 
