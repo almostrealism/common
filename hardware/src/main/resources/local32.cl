@@ -381,26 +381,6 @@ matrixAdjoint(__global float *res, __global const float *m,
 }
 
 __kernel void
-translationMatrix(__global float *m, __global const float *v,
-                    const int mOffset, const int vOffset,
-                    const int mSize, const int vSize,
-                    const int mDim0, const int vDim0) {
-    m[mOffset + 3]  = v[vOffset];
-    m[mOffset + 7]  = v[vOffset + 1];
-    m[mOffset + 11] = v[vOffset + 2];
-}
-
-__kernel void
-scaleMatrix(__global float *m, __global const float *v,
-            const int mOffset, const int vOffset,
-            const int mSize, const int vSize,
-            const int mDim0, const int vDim0) {
-    m[mOffset]  = v[vOffset];
-    m[mOffset + 5]  = v[vOffset + 1];
-    m[mOffset + 10] = v[vOffset + 2];
-}
-
-__kernel void
 highestRank(__global float *res,
             __global const float *data,
             __global const float *conf,

@@ -387,7 +387,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * Generates a {@link TransformMatrix} that can be used to translate vectors using
 	 * the specified translation coordinates.
 	 *
-	 * Use {@link org.almostrealism.geometry.TranslationMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#translationMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(double tx, double ty, double tz) {
@@ -403,10 +403,10 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
+	 * Generates a {@link TransformMatrix} that can be used to translate vectors using the specified
 	 * translation coordinates.
 	 *
-	 * USE {@link org.almostrealism.geometry.TranslationMatrix} instead.
+	 * @deprecated Use {@link TransformMatrixFeatures#translationMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(Vector t) {
@@ -414,7 +414,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#scaleMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createScaleMatrix(Vector s) {
@@ -425,7 +425,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * Generates a {@link TransformMatrix} that can be used to scale vectors using the specified scaling
 	 * coefficients.
 	 *
-	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#scaleMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createScaleMatrix(double sx, double sy, double sz) {
