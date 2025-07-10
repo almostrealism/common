@@ -18,13 +18,11 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 

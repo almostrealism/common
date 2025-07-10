@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.jocl.cl_mem;
 
 public class CLMemory extends RAM {

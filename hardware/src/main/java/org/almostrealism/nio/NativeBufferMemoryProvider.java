@@ -20,6 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.NativeRef;
 
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
@@ -59,6 +60,11 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public int getNumberSize() { return getPrecision().bytes(); }
+
+	@Override
+	protected NativeBuffer fromReference(NativeRef<NativeBuffer> reference) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public synchronized NativeBuffer allocate(int size) {

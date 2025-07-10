@@ -24,7 +24,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;

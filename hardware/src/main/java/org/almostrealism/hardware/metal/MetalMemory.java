@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.metal;
 
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 
 public class MetalMemory extends RAM {
 	private final MTLBuffer mem;

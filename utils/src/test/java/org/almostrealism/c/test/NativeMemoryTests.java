@@ -20,7 +20,7 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.junit.Assert;
 

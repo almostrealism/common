@@ -16,9 +16,7 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.hardware.RAM;
-import org.almostrealism.hardware.cl.CLMemoryProvider;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.io.SystemUtils;

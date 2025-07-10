@@ -20,7 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

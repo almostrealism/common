@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import org.almostrealism.io.SystemUtils;

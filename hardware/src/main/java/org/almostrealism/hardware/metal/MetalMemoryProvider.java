@@ -20,7 +20,8 @@ import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.NativeRef;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.DistributionMetric;
@@ -35,7 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
-public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
+public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 	public static int largeAllocationSize = 40 * 1024 * 1024;
@@ -49,7 +50,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	private final boolean shared;
 	private long memoryUsed;
 
-	private List<MetalMemory> allocated;
+	private List<NativeRef<MetalMemory>> allocated;
 	private List<RAM> deallocating;
 
 
@@ -81,38 +82,42 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public MetalDataContext getContext() { return context; }
 
 	@Override
+	protected MetalMemory fromReference(NativeRef<MetalMemory> reference) {
+		MTLBuffer buffer = new MTLBuffer(getContext().getPrecision(), reference.getAddress(), shared);
+		return new MetalMemory(this, buffer, reference.getSize());
+	}
+
+	@Override
 	public MetalMemory allocate(int size) {
 		if (enableLargeAllocationLogging && size > largeAllocationSize) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
 		MetalMemory mem = new MetalMemory(this, buffer(size), numberSize * (long) size);
-		allocated.add(mem);
+		allocated.add(nativeRef(mem));
 		allocationSizes.addEntry(numberSize * (long) size);
 		return mem;
 	}
 
 	@Override
-	public void deallocate(int size, RAM ram) {
+	public void deallocate(int size, MetalMemory mem) {
 		synchronized (deallocating) {
-			if (deallocating.contains(ram)) return;
-			deallocating.add(ram);
+			if (deallocating.contains(mem)) return;
+			deallocating.add(mem);
 		}
 
 		try {
-			if (!(ram instanceof MetalMemory)) throw new IllegalArgumentException();
-			if (ram.getProvider() != this)
+			if (mem.getProvider() != this)
 				throw new IllegalArgumentException();
-			MetalMemory mem = (MetalMemory) ram;
 
 			mem.getMem().release();
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
-			if (!allocated.remove(mem) && RAM.enableWarnings) {
+			if (!allocated.removeIf(ref -> ref.getAddress() == mem.getContainerPointer()) && RAM.enableWarnings) {
 				warn("Deallocated untracked memory");
 			}
 		} finally {
-			deallocating.remove(ram);
+			deallocating.remove(mem);
 			deallocationSizes.addEntry(numberSize * (long) size);
 		}
 	}
@@ -143,10 +148,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	}
 
 	@Override
-	public void setMem(RAM ram, int offset, float[] source, int srcOffset, int length) {
-		if (!(ram instanceof MetalMemory)) throw new IllegalArgumentException();
-		MetalMemory mem = (MetalMemory) ram;
-
+	public void setMem(MetalMemory mem, int offset, float[] source, int srcOffset, int length) {
 		if (getNumberSize() == 8) {
 			double d[] = new double[length];
 			for (int i = 0; i < length; i++) d[i] = source[srcOffset + i];
@@ -162,10 +164,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	}
 
 	@Override
-	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
-		if (!(ram instanceof MetalMemory)) throw new IllegalArgumentException();
-		MetalMemory mem = (MetalMemory) ram;
-
+	public void setMem(MetalMemory mem, int offset, double[] source, int srcOffset, int length) {
 		if (getNumberSize() == 8) {
 			DoubleBuffer buf = doubleBuffer(length);
 			buf.put(source, srcOffset, length);
@@ -181,16 +180,15 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	}
 
 	@Override
-	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
-		if (!(ram instanceof MetalMemory) || length < 0)
+	public void setMem(MetalMemory mem, int offset, Memory srcRam, int srcOffset, int length) {
+		if (length < 0)
 			throw new IllegalArgumentException();
 		if (!(srcRam instanceof MetalMemory)) {
 			// TODO  Native code can be used here, for some types of srcRam
-			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
+			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
 			return;
 		}
 
-		MetalMemory mem = (MetalMemory) ram;
 		MetalMemory src = (MetalMemory) srcRam;
 
 		if (getNumberSize() == 8) {
@@ -205,36 +203,30 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	}
 
 	@Override
-	public void getMem(RAM mem, int sOffset, float out[], int oOffset, int length) {
-		if (!(mem instanceof MetalMemory)) throw new IllegalArgumentException();
-		MetalMemory m = (MetalMemory) mem;
-
+	public void getMem(MetalMemory mem, int sOffset, float out[], int oOffset, int length) {
 		if (getNumberSize() == 8) {
 			double d[] = new double[length];
 			DoubleBuffer buf = doubleBuffer(length);
-			m.getMem().getContents(buf, sOffset, length);
+			mem.getMem().getContents(buf, sOffset, length);
 			buf.get(d);
 			for (int i = 0; i < length; i++) out[oOffset + i] = (float) d[i];
 		} else {
 			FloatBuffer buf = floatBuffer(length);
-			m.getMem().getContents(buf, sOffset, length);
+			mem.getMem().getContents(buf, sOffset, length);
 			buf.get(out, oOffset, length);
 		}
 	}
 
 	@Override
-	public void getMem(RAM mem, int sOffset, double out[], int oOffset, int length) {
-		if (!(mem instanceof MetalMemory)) throw new IllegalArgumentException();
-		MetalMemory m = (MetalMemory) mem;
-
+	public void getMem(MetalMemory mem, int sOffset, double out[], int oOffset, int length) {
 		if (getNumberSize() == 8) {
 			DoubleBuffer buf = doubleBuffer(length);
-			m.getMem().getContents(buf, sOffset, length);
+			mem.getMem().getContents(buf, sOffset, length);
 			buf.get(out, oOffset, length);
 		} else {
 			float f[] = new float[length];
 			FloatBuffer buf = floatBuffer(length);
-			m.getMem().getContents(buf, sOffset, length);
+			mem.getMem().getContents(buf, sOffset, length);
 			buf.get(f);
 			for (int i = 0; i < length; i++) out[oOffset + i] = f[i];
 		}
@@ -254,6 +246,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<RAM> {
 	public void destroy() {
 		if (allocated != null) {
 			allocated.stream()
+					.map(this::fromReference)
 					.sorted(Comparator.comparing(MetalMemory::getSize).reversed())
 					.limit(10)
 					.forEach(memory -> {

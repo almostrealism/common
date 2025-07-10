@@ -17,7 +17,7 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 
 public class NativeMemory extends RAM {
 	private final MemoryProvider provider;

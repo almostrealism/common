@@ -19,8 +19,6 @@ package org.almostrealism.hardware.external;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.RAM;
-import org.jocl.cl_mem;
 
 import java.io.File;
 import java.io.IOException;
