@@ -34,6 +34,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
@@ -113,7 +114,11 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			mem.getMem().release();
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
-			if (!allocated.removeIf(ref -> ref.getAddress() == mem.getContainerPointer()) && RAM.enableWarnings) {
+			if (allocated.removeIf(Objects::isNull)) {
+				warn("Null reference in allocated memory list");
+			}
+
+			if (!allocated.removeIf(ref -> ref == null || ref.getAddress() == mem.getContainerPointer()) && RAM.enableWarnings) {
 				warn("Deallocated untracked memory");
 			}
 		} finally {
