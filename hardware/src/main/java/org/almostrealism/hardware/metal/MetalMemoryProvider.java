@@ -246,13 +246,12 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	public void destroy() {
 		if (allocated != null) {
 			allocated.stream()
-					.map(this::fromReference)
-					.sorted(Comparator.comparing(MetalMemory::getSize).reversed())
+					.sorted(Comparator.comparing(NativeRef<MetalMemory>::getSize).reversed())
 					.limit(10)
-					.forEach(memory -> {
-						warn(memory + " was not deallocated");
-						if (memory.getAllocationStackTrace() != null) {
-							Stream.of(memory.getAllocationStackTrace())
+					.forEach(ref -> {
+						warn(ref + " was not deallocated");
+						if (ref.getAllocationStackTrace() != null) {
+							Stream.of(ref.getAllocationStackTrace())
 									.forEach(stack -> warn("\tat " + stack));
 						}
 					});

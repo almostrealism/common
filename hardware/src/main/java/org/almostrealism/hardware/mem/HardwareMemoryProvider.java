@@ -54,7 +54,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
 	protected NativeRef<T> nativeRef(T ram) {
-		return new NativeRef<>(ram, getReferenceQueue());
+		NativeRef ref = new NativeRef<>(ram, getReferenceQueue());
+		ref.setAllocationStackTrace(ram.getAllocationStackTrace());
+		return ref;
 	}
 
 	protected abstract T fromReference(NativeRef<T> reference);
