@@ -22,9 +22,9 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.computations.MatrixAdjoint;
 import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
+import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
@@ -200,11 +200,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 
 	/**
 	 * Computes and returns the result of the vector multiplication of the matrix represented by this
-	 * TransformMatrix object and the vector represented by the specified Vector object assuming that
-	 * the specified vector describes a location on 3d space.
+	 * {@link TransformMatrix} and the vector represented by the specified {@link Vector}, assuming that
+	 * the specified vector describes a location in 3d space.
 	 */
 	public Vector transformAsLocation(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
@@ -216,7 +216,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * assuming that the specified vector describes an offset in 3d space.
 	 */
 	public Vector transformAsOffset(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
@@ -228,7 +228,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * assuming that the specified vector describes a surface normal in 3d space.
 	 */
 	public Vector transformAsNormal(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
@@ -323,11 +323,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * Computes the adjoint of the matrix represented by this TransformMatrix object and
-	 * returns the result as a TransformMatrix object.
+	 * Computes the adjoint of the matrix represented by this {@link TransformMatrix},
+	 * returning the result as a {@link TransformMatrix}.
 	 */
 	public TransformMatrix adjoint() {
-		return new MatrixAdjoint(() -> new Provider<>(this)).evaluate();
+		return new TransformMatrixAdjoint(() -> new Provider<>(this)).evaluate();
 	}
 
 	@Override
