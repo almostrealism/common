@@ -52,8 +52,8 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 		ArrayVariable<Double> input = getArgument(1);
 
 		// Declare working arrays
-		ArrayVariable<Double> cofactorMatrix = scope.declareArray(getNameProvider(), "cofactorMatrix_" + varIdx++, e(16));
-		ArrayVariable<Double> subMatrix = scope.declareArray(getNameProvider(), "subMatrix_" + varIdx++, e(9));
+		ArrayVariable<Double> cofactorMatrix = scope.declareArray("cofactorMatrix_" + varIdx++, e(16));
+		ArrayVariable<Double> subMatrix = scope.declareArray("subMatrix_" + varIdx++, e(9));
 
 		// Create nested loops for i and j (0 to 3)
 		InstanceReference i = Variable.integer("i_" + varIdx++).ref();

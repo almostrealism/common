@@ -57,7 +57,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@SafeVarargs
 	public AcceleratedEvaluable(CLComputeContext context, String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(context, function, kernel, includeResult(result, inputArgs));
+		super(context, function, kernel, CollectionUtils.include(new Supplier[0], result, inputArgs));
 		setArgumentMapping(false);
 	}
 
@@ -117,9 +117,5 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		} else {
 			throw new UnsupportedOperationException();
 		}
-	}
-
-	public static Supplier[] includeResult(Supplier res, Supplier... p) {
-		return CollectionUtils.include(new Supplier[0], res, p);
 	}
 }

@@ -22,9 +22,8 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.computations.MatrixDeterminant;
-import org.almostrealism.geometry.computations.MatrixProduct;
 import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
+import org.almostrealism.geometry.computations.TransformMatrixDeterminant;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
@@ -163,10 +162,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * represented by the specified {@link TransformMatrix} and returns the result as a
 	 * {@link TransformMatrix}.
 	 *
-	 * @see  MatrixProduct
+	 * @see  org.almostrealism.algebra.MatrixFeatures#matmul
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return new MatrixProduct(v(this), v(matrix)).evaluate();
+		return matmul(cp(this).reshape(4, 4),
+				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate();
 	}
 
 	@Override
@@ -305,7 +305,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		return new MatrixDeterminant(v(this)).evaluate().getValue();
+		return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
 	}
 
 	/**
