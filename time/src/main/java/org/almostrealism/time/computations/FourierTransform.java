@@ -92,9 +92,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 
-	protected ArrayVariable<Double> addParameter(Scope<?> method, String name,
-												 Expression<Integer> outputPosition,
-												 int size, int totalSize) {
+	protected ArrayVariable<Double> addParameter(Scope<?> method, String name, int size) {
 		ArrayVariable<Double> source = new ArrayVariable<>(Double.class, name, e(size));
 		method.getParameters().add(source);
 		return source;
@@ -105,8 +103,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
 		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
 
-		ArrayVariable<Double> output = addParameter(calculateTransform, "output", outputPosition, size, totalSize);
-		ArrayVariable<Double> input = addParameter(calculateTransform, "input", outputPosition, size, totalSize);
+		ArrayVariable<Double> output = addParameter(calculateTransform, "output", size);
+		ArrayVariable<Double> input = addParameter(calculateTransform, "input", size);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
@@ -370,8 +368,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				(getFunctionName() + "_radix2", "Radix 2");
 		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
 
-		ArrayVariable<Double> output = addParameter(radix2, "output", outputPosition, size, totalSize);
-		ArrayVariable<Double> input = addParameter(radix2, "input", outputPosition, size, totalSize);
+		ArrayVariable<Double> output = addParameter(radix2, "output", size);
+		ArrayVariable<Double> input = addParameter(radix2, "input", size);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
