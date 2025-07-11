@@ -25,8 +25,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.MatrixAdjoint;
 import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
-import org.almostrealism.geometry.computations.MatrixToUpperTriangle;
-import org.almostrealism.geometry.computations.MatrixTranspose;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
@@ -313,11 +311,12 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	/**
 	 * Computes the transpose of the matrix represented by this {@link TransformMatrix} and
 	 * returns the result as a {@link TransformMatrix}. If this method is called after the
-	 * last matrix modification it will return a stored transposition.
+	 * last matrix modification, it will return a stored transposition.
 	 */
+	@Override
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			transposeMatrix = new MatrixTranspose(v(this)).evaluate();
+			transposeMatrix = new TransformMatrix(false, reshape(4, 4).transpose(), 0);
 		}
 
 		return transposeMatrix;
@@ -329,14 +328,6 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 */
 	public TransformMatrix adjoint() {
 		return new MatrixAdjoint(() -> new Provider<>(this)).evaluate();
-	}
-
-	/**
-	 * Converts the matrix represented by this TransformMatrix object to an upper triangle matrix and
-	 * returns the result as a TransformMatrix object.
-	 */
-	public TransformMatrix toUpperTriangle() {
-		return new MatrixToUpperTriangle(() -> new Provider<>(this)).evaluate();
 	}
 
 	@Override
