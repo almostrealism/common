@@ -144,5 +144,10 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	}
 
 	@Override
+	public void finalize() {
+		if (mem != null) destroy();
+	}
+
+	@Override
 	public Console console() { return Hardware.console; }
 }

@@ -55,6 +55,16 @@ public abstract class RAM implements Memory {
 	}
 
 	@Override
+	public boolean equals(Object obj) {
+		return (obj instanceof RAM) && ((RAM) obj).getContainerPointer() == getContainerPointer();
+	}
+
+	@Override
+	public int hashCode() {
+		return Long.hashCode(getContainerPointer());
+	}
+
+	@Override
 	public String toString() {
 		return String.format("%s[%d]", getClass().getSimpleName(), getSize());
 	}

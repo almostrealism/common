@@ -16,8 +16,19 @@
 
 package org.almostrealism.hardware.metal;
 
-public class MTLFunction extends MTLObject {
-	public MTLFunction(long nativePointer) {
-		super(nativePointer);
+import org.almostrealism.hardware.mem.NativeRef;
+
+import java.lang.ref.ReferenceQueue;
+
+public class MetalMemoryRef extends NativeRef<MetalMemory> {
+	private MTLBuffer buffer;
+
+	public MetalMemoryRef(MetalMemory memory, ReferenceQueue<? super MetalMemory> referenceQueue) {
+		super(memory, referenceQueue);
+		this.buffer = memory.getMem();
+	}
+
+	public MTLBuffer getBuffer() {
+		return buffer;
 	}
 }

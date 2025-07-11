@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -108,7 +108,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	private List<CLMemory> allocated;
 	private List<RAM> deallocating;
 
-	public CLMemoryProvider(CLDataContext context, cl_command_queue queue, int numberSize, long memoryMax, Location location) {
+	public CLMemoryProvider(CLDataContext context, cl_command_queue queue,
+							int numberSize, long memoryMax, Location location) {
 		this.context = context;
 		this.queue = queue;
 		this.numberSize = numberSize;
@@ -211,7 +212,6 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 
 			hostPtr = PointerAndObject.of(src);
 			if (reverseHeap.containsKey(hostPtr)) {
-				((NativeBufferMemoryProvider) src.getProvider()).remove(src);
 				return reverseHeap.get(hostPtr);
 			}
 

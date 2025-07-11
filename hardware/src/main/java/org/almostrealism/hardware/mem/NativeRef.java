@@ -26,6 +26,7 @@ public class NativeRef<T extends RAM> extends MemoryReference<T> {
 		super(ref, queue);
 		this.address = ref.getContainerPointer();
 		this.size = ref.getSize();
+		setAllocationStackTrace(ref.getAllocationStackTrace());
 	}
 
 	public long getAddress() { return address; }

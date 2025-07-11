@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,21 +17,21 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
@@ -51,7 +51,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeature
 	private final long memoryMax;
 	private long memoryUsed;
 
-	private List<NativeMemory> allocated;
+	private List<NativeRef<NativeMemory>> allocated;
 
 	public NativeMemoryProvider(NativeCompiler compiler, long memoryMax) {
 		this.compiler = compiler;
@@ -80,57 +80,58 @@ public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeature
 		} else {
 			memoryUsed += (long) getNumberSize() * size;
 			NativeMemory mem = new NativeMemory(this, malloc.apply(getNumberSize() * size), getNumberSize() * (long) size);
-			allocated.add(mem);
+			allocated.add(nativeRef(mem));
 			allocationSizes.addEntry(getNumberSize() * (long) size);
 			return mem;
 		}
 	}
 
 	@Override
-	public synchronized void deallocate(int size, RAM mem) {
-		if (!allocated.contains(mem)) return;
-
+	public synchronized void deallocate(NativeRef<NativeMemory> ref) {
 		if (free == null) free = new Free(getNativeCompiler());
 
-		free.apply(mem.getContentPointer());
-		memoryUsed -= (long) size * getNumberSize();
-		allocated.remove(mem);
-		deallocationSizes.addEntry((long) getNumberSize() * size);
+		free.apply(ref.getAddress());
+		memoryUsed -= ref.getSize();
+
+		if (allocated.removeIf(Objects::isNull)) {
+			warn("Null reference in allocated memory list");
+		}
+
+		if (!allocated.removeIf(r -> r == null ||
+				r.getAddress() == ref.getAddress()) && RAM.enableWarnings) {
+			warn("Deallocated untracked memory");
+		}
+
+		deallocationSizes.addEntry(ref.getSize());
 	}
 
 	@Override
-	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
+	public synchronized void setMem(NativeMemory mem, int offset, Memory source, int srcOffset, int length) {
 		double value[] = new double[length];
 		source.getProvider().getMem(source, srcOffset, value, 0, length);
 		setMem(mem, offset, value, 0, length);
 	}
 
 	@Override
-	public synchronized void setMem(RAM mem, int offset, double[] source, int srcOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
+	public synchronized void setMem(NativeMemory mem, int offset, double[] source, int srcOffset, int length) {
 		if (write == null) write = new NativeWrite(getNativeCompiler());
 
 		long start = System.nanoTime();
 		try {
-			write.apply((NativeMemory) mem, offset, source, srcOffset, length);
+			write.apply(mem, offset, source, srcOffset, length);
 		} finally {
 			ioTime.addEntry("setMem", System.nanoTime() - start);
 		}
 	}
 
 	@Override
-	public synchronized void getMem(RAM mem, int sOffset, double[] out, int oOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
+	public synchronized void getMem(NativeMemory mem, int sOffset, double[] out, int oOffset, int length) {
 		if (read == null) read = new NativeRead(getNativeCompiler());
 
 		long start = System.nanoTime();
 
 		try {
-			read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
+			read.apply(mem, sOffset, out, oOffset, length);
 		} finally {
 			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
@@ -139,11 +140,10 @@ public class NativeMemoryProvider implements MemoryProvider<RAM>, ConsoleFeature
 	@Override
 	public synchronized void destroy() {
 		if (free == null) free = new Free(getNativeCompiler());
-		allocated.stream().mapToLong(NativeMemory::getContentPointer).forEach(free::apply);
+		allocated.stream().mapToLong(NativeRef::getAddress).forEach(free::apply);
 		allocated.clear();
 		memoryUsed = 0;
-	}
 
-	@Override
-	public Console console() { return Hardware.console; }
+		super.destroy();
+	}
 }

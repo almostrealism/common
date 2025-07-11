@@ -21,9 +21,12 @@ import org.almostrealism.lifecycle.ThreadLocalSuppliedValue;
 
 import java.text.DecimalFormat;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 public abstract class MetricBase implements Named, ConsoleFeatures {
 	public static long startingTime = Instant.now().getEpochSecond();
@@ -42,6 +45,9 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	protected Map<Long, Double> intervalTotals;
 	protected Map<Long, Integer> intervalCounts;
 
+	private List<BiConsumer<Double, Integer>> intervalListeners;
+	private long lastReportedInterval;
+
 	private long count = 0;
 	private double total = 0.0;
 
@@ -51,6 +57,9 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		this.counts = Collections.synchronizedMap(new HashMap<>());
 		this.intervalTotals = Collections.synchronizedMap(new HashMap<>());
 		this.intervalCounts = Collections.synchronizedMap(new HashMap<>());
+
+		this.intervalListeners = new ArrayList<>();
+		this.lastReportedInterval = -1;
 	}
 
 	@Override
@@ -59,6 +68,14 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	public double getTotal() { return total; }
 
 	public void setConsole(Console console) { this.console = console; }
+
+	public void addIntervalListener(BiConsumer<Double, Integer> listener) {
+		intervalListeners.add(listener);
+	}
+
+	public void removeIntervalListener(BiConsumer<Double, Integer> listener) {
+		intervalListeners.remove(listener);
+	}
 
 	public void addEntry(double value) {
 		addEntry(null, value);
@@ -76,6 +93,10 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 
 		intervalTotals.merge(interval, value, Double::sum);
 		intervalCounts.merge(interval, 1, Integer::sum);
+
+		if (interval == lastReportedInterval + 2) {
+			reportInterval(interval - 1);
+		}
 	}
 
 	public void setEntries(Map<String, Double> entries) {
@@ -104,6 +125,14 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	protected long getCurrentInterval() {
 		long currentTime = Instant.now().getEpochSecond() - startingTime;
 		return currentTime / intervalRate;
+	}
+
+	protected void reportInterval(long interval) {
+		lastReportedInterval = interval;
+		if (intervalListeners.isEmpty()) return;
+
+		intervalListeners.forEach(l ->
+				l.accept(intervalTotals.get(interval), intervalCounts.get(interval)));
 	}
 
 	public void print() {

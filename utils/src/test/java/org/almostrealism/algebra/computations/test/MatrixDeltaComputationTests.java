@@ -223,7 +223,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			for (int j = 0; j < nodes; j++) {
 				for (int k = 0; k < size; k++) {
 					if (i == j) {
-						log("[" + i + ", " + j + ", " + k + "] = " + out.valueAt(i, 0, j, k));
+						if (verboseLogs) log("[" + i + ", " + j + ", " + k + "] = " + out.valueAt(i, 0, j, k));
 						assertEquals(v.valueAt(k), out.valueAt(i, 0, j, k));
 					} else {
 						assertEquals(0.0, out.valueAt(i, 0, j, k));

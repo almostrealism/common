@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,9 +25,7 @@ import org.almostrealism.hardware.mem.NativeRef;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuffer> {
@@ -40,8 +38,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	private long memoryUsed;
 
-	private List<NativeBuffer> allocated;
-
 	public NativeBufferMemoryProvider(Precision precision, long memoryMax) {
 		this(precision, memoryMax, true);
 	}
@@ -50,7 +46,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 		this.precision = precision;
 		this.memoryMax = memoryMax;
 		this.shared = shared;
-		this.allocated = new ArrayList<>();
 	}
 
 	@Override
@@ -62,11 +57,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 	public int getNumberSize() { return getPrecision().bytes(); }
 
 	@Override
-	protected NativeBuffer fromReference(NativeRef<NativeBuffer> reference) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
 	public synchronized NativeBuffer allocate(int size) {
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
 			throw new HardwareException("Memory max reached");
@@ -74,22 +64,17 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 			memoryUsed += (long) getNumberSize() * size;
 			NativeBuffer mem = NativeBuffer.create(this, size,
 					shared ? getMemoryName().apply(size) : null);
-			allocated.add(mem);
 			return mem;
 		}
 	}
 
 	@Override
-	public synchronized void deallocate(int size, NativeBuffer mem) {
-		if (!allocated.contains(mem)) return;
+	public synchronized void deallocate(NativeRef<NativeBuffer> ref) {
+		NativeBuffer mem = ref.get();
+		mem.destroy();
 
-		memoryUsed -= (long) size * getNumberSize();
-		allocated.remove(mem);
+		memoryUsed -= ref.getSize();
 		mem.getDeallocationListeners().forEach(l -> l.accept(mem));
-	}
-
-	public synchronized boolean remove(NativeBuffer mem) {
-		return allocated.remove(mem);
 	}
 
 	@Override
@@ -106,9 +91,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void setMem(NativeBuffer mem, int offset, Memory source, int srcOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
-
 		if (source instanceof NativeBuffer) {
 			NativeBuffer sourceBuffer = (NativeBuffer) source;
 			if (mem.getBuffer() instanceof DoubleBuffer && sourceBuffer.getBuffer() instanceof DoubleBuffer) {
@@ -136,9 +118,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void setMem(NativeBuffer mem, int offset, double[] source, int srcOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
-
 		if (mem.getBuffer() instanceof DoubleBuffer) {
 			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
 			buffer.position(offset);
@@ -161,9 +140,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public void setMem(NativeBuffer mem, int offset, float[] source, int srcOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
-
 		if (mem.getBuffer() instanceof DoubleBuffer) {
 			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
 			buffer.position(offset);
@@ -185,9 +161,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public synchronized void getMem(NativeBuffer mem, int sOffset, double[] out, int oOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
-
 		if (mem.getBuffer() instanceof DoubleBuffer) {
 			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
 			buffer.position(sOffset);
@@ -207,9 +180,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 
 	@Override
 	public void getMem(NativeBuffer mem, int sOffset, float[] out, int oOffset, int length) {
-		if (!allocated.contains(mem))
-			throw new HardwareException(mem + " not available");
-
 		if (mem.getBuffer() instanceof DoubleBuffer) {
 			DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
 			buffer.position(sOffset);
@@ -225,12 +195,6 @@ public class NativeBufferMemoryProvider extends HardwareMemoryProvider<NativeBuf
 		} else {
 			throw new HardwareException("Unsupported precision");
 		}
-	}
-
-	@Override
-	public synchronized void destroy() {
-		allocated.clear();
-		memoryUsed = 0;
 	}
 
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferAllocator<T> allocator) {

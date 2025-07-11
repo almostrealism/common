@@ -22,48 +22,110 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.lang.ref.ReferenceQueue;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.IntFunction;
+import java.util.stream.Stream;
 
 public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryProvider<T>, ConsoleFeatures {
+	public static boolean queueDeallocation = false;
+
 	protected static ThreadLocal<IntFunction<String>> memoryName;
 
 	static {
 		memoryName = new ThreadLocal<>();
 	}
 
+	private HashMap<Long, NativeRef<T>> allocated;
+	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 	private ReferenceQueue<T> referenceQueue;
 
 	public HardwareMemoryProvider() {
+		this.allocated = new HashMap<>();
+		this.deallocationQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(NativeRef<T>::getSize).reversed());
 		this.referenceQueue = new ReferenceQueue<>();
 
-		Thread cleanup = new Thread(() -> {
+		Thread deallocationSubmit = new Thread(() -> {
 			while (true) {
 				try {
-					deallocate((NativeRef) referenceQueue.remove());
+					NativeRef ref = (NativeRef) getReferenceQueue().remove();
+
+					if (queueDeallocation) {
+						getDeallocationQueue().put(ref);
+					} else {
+						deallocateNow(ref);
+					}
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
 					break;
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
 			}
-		}, getClass().getSimpleName() + " Cleanup");
-		cleanup.setDaemon(true);
-		cleanup.start();
+		}, getClass().getSimpleName() + " Deallocation Submit Thread");
+		deallocationSubmit.setDaemon(true);
+
+		Thread deallocationProcess = new Thread(() -> {
+			while (true) {
+				try {
+					deallocateNow(getDeallocationQueue().take());
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}, getClass().getSimpleName() + " Deallocation Process Thread");
+		deallocationProcess.setDaemon(true);
+
+		deallocationSubmit.start();
+		deallocationProcess.start();
 	}
 
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
-	protected NativeRef<T> nativeRef(T ram) {
-		NativeRef ref = new NativeRef<>(ram, getReferenceQueue());
-		ref.setAllocationStackTrace(ram.getAllocationStackTrace());
-		return ref;
+	protected PriorityBlockingQueue<NativeRef<T>> getDeallocationQueue() { return deallocationQueue; }
+
+	public int getAllocatedCount() { return allocated.size(); }
+
+	private void deallocateNow(T mem) {
+		deallocateNow(getNativeRef(mem));
 	}
 
-	protected abstract T fromReference(NativeRef<T> reference);
+	private void deallocateNow(NativeRef<T> ref) {
+		deallocate(ref);
+		allocated.remove(ref.getAddress());
+	}
 
-	protected void deallocate(NativeRef<T> ref) {
-		int size = Math.toIntExact(ref.getSize() / getNumberSize());
-		deallocate(size, fromReference(ref));
+	protected NativeRef<T> nativeRef(T ram) {
+		return new NativeRef<>(ram, getReferenceQueue());
+	}
+
+	protected NativeRef<T> getNativeRef(T ram) {
+		if (ram.getProvider() != this)
+			throw new IllegalArgumentException("RAM does not belong to this provider");
+
+		return allocated.get(ram.getContainerPointer());
+	}
+
+	protected T allocated(T ram) {
+		NativeRef<T> ref = nativeRef(ram);
+		allocated.put(ref.getAddress(), ref);
+		return ram;
+	}
+
+	protected abstract void deallocate(NativeRef<T> ref);
+
+	@Override
+	public void deallocate(int size, T mem) {
+		if (mem.getProvider() != this)
+			throw new IllegalArgumentException();
+
+		if (queueDeallocation) {
+			getDeallocationQueue().put(getNativeRef(mem));
+		} else {
+			deallocateNow(mem);
+		}
 	}
 
 	protected IntFunction<String> getMemoryName() {
@@ -85,6 +147,28 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			memoryName.set(currentName);
 		}
 	}
+
+	@Override
+	public void destroy() {
+		if (allocated != null) {
+			allocated.values().stream()
+					.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
+					.limit(10)
+					.forEach(ref -> {
+						warn(ref + " was not deallocated");
+						if (ref.getAllocationStackTrace() != null) {
+							Stream.of(ref.getAllocationStackTrace())
+									.forEach(stack -> warn("\tat " + stack));
+						}
+					});
+
+			// TODO  Deallocating all of these at once appears to produce SIGSEGV
+			// List<MetalMemory> available = new ArrayList<>(allocated);
+			// available.forEach(mem -> deallocate(0, mem));
+			allocated = null;
+		}
+	}
+
 
 	@Override
 	public Console console() { return Hardware.console; }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,17 +22,21 @@ import org.almostrealism.io.ConsoleFeatures;
 
 public abstract class MTLObject implements ConsoleFeatures {
 	private long nativePointer;
+	private boolean released;
 
 	public MTLObject(long nativePointer) {
 		this.nativePointer = nativePointer;
 	}
 
 	public long getNativePointer() {
+		if (isReleased()) throw new IllegalStateException();
 		return nativePointer;
 	}
 
+	public boolean isReleased() { return released; }
+
+	public void release() { released = true; }
+
 	@Override
-	public Console console() {
-		return Hardware.console;
-	}
+	public Console console() { return Hardware.console; }
 }

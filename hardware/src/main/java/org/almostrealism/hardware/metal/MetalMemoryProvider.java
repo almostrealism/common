@@ -51,10 +51,6 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	private final boolean shared;
 	private long memoryUsed;
 
-	private List<NativeRef<MetalMemory>> allocated;
-	private List<RAM> deallocating;
-
-
 	public MetalMemoryProvider(MetalDataContext context, int numberSize, long memoryMax) {
 		this(context, numberSize, memoryMax, false);
 	}
@@ -64,8 +60,6 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.shared = shared;
-		this.allocated = new ArrayList<>();
-		this.deallocating = new ArrayList<>();
 	}
 
 	@Override
@@ -83,9 +77,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	public MetalDataContext getContext() { return context; }
 
 	@Override
-	protected MetalMemory fromReference(NativeRef<MetalMemory> reference) {
-		MTLBuffer buffer = new MTLBuffer(getContext().getPrecision(), reference.getAddress(), shared);
-		return new MetalMemory(this, buffer, reference.getSize());
+	protected NativeRef<MetalMemory> nativeRef(MetalMemory ram) {
+		return new MetalMemoryRef(ram, getReferenceQueue());
 	}
 
 	@Override
@@ -94,36 +87,22 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
-		MetalMemory mem = new MetalMemory(this, buffer(size), numberSize * (long) size);
-		allocated.add(nativeRef(mem));
+		MetalMemory mem = allocated(new MetalMemory(this, buffer(size), numberSize * (long) size));
 		allocationSizes.addEntry(numberSize * (long) size);
 		return mem;
 	}
 
 	@Override
-	public void deallocate(int size, MetalMemory mem) {
-		synchronized (deallocating) {
-			if (deallocating.contains(mem)) return;
-			deallocating.add(mem);
-		}
-
+	protected void deallocate(NativeRef<MetalMemory> ref) {
 		try {
-			if (mem.getProvider() != this)
-				throw new IllegalArgumentException();
+			MTLBuffer buf = ((MetalMemoryRef) ref).getBuffer();
 
-			mem.getMem().release();
-			memoryUsed = memoryUsed - (long) size * getNumberSize();
-
-			if (allocated.removeIf(Objects::isNull)) {
-				warn("Null reference in allocated memory list");
-			}
-
-			if (!allocated.removeIf(ref -> ref == null || ref.getAddress() == mem.getContainerPointer()) && RAM.enableWarnings) {
-				warn("Deallocated untracked memory");
+			if (!buf.isReleased()) {
+				buf.release();
+				memoryUsed = memoryUsed - ref.getSize();
 			}
 		} finally {
-			deallocating.remove(mem);
-			deallocationSizes.addEntry(numberSize * (long) size);
+			deallocationSizes.addEntry(ref.getSize());
 		}
 	}
 
@@ -245,27 +224,6 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	private DoubleBuffer doubleBuffer(int len) {
 		ByteBuffer bufferByte = ByteBuffer.allocateDirect(len * 8).order(ByteOrder.nativeOrder());
 		return bufferByte.asDoubleBuffer();
-	}
-
-	@Override
-	public void destroy() {
-		if (allocated != null) {
-			allocated.stream()
-					.sorted(Comparator.comparing(NativeRef<MetalMemory>::getSize).reversed())
-					.limit(10)
-					.forEach(ref -> {
-						warn(ref + " was not deallocated");
-						if (ref.getAllocationStackTrace() != null) {
-							Stream.of(ref.getAllocationStackTrace())
-									.forEach(stack -> warn("\tat " + stack));
-						}
-					});
-
-			// TODO  Deallocating all of these at once appears to produce SIGSEGV
-			// List<MetalMemory> available = new ArrayList<>(allocated);
-			// available.forEach(mem -> deallocate(0, mem));
-			allocated = null;
-		}
 	}
 
 	@Override
