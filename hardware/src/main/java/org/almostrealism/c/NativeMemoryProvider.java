@@ -51,12 +51,9 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 	private final long memoryMax;
 	private long memoryUsed;
 
-	private List<NativeRef<NativeMemory>> allocated;
-
 	public NativeMemoryProvider(NativeCompiler compiler, long memoryMax) {
 		this.compiler = compiler;
 		this.memoryMax = memoryMax;
-		this.allocated = new ArrayList<>();
 	}
 
 	@Override
@@ -79,8 +76,9 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 			throw new HardwareException("Memory max reached");
 		} else {
 			memoryUsed += (long) getNumberSize() * size;
-			NativeMemory mem = new NativeMemory(this, malloc.apply(getNumberSize() * size), getNumberSize() * (long) size);
-			allocated.add(nativeRef(mem));
+			NativeMemory mem = allocated(new NativeMemory(this,
+					malloc.apply(getNumberSize() * size),
+					getNumberSize() * (long) size));
 			allocationSizes.addEntry(getNumberSize() * (long) size);
 			return mem;
 		}
@@ -92,16 +90,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 
 		free.apply(ref.getAddress());
 		memoryUsed -= ref.getSize();
-
-		if (allocated.removeIf(Objects::isNull)) {
-			warn("Null reference in allocated memory list");
-		}
-
-		if (!allocated.removeIf(r -> r == null ||
-				r.getAddress() == ref.getAddress()) && RAM.enableWarnings) {
-			warn("Deallocated untracked memory");
-		}
-
 		deallocationSizes.addEntry(ref.getSize());
 	}
 
@@ -140,8 +128,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 	@Override
 	public synchronized void destroy() {
 		if (free == null) free = new Free(getNativeCompiler());
-		allocated.stream().mapToLong(NativeRef::getAddress).forEach(free::apply);
-		allocated.clear();
+		getAllocated().forEach(this::deallocate);
 		memoryUsed = 0;
 
 		super.destroy();

@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.lang.ref.ReferenceQueue;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.IntFunction;
@@ -85,6 +86,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
 	protected PriorityBlockingQueue<NativeRef<T>> getDeallocationQueue() { return deallocationQueue; }
+
+	protected List<NativeRef<T>> getAllocated() {
+		return allocated.values().stream()
+				.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
+				.toList();
+	}
 
 	public int getAllocatedCount() { return allocated.size(); }
 
