@@ -61,6 +61,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
 					break;
+				} catch (IllegalStateException e) {
+					warn(e.getMessage());
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
