@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,12 +22,19 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TranslationMatrix;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 public class MatrixTransformTests implements TestFeatures {
+	@Test
+	public void scaleTranslateThenTransform() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		scaleAndTranslate();
+		transformAsLocation1();
+	}
+
 	@Test
 	public void transformAsLocation1() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -53,24 +60,17 @@ public class MatrixTransformTests implements TestFeatures {
 	}
 
 	@Test
-	public void transformAsOffset1() {
+	public void transformAsOffset() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		TransformMatrix matrix = new TranslationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
 		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-
 		assertEquals(1.0, v.getX());
 		assertEquals(2.0, v.getY());
 		assertEquals(3.0, v.getZ());
-	}
 
-	@Test
-	public void transformAsOffset2() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
-		TransformMatrix matrix = new ScaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
-		Vector v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
-
+		matrix = new ScaleMatrix(vector(2.0, 1.0, 3.0)).evaluate();
+		v = transformAsOffset(matrix, vector(1.0, 2.0, 3.0)).evaluate();
 		assertEquals(2.0, v.getX());
 		assertEquals(2.0, v.getY());
 		assertEquals(9.0, v.getZ());
@@ -96,25 +96,23 @@ public class MatrixTransformTests implements TestFeatures {
 
 	@Test
 	public void scaleAndTranslate() {
-		HardwareOperator.verboseLog(() -> {
-			TransformMatrix matrix = new TransformMatrix(new double[][] {
-					{ 0.25, 0.0,  0.0,   0.0 },
-					{ 0.0,  0.25, 0.0,   3.4 },
-					{ 0.0,  0.0,  0.25, -3.0 },
-					{ 0.0,  0.0,  0.0,   1.0 }
-			});
-
-			CollectionProducer<Ray> transform = transform(matrix,
-					ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
-			Ray r = transform.evaluate();
-			System.out.println(r);
-
-			assertEquals(0.25, r.getOrigin().getX());
-			assertEquals(3.9, r.getOrigin().getY());
-			assertEquals(-2.25, r.getOrigin().getZ());
-			assertEquals(1.0, r.getDirection().getX());
-			assertEquals(1.25, r.getDirection().getY());
-			assertEquals(1.5, r.getDirection().getZ());
+		TransformMatrix matrix = new TransformMatrix(new double[][] {
+				{ 0.25, 0.0,  0.0,   0.0 },
+				{ 0.0,  0.25, 0.0,   3.4 },
+				{ 0.0,  0.0,  0.25, -3.0 },
+				{ 0.0,  0.0,  0.0,   1.0 }
 		});
+
+		CollectionProducer<Ray> transform = transform(matrix,
+				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
+		Ray r = transform.evaluate();
+		System.out.println(r);
+
+		assertEquals(0.25, r.getOrigin().getX());
+		assertEquals(3.9, r.getOrigin().getY());
+		assertEquals(-2.25, r.getOrigin().getZ());
+		assertEquals(1.0, r.getDirection().getX());
+		assertEquals(1.25, r.getDirection().getY());
+		assertEquals(1.5, r.getDirection().getZ());
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.scope.Scope;
@@ -22,7 +22,6 @@ import io.almostrealism.util.DescribableParent;
 
 import java.util.List;
 
-// TODO  Move to io.almostrealism.profile (or some other package)
 public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private static long opIndex = 0;
 
@@ -30,6 +29,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	private String displayName, shortDescription, longDescription;
 	private TraversalPolicy shape;
 	private String contextName;
+	private String signature;
 
 	private List<OperationMetadata> children;
 
@@ -45,6 +45,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 			setLongDescription(from.getLongDescription());
 			setShape(from.getShape());
 			setContextName(from.getContextName());
+			setSignature(from.getSignature());
 			setChildren(from.getChildren());
 		}
 	}
@@ -104,6 +105,9 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public String getContextName() { return contextName; }
 	public void setContextName(String contextName) { this.contextName = contextName; }
 
+	public String getSignature() { return signature; }
+	public void setSignature(String signature) { this.signature = signature; }
+
 	public List<OperationMetadata> getChildren() { return children; }
 	public void setChildren(List<OperationMetadata> children) { this.children = children; }
 
@@ -122,6 +126,12 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public OperationMetadata withDisplayName(String name) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setDisplayName(name);
+		return metadata;
+	}
+
+	public OperationMetadata withSignature(String signature) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setSignature(signature);
 		return metadata;
 	}
 

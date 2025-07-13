@@ -34,8 +34,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.List;
 import java.util.function.Function;
@@ -44,7 +44,7 @@ import java.util.function.Supplier;
 // TODO  Should extend TraversableExpressionComputation
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<T, T>
-		implements ComputerFeatures {
+		implements HardwareFeatures {
 	public static boolean enableOptimization = true;
 	public static boolean enableStubOptimization = false;
 	public static boolean enableAtomicScope = false;
@@ -81,7 +81,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(this).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
 	}
 
 	@Override

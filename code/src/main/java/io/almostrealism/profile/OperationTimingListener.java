@@ -16,9 +16,6 @@
 
 package io.almostrealism.profile;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
-
 @FunctionalInterface
 public interface OperationTimingListener {
 	default long recordDuration(Runnable r) {

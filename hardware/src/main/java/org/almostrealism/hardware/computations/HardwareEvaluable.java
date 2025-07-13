@@ -44,7 +44,7 @@ import java.util.function.UnaryOperator;
  *
  * @author  Michael Murray
  */
-public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T> {
+public class HardwareEvaluable<T> implements Evaluable<T>, Runnable, ArgumentList<T> {
 	private Supplier<Evaluable<T>> ev;
 	private Evaluable<T> destination;
 	private Evaluable<T> shortCircuit;
@@ -121,6 +121,9 @@ public class HardwareEvaluable<T> implements Evaluable<T>, ArgumentList<T> {
 	public Multiple<T> createDestination(int size) {
 		return destination == null ? getKernel().getValue().createDestination(size) : destination.createDestination(size);
 	}
+
+	@Override
+	public void run() { evaluate(); }
 
 	@Override
 	public T evaluate(Object... args) {

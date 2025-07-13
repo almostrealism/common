@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -29,7 +30,6 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -62,9 +62,6 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
-
-	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 		ScopeLifecycle.prepareArguments(conjuncts.stream(), map);
@@ -85,10 +82,10 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 		args.add((ArrayVariable<Double>) getOutputVariable());
 		args.addAll(getOperands());
 
-		this.trueVar = (ArrayVariable)  manager.argumentForInput(this).apply(trueValue);
+		this.trueVar = (ArrayVariable)  manager.argumentForInput(getNameProvider()).apply(trueValue);
 		args.add(this.trueVar);
 
-		this.falseVar = (ArrayVariable) manager.argumentForInput(this).apply(falseValue);
+		this.falseVar = (ArrayVariable) manager.argumentForInput(getNameProvider()).apply(falseValue);
 		args.add(this.falseVar);
 
 		setArguments(args.stream()
@@ -102,7 +99,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 
 	@Override
 	public Variable getOutputVariable() {
-		return getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
+		return OperationAdapter.getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
 	}
 
 	public synchronized List<ArrayVariable<Double>> getArgumentVariables(boolean includeConjuncts) {

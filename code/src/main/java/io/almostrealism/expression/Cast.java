@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.IndexValues;
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -30,6 +29,7 @@ import java.util.OptionalLong;
 public class Cast<T> extends UnaryExpression<T> {
 	public static final String FP_NAME = "double";
 	public static final String INT_NAME = "int";
+	public static final String LONG_NAME = "long";
 
 	private String typeName;
 
@@ -128,8 +128,25 @@ public class Cast<T> extends UnaryExpression<T> {
 
 	public static <T> Expression<T> of(Class<T> type, String typeName, Expression<?> value) {
 		OptionalDouble d = value.doubleValue();
-		if (d.isPresent() && typeName.equals(Cast.INT_NAME))
-			return (Expression) new IntegerConstant((int) d.getAsDouble());
+
+		if (d.isPresent()) {
+			switch (typeName) {
+				case Cast.FP_NAME:
+					return (Expression) new DoubleConstant(d.getAsDouble());
+				case Cast.LONG_NAME:
+					if (d.getAsDouble() > Long.MAX_VALUE || d.getAsDouble() < Long.MIN_VALUE) {
+						throw new ArithmeticException(String.valueOf(d.getAsDouble()));
+					}
+
+					return (Expression) new LongConstant((long) d.getAsDouble());
+				case Cast.INT_NAME:
+					if (d.getAsDouble() > Integer.MAX_VALUE || d.getAsDouble() < Integer.MIN_VALUE) {
+						throw new ArithmeticException(String.valueOf(d.getAsDouble()));
+					}
+
+					return (Expression) new IntegerConstant((int) d.getAsDouble());
+			}
+		}
 
 		if (value instanceof Cast) {
 			return Cast.of(type, typeName, value.getChildren().get(0));

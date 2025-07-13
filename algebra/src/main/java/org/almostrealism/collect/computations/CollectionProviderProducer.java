@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,21 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -37,7 +39,7 @@ import java.util.List;
 public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
-				OperationInfo, DescribableParent<Process<?, ?>>,
+				OperationInfo, Signature, DescribableParent<Process<?, ?>>,
 				CollectionFeatures {
 	private OperationMetadata metadata;
 	private Shape value;
@@ -88,14 +90,30 @@ public class CollectionProviderProducer<T extends Shape>
 	}
 
 	@Override
-	public String describe() {
-		return "p(" + getShape().describe() + ")";
+	public String signature() {
+		String shape = "|" + value.getShape().toStringDetail();
+
+		if (value instanceof MemoryData) {
+			if (MemoryDataArgumentMap.isAggregationTarget((MemoryData) value)) {
+				// It should actually be possible to compute a valid signature
+				// for this anyway, but because argument aggregation for
+				// Computations depends on the other Computation arguments,
+				// it requires more information than is available here
+				return null;
+			}
+
+			return ((MemoryData) value).getOffset() + ":" +
+				((MemoryData) value).getMemLength() + shape;
+		}
+
+		return shape;
 	}
 
 	@Override
-	public String description() {
-		return "p" + getShape().toString();
-	}
+	public String describe() { return "p(" + getShape().describe() + ")"; }
+
+	@Override
+	public String description() { return "p" + getShape().toString(); }
 
 	@Override
 	public boolean equals(Object obj) {
@@ -108,5 +126,4 @@ public class CollectionProviderProducer<T extends Shape>
 	public int hashCode() {
 		return value == null ? super.hashCode() : value.hashCode();
 	}
-
 }

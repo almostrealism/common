@@ -18,7 +18,7 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;

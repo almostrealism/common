@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,8 +47,8 @@ import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
@@ -65,7 +65,7 @@ import java.util.function.Supplier;
 public interface CodeFeatures extends LayerFeatures,
 								ScalarBankFeatures, PairBankFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
-								TemporalFeatures, HardwareFeatures {
+								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
 
 	@Override

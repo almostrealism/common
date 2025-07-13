@@ -17,7 +17,7 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.code.CachedValue;
-import io.almostrealism.code.OperationInfo;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.lang.LanguageOperations;

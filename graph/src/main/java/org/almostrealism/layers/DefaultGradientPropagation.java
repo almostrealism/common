@@ -16,8 +16,8 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;

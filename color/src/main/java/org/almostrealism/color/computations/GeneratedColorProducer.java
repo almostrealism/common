@@ -17,8 +17,8 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;

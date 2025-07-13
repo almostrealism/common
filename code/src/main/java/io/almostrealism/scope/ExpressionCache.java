@@ -16,9 +16,8 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.util.FrequencyCache;
 
 import java.util.ArrayList;

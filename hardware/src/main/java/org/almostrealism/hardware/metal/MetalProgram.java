@@ -16,10 +16,11 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.code.OperationInfo;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
@@ -31,7 +32,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures {
+public class MetalProgram implements OperationInfo, Signature, Destroyable, ConsoleFeatures {
 
 	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");
 
@@ -51,6 +52,8 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 		this.func = func;
 		this.src = src;
 	}
+
+	public String getName() { return func; }
 
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
@@ -100,14 +103,19 @@ public class MetalProgram implements OperationInfo, Destroyable, ConsoleFeatures
 		return device.newComputePipelineState(function);
 	}
 
+	@Override
+	public String signature() { return getMetadata().getSignature(); }
+
 	public boolean isDestroyed() {
 		return function == null;
 	}
 
 	@Override
 	public void destroy() {
-		function.release();
-		function = null;
+		if (function != null) {
+			function.release();
+			function = null;
+		}
 	}
 
 	@Override

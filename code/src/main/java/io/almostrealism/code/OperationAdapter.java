@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,21 +17,18 @@
 package io.almostrealism.code;
 
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArgumentList;
 import io.almostrealism.uml.Named;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.util.DescribableParent;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,31 +36,31 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T, C> implements
-											NameProvider, DescribableParent<C>,
+public abstract class OperationAdapter<T> implements
+											ArgumentList<T>,
+											DescribableParent<Argument<? extends T>>,
 											Destroyable, OperationInfo,
 											NamedFunction, Named {
 
-	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
 
 	private String function;
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
-	private boolean sortedArguments;
 
-	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
+
+	public OperationAdapter() { }
 
 	@SafeVarargs
 	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
 		setInputs(input);
 	}
 
-	@SafeVarargs
-	public OperationAdapter(Argument<? extends T>... args) {
-		if (args.length > 0) setArguments(Arrays.asList(args));
+	public void init() {
+		if (function == null) setFunctionName(functionName(getClass()));
+		metadata = new OperationMetadata(getFunctionName(), getName());
 	}
 
 	@Override
@@ -73,24 +70,12 @@ public abstract class OperationAdapter<T, C> implements
 	public String getFunctionName() { return function; }
 
 	@Override
-	public String getVariablePrefix() {
-		if (enableFunctionPrefix) {
-			return getFunctionName();
-		} else {
-			String f = getFunctionName();
-			if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
-			return f;
-		}
-	}
-
-	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
-
-	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
+	@Override
 	public int getArgsCount() { return getArguments().size(); }
 
 	@SafeVarargs
@@ -103,13 +88,7 @@ public abstract class OperationAdapter<T, C> implements
 		this.arguments = arguments;
 	}
 
-	public synchronized List<Argument<? extends T>> getArguments() {
-		if (!sortedArguments) {
-			sortedArguments = Scope.sortArguments(arguments);
-		}
-
-		return arguments;
-	}
+	public List<Argument<? extends T>> getArguments() { return arguments; }
 
 	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables() {
 		if (getArguments() == null) return null;
@@ -130,73 +109,6 @@ public abstract class OperationAdapter<T, C> implements
 
 	public void resetArguments() { this.arguments = null; }
 
-	public void init() {
-		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = prepareMetadata(new OperationMetadata(getFunctionName(), getName()));
-
-		purgeVariables();
-	}
-
-	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return metadata;
-	}
-
-	/**
-	 * Presently this serves a dual purpose: to do actual compilation of Scope
-	 * from Computation in implementors that facilitate the invocation of a
-	 * Computation, but also to do necessary initialization even in cases where
-	 * a Computation is not being prepared for invocation. This is likely
-	 * adding to the confusion of having a shared parent between the two types
-	 * of accelerated operations (those compiling a Computation vs those that
-	 * simply execute code). There seems to be no reason to deal with this now,
-	 * as there will eventually be no need for accelerated operations which
-	 * are not Computation based, so when that process is over one of the two
-	 * roles this method plays won't exist, and it will be clear what it is for.
-	 */
-	public abstract Scope compile();
-
-	public abstract boolean isCompiled();
-
-	/**
-	 * Take care of anything necessary after compilation. This may be called
-	 * when a parent operation (one that cites this as an argument, for example)
-	 * is compiled and the compile method was not called, but some work may
-	 * still need to be done. This implementation identifies any arguments that
-	 * are {@link OperationAdapter}s and calls their {@link #postCompile()}
-	 * method, so it should be delegated to in the case that this method is
-	 * overridden to do something else.
-	 */
-	public void postCompile() {
-		getArgumentVariables().stream()
-				.map(Variable::getProducer)
-				.map(arg -> arg instanceof OperationAdapter ? (OperationAdapter) arg : null)
-				.filter(Objects::nonNull)
-				.forEach(OperationAdapter::postCompile);
-	}
-
-	public void addVariable(Variable<?, ?> v) {
-		addVariable(new InstanceReference<>(v).assign(null));
-	}
-
-	public void addVariable(ExpressionAssignment<?> v) {
-		if (variables == null) {
-			variables = new ArrayList<>();
-		}
-
-		variables.add(v);
-	}
-
-	public boolean containsVariable(ExpressionAssignment<?> v) {
-		return getVariables().contains(v);
-	}
-
-	public List<ExpressionAssignment<?>> getVariables() { return variables == null ? Collections.emptyList() : variables; }
-
-	public void purgeVariables() { this.variables = null; }
-
-	@Deprecated
-	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
-
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;
 		semaphore.waitFor();
@@ -205,9 +117,9 @@ public abstract class OperationAdapter<T, C> implements
 	@Override
 	public void destroy() {
 		if (getInputs() != null) {
-			getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
+			getInputs().stream().map(in -> in instanceof Destroyable ? (Destroyable) in : null)
 					.filter(Objects::nonNull)
-					.forEach(Producer::destroy);
+					.forEach(Destroyable::destroy);
 		}
 
 		resetArguments();
@@ -266,8 +178,7 @@ public abstract class OperationAdapter<T, C> implements
 		}
 
 		String name = c.getSimpleName();
-		if (name == null || name.trim().length() <= 0) name = "anonymous";
-		if (name.equals("AcceleratedOperation") || name.equals("AcceleratedProducer")) name = functionName;
+		if (name.trim().length() <= 0) name = "anonymous";
 		return name;
 	}
 }

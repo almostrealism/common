@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,28 +19,47 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
-	public static boolean enableOutputVariableDestination = false;
-
-	private Variable outputVariable;
 
 	@Override
-	public void setOutputVariable(Variable out) { this.outputVariable = out; }
-
-	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument( 0) : outputVariable; }
+	public Variable getOutputVariable() { return getArgument( 0); }
 
 	public Evaluable<O> getDestination() {
-		if (enableOutputVariableDestination) {
-			return (Evaluable<O>) getOutputVariable().getProducer().get();
-		} else {
-			return (Evaluable<O>) getInputs().get(0).get();
+		return (Evaluable<O>) getInputs().get(0).get();
+	}
+
+	/**
+	 * Generates a unique signature for this {@link Computation} based on its name
+	 * the signatures of its inputs.
+	 * The signature is created by combining the computation name with the signatures
+	 * of all inputs except the first one (assumed to be the destination), joined
+	 * with colons.
+	 *
+	 * @return An MD5 hash of the combined signature string, or null if any input signature is null
+	 *
+	 * @see Signature#of(Object)
+	 * @see Signature#md5(String)
+	 */
+	@Override
+	public String signature() {
+		List<String> signatures = getInputs().stream().skip(1)
+				.map(Signature::of).collect(Collectors.toList());
+		if (signatures.stream().anyMatch(Objects::isNull)) {
+			// If any of the inputs do not provide signatures,
+			// it is not possible to be certain about the signature
+			// of this computation
+			return null;
 		}
+
+		return Signature.md5(getName() + "|" + String.join(":", signatures));
 	}
 
 	@Override

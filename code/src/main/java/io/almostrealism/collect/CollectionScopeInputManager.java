@@ -18,14 +18,13 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.relation.Producer;
 
 import java.util.function.Supplier;
 
 public class CollectionScopeInputManager extends DefaultScopeInputManager {
 	public CollectionScopeInputManager(LanguageOperations lang) {
 		super(lang);
-		setVariableFactory((p, input) -> CollectionVariable.create(p, p.getArgumentName(counter++), (Supplier) input));
+		setVariableFactory((p, input) -> CollectionVariable.create(p.getArgumentName(counter++), (Supplier) input));
 	}
 
 	public static CollectionScopeInputManager getInstance(LanguageOperations lang) {

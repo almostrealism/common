@@ -16,9 +16,19 @@
 
 package org.almostrealism.io;
 
+import io.almostrealism.uml.Signature;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.OptionalInt;
 
@@ -91,8 +101,14 @@ public class SystemUtils {
 		return Optional.ofNullable(getProperty("AR_APPLE_TEAM"));
 	}
 
-	public static String getLocalDestination(String file) {
-		return getLocalDestination().resolve(file).toString();
+	public static String getLocalDestination(String... pathElements) {
+		Path path = getLocalDestination();
+
+		for (String element : pathElements) {
+			path = path.resolve(element);
+		}
+
+		return path.toString();
 	}
 
 	public static Path getLocalDestination() {
@@ -137,6 +153,66 @@ public class SystemUtils {
 		Path path = Paths.get(getHome(), "Library", "Caches", appName);
 		ensureDirectoryExists(path);
 		return path;
+	}
+
+	public static File download(String url, String dest) {
+		return download(url, dest, null);
+	}
+
+	public static File download(String url, String dest, String expectedMd5) {
+		try {
+			File destFile = new File(dest);
+			URL fileUrl = new URL(url);
+			URLConnection conn = fileUrl.openConnection();
+
+			MessageDigest md = expectedMd5 == null ? null : MessageDigest.getInstance("MD5");
+
+			try (InputStream is = conn.getInputStream();
+					OutputStream os = new FileOutputStream(dest)) {
+				byte[] buffer = new byte[8192]; int length;
+
+				while ((length = is.read(buffer)) != -1) {
+					os.write(buffer, 0, length);
+
+					if (md != null) {
+						md.update(buffer, 0, length);
+					}
+				}
+			}
+
+			if (md != null) {
+				String md5 = Signature.hex(md.digest());
+
+				if (!md5.equals(expectedMd5)) {
+					Console.root().features(SystemUtils.class)
+							.warn("MD5 mismatch for " + url + " (" + md5 + " != " + expectedMd5 + ")");
+				}
+			}
+
+			return destFile;
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	public static String md5(File location) {
+		try {
+			MessageDigest md = MessageDigest.getInstance("MD5");
+
+			FileInputStream fis = new FileInputStream(location);
+			byte[] buffer = new byte[8192];
+			int length;
+			while ((length = fis.read(buffer)) != -1) {
+				md.update(buffer, 0, length);
+			}
+			fis.close();
+
+			return Signature.hex(md.digest());
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
+		}
 	}
 
 	public static Path ensureDirectoryExists(Path path) {

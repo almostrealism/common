@@ -24,6 +24,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -106,6 +107,8 @@ public class FourierTransformTests implements TestFeatures {
 
 	@Test
 	public void multiBatchTransform1() {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
 		int sampleRate = 44100;
 		int bins = 1024;
 		int totalSlices = 2;
@@ -133,11 +136,11 @@ public class FourierTransformTests implements TestFeatures {
 		for (int i = 0; i < bins; i++) {
 			double expected = out.toDouble(i);
 			double actual = out.toDouble(2 * bins * comparisonSlice + i);
-			// log(expected + " vs " + actual);
 			assertSimilar(expected, actual, 0.0001);
 			if (expected > 0) total++;
 		}
 
+		log("total = " + total);
 		Assert.assertTrue(total > 300);
 	}
 

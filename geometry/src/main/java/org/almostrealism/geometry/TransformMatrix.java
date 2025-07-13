@@ -95,7 +95,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 
 	/**
 	 * Sets the 16 values stored by this TransformMatrix to those specified.
-	 * Any extra array entries are removed and missing array entries are
+	 * Any extra array entries are removed, and missing array entries are
 	 * replaced with 0.0.
 	 */
 	public void setMatrix(double matrix[][]) {
@@ -134,19 +134,15 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * This method is slow.
-	 * Also, it might be more valuable to have an {@link Expression}
-	 * which represents the value, which can be obtained via
-	 * {@link #getValue(int)}.
+	 * Retrieve a value from the matrix.
 	 *
 	 * @param r  Matrix row.
 	 * @param c  Matrix column.
 	 *
 	 * @return  Value from matrix.
 	 */
-	// TODO  Modify to return an Expression(?)
 	@Deprecated
-	public double getValue(int r, int c) { return this.toArray()[r * 4 + c]; }
+	public double getValue(int r, int c) { return toDouble(r * 4 + c); }
 
 	/**
 	 * Multiplies the matrix represented by this {@link TransformMatrix} with the specified

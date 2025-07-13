@@ -26,7 +26,7 @@ import org.jocl.CLException;
 
 import java.util.stream.Stream;
 
-public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>, ConsoleFeatures {
+public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>, Runnable, ConsoleFeatures {
 	private Evaluable<T> operation;
 	private MemoryBank destination;
 
@@ -35,9 +35,17 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 		this.destination = destination;
 
 		if (operation instanceof HardwareEvaluable) {
+			// DestinationEvaluable is intended to be used only as an alternative
+			// to HardwareEvaluable, when it is not possible to use it
 			throw new UnsupportedOperationException();
+		} else if (!(operation instanceof AcceleratedOperation<?>)) {
+			warn("Creating DestinationEvaluable for " + operation.getClass().getSimpleName() +
+					" will not leverage hardware acceleration");
 		}
 	}
+
+	@Override
+	public void run() { evaluate(); }
 
 	@Override
 	public T evaluate(Object... args) {

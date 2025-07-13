@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,8 +19,26 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Memory;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.stream.Stream;
+
 public abstract class RAM implements Memory {
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(8);
+
+	private final StackTraceElement[] allocationStackTrace;
+
+	protected RAM() {
+		this(allocationTraceFrames);
+	}
+
+	protected RAM(int traceFrames) {
+		if (traceFrames > 0) {
+			allocationStackTrace = Stream.of(Thread.currentThread().getStackTrace())
+					.limit(traceFrames).toArray(StackTraceElement[]::new);
+		} else {
+			allocationStackTrace = null;
+		}
+	}
 
 	public long getContainerPointer() {
 		return getContentPointer();
@@ -31,6 +49,10 @@ public abstract class RAM implements Memory {
 	}
 
 	public long getSize() { throw new UnsupportedOperationException(); }
+
+	public StackTraceElement[] getAllocationStackTrace() {
+		return allocationStackTrace;
+	}
 
 	@Override
 	public String toString() {

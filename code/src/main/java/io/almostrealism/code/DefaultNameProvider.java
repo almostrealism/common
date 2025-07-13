@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,31 +16,20 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
-
 public class DefaultNameProvider implements NameProvider {
 	private String function;
+	private NamedFunction named;
 
 	public DefaultNameProvider(String function) {
 		this.function = function;
 	}
 
+	public DefaultNameProvider(NamedFunction named) {
+		this.named = named;
+	}
+
 	@Override
 	public String getFunctionName() {
-		return function;
-	}
-
-	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	public String getVariableDimName(ArrayVariable v, int dim) {
-		return "1";
-	}
-
-	@Override
-	public String getVariableSizeName(ArrayVariable v) {
-		return "1";
+		return named == null ? function : named.getFunctionName();
 	}
 }

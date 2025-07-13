@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,15 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.profile;
 
 import io.almostrealism.relation.Operation;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.compute.Process;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
-// TODO  Move to io.almostrealism.profile (or some other package)
 public class OperationWithInfo implements Operation, OperationInfo {
 	private final OperationMetadata metadata;
 	private final Operation operation;

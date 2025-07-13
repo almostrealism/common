@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -267,6 +268,229 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 					input.valueAt(4, i),
 					originalInput.valueAt(0, i) + filter.valueAt(0, i),
 					0.0001);
+		}
+	}
+
+	@Test
+	public void subsetHalves() {
+		int batchSize = 1;
+		int heads = 2;
+		int seqLen = 8;
+		int rotaryDim = 16;
+
+		int halfDim = rotaryDim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, heads, seqLen, rotaryDim)).randFill();
+
+		// Extract first half (x1)
+		CollectionProducer<PackedCollection<?>> x1 =
+				cp(input).subset(shape(batchSize, heads, seqLen, halfDim),
+						0, 0, 0, 0);
+		PackedCollection<?> result1 = x1.evaluate();
+
+		// Extract second half (x2)
+		CollectionProducer<PackedCollection<?>> x2 =
+				cp(input).subset(shape(batchSize, heads, seqLen, halfDim),
+						0, 0, 0, halfDim).minus();
+		PackedCollection<?> result2 = x2.evaluate();
+
+		for (int h = 0; h < heads; h++) {
+			for (int s = 0; s < seqLen; s++) {
+				for (int d = 0; d < halfDim; d++) {
+					assertEquals(input.valueAt(0, h, s, d), result1.valueAt(0, h, s, d));
+					assertEquals(-input.valueAt(0, h, s, d + halfDim), result2.valueAt(0, h, s, d));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void subsetHalfPad2d() {
+		int seqLen = 16;
+		int dim = 16;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+
+		CollectionProducer<PackedCollection<?>> x =
+				cp(input).subset(shape(seqLen, halfDim), 0, 0);
+		CollectionProducer<PackedCollection<?>> padded =
+				pad(shape(seqLen, dim), x, 0, halfDim);
+
+		PackedCollection<?> result = padded.evaluate();
+		result.traverse(1).print();
+
+		for (int s = 0; s < seqLen; s++) {
+			for (int d = 0; d < dim; d++) {
+				double actual = result.valueAt(s, d);
+
+				if (d >= halfDim) {
+					double expected = input.valueAt(s, d % halfDim);
+					assertEquals(expected, actual);
+				} else {
+					assertEquals(0, actual);
+				}
+			}
+		}
+	}
+
+	/**
+	 * This test groups together a few of the other tests to ensure
+	 * that automatic compiled program reuse does not cause issues.
+	 *
+	 * @see #subsetHalfPad2dSum1()
+	 * @see #subsetHalfPad2dSum2()
+	 * @see #subsetHalfPad2dSum3()
+	 */
+	@Test
+	public void subsetHalfPad2dSumAll() {
+		if (testDepth < 3) return;
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		subsetHalfPad2dSum1();
+		subsetHalfPad2dSum2();
+		subsetHalfPad2dSum3();
+	}
+
+	@Test
+	public void subsetHalfPad2dSum1() {
+		int seqLen = 16;
+		int dim = 16;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+		PackedCollection<?> plus = new PackedCollection<>(shape(seqLen, dim)).randFill();
+
+		CollectionProducer<PackedCollection<?>> x =
+				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
+		CollectionProducer<PackedCollection<?>> padded =
+				pad(shape(seqLen, dim), x, 0, 0);
+
+		PackedCollection<?> result = padded.add(cp(plus)).evaluate();
+
+		for (int s = 0; s < seqLen; s++) {
+			for (int d = 0; d < dim; d++) {
+				double actual = result.valueAt(s, d);
+
+				if (d < halfDim) {
+					double expected = input.valueAt(s, d + halfDim);
+					assertEquals(plus.valueAt(s, d) + expected, actual);
+				} else {
+					assertEquals(plus.valueAt(s, d), actual);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void subsetHalfPad2dSum2() {
+		int seqLen = 16;
+		int dim = 16;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+
+		CollectionProducer<PackedCollection<?>> x =
+				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
+		CollectionProducer<PackedCollection<?>> padded =
+				pad(shape(seqLen, dim), x, 0, 0);
+
+		PackedCollection<?> result = padded.add(cp(input)).evaluate();
+
+		for (int s = 0; s < seqLen; s++) {
+			for (int d = 0; d < dim; d++) {
+				double actual = result.valueAt(s, d);
+				double plus = input.valueAt(s, d);
+
+				if (d < halfDim) {
+					double expected = input.valueAt(s, d + halfDim);
+					assertEquals(plus + expected, actual);
+				} else {
+					assertEquals(plus, actual);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void subsetHalfPad2dSum3() {
+		int seqLen = 16;
+		int dim = 16;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+
+		CollectionProducer<PackedCollection<?>> x =
+				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
+		CollectionProducer<PackedCollection<?>> padLeft =
+				pad(shape(seqLen, dim), x, 0, 0);
+		CollectionProducer<PackedCollection<?>> padRight =
+				pad(shape(seqLen, dim), x, 0, halfDim);
+
+		PackedCollection<?> result = padLeft.add(padRight).evaluate();
+
+		for (int s = 0; s < seqLen; s++) {
+			for (int d = 0; d < dim; d++) {
+				double actual = result.valueAt(s, d);
+				double expected = input.valueAt(s, halfDim + d % halfDim);
+				assertEquals(expected, actual);
+			}
+		}
+	}
+
+	@Test
+	public void subsetHalfConcat1d() {
+		int dim = 64;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(dim)).randFill();
+		CollectionProducer<PackedCollection<?>> x1 = cp(input).subset(shape(halfDim), 0);
+		CollectionProducer<PackedCollection<?>> x2 = cp(input).subset(shape(halfDim), halfDim);
+
+		CollectionProducer<PackedCollection<?>> concat = concat(0, x2, x1);
+		PackedCollection<?> result = concat.evaluate();
+
+		for (int d = 0; d < dim; d++) {
+			double actual = result.valueAt(d);
+
+			if (d < halfDim) {
+				double expected = input.valueAt(d + halfDim);
+				assertEquals(expected, actual);
+			} else {
+				double expected = input.valueAt(d - halfDim);
+				assertEquals(expected, actual);
+			}
+		}
+	}
+
+	@Test
+	public void subsetHalfConcat2d() {
+		int seqLen = 16;
+		int dim = 16;
+		int halfDim = dim / 2;
+
+		PackedCollection<?> input = new PackedCollection<>(shape(seqLen, dim)).randFill();
+
+		CollectionProducer<PackedCollection<?>> x1 =
+				cp(input).subset(shape(seqLen, halfDim), 0, 0);
+		CollectionProducer<PackedCollection<?>> x2 =
+				cp(input).subset(shape(seqLen, halfDim), 0, halfDim);
+
+		CollectionProducer<PackedCollection<?>> concat = concat(1, x2, x1);
+		PackedCollection<?> result = concat.evaluate();
+
+		for (int s = 0; s < seqLen; s++) {
+			for (int d = 0; d < dim; d++) {
+				double actual = result.valueAt(s, d);
+
+				if (d < halfDim) {
+					double expected = input.valueAt(s, d + halfDim);
+					assertEquals(expected, actual);
+				} else {
+					double expected = input.valueAt(s, d - halfDim);
+					assertEquals(expected, actual);
+				}
+			}
 		}
 	}
 }

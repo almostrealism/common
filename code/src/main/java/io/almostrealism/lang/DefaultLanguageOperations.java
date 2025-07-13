@@ -48,12 +48,8 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	public Precision getPrecision() { return precision; }
 
 	@Override
-	public String stringForLong(long value) {
-		if (int64) {
-			return Precision.FP64.stringForLong(value);
-		}
-
-		return LanguageOperations.super.stringForLong(value);
+	public boolean isInt64() {
+		return int64 || LanguageOperations.super.isInt64();
 	}
 
 	@Override

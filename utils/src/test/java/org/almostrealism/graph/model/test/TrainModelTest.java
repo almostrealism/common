@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.WeightedSumExpression;
+import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.compute.ParallelProcess;
 import org.almostrealism.algebra.Tensor;
@@ -24,7 +25,6 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.io.Console;
@@ -259,19 +259,11 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 				!IndexProjectionProducerComputation.enableDelegatedIsolate)
 			return;
 
-		boolean weightedSum = WeightedSumExpression.enableCollectionExpression;
-
-		try {
-			WeightedSumExpression.enableCollectionExpression = false;
-
-			int dim = 28;
-			int filters = 8;
-			Tensor<Double> t = tensor(shape(dim, dim));
-			PackedCollection<?> input = t.pack();
-			train(input, model(dim, dim, 3, filters, 2, 10));
-		} finally {
-			WeightedSumExpression.enableCollectionExpression = weightedSum;
-		}
+		int dim = 28;
+		int filters = 8;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
 	@Test
@@ -370,7 +362,7 @@ public class TrainModelTest implements ModelFeatures, TestFeatures, KernelAssert
 							" | epoch = " + i / epochSize + "\t|\t" + remainingText);
 
 					if (first) {
-						AcceleratedComputationOperation.printTimes();
+						KernelTraversalProvider.printTimes();
 					} else if (remaining > 900) {
 						return;
 					}

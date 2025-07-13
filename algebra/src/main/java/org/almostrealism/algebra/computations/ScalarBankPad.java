@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
@@ -30,11 +30,15 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 
+/**
+ * @deprecated  Use {@link org.almostrealism.collect.computations.PackedCollectionPad} instead.
+ */
+@Deprecated
 public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
-		implements ScalarBankProducerBase, ComputerFeatures {
+		implements ScalarBankProducerBase, HardwareFeatures {
 	private final int count;
 	private final int total;
 
@@ -49,11 +53,11 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 		HybridScope<PackedCollection<Scalar>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
-		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
-		Expression resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2));
-		Expression resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1));
-		Expression valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2));
-		Expression valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1));
+		Expression i = new StaticReference(Integer.class, getNameProvider().getVariablePrefix() + "_i");
+		Expression resultX = getArgument(0).referenceRelative(i.multiply(2));
+		Expression resultY = getArgument(0).referenceRelative(i.multiply(2).add(1));
+		Expression valueX = getArgument(1).referenceRelative(i.multiply(2));
+		Expression valueY = getArgument(1).referenceRelative(i.multiply(2).add(1));
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");

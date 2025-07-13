@@ -16,7 +16,6 @@
 
 package io.almostrealism.profile;
 
-import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 

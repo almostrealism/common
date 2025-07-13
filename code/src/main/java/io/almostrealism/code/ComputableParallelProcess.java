@@ -22,6 +22,8 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.io.Console;
 
 import java.util.ArrayList;

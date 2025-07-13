@@ -193,13 +193,11 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
-		intersect.compile();
 		evaluate(intersect, true);
 	}
 
 	protected void evaluate(TriangleIntersectAt intersect, boolean assertions) {
 		Evaluable<Scalar> ev = intersect.get();
-		((OperationAdapter) ev).compile();
 		double distance = ev.evaluate(data1.get(0), origin1.get().evaluate(), direction1.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
 		if (assertions) assertEquals(1.0, distance);

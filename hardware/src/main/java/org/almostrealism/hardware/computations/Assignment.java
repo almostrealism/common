@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
@@ -32,8 +33,13 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.uml.Signature;
+import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.List;
 import java.util.OptionalLong;
@@ -41,12 +47,14 @@ import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableAdaptiveMemLength = true;
+	public static boolean enableAggregatedShortCircuit = false;
 
 	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+		init();
 
 		if (memLength > ScopeSettings.maxStatements) {
 			throw new IllegalArgumentException();
@@ -96,7 +104,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 		}
 
-		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, len);
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0);
 
 		for (int i = 0; i < len; i++) {
 			Expression index = new KernelIndex(context);
@@ -122,6 +130,57 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return scope;
+	}
+
+	@Override
+	public Runnable get() {
+		Supplier<Evaluable<? extends T>> out = getInputs().get(0);
+		Supplier<Evaluable<? extends T>> in = getInputs().get(1);
+
+		if (out instanceof Shape && in instanceof Shape) {
+			TraversalPolicy inShape = ((Shape<?>) in).getShape();
+			TraversalPolicy outShape = ((Shape<?>) out).getShape();
+
+			if (inShape.getTotalSizeLong() != outShape.getTotalSizeLong() ||
+				inShape.getCountLong() != outShape.getCountLong()) {
+				// There are some cases where it makes sense to just generate a Scope
+				// here, because (for example) the alternative might be to provide an
+				// Evaluable that repeats the same value many times over
+				return super.get();
+			}
+		}
+
+		Evaluable<?> ev = in.get();
+
+		MemoryBank destination = (MemoryBank) out.get().evaluate();
+
+		if (ev instanceof HardwareEvaluable<?>) {
+			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
+		}
+
+		boolean shortCircuit = ev instanceof AcceleratedOperation<?>;
+
+		if (!enableAggregatedShortCircuit &&
+				MemoryDataArgumentMap.isAggregationTarget(destination)) {
+			// Assignment operations that compute a value which itself
+			// depends on the destination, have issues when the destination
+			// is aggregated (when using DestinationEvaluable it will
+			// be aggregated twice, leading to inconsistent evaluation)
+			// TODO  It would be better to actually determine whether
+			// TODO  the destination is referenced by the the assignment
+			// TODO  value, but for now this is sufficient
+			shortCircuit = false;
+		}
+
+		if (shortCircuit) {
+			return new DestinationEvaluable(ev, destination);
+		}
+
+		// TODO  It would be preferable to always use DestinationEvaluable, but it
+		// TODO  handles the evaluation of Producers which do not directly support
+		// TODO  kernel evaluation differently than ProcessDetailsFactory (which is
+		// TODO  sometimes not ideal - see DestinationEvaluable.evaluate)
+		return super.get();
 	}
 
 	@Override
@@ -151,6 +210,21 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return result;
+	}
+
+	@Override
+	public String signature() {
+		if (Signature.of(getInputs().get(0)) == null) {
+			// If the destination does not provide a signature,
+			// it is not possible to be certain about the signature
+			// for the assignment operation
+			return null;
+		}
+
+		String signature = Signature.of(getInputs().get(1));
+		if (signature == null || memLength == 0) return null;
+
+		return "assign" + memLength + "->" + signature;
 	}
 
 	@Override

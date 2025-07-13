@@ -65,12 +65,12 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		scope.getVariables().add(outputVariable.valueAt(1).assign(e(1.0)));
 
 		Expression i = new StaticReference(Integer.class, "i");
-		Expression left = new StaticReference(Integer.class, getVariableName(0));
-		Expression right = new StaticReference(Integer.class, getVariableName(1));
-		String v1 = getVariableName(2);
-		String v2 = getVariableName(3);
-		String t1 = getVariableName(4);
-		String t2 = getVariableName(5);
+		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
+		Expression right = new StaticReference(Integer.class, getNameProvider().getVariableName(1));
+		String v1 = getNameProvider().getVariableName(2);
+		String v2 = getNameProvider().getVariableName(3);
+		String t1 = getNameProvider().getVariableName(4);
+		String t2 = getNameProvider().getVariableName(5);
 
 		scope.getVariables().add(new ExpressionAssignment(true, left, new IntegerConstant(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, right, new IntegerConstant(-1)));

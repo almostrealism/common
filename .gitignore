@@ -5,6 +5,8 @@
 .idea/*.xml
 .idea/codeStyles/**
 
+**/.qodana/**
+
 /**/target/
 **/*.versionsBackup
 
@@ -14,3 +16,10 @@
 /utils/data/**
 /utils/results/**
 /utils/generated_images/**
+
+# Javac argument files
+javac.*.args
+
+# Generated code and libs
+Extensions/**
+**/Extensions/**

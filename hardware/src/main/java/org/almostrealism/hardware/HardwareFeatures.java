@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,36 +17,20 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
 import org.almostrealism.hardware.computations.DelegatedProducer;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface HardwareFeatures extends ProducerFeatures, MemoryDataFeatures, ConsoleFeatures {
-
-	default Runnable compileRunnable(Computation<Void> c) {
-		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
-	}
-
-	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		return Hardware.getLocalHardware().getComputer().compileProducer(c);
-	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
+	boolean outputMonitoring = SystemUtils.isEnabled("AR_HARDWARE_OUTPUT_MONITORING").orElse(false);
 
 	default <T extends MemoryData> Producer<T> instruct(String key,
 														Function<Producer[], Producer<T>> func,

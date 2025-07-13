@@ -20,7 +20,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;

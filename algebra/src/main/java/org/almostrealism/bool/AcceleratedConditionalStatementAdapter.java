@@ -28,7 +28,7 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -46,7 +46,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
 													AcceleratedConditionalStatement<T>,
-													ComputerFeatures {
+													HardwareFeatures {
 
 	private final int memLength;
 
@@ -82,12 +82,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 
 	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
-
-	/**
-	 * @return  GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;

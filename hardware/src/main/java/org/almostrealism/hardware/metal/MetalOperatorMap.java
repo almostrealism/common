@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,16 +17,16 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.profile.OperationMetadata;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 
 /**
- * Wrapper for a {@link MTLFunction} and the {@link MetalOperator}s.
+ * {@link MetalOperatorMap} manages a {@link MetalProgram} and
+ * the associated {@link MetalOperator}s.
  *
  * @author  Michael Murray
  */
@@ -87,8 +87,6 @@ public class MetalOperatorMap implements InstructionSet {
 			allOperators.add(op);
 		}
 
-		context.accessed(key);
-
 		return ops.get(key);
 	}
 
@@ -107,7 +105,14 @@ public class MetalOperatorMap implements InstructionSet {
 	 */
 	@Override
 	public void destroy() {
-		if (prog != null) prog.destroy();
+		String name = null;
+		String signature = null;
+
+		if (prog != null) {
+			name = prog.getName();
+			signature = prog.signature();
+			prog.destroy();
+		}
 
 		if (operators != null) {
 			operators.remove();
@@ -117,6 +122,10 @@ public class MetalOperatorMap implements InstructionSet {
 		if (allOperators != null) {
 			allOperators.forEach(MetalOperator::destroy);
 			allOperators = null;
+		}
+
+		if (name != null || signature != null) {
+			context.destroyed(name, signature);
 		}
 	}
 }

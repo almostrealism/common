@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,11 +21,16 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
-import io.almostrealism.util.FrequencyCache;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
@@ -51,12 +56,11 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	private MetalCommandRunner runner;
 
-	private FrequencyCache<String, MetalOperatorMap> instructionSets;
+	private Map<String, MetalOperatorMap> instructionSets;
 
 	public MetalComputeContext(MetalDataContext dc) {
 		super(dc);
-		this.instructionSets = new FrequencyCache<>(500, 0.4);
-		this.instructionSets.setEvictionListener((name, inst) -> inst.destroy());
+		this.instructionSets = new HashMap<>();
 	}
 
 	protected void init(MTLDevice mainDevice) {
@@ -90,9 +94,15 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
-		if (instructionSets.containsKey(scope.getName())) {
-			warn("Recompiling instruction set " + scope.getName());
-			instructionSets.evict(scope.getName());
+		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
+			if (ScopeSettings.enableInstructionSetReuse) {
+				warn("Compiling instruction set " + scope.getName() +
+						" with duplicate signature");
+			} else {
+				warn("Recompiling instruction set " + scope.getName());
+			}
+
+			instructionSets.get(key(scope.getName(), scope.signature())).destroy();
 		}
 
 		long start = System.nanoTime();
@@ -106,14 +116,12 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			buf.append(enc.apply(scope));
 
 			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-			instructionSets.put(scope.getName(), instSet);
+			instructionSets.put(key(scope.getName(), scope.signature()), instSet);
 			return instSet;
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
 		}
 	}
-
-	protected void accessed(String key) { instructionSets.get(key); }
 
 	@Override
 	public boolean isCPU() { return false; }
@@ -122,9 +130,21 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public MTLCommandQueue getMtlQueue() { return queue; }
 	public MetalCommandRunner getCommandRunner() { return runner; }
 
+	protected void destroyed(String name, String signature) {
+		if (instructionSets != null) {
+			String key = key(name, signature);
+
+			if (instructionSets.remove(key) == null) {
+				throw new IllegalArgumentException("No instruction set found for " + key);
+			}
+		}
+	}
+
 	@Override
 	public void destroy() {
-		this.instructionSets.forEach((name, inst) -> inst.destroy());
+		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
+		toDestroy.forEach(MetalOperatorMap::destroy);
+
 		this.instructionSets = null;
 
 		if (queue != null) queue.release();
@@ -136,4 +156,12 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	@Override
 	public Console console() { return Hardware.console; }
+
+	protected static String key(String name, String signature) {
+		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+			return signature;
+		}
+
+		return name;
+	}
 }
