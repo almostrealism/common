@@ -44,4 +44,9 @@ public class NativeRef<T extends RAM> extends MemoryReference<T> {
 	public int hashCode() {
 		return (Long.hashCode(address) * 31) + Long.hashCode(size);
 	}
+
+	@Override
+	public String toString() {
+		return String.format("%s[%d]", getClass().getSimpleName(), getSize());
+	}
 }

@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 
 public abstract class RAM implements Memory {
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
-	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(8);
+	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(16);
 
 	private final StackTraceElement[] allocationStackTrace;
 

@@ -98,7 +98,18 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	public int getAllocatedCount() { return allocated.size(); }
 
 	private void deallocateNow(T mem) {
-		deallocateNow(getNativeRef(mem));
+		if (allocated == null) {
+			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
+			return;
+		}
+
+		NativeRef<T> ref = getNativeRef(mem);
+		if (ref == null) {
+			warn("Attempting to deallocate untracked memory " + mem);
+			return;
+		}
+
+		deallocateNow(ref);
 	}
 
 	private void deallocateNow(NativeRef<T> ref) {
