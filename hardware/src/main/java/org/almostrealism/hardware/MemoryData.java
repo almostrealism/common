@@ -206,7 +206,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 		if (getMemOrdering() == null) {
 			float out[] = new float[length];
-			getMem(0, out, offset, length);
+			getMem(offset, out, 0, length);
 			return out;
 		} else {
 			double raw[] = toArray(offset, length);
