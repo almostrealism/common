@@ -128,14 +128,14 @@ public class VectorMathTest implements TestFeatures {
 	@Test
 	public void normalize() {
 		PackedCollection<?> v = new PackedCollection<>(3).randFill();
-		PackedCollection<?> result = _normalize(cp(v)).evaluate();
+		PackedCollection<?> result = normalize(cp(v)).evaluate();
 		double length = result.doubleStream().map(d -> d * d).sum();
 		assertEquals(1.0, length);
 	}
 
 	@Test
 	public void normalizeRandom() {
-		PackedCollection<?> result = _normalize(new Random(shape(2))).evaluate();
+		PackedCollection<?> result = normalize(new Random(shape(2))).evaluate();
 		double length = result.doubleStream().map(d -> d * d).sum();
 		assertEquals(1.0, length);
 	}
