@@ -102,11 +102,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;
 
-	// Should be removed
-	boolean enableStrictAssignmentSize = true;
-	boolean enableTraversableRepeated = true;
-	boolean enableGradientMultiplyEach = true;
-
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
@@ -809,7 +804,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, enableStrictAssignmentSize);
+			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, true);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
@@ -2696,10 +2691,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	/**
 	 * Creates a computation that finds the index of the maximum value in a collection.
-	 * 
-	 * <p>This method demonstrates practical usage of {@link org.almostrealism.collect.computations.RepeatedProducerComputation}
-	 * subclasses for reduction operations. It uses either {@link TraversableRepeatedProducerComputation}
-	 * or {@link ConstantRepeatedProducerComputation} depending on the enableTraversableRepeated flag.
+	 * <p>
+	 * This method uses {@link TraversableRepeatedProducerComputation} to identify the index.
 	 * 
 	 * <p>The computation works by:
 	 * <ul>
@@ -2709,32 +2702,21 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * </ul>
 	 * 
 	 * @param input The collection to find the maximum index in
-	 * @return A computation that produces the index of the maximum element
 	 * @param <T> The type of collection being processed
+	 *
+	 * @return A computation that produces the index of the maximum element
 	 */
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> indexOfMax(Producer<T> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		if (enableTraversableRepeated) {
-			return new TraversableRepeatedProducerComputation<>("indexOfMax", shape.replace(shape(1)), size,
-					(args, index) -> e(0),
-					(args, currentIndex) -> index ->
-							conditional(args[1].getValueRelative(index)
-											.greaterThan(args[1].getValueRelative(currentIndex)),
-									index, currentIndex),
-					(Supplier) input);
-		} else {
-			return new ConstantRepeatedProducerComputation<>("indexOfMax", shape.replace(shape(1)), size,
-					(args, index) -> e(0),
-					(args, index) -> {
-						Expression<?> currentIndex = args[0].getValueRelative(e(0));
-						return conditional(args[1].getValueRelative(index)
+		return new TraversableRepeatedProducerComputation<>("indexOfMax", shape.replace(shape(1)), size,
+				(args, index) -> e(0),
+				(args, currentIndex) -> index ->
+						conditional(args[1].getValueRelative(index)
 										.greaterThan(args[1].getValueRelative(currentIndex)),
-								index, currentIndex);
-					},
-					(Supplier) input);
-		}
+								index, currentIndex),
+				(Supplier) input);
 	}
 
 	/**
@@ -2919,17 +2901,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<PackedCollection<?>> multiplyGradient(
-			CollectionProducer<T> p, Producer<T> gradient, int inSize) {
+											CollectionProducer<T> p, Producer<T> gradient, int inSize) {
 		int outSize = shape(gradient).getTotalSize();
-
-		if (enableGradientMultiplyEach) {
-			return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize));
-		} else {
-			return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize).traverse(1));
-		}
+		return p.multiply(c(gradient).reshape(outSize).traverse(1).repeat(inSize));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(
+				Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
@@ -2946,7 +2924,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return null;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation, int sliceSize) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(
+				Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation, int sliceSize) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
