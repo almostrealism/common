@@ -147,8 +147,8 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return map(itemShape, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return reduce(this, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
+		return reduce(this, c -> (CollectionProducerComputation<?>) mapper.apply(c));
 	}
 
 	/**
@@ -284,11 +284,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return mod((Producer) this, (Producer) mod);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sum(int axis) {
 		return sum(traverse(axis, (Producer) this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sum() {
 		return sum((Producer) this);
 	}
 

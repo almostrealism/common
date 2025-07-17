@@ -58,6 +58,17 @@ public class WeightedSumComputation <T extends PackedCollection<?>>
 		this.weightGroupShape = weightGroupShape;
 		this.inShape = shape(input);
 		this.weightShape = shape(weights);
+
+		if (inputPositions.getDimensions() != resultShape.getDimensions() ||
+				weightPositions.getDimensions() != resultShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		} else if (inputPositions.getDimensions() != inShape.getDimensions() ||
+				inputGroupShape.getDimensions() != inShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		} else if (weightPositions.getDimensions() != weightShape.getDimensions() ||
+				weightGroupShape.getDimensions() != weightShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	@Override

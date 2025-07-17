@@ -47,6 +47,7 @@ import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
+import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
@@ -100,15 +101,18 @@ import java.util.stream.Stream;
 public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;
-	boolean enableStrictAssignmentSize = true;
 
 	// Should be removed
+	boolean enableStrictAssignmentSize = true;
 	boolean enableTraversableRepeated = true;
 	boolean enableGradientMultiplyEach = true;
 
 	// Should be flipped and removed
 	boolean enableIndexProjectionDeltaAlt = true;
 	boolean enableCollectionIndexSize = false;
+
+	// Possible future feature
+	boolean enableUnaryWeightedSum = false;
 
 	static boolean isEnableIndexProjectionDeltaAlt() {
 		return enableIndexProjectionDeltaAlt;
@@ -2760,10 +2764,22 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: Producer that generates [0.0]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sum(Producer<T> input) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> sum(Producer<T> input) {
 		if (Algebraic.isZero(input)) {
 			// Mathematical optimization: sum(zeros) = 0
 			return zeros(shape(input).replace(shape(1)));
+		}
+
+		if (enableUnaryWeightedSum) {
+			TraversalPolicy shape = shape(input);
+
+			TraversalPolicy resultShape = shape.replace(new TraversalPolicy(1));
+			TraversalPolicy positions = padDimensions(resultShape, 1, shape.getDimensions(), true);
+			TraversalPolicy groupShape = padDimensions(shape.item(), shape.getDimensions());
+			return new WeightedSumComputation<>(
+					positions, positions, positions,
+					groupShape, groupShape,
+					(Producer) input, c(1.0).reshape(shape)).reshape(resultShape);
 		}
 
 		return new CollectionSumComputation(input);
