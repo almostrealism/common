@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -69,10 +69,9 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  * @see TraversalPolicy
  * @see PackedCollection
- * @since 0.69
+ * @since 0.52
  */
-// TODO  It seems like this should actually implement CollectionProducer
-public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>>, OperationInfo {
+public class Random implements CollectionProducer<PackedCollection<?>>, OperationInfo {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
@@ -92,7 +91,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	private double[] values;
 
 	/**
-	 * Creates a new Random producer with uniform distribution.
+	 * Creates a new {@link Random} {@link Producer} with uniform distribution.
 	 * This is equivalent to calling {@code new Random(shape, false)}.
 	 * 
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
@@ -104,20 +103,55 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	}
 
 	/**
-	 * Creates a new Random producer with the specified distribution type.
-	 * 
-	 * <p>This constructor initializes the random generator with the given shape and
-	 * distribution type. The shape must have a non-zero total size.</p>
-	 * 
+	 * Creates a new {@link Random} {@link Producer} with the specified distribution type.
+	 * <p>
+	 * This constructor initializes the random generator with the given shape and
+	 * distribution type. The shape must have a non-zero total size.
+	 * </p>
+	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
 	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @throws IllegalArgumentException if the shape has zero total size
 	 */
 	public Random(TraversalPolicy shape, boolean normal) {
+		this(shape, normal, (Long) null);
+	}
+
+	/**
+	 * Creates a new {@link Random} {@link Producer} with the specified distribution type.
+	 * <p>
+	 * This constructor initializes the random generator with the given shape and
+	 * distribution type. The shape must have a non-zero total size.
+	 * </p>
+	 *
+	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
+	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
+	 * @param seed the seed for the random number generator, or null to use a default seed
+	 * @throws IllegalArgumentException if the shape has zero total size
+	 */
+	public Random(TraversalPolicy shape, boolean normal, Long seed) {
+		this(shape, normal, seed == null ? new java.util.Random() : new java.util.Random(seed));
+	}
+
+	/**
+	 * Creates a new {@link Random} {@link Producer} with the specified distribution type.
+	 * <p>
+	 * This constructor initializes the random generator with the given shape and
+	 * distribution type. The shape must have a non-zero total size.
+	 * </p>
+	 * 
+	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
+	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
+	 * @param random the source for new random number numbers
+	 * @throws IllegalArgumentException if the shape has zero total size
+	 */
+	public Random(TraversalPolicy shape, boolean normal, java.util.Random random) {
 		this.metadata = new OperationMetadata("Random", "Generate random values",
 				"Generate random values " + shape.toStringDetail());
-		this.random = new java.util.Random();
+		this.random = random;
 		this.shape = shape;
 		this.normal = normal;
 
@@ -214,7 +248,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	 * @return a new Producer that provides traversal functionality
 	 */
 	@Override
-	public Producer<PackedCollection<?>> traverse(int axis) {
+	public CollectionProducer<PackedCollection<?>> traverse(int axis) {
 		return new ReshapeProducer(axis, this);
 	}
 
@@ -225,7 +259,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	 * @return a new Producer with the specified shape
 	 */
 	@Override
-	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
 

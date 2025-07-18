@@ -1925,9 +1925,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default Random rand(int... dims) { return rand(shape(dims)); }
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+	default Random rand(TraversalPolicy shape, java.util.Random source) {
+		return new Random(shape, false, source);
+	}
 
 	default Random randn(int... dims) { return randn(shape(dims)); }
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
+	default Random randn(TraversalPolicy shape, java.util.Random source) {
+		return new Random(shape, true, source);
+	}
 
 	default DefaultTraversableExpressionComputation<PackedCollection<?>> compute(String name, CollectionExpression expression) {
 		return new DefaultTraversableExpressionComputation<>(name, expression.getShape(), expression);
