@@ -2665,7 +2665,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> abs(Producer<T> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation<>(
-				"abs", shape,
+				"abs", shape, DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
 				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
 				(Supplier) value);
 	}
