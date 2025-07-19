@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -26,8 +27,28 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class AggregatedComputationTests implements TestFeatures {
+	boolean enableOptimization = false;
+
+	@Test
+	public void mediumSum() {
+		int r = 1024;
+		int c = 1024;
+
+		PackedCollection<?> a = new PackedCollection<>(r, c);
+
+		PackedCollection<?> out = cp(a).sum(1).evaluate();
+
+		for (int i = 0; i < r; i++) {
+			assertEquals(
+					a.range(shape(c), i * c).doubleStream().sum(),
+					out.toDouble(i));
+		}
+	}
+
 	@Test
 	public void largeSum() {
+		if (testDepth < 1) return;
+
 		int w = 257;
 		int h = 8192;
 		int d = 1024;
@@ -44,7 +65,8 @@ public class AggregatedComputationTests implements TestFeatures {
 						.sum();
 		log(Signature.of(sum));
 
-		PackedCollection<?> out = sum.evaluate();
+		PackedCollection<?> out = enableOptimization ?
+				Process.optimized(sum).get().evaluate() : sum.evaluate();
 		log("NaN Count = " + out.count(Double::isNaN));
 
 		double data[] = out.toArray();

@@ -887,4 +887,23 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			enableDestinationLogging = log;
 		}
 	}
+
+	public static <T extends PackedCollection<?>> CollectionProducer<T> assignDeltaAlternate(
+			CollectionProducer<T> producer, CollectionProducer<T> alternate) {
+		Producer computation;
+
+		if (producer instanceof ReshapeProducer) {
+			computation = ((ReshapeProducer) producer).getComputation();
+		} else {
+			computation = producer;
+		}
+
+		if (computation instanceof CollectionProducerComputationBase) {
+			((CollectionProducerComputationBase<?, T>) computation).setDeltaAlternate(alternate);
+		} else {
+			throw new IllegalArgumentException();
+		}
+
+		return producer;
+	}
 }

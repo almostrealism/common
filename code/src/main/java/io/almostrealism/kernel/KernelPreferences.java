@@ -35,7 +35,11 @@ public class KernelPreferences {
 	}
 
 	public static int getWorkSubdivisionMinimum() {
-		return 512;
+		return getWorkSubdivisionUnit() * 8;
+	}
+
+	public static int getWorkSubdivisionUnit() {
+		return 32;
 	}
 
 	public static void requireUniformPrecision() {

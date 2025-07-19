@@ -112,8 +112,8 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	/**
 	 * Convenience method to apply symmetric padding to this collection.
-	 * This method creates a {@link PackedCollectionPad} computation that adds the specified
-	 * amount of zero-padding to each dimension.
+	 * This method creates a {@link org.almostrealism.collect.computations.PackedCollectionPad}
+	 * computation that adds the specified amount of zero-padding to each dimension.
 	 * 
 	 * <p><strong>Example:</strong></p>
 	 * <pre>{@code
@@ -128,7 +128,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	 * @param <V> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
-	 * @see PackedCollectionPad
+	 * @see org.almostrealism.collect.computations.PackedCollectionPad
 	 * @see org.almostrealism.collect.CollectionFeatures#pad(Producer, int...)
 	 */
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
@@ -148,7 +148,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
-		return reduce(this, c -> (CollectionProducerComputation<?>) mapper.apply(c));
+		return reduce(this, mapper);
 	}
 
 	/**
