@@ -66,10 +66,6 @@ public class Asset {
 	}
 
 	public boolean isLoaded() {
-		if (getUrl() == null) {
-			return file != null && file.exists();
-		}
-
 		return confirmFile();
 	}
 

@@ -432,6 +432,31 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	/**
+	 * Creates a {@link PackedCollection} from a {@link List} of {@link Double} values.
+	 * This is one of the primary methods for creating collections from raw data,
+	 * automatically determining the shape based on the size of the list.
+	 *
+	 * <p>Note: This method delegates to {@link PackedCollection#of(double...)}.
+	 *
+	 * @param values the {@link Double} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the specified values
+	 *
+	 *
+	 * <pre>{@code
+	 * // Create a collection from List
+	 * PackedCollection<?> collection = pack(List.of(1.0, 2.0, 3.0, 4.0));
+	 * // Result: PackedCollection with shape [4] containing [1.0, 2.0, 3.0, 4.0]
+	 *
+	 * // Create a single-element collection
+	 * PackedCollection<?> single = pack(Collections.singletonList(42.0));
+	 * // Result: PackedCollection with shape [1] containing [42.0]
+	 * }</pre>
+	 */
+	default PackedCollection<?> pack(List<Double> values) {
+		return pack(values.stream().mapToDouble(d -> d).toArray());
+	}
+
+	/**
 	 * Creates a {@link PackedCollection} from an array of float values.
 	 * The float values are automatically converted to double precision
 	 * before being stored in the collection.

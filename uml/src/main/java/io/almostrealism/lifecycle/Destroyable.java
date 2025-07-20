@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@
 
 package io.almostrealism.lifecycle;
 
-public interface Destroyable {
+public interface Destroyable extends AutoCloseable {
 	default void destroy() { }
+
+	@Override
+	default void close() { destroy(); }
 }
