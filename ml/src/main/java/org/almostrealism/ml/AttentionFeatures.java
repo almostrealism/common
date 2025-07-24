@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -209,7 +210,7 @@ public interface AttentionFeatures extends RotationFeatures {
 										 PackedCollection<?> toOutWeight,
 										 PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
 										 PackedCollection<?> kNormWeight, PackedCollection<?> kNormBias,
-										 Block contextInput) {
+										 Block contextInput, Receptor<PackedCollection<?>> attentionScores) {
 		int dimHead = dim / heads;
 
 		SequentialBlock crossAttention = new SequentialBlock(shape(batchSize, querySeqLen, dim));
@@ -246,7 +247,9 @@ public interface AttentionFeatures extends RotationFeatures {
 		v.andThen(into(vTensor));
 
 		// 7. Apply attention to values
-		crossAttention.add(scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead, kTensor, vTensor));
+		crossAttention.add(scaledDotProductAttention(
+				batchSize, querySeqLen, contextSeqLen,
+				heads, dimHead, kTensor, vTensor, attentionScores));
 
 		// 8. Rearrange back to (batch, querySeqLen, dim)
 		crossAttention.permute(0, 2, 1, 3)
@@ -347,7 +350,8 @@ public interface AttentionFeatures extends RotationFeatures {
 								   // Feed-forward weights
 								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
 								   PackedCollection<?> w1, PackedCollection<?> w2,
-								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias) {
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
+								   Receptor<PackedCollection<?>> attentionScores) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Self-attention with pre-normalization inside residual branch
@@ -376,7 +380,7 @@ public interface AttentionFeatures extends RotationFeatures {
 					crossWq, crossKv, crossWo,
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
-					context));
+					context, attentionScores));
 			block.add(residual(crossAttentionWithNorm));
 		}
 
@@ -479,7 +483,13 @@ public interface AttentionFeatures extends RotationFeatures {
 
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection<?> k, PackedCollection<?> v) {
-		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v);
+		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
+	}
+
+	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
+											PackedCollection<?> k, PackedCollection<?> v,
+											Receptor<PackedCollection<?>> attentionScores) {
+		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, attentionScores);
 	}
 
 	/**
@@ -495,7 +505,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
 	 */
 	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection<?> k, PackedCollection<?> v) {
+											PackedCollection<?> k, PackedCollection<?> v,
+											Receptor<PackedCollection<?>> attentionScores) {
 		if (batchSize != 1) {
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
@@ -512,8 +523,16 @@ public interface AttentionFeatures extends RotationFeatures {
 		// Scale by 1/sqrt(dimHead)
 		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
 
-		// Apply softmax over last dimension (key positions)
-		attnBlock.add(softmax(shape(batchSize, heads, querySeqLen, contextSeqLen), true));
+		// Apply softmax over last dimension (key positions) - capture these attention weights
+		SequentialBlock softmaxBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, contextSeqLen));
+		softmaxBlock.add(softmax(shape(batchSize, heads, querySeqLen, contextSeqLen), true));
+
+		// Capture attention weights if requested
+		if (attentionScores != null) {
+			softmaxBlock.branch().andThen(attentionScores);
+		}
+
+		attnBlock.add(softmaxBlock);
 
 		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
 		//              = (batch, heads, querySeqLen, dimHead)
