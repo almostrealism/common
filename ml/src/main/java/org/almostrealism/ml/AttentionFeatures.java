@@ -350,6 +350,40 @@ public interface AttentionFeatures extends RotationFeatures {
 								   // Feed-forward weights
 								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
 								   PackedCollection<?> w1, PackedCollection<?> w2,
+								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias) {
+		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
+				contextSeqLen, context,
+				preNormWeight, preNormBias,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq,
+				crossAttPreNormWeight, crossAttPreNormBias,
+				crossWq, crossKv, crossWo,
+				crossQNormWeight, crossQNormBias,
+				crossKNormWeight, crossKNormBias,
+				ffnNormWeight, ffnNormBias,
+				w1, w2, w1Bias, w2Bias,
+				null);
+	}
+
+	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
+								   boolean crossAttend,
+								   int contextSeqLen, Block context,
+								   // Self-attention weights
+								   PackedCollection<?> preNormWeight, PackedCollection<?> preNormBias,
+								   PackedCollection<?> selfQkv, PackedCollection<?> selfWo,
+								   PackedCollection<?> selfQNormWeight, PackedCollection<?> selfQNormBias,
+								   PackedCollection<?> selfKNormWeight, PackedCollection<?> selfKNormBias,
+								   PackedCollection<?> invFreq,
+								   // Cross-attention weights
+								   PackedCollection<?> crossAttPreNormWeight, PackedCollection<?> crossAttPreNormBias,
+								   PackedCollection<?> crossWq, PackedCollection<?> crossKv, PackedCollection<?> crossWo,
+								   PackedCollection<?> crossQNormWeight, PackedCollection<?> crossQNormBias,
+								   PackedCollection<?> crossKNormWeight, PackedCollection<?> crossKNormBias,
+								   // Feed-forward weights
+								   PackedCollection<?> ffnNormWeight, PackedCollection<?> ffnNormBias,
+								   PackedCollection<?> w1, PackedCollection<?> w2,
 								   PackedCollection<?> w1Bias, PackedCollection<?> w2Bias,
 								   Receptor<PackedCollection<?>> attentionScores) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));

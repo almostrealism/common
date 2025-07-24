@@ -576,7 +576,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				toQ, toKv, toOut,
 				qNormWeight, qNormBias,
 				kNormWeight, kNormBias,
-				contextBlock
+				contextBlock, null
 		));
 
 		// Compile and run the model
