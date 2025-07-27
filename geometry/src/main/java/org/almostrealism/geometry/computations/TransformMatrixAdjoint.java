@@ -46,7 +46,6 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 	@Override
 	public Scope<TransformMatrix> getScope(KernelStructureContext context) {
 		HybridScope<TransformMatrix> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "TransformMatrixAdjoint"));
 
 		ArrayVariable<Double> output = getArgument(0);
 		ArrayVariable<Double> input = getArgument(1);

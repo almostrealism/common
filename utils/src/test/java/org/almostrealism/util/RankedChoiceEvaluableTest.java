@@ -40,12 +40,10 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 	@Test
 	public void highestRank() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		IntStream.range(0, 5).forEach(i -> {
 			Scalar in = new Scalar(1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
-					new Object[]{in, new Pair(3, Intersection.e)});
+					in, new Pair(3, Intersection.e));
 
 			System.out.println("rank = " + out.getA());
 			Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
@@ -54,8 +52,6 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 	@Test
 	public void highestRankKernel() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		PackedCollection<Scalar> in = Scalar.scalarBank(4);
 		in.set(0, new Scalar(0.0));
 		in.set(1, new Scalar(2.0));
@@ -69,7 +65,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(in, conf);
 
-		System.out.println("rank = " + out.get(0).getA());
+		out.get(0).print();
 		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
 	}
 
