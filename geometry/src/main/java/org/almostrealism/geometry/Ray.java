@@ -21,7 +21,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
@@ -39,7 +38,7 @@ import java.util.stream.IntStream;
  * 
  * @author  Michael Murray
  */
-public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable {
+public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Cloneable {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -115,7 +114,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayODotO", false, Scalar.blank(), p(this));
+		return scalar(origin(cp(this)).multiply(origin(cp(this))).sum()).get();
 	}
 	
 	/**
@@ -123,7 +122,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayDDotD", false, Scalar.blank(), p(this));
+		return scalar(direction(cp(this)).multiply(direction(cp(this))).sum()).get();
 	}
 	
 	/**
@@ -131,7 +130,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayODotD", false, Scalar.blank(), p(this));
+		return scalar(origin(cp(this)).multiply(direction(cp(this))).sum()).get();
 	}
 	
 	/**
