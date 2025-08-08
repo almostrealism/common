@@ -18,35 +18,28 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, ScalarFeatures, CollectionFeatures {
 	private PackedCollection<?> choices;
-	private PackedCollection<?> values;
+	private Gene<PackedCollection<?>> values;
 
-	public ChoiceGene(PackedCollection<?> choices, int length) {
+	public ChoiceGene(Gene<PackedCollection<?>> values, PackedCollection<?> choices) {
 		this.choices = choices;
-		this.values = new PackedCollection<>(length);
-	}
-
-	public void set(int index, double value) {
-		values.setMem(index, value);
+		this.values = values;
 	}
 
 	@Override
-	public PackedCollection<?> getParameters() { return values; }
+	public PackedCollection<?> getParameters() {
+		return ((GeneParameters) values).getParameters();
+	}
 
 	@Override
 	public PackedCollection<?> getParameterRanges() {
-		PackedCollection<?> ranges = new PackedCollection<>(shape(values.getMemLength(), 2), 1);
-
-		for (int i = 0; i < values.getMemLength(); i++) {
-			ranges.get(i).setMem(0.0, 1.0);
-		}
-
-		return ranges;
+		return ((GeneParameters) values).getParameterRanges();
 	}
 
 	@Override
@@ -54,17 +47,17 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 		return new Factor<>() {
 			@Override
 			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-				value = c(shape(1), p(values), c(pos));
+				value = values.valueAt(pos).getResultant(value);
 				return c(shape(1), p(choices), multiply(value, c(choices.getMemLength())));
 			}
 
 			@Override
 			public String signature() {
-				return Double.toHexString(values.toDouble(pos));
+				return Signature.of(values.valueAt(pos));
 			}
 		};
 	}
 
 	@Override
-	public int length() { return values.getMemLength(); }
+	public int length() { return values.length(); }
 }

@@ -105,7 +105,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		NativeRef<T> ref = getNativeRef(mem);
 		if (ref == null) {
-			warn("Attempting to deallocate untracked memory " + mem);
+			if (mem.isActive()) {
+				warn("Attempting to deallocate untracked memory " + mem);
+			}
+
 			return;
 		}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
@@ -29,9 +28,17 @@ import java.util.stream.Stream;
 
 public interface HeredityFeatures extends CollectionFeatures {
 	default Chromosome<PackedCollection<?>> c(Gene<PackedCollection<?>>... genes) {
-		ArrayListChromosome<PackedCollection<?>> c = new ArrayListChromosome<>();
-		Stream.of(genes).forEach(c::add);
-		return c;
+		return new Chromosome<>() {
+			@Override
+			public int length() {
+				return genes.length;
+			}
+
+			@Override
+			public Gene<PackedCollection<?>> valueAt(int pos) {
+				return genes[pos];
+			}
+		};
 	}
 
 	default Gene<PackedCollection<?>> g(double... factors) {
@@ -47,9 +54,17 @@ public interface HeredityFeatures extends CollectionFeatures {
 	}
 
 	default Gene<PackedCollection<?>> g(Factor<PackedCollection<?>>... factors) {
-		ArrayListGene<PackedCollection<?>> gene = new ArrayListGene<>();
-		IntStream.range(0, factors.length).mapToObj(i -> factors[i]).forEach(gene::add);
-		return gene;
+		return new Gene<PackedCollection<?>>() {
+			@Override
+			public int length() {
+				return factors.length;
+			}
+
+			@Override
+			public Factor<PackedCollection<?>> valueAt(int pos) {
+				return factors[pos];
+			}
+		};
 	}
 
 	default double invertOneToInfinity(double target, double multiplier, double exp) {

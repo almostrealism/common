@@ -31,6 +31,10 @@ public class MetalMemory extends RAM {
 
 	protected MTLBuffer getMem() { return mem; }
 
+	public boolean isActive() {
+		return mem != null && !mem.isReleased();
+	}
+
 	@Override
 	public long getSize() { return size; }
 

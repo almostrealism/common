@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import org.almostrealism.collect.PackedCollection;
 import java.io.IOException;
 import java.util.List;
 import java.util.function.DoubleSupplier;
-import java.util.function.IntFunction;
 
 public class ParameterGenome implements Genome<PackedCollection<?>>, ScalarFeatures {
 	private List<ConfigurableChromosome> chromosomes;
@@ -51,16 +50,6 @@ public class ParameterGenome implements Genome<PackedCollection<?>>, ScalarFeatu
 	private ParameterGenome(List<ConfigurableChromosome> chromosomes, AssignableGenome genome) {
 		this.chromosomes = chromosomes;
 		this.genome = genome;
-	}
-
-	@Override
-	public Genome getHeadSubset() {
-		return genome.getHeadSubset();
-	}
-
-	@Override
-	public Chromosome getLastChromosome() {
-		return genome.getLastChromosome();
 	}
 
 	@Override

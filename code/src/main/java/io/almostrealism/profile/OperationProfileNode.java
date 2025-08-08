@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -209,8 +209,11 @@ public class OperationProfileNode extends OperationProfile
 
 		return getProfileNode(requesterMetadata).getProfileNode(metadataKey(operationMetadata))
 				.orElseGet(() -> {
-					warn("Could not find " + operationMetadata.describe() +
-							" under " + requesterMetadata.describe());
+					if (metadataWarnings) {
+						warn("Could not find " + operationMetadata.describe() +
+								" under " + requesterMetadata.describe());
+					}
+
 					return getProfileNode(operationMetadata);
 				});
 	}

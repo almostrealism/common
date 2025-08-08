@@ -54,6 +54,8 @@ public abstract class RAM implements Memory {
 		return allocationStackTrace;
 	}
 
+	public boolean isActive() { return true; }
+
 	@Override
 	public boolean equals(Object obj) {
 		return (obj instanceof RAM) && ((RAM) obj).getContainerPointer() == getContainerPointer();

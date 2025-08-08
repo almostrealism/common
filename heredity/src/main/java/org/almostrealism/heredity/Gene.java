@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Plural;
 
 import java.util.function.IntFunction;
@@ -25,6 +26,10 @@ import java.util.stream.IntStream;
 public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
 	@Override
 	default Factor<T> apply(int pos) { return valueAt(pos); }
+
+	default Producer<T> getResultant(int pos, Producer<T> input) {
+		return valueAt(pos).getResultant(input);
+	}
 
 	int length();
 

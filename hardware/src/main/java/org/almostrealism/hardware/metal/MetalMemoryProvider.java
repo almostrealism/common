@@ -96,10 +96,13 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	protected void deallocate(NativeRef<MetalMemory> ref) {
 		try {
 			MTLBuffer buf = ((MetalMemoryRef) ref).getBuffer();
+			if (buf.isReleased()) return;
 
-			if (!buf.isReleased()) {
-				buf.release();
-				memoryUsed = memoryUsed - ref.getSize();
+			synchronized (buf) {
+				if (!buf.isReleased()) {
+					buf.release();
+					memoryUsed = memoryUsed - ref.getSize();
+				}
 			}
 		} finally {
 			deallocationSizes.addEntry(ref.getSize());

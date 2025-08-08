@@ -27,6 +27,7 @@ import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import io.almostrealism.relation.Factor;
+import org.almostrealism.io.Console;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -180,8 +181,12 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 
 		if (shape.getCountLong() == 0) {
 			throw new IllegalArgumentException("Wave must have at least one sample");
+		} else if (shape.getDimensions() > 1) {
+			throw new IllegalArgumentException("WaveCell cannot handle more than one audio channel");
+		} else if (shape.getTotalSizeLong() == 1) {
+			throw new IllegalArgumentException("Wave has only one sample");
 		} else if (shape.getCountLong() == 1) {
-			System.out.println("WARN: Wave has only one sample");
+			Console.root().features(WaveCell.class).warn("Wave traversal axis is likely incorrect");
 		}
 
 		return wav;
