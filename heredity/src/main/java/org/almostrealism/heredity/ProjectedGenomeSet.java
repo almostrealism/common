@@ -20,9 +20,15 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.Random;
+import java.util.function.DoubleSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * @deprecated This unnecessarily duplicates ProjectedGenome, which could
+ *             be used directly in the same way as this type is.
+ */
+@Deprecated
 public class ProjectedGenomeSet {
 	public static final long initialSeed = 0xDEAD;
 
@@ -68,7 +74,11 @@ public class ProjectedGenomeSet {
 		refreshValues();
 	}
 
+	public ProjectedGenome variation(double min, double max, double rate, DoubleSupplier delta) {
+		return new ProjectedGenome(parameters).variation(min, max, rate, delta);
+	}
+
 	public ProjectedGenome random() {
-		return new ProjectedGenome(new PackedCollection<>(parameters.getShape()).randFill());
+		return new ProjectedGenome(parameters).random();
 	}
 }

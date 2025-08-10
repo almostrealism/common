@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
 public class ProjectedGenome implements Genome<PackedCollection<?>> {
@@ -75,5 +76,24 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	@Override
 	public int count() {
 		return chromosomes.size();
+	}
+
+	public ProjectedGenome variation(double min, double max, double rate, DoubleSupplier delta) {
+		PackedCollection<?> variation = new PackedCollection<>(parameters.getShape());
+		variation.fill(pos -> {
+			double v = parameters.valueAt(pos);
+
+			if (Math.random() < rate) {
+				return Math.min(max, Math.max(min, v + delta.getAsDouble()));
+			} else {
+				return v;
+			}
+		});
+
+		return new ProjectedGenome(variation);
+	}
+
+	public ProjectedGenome random() {
+		return new ProjectedGenome(new PackedCollection<>(parameters.getShape()).randFill());
 	}
 }
