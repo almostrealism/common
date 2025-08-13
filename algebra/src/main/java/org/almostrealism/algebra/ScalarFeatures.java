@@ -28,7 +28,6 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.Choice;
-import org.almostrealism.algebra.computations.ScalarChoice;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
@@ -245,10 +244,6 @@ public interface ScalarFeatures extends CollectionFeatures {
 						  Producer<PackedCollection<?>> decision,
 						  Producer<PackedCollection<?>> choices) {
 		return new Choice(resultShape.getTotalSize(), choiceCount, decision, choices);
-	}
-
-	default ScalarChoice scalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
-		return new ScalarChoice(choiceCount, decision, choices);
 	}
 
 	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,

@@ -320,17 +320,15 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return sigmoid((Producer) this);
 	}
 
-	default AcceleratedConditionalStatementCollection greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
+	default <V extends PackedCollection<?>> CollectionProducer<V>  greaterThan(Producer<?> operand,
+																			   Producer<V> trueValue, Producer<V> falseValue) {
 		return greaterThan(operand, trueValue, falseValue, false);
 	}
 
-	default AcceleratedConditionalStatementCollection greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
+	default <V extends PackedCollection<?>> CollectionProducer<V> greaterThan(Producer<?> operand,
+																  Producer<V> trueValue, Producer<V> falseValue,
 																  boolean includeEqual) {
-		return new GreaterThanCollection(this, operand, trueValue, falseValue, includeEqual);
+		return greaterThan(this, operand, trueValue, falseValue, includeEqual);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier operand) {

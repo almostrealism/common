@@ -20,20 +20,18 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class CollectionComparisonComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
 	public CollectionComparisonComputation(String name, TraversalPolicy shape,
-										   Supplier<Evaluable<? extends PackedCollection<?>>> left,
-										   Supplier<Evaluable<? extends PackedCollection<?>>> right,
-										   Supplier<Evaluable<? extends PackedCollection<?>>> positive,
-										   Supplier<Evaluable<? extends PackedCollection<?>>> negative) {
+										   Producer<PackedCollection<?>> left,
+										   Producer<PackedCollection<?>> right,
+										   Producer<PackedCollection<?>> positive,
+										   Producer<PackedCollection<?>> negative) {
 		super(name, shape, left, right, positive, negative);
 	}
 

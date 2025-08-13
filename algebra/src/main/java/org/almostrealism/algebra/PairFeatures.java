@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversableExpression;
@@ -24,10 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Minus;
-import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sine;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -46,13 +42,13 @@ import java.util.stream.IntStream;
 
 public interface PairFeatures extends CollectionFeatures {
 
-	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
+	static CollectionProducer<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
-	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-		IntStream.range(0, 2).forEach(i -> comp[i] = args -> ExpressionFeatures.getInstance().e(value.toDouble(i)));
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(List.of(comp))
-				.setPostprocessor(Pair.postprocessor());
+	static CollectionProducer<Pair<?>> of(Pair<?> value) {
+		CollectionProducerComputationBase producer =
+				DefaultTraversableExpressionComputation.fixed(value);
+		producer.setPostprocessor(Pair.postprocessor());
+		return producer;
 	}
 
 	default CollectionProducer<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }

@@ -930,7 +930,16 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
-		return new ExpressionComputation<>(List.of(args -> args.get(1).getValueRelative(index)), supplier);
+		TraversalPolicy shape = shape(1);
+		return new DefaultTraversableExpressionComputation<>("valueAtIndexRelative", shape,
+				args -> {
+					if (args[1] == null) {
+						throw new UnsupportedOperationException();
+					}
+
+					return CollectionExpression.create(shape, idx -> args[1].getValueRelative(e(index)));
+				},
+				supplier);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
@@ -2893,17 +2902,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<T> a, Producer<T> b,
-																			  Producer<T> trueValue, Producer<T> falseValue) {
-		return greaterThan(a, b, trueValue, falseValue, false);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<?> a, Producer<?> b,
-																			  Producer<T> trueValue, Producer<T> falseValue,
-																			  boolean includeEqual) {
-		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
-	}
-
 	/**
 	 * Performs element-wise equality comparison between two collections with custom return values.
 	 * This method compares corresponding elements and returns specified values based on the comparison result.
@@ -2922,6 +2920,49 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return compute((shape, args) ->
 						new CollectionComparisonComputation("equals", shape,
 								args.get(0), args.get(1), args.get(2), args.get(3)),
+				null,
+				(Producer) a, (Producer) b,
+				(Producer) trueValue, (Producer) falseValue);
+	}
+
+	/**
+	 * Performs element-wise greater-than comparison between two collections with custom return values.
+	 * This method compares corresponding elements and returns specified values based on the comparison result.
+	 *
+	 * @param <T> the type of {@link PackedCollection} to produce
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @param trueValue the value to return when the first element is greater than the second
+	 * @param falseValue the value to return when the first element is not greater than the second
+	 * @return a {@link CollectionProducer} that generates comparison results
+	 *
+	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
+	 */
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<T> a, Producer<T> b,
+																			  Producer<T> trueValue, Producer<T> falseValue) {
+		return greaterThan(a, b, trueValue, falseValue, false);
+	}
+
+	/**
+	 * Performs element-wise greater-than comparison between two collections with custom return values.
+	 * This method compares corresponding elements and returns specified values based on the comparison result.
+	 *
+	 * @param <T> the type of {@link PackedCollection} to produce
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @param trueValue the value to return when the first element is greater than the second
+	 * @param falseValue the value to return when the first element is not greater than the second
+	 * @param includeEqual whether to treat elements which are equal as meeting the comparison condition
+	 * @return a {@link CollectionProducer} that generates comparison results
+	 *
+	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
+	 */
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<?> a, Producer<?> b,
+																		 Producer<T> trueValue, Producer<T> falseValue,
+																		 boolean includeEqual) {
+		return compute((shape, args) ->
+						new GreaterThanCollection<>(shape,
+								args.get(0), args.get(1), args.get(2), args.get(3), includeEqual),
 				null,
 				(Producer) a, (Producer) b,
 				(Producer) trueValue, (Producer) falseValue);

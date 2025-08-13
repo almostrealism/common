@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,12 +32,12 @@ import java.util.function.Supplier;
 
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
 
-	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
+	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<PackedCollection<?>> frame, Scalar output) {
 		super(data, wave, frame, output);
 	}
 
 	public WaveCellPush(WaveCellData data, Producer<PackedCollection<?>> wave,
-						Producer<Scalar> frame, Scalar output) {
+						Producer<PackedCollection<?>> frame, Scalar output) {
 		super(data, wave, frame, output);
 	}
 

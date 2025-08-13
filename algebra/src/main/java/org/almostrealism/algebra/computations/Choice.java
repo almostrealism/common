@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.collect.Shape;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -26,7 +25,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -41,7 +39,8 @@ public class Choice<T extends PackedCollection<?>> extends CollectionProducerCom
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super("choice", new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
+		super("choice", new TraversalPolicy(memLength).traverse(0),
+				(Supplier) decision, (Supplier) adjustChoices(memLength, choiceCount, choices));
 		this.choiceCount = choiceCount;
 	}
 
@@ -65,12 +64,14 @@ public class Choice<T extends PackedCollection<?>> extends CollectionProducerCom
 	}
 
 	protected static <T extends PackedCollection<?>> Supplier<Evaluable<? extends MemoryBank<T>>>
-			adjustChoices(int memLength, Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
+			adjustChoices(int memLength, int choiceCount, Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
 		if (!(choices instanceof Shape)) return choices;
 
 		TraversalPolicy shape = ((Shape) choices).getShape();
-		if (shape.getSize() == memLength && shape.getTraversalAxis() > 0) {
-			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) choices);
+		if (shape.getCount() != choiceCount) {
+			throw new IllegalArgumentException();
+		} else if (shape.getSize() != memLength) {
+			throw new IllegalArgumentException();
 		}
 
 		return choices;

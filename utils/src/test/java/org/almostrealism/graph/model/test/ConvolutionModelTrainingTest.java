@@ -180,7 +180,6 @@ public class ConvolutionModelTrainingTest implements ModelFeatures, ModelTestFea
 			}
 		} finally {
 			logKernelMetrics(profile);
-			ScopeSettings.printStats();
 			profile.save("results/logs/cnn_" + cols + "x" + rows +
 					"_" + ScopeSettings.shortDesc() + ".xml");
 		}

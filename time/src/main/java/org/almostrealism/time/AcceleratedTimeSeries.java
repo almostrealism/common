@@ -18,7 +18,6 @@ package org.almostrealism.time;
 
 import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
