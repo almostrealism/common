@@ -27,13 +27,19 @@ public class ChoiceTest implements TestFeatures {
 	@Test
 	public void oneOrTwo() {
 		PackedCollection<Scalar> bank = Scalar.scalarBank(2);
-		bank.set(0, 1.0);
-		bank.set(1, 2.0);
+		bank.set(0, 1.0, 1.0);
+		bank.set(1, 2.0, 1.0);
+
+		bank.print();
 
 		verboseLog(() -> {
-			Choice choice = new Choice(1, 2, c(0.7), v(bank));
+			Choice choice = new Choice(shape(2), 2, c(0.7), cp(bank));
 			Evaluable<PackedCollection<?>> ev = choice.get();
-			assertEquals(2.0, ev.evaluate());
+			PackedCollection<?> result = ev.evaluate();
+			result.print();
+
+			assertEquals(2.0, result.toDouble(0));
+			assertEquals(1.0, result.toDouble(1));
 		});
 	}
 }

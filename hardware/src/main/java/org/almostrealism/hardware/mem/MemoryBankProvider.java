@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,9 +50,6 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;
 		}
-
-		if (Hardware.enableVerbose)
-			log("Creating a new MemoryBank with size " + size);
 
 		updateLast(size);
 		return last;

@@ -24,16 +24,12 @@ public interface WaveCellData extends BaseAudioData {
 
 	default Scalar waveIndex() { return get(3); }
 	default Scalar waveCount() { return get(4); }
-	default Scalar duration() { return get(5); }
-	default Scalar value() { return get(9); }
+	default PackedCollection<?> value() { return get(9).range(shape(1)); }
 
 	default Producer<PackedCollection<?>> getWaveIndex() { return p(waveIndex().range(shape(1))); }
 	default void setWaveIndex(int count) { waveIndex().setValue(count); }
 
 	default Producer<PackedCollection<?>> getWaveCount() { return p(waveCount().range(shape(1))); }
 	default void setWaveCount(int count) { waveCount().setValue(count); }
-
-	default Producer<Scalar> getDuration() { return p(duration()); }
-	default void setDuration(double duration) { duration().setValue(duration); }
 }
 

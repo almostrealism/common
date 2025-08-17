@@ -243,7 +243,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 	default Choice choice(int choiceCount, TraversalPolicy resultShape,
 						  Producer<PackedCollection<?>> decision,
 						  Producer<PackedCollection<?>> choices) {
-		return new Choice(resultShape.getTotalSize(), choiceCount, decision, choices);
+		return new Choice(resultShape, choiceCount, decision, choices);
 	}
 
 	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,

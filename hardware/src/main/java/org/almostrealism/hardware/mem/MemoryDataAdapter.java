@@ -31,6 +31,7 @@ import java.util.Map;
 
 public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public static boolean enableMemVersions = true;
+	public static boolean enableFinalizer = false;
 
 	private Memory mem;
 	private Map<MemoryProvider, Memory> memVersions;
@@ -145,7 +146,13 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 	@Override
 	public void finalize() {
-		if (mem != null) destroy();
+		if (mem != null) {
+			if (enableFinalizer) {
+				destroy();
+			} else {
+				mem = null;
+			}
+		}
 	}
 
 	@Override

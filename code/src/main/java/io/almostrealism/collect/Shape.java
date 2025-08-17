@@ -51,7 +51,7 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 		return traverseEach();
 	}
 
-	default T all() {
+	default T traverseAll() {
 		return traverse(0);
 	}
 

@@ -153,10 +153,10 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("WaveCell Setup");
 		if (clock != null) setup.add(clock.setup());
-		setup.add(a(1, data.getWaveLength(), scalar(waveLength)));
-		setup.add(a(1, data.getWaveIndex(), frameIndex));
-		setup.add(a(1, data.getWaveCount(), frameCount));
-		setup.add(a(1, data.getAmplitude(), scalar(amplitude)));
+		setup.add(a(data.getWaveLength(), c(waveLength)));
+		setup.add(a(data.getWaveIndex(), frameIndex));
+		setup.add(a(data.getWaveCount(), frameCount));
+		setup.add(a(data.getAmplitude(), c(amplitude)));
 		setup.add(super.setup());
 		return setup;
 	}

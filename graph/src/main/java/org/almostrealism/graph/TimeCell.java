@@ -76,9 +76,9 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 	@Override
 	public Supplier<Runnable> setup() {
 		if (initial == null) {
-			return new Assignment<>(2, cp(time), PairFeatures.of(0.0, 0.0));
+			return a(cp(time), c(0.0).repeat(2));
 		} else {
-			return new Assignment<>(2, cp(time), repeat(2, initial).reshape(2));
+			return a(cp(time), repeat(2, initial));
 		}
 	}
 
@@ -92,18 +92,19 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		OperationList tick = new OperationList("TimeCell Tick");
 
 		if (loopDuration == null) {
-			tick.add(new Assignment<>(2, p(time),
-					add(p(time), PairFeatures.of(1.0, 1.0))));
+			tick.add(a(cp(time),
+					add(cp(time), c(1.0).repeat(2))));
 		} else {
 			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
-			Producer<PackedCollection<?>> left = c(p(time), 0);
+			Producer<PackedCollection<?>> left = cp(time.range(shape(1)));
 			left = add(left, c(1.0));
 			left = greaterThanConditional(ld, c(0.0), mod(left, ld), left, false);
 
-			Producer<PackedCollection<?>> right = c(p(time), 1);
+			Producer<PackedCollection<?>> right = cp(time.range(shape(1), 1));
 			right = add(right, c(1.0));
 
-			tick.add(a(2, p(time), concat(shape(2), left, right)));
+			tick.add(a(cp(time.range(shape(1))), left));
+			tick.add(a(cp(time.range(shape(1), 1)), right));
 		}
 
 		tick.add(new TimeCellReset(p(time), resets));
