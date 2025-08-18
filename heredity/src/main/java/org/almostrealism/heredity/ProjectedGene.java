@@ -67,6 +67,13 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 			double value = IntStream.range(0, source.getMemLength())
 					.mapToDouble(i -> source.toDouble(i) * weights.valueAt(p, i))
 					.sum();
+
+			double period = 2.0;
+			value = ((value % period) + period) % period;
+
+			double phase = value / period;
+			value = phase < 0.5 ? 2 * phase : 2 * (1 - phase);
+
 			values.setMem(pos, start + value * range);
 		}
 	}

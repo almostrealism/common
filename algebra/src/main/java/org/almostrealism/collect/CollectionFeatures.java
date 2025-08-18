@@ -19,7 +19,6 @@ package org.almostrealism.collect;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.ArithmeticSequenceExpression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
@@ -52,6 +51,7 @@ import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
@@ -2077,21 +2077,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers() {
-		return new DefaultTraversableExpressionComputation<>("integers", shape(1),
-				args -> new ArithmeticSequenceExpression(shape(1))) {
-			@Override
-			public boolean isFixedCount() {
-				return false;
-			}
-		};
+		return new ArithmeticSequenceComputation<>(0);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 		TraversalPolicy shape = shape(len).traverseEach();
-
-		return new DefaultTraversableExpressionComputation<>("integers", shape,
-				args -> new ArithmeticSequenceExpression(shape, from, 1));
+		return new ArithmeticSequenceComputation<>(shape, from);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> linear(double start, double end, int steps) {
@@ -2405,6 +2397,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			return c(a);
 		} else if (scale == -1.0) {
 			return minus(a);
+		} else if (a instanceof ArithmeticSequenceComputation) {
+			return ((ArithmeticSequenceComputation) a).multiply(scale);
 		} else if (a.isConstant()) {
 			return multiply(shape(a), scale, a.get());
 		} else {
