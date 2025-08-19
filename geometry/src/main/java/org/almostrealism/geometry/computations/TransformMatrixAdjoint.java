@@ -46,154 +46,81 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 	@Override
 	public Scope<TransformMatrix> getScope(KernelStructureContext context) {
 		HybridScope<TransformMatrix> scope = new HybridScope<>(this);
+		scope.setMetadata(new OperationMetadata(getFunctionName(), "TransformMatrixAdjoint"));
+
+		Scope<?> body = new Scope<>();
 
 		ArrayVariable<Double> output = getArgument(0);
 		ArrayVariable<Double> input = getArgument(1);
 
-		// Declare working arrays
-		ArrayVariable<Double> cofactorMatrix = scope.declareArray("cofactorMatrix_" + varIdx++, e(16));
-		ArrayVariable<Double> subMatrix = scope.declareArray("subMatrix_" + varIdx++, e(9));
-
-		// Create nested loops for i and j (0 to 3)
-		InstanceReference i = Variable.integer("i_" + varIdx++).ref();
-		Repeated outerLoop = new Repeated<>(i.getReferent(), i.lessThan(e(4)));
+		// Calculate adjoint matrix directly using mathematical formulas
+		// For a 4x4 matrix, calculate each element of the adjoint matrix
 		
-		Scope<?> outerBody = new Scope<>();
-		{
-			InstanceReference j = Variable.integer("j_" + varIdx++).ref();
-			Repeated innerLoop = new Repeated<>(j.getReferent(), j.lessThan(e(4)));
-			
-			Scope<?> innerBody = new Scope<>();
-			{
-				// Extract 3x3 submatrix excluding row i and column j
-				extractSubMatrix(innerBody, subMatrix, input, i, j);
-				
-				// Calculate determinant of the 3x3 submatrix
-				Expression<Double> determinant = calculate3x3Determinant(innerBody, subMatrix);
-				
-				// Calculate cofactor = (-1)^(i+j) * determinant
-				Expression<Double> sign = innerBody.declareDouble("sign_" + varIdx++,
-					e(-1.0).pow(i.add(j).toDouble()));
-				Expression<Double> cofactor = innerBody.declareDouble("cofactor_" + varIdx++,
-					sign.multiply(determinant));
-				
-				// Store cofactor in cofactor matrix at position (i,j)
-				innerBody.assign(cofactorMatrix.valueAt(i.multiply(4).add(j)), cofactor);
-				
-				innerLoop.add(innerBody);
-			}
-			
-			outerBody.add(innerLoop);
-		}
+		// Element (0,0): C00 = +det(3x3 minor excluding row 0, col 0)
+		body.assign(output.valueAt(0), calculateCofactor(body, input, 0, 0));
+		body.assign(output.valueAt(1), calculateCofactor(body, input, 1, 0)); // transposed
+		body.assign(output.valueAt(2), calculateCofactor(body, input, 2, 0));
+		body.assign(output.valueAt(3), calculateCofactor(body, input, 3, 0));
 		
-		outerLoop.add(outerBody);
-		scope.add(outerLoop);
+		body.assign(output.valueAt(4), calculateCofactor(body, input, 0, 1));
+		body.assign(output.valueAt(5), calculateCofactor(body, input, 1, 1));
+		body.assign(output.valueAt(6), calculateCofactor(body, input, 2, 1));
+		body.assign(output.valueAt(7), calculateCofactor(body, input, 3, 1));
+		
+		body.assign(output.valueAt(8), calculateCofactor(body, input, 0, 2));
+		body.assign(output.valueAt(9), calculateCofactor(body, input, 1, 2));
+		body.assign(output.valueAt(10), calculateCofactor(body, input, 2, 2));
+		body.assign(output.valueAt(11), calculateCofactor(body, input, 3, 2));
+		
+		body.assign(output.valueAt(12), calculateCofactor(body, input, 0, 3));
+		body.assign(output.valueAt(13), calculateCofactor(body, input, 1, 3));
+		body.assign(output.valueAt(14), calculateCofactor(body, input, 2, 3));
+		body.assign(output.valueAt(15), calculateCofactor(body, input, 3, 3));
 
-		// Transpose the cofactor matrix to get the adjugate matrix
-		transposeMatrix(scope, output, cofactorMatrix);
+		scope.add((Scope) body);
 
 		return scope;
+	}
+	
+	private Expression<Double> calculateCofactor(Scope<?> scope, ArrayVariable<Double> matrix, int row, int col) {
+		// Calculate cofactor = (-1)^(row+col) * determinant of 3x3 minor
+		double sign = ((row + col) % 2 == 0) ? 1.0 : -1.0;
+		
+		// Calculate the 3x3 determinant directly using the formula
+		// For a 4x4 matrix, removing row 'row' and column 'col'
+		Expression<Double> det = calculate3x3MinorDeterminant(scope, matrix, row, col);
+		
+		return scope.declareDouble("cofactor_" + row + "_" + col + "_" + varIdx++, 
+			e(sign).multiply(det));
+	}
+	
+	private Expression<Double> calculate3x3MinorDeterminant(Scope<?> scope, ArrayVariable<Double> matrix, int excludeRow, int excludeCol) {
+		// Get the 9 elements of the 3x3 minor
+		Expression<Double>[] elements = new Expression[9];
+		int elemIdx = 0;
+		
+		for (int i = 0; i < 4; i++) {
+			if (i == excludeRow) continue;
+			for (int j = 0; j < 4; j++) {
+				if (j == excludeCol) continue;
+				elements[elemIdx++] = matrix.valueAt(i * 4 + j);
+			}
+		}
+		
+		// Calculate determinant using the standard 3x3 formula:
+		// det = a00(a11*a22 - a12*a21) - a01(a10*a22 - a12*a20) + a02(a10*a21 - a11*a20)
+		Expression<Double> term1 = scope.declareDouble("term1_" + varIdx++,
+			elements[0].multiply(elements[4].multiply(elements[8]).subtract(elements[5].multiply(elements[7]))));
+		Expression<Double> term2 = scope.declareDouble("term2_" + varIdx++,
+			elements[1].multiply(elements[3].multiply(elements[8]).subtract(elements[5].multiply(elements[6]))));
+		Expression<Double> term3 = scope.declareDouble("term3_" + varIdx++,
+			elements[2].multiply(elements[3].multiply(elements[7]).subtract(elements[4].multiply(elements[6]))));
+		
+		return scope.declareDouble("det3x3_" + varIdx++, term1.subtract(term2).add(term3));
 	}
 
 	@Override
 	public TransformMatrixAdjoint generate(List<Process<?, ?>> children) {
 		return new TransformMatrixAdjoint((Producer) children.get(1));
-	}
-
-	private void extractSubMatrix(Scope<?> scope, ArrayVariable<Double> subMatrix,
-									ArrayVariable<Double> input,
-									InstanceReference excludeRow,
-								    InstanceReference excludeCol) {
-		Expression subRow = scope.declareInteger("subRow_" + varIdx++, e(0));
-		Expression subCol =  scope.declareInteger("subCol_" + varIdx++, e(0));
-		
-		// Nested loops to copy elements excluding row i and column j
-		InstanceReference row = Variable.integer("row_" + varIdx++).ref();
-		Repeated rowLoop = new Repeated<>(row.getReferent(), row.lessThan(e(4)));
-		
-		Scope<?> rowBody = new Scope<>();
-		{
-			InstanceReference col = Variable.integer("col_" + varIdx++).ref();
-			Repeated colLoop = new Repeated<>(col.getReferent(), col.lessThan(e(4)));
-			
-			Scope<?> colBody = new Scope<>();
-			{
-				// Skip if this is the excluded row or column
-				Scope<?> copyElement = new Scope<>();
-				{
-					// Copy element to submatrix
-					copyElement.assign(subMatrix.valueAt(subRow.multiply(3).add(subCol)),
-						input.valueAt(row.multiply(4).add(col)));
-					
-					// Increment subCol
-					copyElement.assign(subCol, subCol.add(1));
-				}
-				
-				colBody.addCase(row.neq(excludeRow).and(col.neq(excludeCol)), (Scope) copyElement);
-				colLoop.add(colBody);
-			}
-			
-			rowBody.add(colLoop);
-			
-			// Reset subCol and increment subRow if we copied any elements from this row
-			Scope<?> endOfRow = new Scope<>();
-			{
-				endOfRow.assign(subCol, e(0));
-				endOfRow.assign(subRow, subRow.add(1));
-			}
-			
-			rowBody.addCase(row.neq(excludeRow), (Scope) endOfRow);
-			rowLoop.add(rowBody);
-		}
-		
-		scope.add(rowLoop);
-	}
-
-	private Expression<Double> calculate3x3Determinant(Scope<?> scope, ArrayVariable<Double> matrix) {
-		// For a 3x3 matrix: det = a00(a11*a22 - a12*a21) - a01(a10*a22 - a12*a20) + a02(a10*a21 - a11*a20)
-		Expression<Double> a00 = matrix.valueAt(0);
-		Expression<Double> a01 = matrix.valueAt(1);
-		Expression<Double> a02 = matrix.valueAt(2);
-		Expression<Double> a10 = matrix.valueAt(3);
-		Expression<Double> a11 = matrix.valueAt(4);
-		Expression<Double> a12 = matrix.valueAt(5);
-		Expression<Double> a20 = matrix.valueAt(6);
-		Expression<Double> a21 = matrix.valueAt(7);
-		Expression<Double> a22 = matrix.valueAt(8);
-		
-		Expression<Double> term1 = scope.declareDouble("term1_" + varIdx++,
-			a00.multiply(a11.multiply(a22).subtract(a12.multiply(a21))));
-		Expression<Double> term2 = scope.declareDouble("term2_" + varIdx++,
-			a01.multiply(a10.multiply(a22).subtract(a12.multiply(a20))));
-		Expression<Double> term3 = scope.declareDouble("term3_" + varIdx++,
-			a02.multiply(a10.multiply(a21).subtract(a11.multiply(a20))));
-		
-		return scope.declareDouble("det_" + varIdx++, term1.subtract(term2).add(term3));
-	}
-
-	private void transposeMatrix(Scope<?> scope, ArrayVariable<Double> output, ArrayVariable<Double> input) {
-		// Transpose 4x4 matrix
-		InstanceReference i = Variable.integer("i_transpose_" + varIdx++).ref();
-		Repeated iLoop = new Repeated<>(i.getReferent(), i.lessThan(e(4)));
-		
-		Scope<?> iBody = new Scope<>();
-		{
-			InstanceReference j = Variable.integer("j_transpose_" + varIdx++).ref();
-			Repeated jLoop = new Repeated<>(j.getReferent(), j.lessThan(e(4)));
-			
-			Scope<?> jBody = new Scope<>();
-			{
-				// output[i][j] = input[j][i]
-				jBody.assign(output.valueAt(i.multiply(4).add(j)),
-					input.valueAt(j.multiply(4).add(i)));
-				
-				jLoop.add(jBody);
-			}
-			
-			iBody.add(jLoop);
-		}
-		
-		iLoop.add(iBody);
-		scope.add(iLoop);
 	}
 }
