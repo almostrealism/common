@@ -54,6 +54,16 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 		ArrayVariable<Double> cofactorMatrix = scope.declareArray("cofactorMatrix_" + varIdx++, e(16));
 		ArrayVariable<Double> subMatrix = scope.declareArray("subMatrix_" + varIdx++, e(9));
 
+		// Initialize cofactor matrix to zeros
+		InstanceReference init = Variable.integer("init_" + varIdx++).ref();
+		Repeated initLoop = new Repeated<>(init.getReferent(), init.lessThan(e(16)));
+		Scope<?> initBody = new Scope<>();
+		{
+			initBody.assign(cofactorMatrix.valueAt(init), e(0.0));
+			initLoop.add(initBody);
+		}
+		scope.add(initLoop);
+
 		// Create nested loops for i and j (0 to 3)
 		InstanceReference i = Variable.integer("i_" + varIdx++).ref();
 		Repeated outerLoop = new Repeated<>(i.getReferent(), i.lessThan(e(4)));
@@ -103,50 +113,47 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase<Pa
 	private void extractSubMatrix(Scope<?> scope, ArrayVariable<Double> subMatrix,
 									ArrayVariable<Double> input,
 									InstanceReference excludeRow,
-								    InstanceReference excludeCol) {
-		Expression subRow = scope.declareInteger("subRow_" + varIdx++, e(0));
-		Expression subCol =  scope.declareInteger("subCol_" + varIdx++, e(0));
-		
-		// Nested loops to copy elements excluding row i and column j
-		InstanceReference row = Variable.integer("row_" + varIdx++).ref();
-		Repeated rowLoop = new Repeated<>(row.getReferent(), row.lessThan(e(4)));
-		
-		Scope<?> rowBody = new Scope<>();
+									InstanceReference excludeCol) {
+		// Initialize submatrix to zeros first
+		InstanceReference k = Variable.integer("k_init_" + varIdx++).ref();
+		Repeated initLoop = new Repeated<>(k.getReferent(), k.lessThan(e(9)));
+		Scope<?> initBody = new Scope<>();
 		{
-			InstanceReference col = Variable.integer("col_" + varIdx++).ref();
-			Repeated colLoop = new Repeated<>(col.getReferent(), col.lessThan(e(4)));
+			initBody.assign(subMatrix.valueAt(k), e(0.0));
+			initLoop.add(initBody);
+		}
+		scope.add(initLoop);
+		
+		// Build 3x3 submatrix by copying elements that are not in excluded row/col
+		Expression subIdx = scope.declareInteger("subIdx_" + varIdx++, e(0));
+		
+		InstanceReference i = Variable.integer("i_extract_" + varIdx++).ref();
+		Repeated outerLoop = new Repeated<>(i.getReferent(), i.lessThan(e(4)));
+		
+		Scope<?> outerBody = new Scope<>();
+		{
+			InstanceReference j = Variable.integer("j_extract_" + varIdx++).ref();
+			Repeated innerLoop = new Repeated<>(j.getReferent(), j.lessThan(e(4)));
 			
-			Scope<?> colBody = new Scope<>();
+			Scope<?> innerBody = new Scope<>();
 			{
-				// Skip if this is the excluded row or column
+				// Copy element if not in excluded row or column
 				Scope<?> copyElement = new Scope<>();
 				{
-					// Copy element to submatrix
-					copyElement.assign(subMatrix.valueAt(subRow.multiply(3).add(subCol)),
-						input.valueAt(row.multiply(4).add(col)));
-					
-					// Increment subCol
-					copyElement.assign(subCol, subCol.add(1));
+					copyElement.assign(subMatrix.valueAt(subIdx),
+						input.valueAt(i.multiply(4).add(j)));
+					copyElement.assign(subIdx, subIdx.add(1));
 				}
 				
-				colBody.addCase(row.neq(excludeRow).and(col.neq(excludeCol)), (Scope) copyElement);
-				colLoop.add(colBody);
+				innerBody.addCase(i.neq(excludeRow).and(j.neq(excludeCol)), (Scope) copyElement);
+				innerLoop.add(innerBody);
 			}
 			
-			rowBody.add(colLoop);
-			
-			// Reset subCol and increment subRow if we copied any elements from this row
-			Scope<?> endOfRow = new Scope<>();
-			{
-				endOfRow.assign(subCol, e(0));
-				endOfRow.assign(subRow, subRow.add(1));
-			}
-			
-			rowBody.addCase(row.neq(excludeRow), (Scope) endOfRow);
-			rowLoop.add(rowBody);
+			outerBody.add(innerLoop);
+			outerLoop.add(outerBody);
 		}
 		
-		scope.add(rowLoop);
+		scope.add(outerLoop);
 	}
 
 	private Expression<Double> calculate3x3Determinant(Scope<?> scope, ArrayVariable<Double> matrix) {
