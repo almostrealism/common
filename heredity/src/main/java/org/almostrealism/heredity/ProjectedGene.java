@@ -18,6 +18,7 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -92,8 +93,10 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
-		return in ->
-				transform(pos, cp(values.range(shape(1), pos)));
+		return in -> {
+			Producer<PackedCollection<?>> result = transform(pos, cp(values.range(shape(1), pos)));
+			return in == null ? result : multiply(in, result);
+		};
 	}
 
 	@Override
