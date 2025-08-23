@@ -67,4 +67,8 @@ public class AssetGroup {
 	public boolean isLoaded() {
 		return assets().allMatch(Asset::isLoaded);
 	}
+
+	public long getTotalSize() {
+		return assets().mapToLong(Asset::getSize).sum();
+	}
 }
