@@ -25,6 +25,8 @@ import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
 public class ProjectedGenome implements Genome<PackedCollection<?>> {
+	public static final long initialSeed = 0xDEAD;
+
 	private PackedCollection<?> parameters;
 	private List<ProjectedChromosome> chromosomes;
 
@@ -35,6 +37,11 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	public ProjectedGenome(PackedCollection<?> parameters) {
 		this.parameters = parameters;
 		this.chromosomes = new ArrayList<>();
+	}
+
+	public void initWeights() {
+		Random random = new Random(initialSeed);
+		initWeights(() -> new Random(random.nextLong()));
 	}
 
 	public void initWeights(Supplier<Random> seeds) {
@@ -66,6 +73,9 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 			throw new IllegalArgumentException();
 
 		this.parameters.setMem(0, parameters);
+
+		initWeights();
+		refreshValues();
 	}
 
 	@Override

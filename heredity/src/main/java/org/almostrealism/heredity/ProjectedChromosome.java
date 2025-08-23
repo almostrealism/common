@@ -71,6 +71,8 @@ public class ProjectedChromosome implements Chromosome<PackedCollection<?>>, Col
 		genes.remove(index);
 	}
 
+	public void removeAllGenes() { genes.clear(); }
+
 	@Override
 	public Gene<PackedCollection<?>> valueAt(int pos) {
 		return genes.get(pos);

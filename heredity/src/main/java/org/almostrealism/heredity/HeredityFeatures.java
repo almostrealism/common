@@ -23,10 +23,25 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface HeredityFeatures extends CollectionFeatures {
+	default Chromosome<PackedCollection<?>> chromosome(List<? extends Gene<PackedCollection<?>>> genes) {
+		return new Chromosome<>() {
+			@Override
+			public int length() {
+				return genes.size();
+			}
+
+			@Override
+			public Gene<PackedCollection<?>> valueAt(int pos) {
+				return genes.get(pos);
+			}
+		};
+	}
+
 	default Chromosome<PackedCollection<?>> c(Gene<PackedCollection<?>>... genes) {
 		return new Chromosome<>() {
 			@Override
