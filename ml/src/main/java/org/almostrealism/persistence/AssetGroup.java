@@ -43,6 +43,10 @@ public class AssetGroup {
 		this.assets = assets;
 	}
 
+	public AssetGroup(Stream<Asset> assets) {
+		this.assets = assets.collect(Collectors.toList());
+	}
+
 	public List<Asset> getAllAssets() { return assets; }
 
 	public Asset getAsset(String name) {

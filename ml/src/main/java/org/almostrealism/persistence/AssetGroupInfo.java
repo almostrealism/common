@@ -17,6 +17,7 @@
 package org.almostrealism.persistence;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,10 +74,14 @@ public class AssetGroupInfo {
 	}
 
 	public static AssetGroupInfo forDirectory(String name, File directory) {
-		return new AssetGroupInfo(name, null,
-				Stream.of(directory.listFiles())
-						.map(File::getName)
-						.map(AssetInfo::new)
-						.collect(Collectors.toList()));
+		if (directory.isDirectory()) {
+			return new AssetGroupInfo(name, null,
+					Stream.of(directory.listFiles())
+							.map(File::getName)
+							.map(AssetInfo::new)
+							.collect(Collectors.toList()));
+		}
+
+		return new AssetGroupInfo(name, null, Collections.emptyList());
 	}
 }
