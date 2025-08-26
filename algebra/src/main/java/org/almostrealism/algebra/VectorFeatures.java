@@ -165,6 +165,10 @@ public interface VectorFeatures extends CollectionFeatures {
 				z(p).multiply(oneOverLength));
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducer<T> length(int depth, Producer<T> value) {
+		return length(traverse(depth, value));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<T> value) {
 		return sqrt(lengthSq(value));
 	}
