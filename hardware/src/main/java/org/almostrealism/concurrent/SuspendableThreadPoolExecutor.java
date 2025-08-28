@@ -68,8 +68,10 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		super.beforeExecute(t, r);
 		if (priority == null) return;
 
-		log("Priority for " + r + " is " + priority.applyAsDouble(r) +
-				" (threshold is " + minPriorityThreshold + ")");
+		if (priority.applyAsDouble(r) < minPriorityThreshold) {
+			log("Priority for " + r + " is " + priority.applyAsDouble(r) +
+					" (threshold is " + minPriorityThreshold + ")");
+		}
 
 		synchronized (suspensionLock) {
 			while (priority.applyAsDouble(r) < minPriorityThreshold) {
