@@ -100,19 +100,20 @@ public class NativeExecution extends HardwareOperator {
 
 		if (enableExecutor) {
 			recordDuration(latch, () -> {
-				IntStream.range(0, p).parallel()
-						.mapToObj(id ->
-								executor.submit(() -> {
-									try {
-										inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
-									} catch (Exception e) {
-										warn("Operation " + id + " of " +
-												getGlobalWorkSize() + " failed", e);
-									} finally {
-										latch.countDown();
-									}
-								}))
-						.collect(Collectors.toList());
+				for (int i = 0; i < p; i++) {
+					int id = i;
+
+					executor.submit(() -> {
+						try {
+							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
+						} catch (Exception e) {
+							warn("Operation " + id + " of " +
+									getGlobalWorkSize() + " failed", e);
+						} finally {
+							latch.countDown();
+						}
+					});
+				}
 
 				// TODO  The user of the semaphore should decide when to wait
 				// TODO  rather than it happening proactively here

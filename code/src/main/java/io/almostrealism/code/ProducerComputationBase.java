@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Variable;
@@ -25,6 +26,7 @@ import io.almostrealism.util.DescribableParent;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
@@ -59,7 +61,13 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 			return null;
 		}
 
-		return Signature.md5(getName() + "|" + String.join(":", signatures));
+		String requirements = Optional.ofNullable(getComputeRequirements())
+				.map(r -> r.stream().map(ComputeRequirement::name)
+						.distinct().sorted().collect(Collectors.toList()).toString())
+				.orElse("");
+
+		return Signature.md5(getName() + "/" + requirements +
+				"|" + String.join(":", signatures));
 	}
 
 	@Override
