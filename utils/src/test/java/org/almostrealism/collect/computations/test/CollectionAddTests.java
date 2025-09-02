@@ -19,13 +19,13 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -38,7 +38,7 @@ import java.util.function.Function;
 public class CollectionAddTests implements TestFeatures {
 	int iter = 1000000;
 	int size = 150000;
-	int parallelism = NativeExecution.PARALLELISM;
+	int parallelism = KernelPreferences.getCpuParallelism();
 
 	@Override
 	public <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
@@ -46,7 +46,7 @@ public class CollectionAddTests implements TestFeatures {
 	}
 
 	public void add(ComputeRequirement... req) {
-		log("Native parallelism = " + NativeExecution.PARALLELISM);
+		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
 		CollectionProducer<PackedCollection<?>> add = add(v(shape(1), 0), v(shape(1), 1));
 		((ComputationBase) add).setComputeRequirements(List.of(req));

@@ -22,6 +22,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.lang.ref.ReferenceQueue;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -178,7 +179,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	@Override
 	public void destroy() {
 		if (allocated != null) {
-			allocated.values().stream()
+			List<NativeRef<T>> stillAllocated = new ArrayList<>(allocated.values());
+			stillAllocated.stream()
 					.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
 					.limit(10)
 					.forEach(ref -> {

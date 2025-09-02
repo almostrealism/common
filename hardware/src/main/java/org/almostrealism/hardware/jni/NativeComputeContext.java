@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
@@ -25,7 +26,6 @@ import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
-import org.almostrealism.io.Console;
 
 public class NativeComputeContext extends AbstractComputeContext<NativeDataContext> {
 	public static boolean enableVerbose = false;
@@ -50,7 +50,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
-		target.setParallelism(NativeExecution.PARALLELISM);
+		target.setParallelism(KernelPreferences.getCpuParallelism());
 
 		JNIMemoryAccessor accessor;
 

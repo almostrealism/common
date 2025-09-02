@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.lang.ScopeEncoder;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public class CLNativeComputeContext extends AbstractComputeContext {
@@ -48,7 +48,7 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
 		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
-		target.setParallelism(NativeExecution.PARALLELISM);
+		target.setParallelism(KernelPreferences.getCpuParallelism());
 
 		long start = System.nanoTime();
 		StringBuffer buf = new StringBuffer();

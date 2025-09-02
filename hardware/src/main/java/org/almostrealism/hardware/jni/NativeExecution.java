@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
@@ -35,11 +36,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class NativeExecution extends HardwareOperator {
-	public static int PARALLELISM = 20;
 	public static boolean enableExecutor = true;
-	private static ExecutorService executor = Executors.newFixedThreadPool(PARALLELISM);
 
 	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
+
+	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
 
 	private NativeInstructionSet inst;
 	private int argCount;
