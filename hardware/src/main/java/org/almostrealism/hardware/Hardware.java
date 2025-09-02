@@ -39,6 +39,7 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;

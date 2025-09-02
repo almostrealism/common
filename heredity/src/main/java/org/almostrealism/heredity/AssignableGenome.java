@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Tensor;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.io.ByteArrayInputStream;
@@ -32,6 +31,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 
+@Deprecated
 public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures {
 	private final Tensor<PackedCollection<?>> delegate;
 	private final int count;
@@ -74,16 +74,6 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 				}
 			}
 		}
-	}
-
-	@Override
-	public Genome getHeadSubset() {
-		return new AssignableGenome(this, count() - 1);
-	}
-
-	@Override
-	public Chromosome getLastChromosome() {
-		return new AssignableChromosome(count() - 1);
 	}
 
 	@Override

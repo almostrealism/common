@@ -28,6 +28,7 @@ public class Asset {
 	private String name;
 	private String url;
 	private String md5;
+	private long size;
 
 	private File file;
 
@@ -36,6 +37,7 @@ public class Asset {
 	public Asset(File file) {
 		this.file = file;
 		this.name = file.getName();
+		this.size = file.length();
 	}
 
 	public Asset(String group, AssetInfo info) {
@@ -43,6 +45,7 @@ public class Asset {
 		this.name = info.getName();
 		this.url = info.getUrl();
 		this.md5 = info.getMd5();
+		this.size = info.getSize();
 	}
 
 	public String getGroup() { return group; }
@@ -65,11 +68,12 @@ public class Asset {
 		this.md5 = md5;
 	}
 
-	public boolean isLoaded() {
-		if (getUrl() == null) {
-			return file != null && file.exists();
-		}
+	public long getSize() { return size; }
+	public void setSize(long size) {
+		this.size = size;
+	}
 
+	public boolean isLoaded() {
 		return confirmFile();
 	}
 

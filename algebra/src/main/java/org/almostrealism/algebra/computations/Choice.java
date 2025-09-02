@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,61 +16,43 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.HybridScope;
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
-// TODO  Why can't this be a child of TraversableComputationBase?
-public class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+public class Choice<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	private int choiceCount;
 
-	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
-				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		super("choice", new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) adjustChoices(memLength, choices));
+	public Choice(TraversalPolicy shape, int choiceCount,
+				  Producer<PackedCollection<?>> decision,
+				  Producer<PackedCollection<?>> choices) {
+		super("choice", shape, decision, adjustChoices(shape.getTotalSize(), choiceCount, choices));
 		this.choiceCount = choiceCount;
 	}
 
-	public Scope<T> getScope(KernelStructureContext context) {
-		HybridScope<T> scope = new HybridScope<>(this);
-		scope.getVariables().addAll(getVariables());
-		Consumer<String> code = scope.code();
-
-		ArrayVariable<?> output = getArgument(0);
-		ArrayVariable<?> input = getArgument(2);
-		Expression decision = getArgument(1).valueAt(0);
-		Expression choices = new DoubleConstant((double) choiceCount);
-		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
-
-		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.referenceRelative(i).getSimpleExpression(getLanguage()) + " = " +
-					input.referenceRelative(decisionChoice.add(i)).getSimpleExpression(getLanguage()) + ";\n");
-		}
-
-		return scope;
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return CollectionExpression.create(getShape(), idx -> {
+			Expression choice = args[1].getValueAt(e(0)).multiply(choiceCount).floor();
+			Expression pos = choice.multiply(getShape().getSize());
+			return args[2].getValueAt(pos.add(idx));
+		});
 	}
 
-	protected static <T extends PackedCollection<?>> Supplier<Evaluable<? extends MemoryBank<T>>>
-			adjustChoices(int memLength, Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
+	protected static <T extends PackedCollection<?>> Producer<PackedCollection<?>>
+			adjustChoices(int memLength, int choiceCount, Producer<PackedCollection<?>> choices) {
 		if (!(choices instanceof Shape)) return choices;
 
 		TraversalPolicy shape = ((Shape) choices).getShape();
-		if (shape.getSize() == memLength && shape.getTraversalAxis() > 0) {
-			return CollectionFeatures.getInstance().traverse(shape.getTraversalAxis() - 1, (Producer) choices);
+		if (shape.getCount() != choiceCount) {
+			throw new IllegalArgumentException();
+		} else if (shape.getSize() != memLength) {
+			throw new IllegalArgumentException();
 		}
 
 		return choices;

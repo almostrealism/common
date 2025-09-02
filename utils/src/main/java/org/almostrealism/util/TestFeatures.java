@@ -347,6 +347,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (profile != null) profile.print();
 
 		KernelTraversalProvider.printTimes();
+		ScopeSettings.printStats();
 		log("KernelSeriesCache min nodes - " + KernelSeriesCache.minNodeCountMatch +
 				" (match) | " + KernelSeriesCache.minNodeCountCache + " (cache)");
 		log("KernelSeriesCache size = " + KernelSeriesCache.defaultMaxExpressions +

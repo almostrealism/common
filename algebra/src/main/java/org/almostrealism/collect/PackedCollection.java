@@ -132,6 +132,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		}
 	}
 
+	public PackedCollection<?> get(int index, TraversalPolicy memberShape) {
+		return range(memberShape, index * memberShape.getTotalSize());
+	}
+
 	@Override
 	public void set(int index, T value) {
 		set(index, value.toArray(0, value.getMemLength()));

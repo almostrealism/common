@@ -59,7 +59,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	/** Returns the viewer direction. */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return scalarMultiply(normalize(incident), -1.0);
+		return scalarMultiply(vnormalize(incident), -1.0);
 	}
 
 	@Override

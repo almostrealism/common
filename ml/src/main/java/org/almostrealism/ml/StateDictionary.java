@@ -19,6 +19,7 @@ package org.almostrealism.ml;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.persistence.Asset;
 import org.almostrealism.persistence.AssetGroup;
 import org.almostrealism.persistence.AssetGroupInfo;
 import org.almostrealism.persistence.CollectionEncoder;
@@ -28,6 +29,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -57,10 +59,21 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	/**
 	 * Create a {@link StateDictionary} by loading weights identified by an {@link AssetGroupInfo}.
 	 *
-	 * @param assets AssetGroupInfo containing the directory and other metadata.
+	 * @param assets AssetGroupInfo pointing to the weights and metadata.
 	 * @throws IOException  if the assets cannot be obtained, read or parsed
 	 */
 	public StateDictionary(AssetGroupInfo assets) throws IOException {
+		super(assets);
+		init();
+	}
+
+	/**
+	 * Create a {@link StateDictionary} by loading weights from provided {@link Asset}s.
+	 *
+	 * @param assets Assets containing the weights.
+	 * @throws IOException  if the assets cannot be read or parsed
+	 */
+	public StateDictionary(List<Asset> assets) throws IOException {
 		super(assets);
 		init();
 	}

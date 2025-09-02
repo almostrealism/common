@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,6 @@ import io.almostrealism.uml.Plural;
 import java.util.stream.IntStream;
 
 public interface Genome<T> extends Plural<Chromosome<T>> {
-	Genome getHeadSubset();
-	
-	Chromosome getLastChromosome();
 
 	int count();
 
@@ -40,9 +37,5 @@ public interface Genome<T> extends Plural<Chromosome<T>> {
 
 	default Factor<T> valueAt(int chromosome, int gene, int factor) {
 		return valueAt(chromosome).valueAt(gene, factor);
-	}
-
-	static <T> GenomeFromChromosomes<T> fromChromosomes(ChromosomeFactory<T>... factories) {
-		return new GenomeFromChromosomes(factories);
 	}
 }

@@ -57,7 +57,7 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		this(setup, tick, iter, enableOptimization);
+		this(setup, tick, iter, enableOptimization && iter == 1);
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter, boolean optimize) {

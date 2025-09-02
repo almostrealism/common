@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 
 public interface BaseAudioData extends CodeFeatures {
 	Scalar get(int index);
@@ -28,10 +28,27 @@ public interface BaseAudioData extends CodeFeatures {
 	default Scalar waveLength() { return get(1); }
 	default Scalar amplitude() { return get(2); }
 
-	default Producer<Scalar> getWavePosition() { return p(wavePosition()); }
-	default void setWavePosition(double wavePosition) { wavePosition().setValue(wavePosition); }
-	default Producer<Scalar> getWaveLength() { return p(waveLength()); }
-	default void setWaveLength(double waveLength) { waveLength().setValue(waveLength); }
-	default Producer<Scalar> getAmplitude() { return p(amplitude()); }
-	default void setAmplitude(double amplitude) { amplitude().setValue(amplitude); }
+	default Producer<PackedCollection<?>> getWavePosition() {
+		return p(wavePosition().range(shape(1)));
+	}
+
+	default void setWavePosition(double wavePosition) {
+		wavePosition().setValue(wavePosition);
+	}
+
+	default Producer<PackedCollection<?>> getWaveLength() {
+		return p(waveLength().range(shape(1)));
+	}
+
+	default void setWaveLength(double waveLength) {
+		waveLength().setValue(waveLength);
+	}
+
+	default Producer<PackedCollection<?>> getAmplitude() {
+		return p(amplitude().range(shape(1)));
+	}
+
+	default void setAmplitude(double amplitude) {
+		amplitude().setValue(amplitude);
+	}
 }

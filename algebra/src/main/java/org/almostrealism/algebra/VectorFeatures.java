@@ -25,13 +25,11 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -150,33 +148,37 @@ public interface VectorFeatures extends CollectionFeatures {
 	}
 
 	@Deprecated
-	default CollectionProducer<Scalar> length(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducer<Scalar> vlength(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0))).pow(c(0.5));
 	}
 
 	@Deprecated
-	default CollectionProducer<Scalar> lengthSq(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducer<Scalar> vlengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0)));
 	}
 
 	@Deprecated
-	default ExpressionComputation<Vector> normalize(Supplier<Evaluable<? extends Vector>> p) {
-		Producer<Scalar> oneOverLength = pow(length(p), ScalarFeatures.minusOne());
+	default ExpressionComputation<Vector> vnormalize(Supplier<Evaluable<? extends Vector>> p) {
+		Producer<Scalar> oneOverLength = pow(vlength(p), ScalarFeatures.minusOne());
 		return vector(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _length(Producer<T> value) {
-		return sqrt(_lengthSq(value));
+	default <T extends PackedCollection<?>> CollectionProducer<T> length(int depth, Producer<T> value) {
+		return length(traverse(depth, value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> _lengthSq(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<T> value) {
+		return sqrt(lengthSq(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<T> value) {
 		return multiply(value, value).sum();
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> _normalize(Producer<T> value) {
-		return multiply(value, _length(value).pow(-1.0));
+	default <T extends PackedCollection<?>> CollectionProducer<T> normalize(Producer<T> value) {
+		return multiply(value, length(value).pow(-1.0));
 	}
 
 	static VectorFeatures getInstance() {

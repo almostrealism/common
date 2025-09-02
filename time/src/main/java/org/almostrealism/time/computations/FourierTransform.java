@@ -92,9 +92,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 		return new FourierTransform(getShape().length(0), getShape().length(2), inverse, (Producer) children.get(1));
 	}
 
-	protected ArrayVariable<Double> addParameter(Scope<?> method, String name,
-												 Expression<Integer> outputPosition,
-												 int size, int totalSize) {
+	protected ArrayVariable<Double> addParameter(Scope<?> method, String name, int size) {
 		ArrayVariable<Double> source = new ArrayVariable<>(Double.class, name, e(size));
 		method.getParameters().add(source);
 		return source;
@@ -105,8 +103,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				(getFunctionName() + "_calculateTransform", "Calculate Transform");
 		Scope<PackedCollection<?>> calculateTransform = new Scope<>(getFunctionName() + "_calculateTransform", calculateTransformMetadata);
 
-		ArrayVariable<Double> output = addParameter(calculateTransform, "output", outputPosition, size, totalSize);
-		ArrayVariable<Double> input = addParameter(calculateTransform, "input", outputPosition, size, totalSize);
+		ArrayVariable<Double> output = addParameter(calculateTransform, "output", size);
+		ArrayVariable<Double> input = addParameter(calculateTransform, "input", size);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
@@ -129,22 +127,22 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 												 Expression<Integer> outputPosition,
 												 int size, int totalSize) {
 		ArrayVariable<Double> radix2 = size >= 2 ?
-				calculateTransform.declareArray(getNameProvider(),"radix2_" + varIdx++, e(size / 2)) : null;
+				calculateTransform.declareArray("radix2_" + varIdx++, e(size / 2)) : null;
 		ArrayVariable<Double> radix4Part1 =
 				size >= 4 ?
-						calculateTransform.declareArray(getNameProvider(), "radix4Part1_" + varIdx++, e(size / 4)) : null;
+						calculateTransform.declareArray("radix4Part1_" + varIdx++, e(size / 4)) : null;
 		ArrayVariable<Double> radix4Part2 =
 				size >= 4 ?
-				calculateTransform.declareArray(getNameProvider(), "radix4Part2_" + varIdx++, e(size / 4)) : null;
+				calculateTransform.declareArray("radix4Part2_" + varIdx++, e(size / 4)) : null;
 		ArrayVariable<Double> radix2FFT =
 				size > 2 ?
-				calculateTransform.declareArray(getNameProvider(), "radix2FFT_" + varIdx++, e(size / 2)) : null;
+				calculateTransform.declareArray("radix2FFT_" + varIdx++, e(size / 2)) : null;
 		ArrayVariable<Double> radix4Part1FFT =
 				size >= 4 ?
-				calculateTransform.declareArray(getNameProvider(), "radix4Part1FFT_" + varIdx++, e(size / 4)) : null;
+				calculateTransform.declareArray("radix4Part1FFT_" + varIdx++, e(size / 4)) : null;
 		ArrayVariable<Double> radix4Part2FFT =
 				size >= 4 ?
-				calculateTransform.declareArray(getNameProvider(), "radix4Part2FFT_" + varIdx++, e(size / 4)) : null;
+				calculateTransform.declareArray("radix4Part2FFT_" + varIdx++, e(size / 4)) : null;
 
 		Cases cases = new Cases<>(); {
 			if (size >= 4) {
@@ -370,8 +368,8 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				(getFunctionName() + "_radix2", "Radix 2");
 		Scope<PackedCollection<?>> radix2 = new Scope<>(getFunctionName() + "_radix2", radix2Metadata);
 
-		ArrayVariable<Double> output = addParameter(radix2, "output", outputPosition, size, totalSize);
-		ArrayVariable<Double> input = addParameter(radix2, "input", outputPosition, size, totalSize);
+		ArrayVariable<Double> output = addParameter(radix2, "output", size);
+		ArrayVariable<Double> input = addParameter(radix2, "input", size);
 		output.setSortHint(-1);
 
 		Variable<Integer, ?> len = Variable.integer("len");
@@ -389,10 +387,10 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 							  Expression<?> len, Variable<Integer, ?> inverseTransform,
 							  Expression<?> isFirstSplit, int size) {
 
-		ArrayVariable<Double> even = radix2.declareArray(getNameProvider(), "even_" + varIdx++, e(size / 2));
-		ArrayVariable<Double> odd = radix2.declareArray(getNameProvider(), "odd_" + varIdx++, e(size / 2));
-		ArrayVariable<Double> evenFft = radix2.declareArray(getNameProvider(), "evenFft_" + varIdx++, e(size / 2));
-		ArrayVariable<Double> oddFft = radix2.declareArray(getNameProvider(), "oddFft_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> even = radix2.declareArray("even_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> odd = radix2.declareArray("odd_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> evenFft = radix2.declareArray("evenFft_" + varIdx++, e(size / 2));
+		ArrayVariable<Double> oddFft = radix2.declareArray("oddFft_" + varIdx++, e(size / 2));
 
 		Cases cases = new Cases<>(); {
 			Scope<?> main = cases.addCase(len.greaterThanOrEqual(e(2)), new Scope<>(), null);

@@ -16,17 +16,14 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.compute.PhysicalScope;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -48,7 +45,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(context, kernel, new Supplier[0]);
-		setInputs(AcceleratedEvaluable.includeResult(
+		setInputs((Supplier[]) CollectionUtils.include(new Supplier[0],
 				new DynamicProducerForMemoryData(args -> destination.get(), kernelDestination), inputArgs));
 		init();
 	}

@@ -302,7 +302,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		return i;
 	}
 
-	public ArrayVariable<?> declareArray(NameProvider np, String name, Expression<Integer> size) {
+	public ArrayVariable<?> declareArray(String name, Expression<Integer> size) {
 		if (size.intValue().orElse(1) <= 0) {
 			throw new IllegalArgumentException("Array size cannot be less than 1");
 		}

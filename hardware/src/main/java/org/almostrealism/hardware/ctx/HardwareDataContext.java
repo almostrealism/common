@@ -20,7 +20,7 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -50,16 +50,14 @@ public abstract class HardwareDataContext implements DataContext<MemoryData>, Co
 		return name;
 	}
 
-	public long getMaxReservation() {
-		return maxReservation;
-	}
+	public long getMaxReservation() { return maxReservation; }
 
 	protected IntFunction<MemoryProvider<?>> getMemoryProviderSupply() {
 		return memoryProvider.get();
 	}
 
-	protected MemoryProvider<RAM> getSharedMemoryProvider() {
-		return (MemoryProvider<RAM>) Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+	protected MemoryProvider getSharedMemoryProvider() {
+		return Hardware.getLocalHardware().getNativeBufferMemoryProvider();
 	}
 
 	@Override

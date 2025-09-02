@@ -20,7 +20,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 
 import java.io.File;
 import java.nio.Buffer;

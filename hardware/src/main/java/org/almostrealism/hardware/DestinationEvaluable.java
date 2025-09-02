@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Console;
@@ -38,7 +39,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 			// DestinationEvaluable is intended to be used only as an alternative
 			// to HardwareEvaluable, when it is not possible to use it
 			throw new UnsupportedOperationException();
-		} else if (!(operation instanceof AcceleratedOperation<?>)) {
+		} else if (!(operation instanceof AcceleratedOperation<?>) && !(operation instanceof Provider)) {
 			warn("Creating DestinationEvaluable for " + operation.getClass().getSimpleName() +
 					" will not leverage hardware acceleration");
 		}
@@ -49,7 +50,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 
 	@Override
 	public T evaluate(Object... args) {
-		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
+		if (operation instanceof Provider<T>) {
+			operation.into(destination).evaluate(args);
+		} else if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
 			((AcceleratedOperation) operation).apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");

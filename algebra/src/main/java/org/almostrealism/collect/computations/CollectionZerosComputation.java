@@ -195,19 +195,16 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	}
 
 	/**
-	 * Isolation is not supported for zero computations as they are already 
-	 * optimally isolated by nature - being constant computations with no dependencies.
-	 * Zero computations are leaf nodes in computation graphs and cannot be further
-	 * isolated or optimized through the isolation process.
-	 * 
-	 * <p>In practice, zero computations are so fundamental and efficient that
-	 * isolation would provide no benefit and might actually reduce performance
-	 * by adding unnecessary abstraction layers.</p>
-	 * 
+	 * Isolation is not supported for zero computations.
+	 *
+	 * <p>In practice, constant computations are so trivial that isolation
+	 * would provide no benefit and might actually reduce performance
+	 * by adding unnecessary computation steps while wasting memory.</p>
+	 *
 	 * @return Never returns normally
-	 * @throws UnsupportedOperationException Always thrown as isolation is not 
+	 * @throws UnsupportedOperationException Always thrown as isolation is not
 	 *                                       applicable to zero computations
-	 * 
+	 *
 	 * @see Process#isolate()
 	 */
 	@Override
@@ -216,7 +213,7 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	}
 
 	/**
-	 * Creates a new CollectionZerosComputation with the shape traversed along the 
+	 * Creates a new {@link CollectionZerosComputation} with the shape traversed along the
 	 * specified axis. The zero property is preserved while the shape is transformed 
 	 * according to the traversal policy's traverse operation. This is useful for
 	 * operations that need to work with different dimensional views of zero data.
@@ -225,7 +222,7 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * a 1D zero vector representing row-wise or column-wise operations.</p>
 	 * 
 	 * @param axis The axis along which to perform the traversal transformation
-	 * @return A new CollectionZerosComputation with the traversed shape, still 
+	 * @return A new {@link CollectionZerosComputation} with the traversed shape, still
 	 *         containing all zero values
 	 * 
 	 * @see TraversalPolicy#traverse(int)

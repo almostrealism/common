@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
-import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
 
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
 
-	// TODO   Rename "all", with children() instead defaulting to includeThis = false
+	default Stream<T> all() {
+		return children(true);
+	}
+
+	// TODO  Uses of this should migrate to #all(), as
+	// TODO  #children() should use includeThis = false
 	default Stream<T> children() {
 		return children(true);
 	}

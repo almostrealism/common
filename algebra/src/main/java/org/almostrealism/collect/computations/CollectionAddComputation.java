@@ -36,11 +36,6 @@ public class CollectionAddComputation<T extends PackedCollection<?>> extends Tra
 		this("add", shape, arguments);
 	}
 
-	public CollectionAddComputation(TraversalPolicy shape,
-									Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		this("add", shape, arguments);
-	}
-
 	protected CollectionAddComputation(String name, TraversalPolicy shape,
 									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
 		super(name, shape, arguments);

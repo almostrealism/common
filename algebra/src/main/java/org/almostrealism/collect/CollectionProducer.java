@@ -112,8 +112,8 @@ public interface CollectionProducer<T extends Shape<?>> extends
 
 	/**
 	 * Convenience method to apply symmetric padding to this collection.
-	 * This method creates a {@link PackedCollectionPad} computation that adds the specified
-	 * amount of zero-padding to each dimension.
+	 * This method creates a {@link org.almostrealism.collect.computations.PackedCollectionPad}
+	 * computation that adds the specified amount of zero-padding to each dimension.
 	 * 
 	 * <p><strong>Example:</strong></p>
 	 * <pre>{@code
@@ -128,7 +128,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	 * @param <V> The type of PackedCollection
 	 * @return A CollectionProducerComputation that produces the padded collection
 	 * 
-	 * @see PackedCollectionPad
+	 * @see org.almostrealism.collect.computations.PackedCollectionPad
 	 * @see org.almostrealism.collect.CollectionFeatures#pad(Producer, int...)
 	 */
 	default <V extends PackedCollection<?>> CollectionProducerComputation<V> pad(int... depths) {
@@ -147,7 +147,7 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return map(itemShape, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
 		return reduce(this, mapper);
 	}
 
@@ -284,11 +284,11 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return mod((Producer) this, (Producer) mod);
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum(int axis) {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sum(int axis) {
 		return sum(traverse(axis, (Producer) this));
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> sum() {
+	default <V extends PackedCollection<?>> CollectionProducer<V> sum() {
 		return sum((Producer) this);
 	}
 
@@ -320,17 +320,15 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return sigmoid((Producer) this);
 	}
 
-	default AcceleratedConditionalStatementCollection greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
+	default <V extends PackedCollection<?>> CollectionProducer<V>  greaterThan(Producer<?> operand,
+																			   Producer<V> trueValue, Producer<V> falseValue) {
 		return greaterThan(operand, trueValue, falseValue, false);
 	}
 
-	default AcceleratedConditionalStatementCollection greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
+	default <V extends PackedCollection<?>> CollectionProducer<V> greaterThan(Producer<?> operand,
+																  Producer<V> trueValue, Producer<V> falseValue,
 																  boolean includeEqual) {
-		return new GreaterThanCollection(this, operand, trueValue, falseValue, includeEqual);
+		return greaterThan(this, operand, trueValue, falseValue, includeEqual);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Supplier operand) {

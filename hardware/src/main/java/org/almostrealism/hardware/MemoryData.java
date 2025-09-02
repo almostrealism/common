@@ -206,7 +206,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 		if (getMemOrdering() == null) {
 			float out[] = new float[length];
-			getMem(0, out, offset, length);
+			getMem(offset, out, 0, length);
 			return out;
 		} else {
 			double raw[] = toArray(offset, length);
@@ -292,6 +292,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
+	default void setMem(double[] source, int srcOffset, int length) {
+		setMem(0, source, srcOffset, length);
+	}
+
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
 		if (getDelegate() == null) {
 			if (offset + length > getMemLength()) {
@@ -308,6 +312,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default void setMem(int offset, MemoryData src) {
 		setMem(offset, src, 0, src.getMemLength());
+	}
+
+	default void setMem(MemoryData src, int srcOffset, int length) {
+		setMem(0, src, srcOffset, length);
 	}
 
 	default void setMem(int offset, MemoryData src, int srcOffset, int length) {

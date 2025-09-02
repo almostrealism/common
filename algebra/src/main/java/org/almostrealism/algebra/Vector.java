@@ -276,7 +276,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 
 	public void normalize() {
 		// TODO  This should leverage a reusable Evaluable that takes an argument
-		normalize(v(this)).get().evaluate();
+		vnormalize(v(this)).get().evaluate();
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */

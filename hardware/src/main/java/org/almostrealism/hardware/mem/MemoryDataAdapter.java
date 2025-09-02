@@ -18,13 +18,11 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -33,6 +31,7 @@ import java.util.Map;
 
 public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public static boolean enableMemVersions = true;
+	public static boolean enableFinalizer = false;
 
 	private Memory mem;
 	private Map<MemoryProvider, Memory> memVersions;
@@ -147,9 +146,14 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 	@Override
 	public void finalize() {
-		if (mem != null) destroy();
+		if (mem != null) {
+			if (enableFinalizer) {
+				destroy();
+			} else {
+				mem = null;
+			}
+		}
 	}
-
 
 	@Override
 	public Console console() { return Hardware.console; }

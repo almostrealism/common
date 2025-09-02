@@ -164,7 +164,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				1000.0, 1000.0, 1000.0,
 				1000.0, 1000.0, 1000.0)
 				.reshape(shape(dim, dim));
-		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll());
 
 		PackedCollection<?> out = c.delta(cp(w)).get().evaluate();
 		out.print();
@@ -181,7 +181,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				20.0, 200.0,
 				30.0, 300.0)
 				.reshape(shape(rows, cols));
-		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll());
 		System.out.println(v.getShape().toStringDetail());
 		v.print();
 
@@ -212,7 +212,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
 		PackedCollection<?> out;
 
-		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll()).add(traverse(1, p(b)));
 		Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(c.delta(cp(w)));
 
 		out = d.get().evaluate();
@@ -223,7 +223,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			for (int j = 0; j < nodes; j++) {
 				for (int k = 0; k < size; k++) {
 					if (i == j) {
-						log("[" + i + ", " + j + ", " + k + "] = " + out.valueAt(i, 0, j, k));
+						if (verboseLogs) log("[" + i + ", " + j + ", " + k + "] = " + out.valueAt(i, 0, j, k));
 						assertEquals(v.valueAt(k), out.valueAt(i, 0, j, k));
 					} else {
 						assertEquals(0.0, out.valueAt(i, 0, j, k));
@@ -276,7 +276,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 			PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
 			PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
 			PackedCollection<?> b = new PackedCollection<>(shape(nodes)).fill(Math::random);
-			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all()).add(traverse(1, p(b)));
+			CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll()).add(traverse(1, p(b)));
 			Supplier<Evaluable<? extends PackedCollection<?>>> d = Process.optimized(dIn ? c.delta(cp(v)) : c.delta(cp(w)));
 
 			d.get().evaluate();
@@ -342,7 +342,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 				1000.0, 1000.0, 1000.0,
 				1000.0, 1000.0, 1000.0)
 				.reshape(shape(dim, dim));
-		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll());
 
 		int outSize = dim;
 		int weightSize = dim * dim;
@@ -430,7 +430,7 @@ public class MatrixDeltaComputationTests implements TestFeatures {
 		PackedCollection<?> v = new PackedCollection<>(shape(size)).fill(Math::random);
 		PackedCollection<?> g = new PackedCollection<>(shape(nodes)).fill(Math::random);
 		PackedCollection<?> w = new PackedCollection<>(shape(nodes, size)).fill(Math::random);
-		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).traverseAll());
 
 		int weightSize = size * nodes;
 		Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), p(w));

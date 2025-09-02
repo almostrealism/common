@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,9 +19,5 @@ package org.almostrealism.hardware.metal;
 public class MTLFunction extends MTLObject {
 	public MTLFunction(long nativePointer) {
 		super(nativePointer);
-	}
-
-	public void release() {
-		// TODO
 	}
 }

@@ -105,7 +105,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 
 	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
 		Producer<Vector> newVector = minus(vector);
-		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
+		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(vlengthSq(normal)));
 		return subtract(newVector, scalarMultiply(normal, s));
 	}
 }

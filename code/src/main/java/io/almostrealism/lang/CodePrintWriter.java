@@ -125,7 +125,8 @@ public interface CodePrintWriter {
 				throw new IllegalArgumentException();
 			}
 
-			comment(indentStr + " - " + metadata.getDisplayName() + ": " + metadata.getShortDescription());
+			comment(indentStr + " - [id=" + metadata.getId() + "] " +
+					metadata.getDisplayName() + ": " + metadata.getShortDescription());
 
 			if (metadata.getLongDescription() != null) {
 				comment(indentStr + "     " + metadata.getLongDescription());
