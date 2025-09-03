@@ -46,6 +46,7 @@ import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
@@ -252,12 +253,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	protected MemoryReplacementManager createMemoryReplacementManager() {
+		return new MemoryReplacementManager(
+				getComputeContext().getDataContext().getKernelMemoryProvider(),
+				this::createAggregatedInput);
+	}
+
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
-			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
+			detailsFactory = new ProcessDetailsFactory<>(
+					isKernel(), isFixedCount(), getCount(),
 					getArgumentVariables(), getOutputArgumentIndex(),
-					getComputeContext().getDataContext().getKernelMemoryProvider(),
-					this::createAggregatedInput);
+					this::createMemoryReplacementManager);
 
 			if (evaluator != null) {
 				detailsFactory.setEvaluator(evaluator);
@@ -300,38 +307,41 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-		// Prepare the operator
-		Execution operator = setupOperator(process);
-		boolean processing = isPreprocessingRequired(process);
+		process.whenReady(() -> {
+			MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-		// Preprocessing
-		if (processing) {
-			preApply();
-			process.getPrepare().get().run();
-		}
+			// Prepare the operator
+			Execution operator = setupOperator(process);
+			boolean processing = isPreprocessingRequired(process);
 
-		// Run the operator
-		long start = System.nanoTime();
-		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptMetric.addEntry(System.nanoTime() - start);
-		process.setSemaphore(semaphore);
-		semaphores.set(semaphore);
-
-		// Postprocessing
-		if (processing) {
-			if (semaphore != null) {
-				// TODO  This should actually result in a new Semaphore
-				// TODO  that performs the post processing whenever the
-				// TODO  original semaphore is finished
-				// warn("Postprocessing will wait for semaphore");
-				semaphore.waitFor();
+			// Preprocessing
+			if (processing) {
+				preApply();
+				process.getPrepare().get().run();
 			}
 
-			process.getPostprocess().get().run();
-			postApply();
-		}
+			// Run the operator
+			long start = System.nanoTime();
+			Semaphore semaphore = operator.accept(input, semaphores.get());
+			acceptMetric.addEntry(System.nanoTime() - start);
+			process.setSemaphore(semaphore);
+			semaphores.set(semaphore);
+
+			// Postprocessing
+			if (processing) {
+				if (semaphore != null) {
+					// TODO  This should actually result in a new Semaphore
+					// TODO  that performs the post processing whenever the
+					// TODO  original semaphore is finished
+					// warn("Postprocessing will wait for semaphore");
+					semaphore.waitFor();
+				}
+
+				process.getPostprocess().get().run();
+				postApply();
+			}
+		});
 
 		return process;
 	}

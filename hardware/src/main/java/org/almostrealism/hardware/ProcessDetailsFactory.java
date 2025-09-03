@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
@@ -30,12 +29,15 @@ import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
@@ -53,8 +55,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private List<ArrayVariable<? extends T>> arguments;
 	private int outputArgIndex;
 
-	private MemoryProvider target;
-	private AcceleratedProcessDetails.TempMemoryFactory tempFactory;
+	private Supplier<MemoryReplacementManager> replacements;
 
 	private MemoryBank output;
 	private Object args[];
@@ -64,13 +65,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private long kernelSize;
 	private MemoryData kernelArgs[];
 	private Evaluable kernelArgEvaluables[];
-	private Evaluable kernelArgDestinations[];
+	private StreamingEvaluable asyncEvaluables[];
+	private AcceleratedProcessDetails currentDetails;
 
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
-								 MemoryProvider target,
-								 AcceleratedProcessDetails.TempMemoryFactory tempFactory) {
+								 Supplier<MemoryReplacementManager> replacements) {
 		if (arguments == null) {
 			throw new IllegalArgumentException();
 		}
@@ -84,8 +85,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
 
-		this.target = target;
-		this.tempFactory = tempFactory;
+		this.replacements = replacements;
 	}
 
 	public int getArgumentCount() { return kernelArgs.length; }
@@ -127,7 +127,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			kernelArgs = new MemoryData[arguments.size()];
 			kernelArgEvaluables = new Evaluable[arguments.size()];
-			kernelArgDestinations = new Evaluable[arguments.size()];
+			asyncEvaluables = new StreamingEvaluable[arguments.size()];
 
 			if (outputArgIndex < 0 && output != null) {
 				// There is no output for this process
@@ -172,6 +172,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
 					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
+				} else {
+					asyncEvaluables[i] = kernelArgEvaluables[i].async(Runnable::run);
 				}
 			}
 		}
@@ -202,13 +204,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 				// There is no need to attempt kernel evaluation if
 				// HardwareEvaluable will not support it
-				evaluateAhead = !((HardwareEvaluable) kernelArgEvaluables[i]).isKernel();
+				evaluateAhead = !((HardwareEvaluable<?>) kernelArgEvaluables[i]).isKernel();
 			} else if (kernelArgEvaluables[i] instanceof MemoryDataDestination) {
 				// Kernel evaluation is not necessary, but it is preferable to
 				// leverage MemoryDataDestination::createDestination anyway
 				evaluateAhead = false;
 			} else {
-				// Kernel evaluation will not be necessary and Evaluable::evaluate
+				// Kernel evaluation will not be necessary, and Evaluable::evaluate
 				// can be directly invoked without creating a correctly sized
 				// destination
 				evaluateAhead = true;
@@ -252,20 +254,34 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			kernelArgs[i] = kernelArgDestinations[i] == null ?
-					(MemoryData) kernelArgEvaluables[i].createDestination(size) :
-					(MemoryData) kernelArgDestinations[i].createDestination(size);
+			MemoryData result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
 
 			long time = System.nanoTime() - start; start = System.nanoTime();
 			AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
-			Heap.addCreatedMemory(kernelArgs[i]);
+			Heap.addCreatedMemory(result);
 
-			kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
+			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(Runnable::run);
 
 			AcceleratedOperation.evaluateKernelMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 		}
 
-		return new AcceleratedProcessDetails(kernelArgs, target, tempFactory, size);
+		for (int i = 0; i < asyncEvaluables.length; i++) {
+			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
+			asyncEvaluables[i].setDownstream(result(i));
+		}
+
+		currentDetails = new AcceleratedProcessDetails(kernelArgs, size, replacements.get());
+
+		for (int i = 0; i < asyncEvaluables.length; i++) {
+			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
+			asyncEvaluables[i].request(memoryDataArgs);
+		}
+
+		return currentDetails;
+	}
+
+	protected Consumer<Object> result(int index) {
+		return result -> currentDetails.result(index, result);
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
