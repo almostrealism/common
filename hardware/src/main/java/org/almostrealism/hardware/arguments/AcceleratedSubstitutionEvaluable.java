@@ -24,6 +24,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 
+@Deprecated
 public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements Evaluable<T> {
 	private AcceleratedOperationContainer<T> container;
 	protected List<ProducerSubstitution<?>> substitutions;

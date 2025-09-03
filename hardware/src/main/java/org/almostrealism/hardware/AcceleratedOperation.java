@@ -57,6 +57,8 @@ import java.util.stream.Collectors;
 
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
 							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
+	public static boolean enableScopeLifecycle = false;
+
 	public static Console console = Computation.console.child();
 
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
@@ -183,6 +185,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public Scope<?> compile() {
+		if (!enableScopeLifecycle) {
+			throw new UnsupportedOperationException();
+		}
+
 		prepareScope();
 		return null;
 	}
@@ -194,6 +200,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+		if (!enableScopeLifecycle) {
+			throw new UnsupportedOperationException();
+		}
+
 		if (getArgumentVariables() != null) return;
 
 		if (getInputs() != null) {
@@ -232,10 +242,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
 		}
-	}
-
-	public ProcessArgumentEvaluator getEvaluator() {
-		return evaluator;
 	}
 
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) {
@@ -284,8 +290,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null && getInstructionSetManager() == null) {
-			warn(getName() + " was not compiled ahead of time");
-			compile();
+			if (enableScopeLifecycle) {
+				warn(getName() + " was not compiled ahead of time");
+				compile();
+			} else {
+				throw new UnsupportedOperationException(getName() + " was not compiled ahead of time");
+			}
 		}
 
 		// Load the inputs
