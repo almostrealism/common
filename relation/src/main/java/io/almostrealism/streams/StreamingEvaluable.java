@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,25 @@
  * limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.streams;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Computable;
+
+import java.util.function.Consumer;
 
 /**
- * A {@link Gradient} represents any continuously evaluable function
- * that has a normal {@link Vector} for each position.
- * 
+ * A {@link StreamingEvaluable} works in a similar manner to an
+ * {@link io.almostrealism.relation.Evaluable}, but performs any
+ * necessary computation asynchronously.
+ *
  * @author  Michael Murray
  */
-public interface Gradient<T> extends Differentiable<T> {
-	/**
-	 * Returns a {@link Vector} that represents the normal to the surface at the point
-	 * represented by the specified {@link Vector} {@link Producer}.
-	 */
-	Producer<Vector> getNormalAt(Producer<Vector> point);
+public interface StreamingEvaluable<T> extends Computable {
+	default void request() {
+		request(new Object[0]);
+	}
+
+	void request(Object args[]);
+
+	void setDownstream(Consumer<T> consumer);
 }

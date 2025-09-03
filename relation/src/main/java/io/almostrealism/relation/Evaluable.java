@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,12 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.streams.EvaluableStreamingAdapter;
+import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Function;
 import io.almostrealism.uml.Multiple;
+
+import java.util.concurrent.Executor;
 
 /**
  * An {@link Evaluable} is a {@link Computable} that can be directly
@@ -40,5 +44,9 @@ public interface Evaluable<T> extends Computable {
 
 	default Evaluable<T> into(Object destination) {
 		throw new UnsupportedOperationException();
+	}
+
+	default StreamingEvaluable<T> async(Executor executor) {
+		return new EvaluableStreamingAdapter<>(this, executor);
 	}
 }
