@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
@@ -25,6 +26,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -37,16 +39,18 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	private MemoryReplacementManager replacementManager;
 
-	private Semaphore semaphore;
+	private Executor executor;
+	private DefaultLatchSemaphore semaphore;
 	private List<Runnable> listeners;
 
 	public AcceleratedProcessDetails(Object[] args, int kernelSize,
-									 MemoryReplacementManager replacementManager) {
+									 MemoryReplacementManager replacementManager,
+									 Executor executor) {
 		this.originalArguments = args;
 		this.kernelSize = kernelSize;
 		this.replacementManager = replacementManager;
+		this.executor = executor;
 		this.listeners = new ArrayList<>();
-		checkReady();
 	}
 
 	public OperationList getPrepare() { return replacementManager.getPrepare(); }
@@ -54,7 +58,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
 	public Semaphore getSemaphore() { return semaphore; }
-	public void setSemaphore(Semaphore semaphore) { this.semaphore = semaphore; }
+	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
 
 	public <A> A[] getArguments(IntFunction<A[]> generator) {
 		return Stream.of(getArguments()).toArray(generator);
@@ -72,7 +76,15 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			arguments = enableAggregation ? replacementManager.processArguments(originalArguments) : originalArguments;
 		}
 
-		listeners.forEach(Runnable::run);
+		executor.execute(() -> {
+			listeners.forEach(r -> {
+				r.run();
+
+				if (semaphore != null) {
+					semaphore.countDown();
+				}
+			});
+		});
 	}
 
 	public boolean isReady() {

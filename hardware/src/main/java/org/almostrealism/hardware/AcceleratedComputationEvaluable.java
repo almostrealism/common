@@ -21,17 +21,23 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
-public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements Evaluable<T> {
+public class AcceleratedComputationEvaluable<T extends MemoryData>
+		extends AcceleratedComputationOperation<T>
+		implements StreamingEvaluable<T>, Evaluable<T> {
 	public static boolean enableRedundantCompilation = true;
 
 	private IntFunction<Multiple<T>> destinationFactory;
+	private Consumer<T> downstream;
 
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
 		super(context, c, true);
@@ -99,8 +105,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		}
 	}
 
-	@Override
-	public T evaluate(Object... args) {
+	protected void confirmLoad() {
 		if (getArgumentVariables() == null &&
 				(enableRedundantCompilation || getInstructionSetManager() == null)) {
 			if (getInstructionSetManager() == null) {
@@ -111,6 +116,11 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 
 			load();
 		}
+	}
+
+	@Override
+	public T evaluate(Object... args) {
+		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
 		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
@@ -124,6 +134,30 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		} catch (HardwareException e) {
 			throw new HardwareException("Failed to evaluate " + getName(), e);
 		}
+	}
+
+	@Override
+	public void request(Object[] args) {
+		confirmLoad();
+
+		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
+		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
+
+		AcceleratedProcessDetails process = apply(null, args);
+		process.getSemaphore().onComplete(() -> {
+			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+			downstream.accept(validate(result));
+		});
+	}
+
+	@Override
+	public void setDownstream(Consumer<T> consumer) {
+		this.downstream = consumer;
+	}
+
+	@Override
+	public StreamingEvaluable<T> async(Executor executor) {
+		return this;
 	}
 
 	protected T validate(T result) {

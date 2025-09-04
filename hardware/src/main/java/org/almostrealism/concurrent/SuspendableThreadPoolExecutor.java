@@ -18,6 +18,7 @@ package org.almostrealism.concurrent;
 
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -27,6 +28,17 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 	private volatile double minPriorityThreshold;
 	private final Object suspensionLock = new Object();
 	private ToDoubleFunction<Runnable> priority;
+
+	public SuspendableThreadPoolExecutor() {
+		this(r -> 0.5);
+	}
+
+	public SuspendableThreadPoolExecutor(ToDoubleFunction<Runnable> priority) {
+		this(1, 1, 60L, TimeUnit.SECONDS,
+				new PriorityBlockingQueue<>(100,
+						Comparator.comparingDouble(priority).reversed()));
+		setPriority(priority);
+	}
 
 	public SuspendableThreadPoolExecutor(int corePoolSize, int maximumPoolSize,
 										 long keepAliveTime, TimeUnit unit,

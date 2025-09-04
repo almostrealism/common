@@ -264,7 +264,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			detailsFactory = new ProcessDetailsFactory<>(
 					isKernel(), isFixedCount(), getCount(),
 					getArgumentVariables(), getOutputArgumentIndex(),
-					this::createMemoryReplacementManager);
+					this::createMemoryReplacementManager,
+					getComputeContext()::runLater);
 
 			if (evaluator != null) {
 				detailsFactory.setEvaluator(evaluator);
@@ -307,6 +308,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
+		process.setSemaphore(new DefaultLatchSemaphore(getMetadata(), 1));
 
 		process.whenReady(() -> {
 			MemoryData input[] = process.getArguments(MemoryData[]::new);
@@ -323,19 +325,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Run the operator
 			long start = System.nanoTime();
-			Semaphore semaphore = operator.accept(input, semaphores.get());
+			Semaphore nextSemaphore = operator.accept(input, null);
 			acceptMetric.addEntry(System.nanoTime() - start);
-			process.setSemaphore(semaphore);
-			semaphores.set(semaphore);
 
 			// Postprocessing
 			if (processing) {
-				if (semaphore != null) {
+				if (nextSemaphore != null) {
 					// TODO  This should actually result in a new Semaphore
 					// TODO  that performs the post processing whenever the
 					// TODO  original semaphore is finished
 					// warn("Postprocessing will wait for semaphore");
-					semaphore.waitFor();
+					nextSemaphore.waitFor();
 				}
 
 				process.getPostprocess().get().run();

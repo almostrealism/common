@@ -36,6 +36,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -68,10 +69,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private StreamingEvaluable asyncEvaluables[];
 	private AcceleratedProcessDetails currentDetails;
 
+	private Executor executor;
+
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
-								 Supplier<MemoryReplacementManager> replacements) {
+								 Supplier<MemoryReplacementManager> replacements,
+								 Executor executor) {
 		if (arguments == null) {
 			throw new IllegalArgumentException();
 		}
@@ -86,6 +90,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.outputArgIndex = outputArgIndex;
 
 		this.replacements = replacements;
+		this.executor = executor;
 	}
 
 	public int getArgumentCount() { return kernelArgs.length; }
@@ -172,8 +177,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
 					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
-				} else {
-					asyncEvaluables[i] = kernelArgEvaluables[i].async(Runnable::run);
 				}
 			}
 		}
@@ -251,8 +254,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * In the final pass, kernel arguments are evaluated in a way that ensures the
 		 * result is compatible with the kernel size inferred earlier.
 		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (kernelArgs[i] != null) continue i;
+		for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
 
 			MemoryData result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
 
@@ -260,7 +263,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
 			Heap.addCreatedMemory(result);
 
-			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(Runnable::run);
+			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
 
 			AcceleratedOperation.evaluateKernelMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 		}
@@ -270,7 +273,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			asyncEvaluables[i].setDownstream(result(i));
 		}
 
-		currentDetails = new AcceleratedProcessDetails(kernelArgs, size, replacements.get());
+		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
+											replacements.get(), executor);
 
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
@@ -282,6 +286,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 	protected Consumer<Object> result(int index) {
 		return result -> currentDetails.result(index, result);
+	}
+
+	protected void execute(Runnable r) {
+		executor.execute(r);
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {

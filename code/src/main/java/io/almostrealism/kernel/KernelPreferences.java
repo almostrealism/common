@@ -34,6 +34,11 @@ public class KernelPreferences {
 		}
 	}
 
+	public static int getEvaluationParallelism() {
+		return SystemUtils.getInt("AR_HARDWARE_EVAL_PARALLELISM")
+				.orElse(Math.max(2, Runtime.getRuntime().availableProcessors() * 2 / getCpuParallelism()));
+	}
+
 	public static int getCpuParallelism() {
 		return SystemUtils.getInt("AR_HARDWARE_CPU_PARALLELISM")
 				.orElse(Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
