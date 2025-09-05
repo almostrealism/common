@@ -318,6 +318,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			profile(profile, p);
 			log("Validating optimized kernel output...");
 			validate.accept(output);
+			log("Validating optimized kernel output copy...");
 			validate.accept(dest);
 		}
 

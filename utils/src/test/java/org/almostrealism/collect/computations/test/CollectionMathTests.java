@@ -119,9 +119,7 @@ public class CollectionMathTests implements TestFeatures {
 	public void sum() {
 		int size = 768;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size));
-		x.fill(pos -> Math.random());
-
+		PackedCollection<?> x = new PackedCollection<>(shape(size)).randFill();
 
 		kernelTest(() -> c(p(x)).sum(),
 				output -> {

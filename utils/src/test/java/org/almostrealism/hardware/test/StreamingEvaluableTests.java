@@ -16,9 +16,10 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.compute.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -45,6 +46,25 @@ public class StreamingEvaluableTests implements TestFeatures {
 			double bTotal = b.doubleStream().sum();
 			assertEquals(aTotal * bTotal, result.toDouble());
 		}
+	}
+
+	@Test
+	public void sum() {
+		int size = 768;
+
+		PackedCollection<?> x = new PackedCollection<>(shape(size)).randFill();
+		PackedCollection<?> out = new PackedCollection<>(shape(1));
+
+		Assignment<PackedCollection<?>> a = a(cp(out), cp(x).sum());
+		Process.optimized(a).get().run();
+
+		double expected = 0;
+
+		for (int j = 0; j < size; j++) {
+			expected += x.valueAt(j);
+		}
+
+		assertEquals(expected, out.valueAt(0));
 	}
 
 	@Test

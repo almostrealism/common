@@ -220,20 +220,22 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				long s = System.nanoTime();
-				Object o = kernelArgEvaluables[i].evaluate(args);
-				if (!(o instanceof MemoryData))
-					throw new IllegalArgumentException();
+				asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
 
-				kernelArgs[i] = (MemoryData) o;
-
-				long c = Countable.countLong(kernelArgs[i]);
-
-				if (kernelSize <= 0 && c > 1) {
-					kernelSize = c;
-				}
-
-				AcceleratedOperation.nonKernelEvalMetric.addEntry(arguments.get(i).getProducer(), System.nanoTime() - s);
+				// TODO  Removing this supports async evaluation, but
+				// TODO  it may prevent the kernel size from being
+				// TODO  inferred from the output of an evaluation
+//				Object o = kernelArgEvaluables[i].evaluate(args);
+//				if (!(o instanceof MemoryData))
+//					throw new IllegalArgumentException();
+//
+//				kernelArgs[i] = (MemoryData) o;
+//
+//				long c = Countable.countLong(kernelArgs[i]);
+//
+//				if (kernelSize <= 0 && c > 1) {
+//					kernelSize = c;
+//				}
 			}
 		}
 
@@ -246,8 +248,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			kernelSize = getCount();
 		}
 
-		long start = System.nanoTime();
-
 		int size = Math.toIntExact(kernelSize);
 
 		/*
@@ -258,15 +258,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
 
 			MemoryData result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
-
-			long time = System.nanoTime() - start; start = System.nanoTime();
-			AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
 			Heap.addCreatedMemory(result);
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
-
-			AcceleratedOperation.evaluateKernelMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 		}
+
+		/*
+		 * Now every StreamingEvaluable can be configured to deliver
+		 * results to the current AcceleratedProcessDetails and kicked
+		 * off via StreamingEvaluable#request
+		 */
 
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
@@ -281,6 +282,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			asyncEvaluables[i].request(memoryDataArgs);
 		}
 
+		/* The details are ready */
 		return currentDetails;
 	}
 

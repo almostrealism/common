@@ -92,6 +92,12 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	public void result(int index, Object result) {
+		if (originalArguments[index] != null) {
+			throw new IllegalArgumentException("Duplicate result for argument index " + index);
+		} else if (isReady()) {
+			throw new IllegalStateException("Received result when details are already available");
+		}
+
 		originalArguments[index] = result;
 
 		// TODO  This check should not block the
