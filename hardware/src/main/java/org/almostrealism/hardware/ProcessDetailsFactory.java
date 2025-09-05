@@ -279,7 +279,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].request(memoryDataArgs);
+			asyncEvaluables[i].request(args);
 		}
 
 		/* The details are ready */

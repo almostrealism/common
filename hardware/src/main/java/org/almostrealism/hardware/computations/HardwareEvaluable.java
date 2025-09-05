@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
+import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -28,6 +29,8 @@ import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -44,7 +47,8 @@ import java.util.function.UnaryOperator;
  *
  * @author  Michael Murray
  */
-public class HardwareEvaluable<T> implements Evaluable<T>, Runnable, ArgumentList<T> {
+public class HardwareEvaluable<T> implements
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, ArgumentList<T> {
 	private Supplier<Evaluable<T>> ev;
 	private Evaluable<T> destination;
 	private Evaluable<T> shortCircuit;
@@ -54,30 +58,34 @@ public class HardwareEvaluable<T> implements Evaluable<T>, Runnable, ArgumentLis
 
 	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
+	private Executor executor;
+	private Consumer<T> downstream;
+
 	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
-							 Evaluable<T> destination,
-							 Evaluable<T> shortCircuit, boolean kernel) {
+							 Evaluable<T> destination, Evaluable<T> shortCircuit,
+							 boolean kernel) {
+		this(ev, destination, shortCircuit, kernel, null);
+	}
+
+	public HardwareEvaluable(Supplier<Evaluable<T>> ev,
+							 Evaluable<T> destination, Evaluable<T> shortCircuit,
+							 boolean kernel, Executor executor) {
 		this.ev = ev;
 		this.destination = destination;
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
 		this.kernel = new DefaultContextSpecific<>(() -> ev.get());
+		this.executor = executor;
 	}
 
 	public void setEvaluable(Supplier<Evaluable<T>> ev) { this.ev = ev; }
 
-	public Evaluable<T> getDestination() {
-		return destination;
-	}
-
+	public Evaluable<T> getDestination() { return destination; }
 	public void setDestination(Evaluable<T> destination) {
 		this.destination = destination;
 	}
 
-	public Evaluable<T> getShortCircuit() {
-		return shortCircuit;
-	}
-
+	public Evaluable<T> getShortCircuit() { return shortCircuit; }
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
 	}
@@ -132,6 +140,34 @@ public class HardwareEvaluable<T> implements Evaluable<T>, Runnable, ArgumentLis
 		}
 
 		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
+	}
+
+	@Override
+	public void request(Object[] args) {
+		if (Arrays.stream(args).anyMatch(i -> i instanceof Object[])) {
+			throw new IllegalArgumentException("Embedded array provided to request");
+		}
+
+		if (shortCircuit != null) {
+			downstream.accept(shortCircuit.evaluate(args));
+			return;
+		}
+
+		Evaluable<T> cev = getKernel().getValue();
+		if (cev instanceof StreamingEvaluable<?>) {
+			((StreamingEvaluable<T>) cev).setDownstream(downstream);
+			((StreamingEvaluable<T>) cev).request(args);
+		}
+
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void setDownstream(Consumer<T> consumer) { this.downstream = consumer; }
+
+	@Override
+	public StreamingEvaluable<T> async(Executor executor) {
+		return new HardwareEvaluable<>(ev, destination, shortCircuit, isKernel, executor);
 	}
 
 	@Override
