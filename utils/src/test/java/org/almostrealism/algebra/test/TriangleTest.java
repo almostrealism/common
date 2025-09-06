@@ -27,7 +27,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
@@ -152,7 +152,7 @@ public class TriangleTest implements TestFeatures {
 	@Test
 	public void origin() {
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducerComputation<Vector> at = vector(originProducer());
+			CollectionProducer<Vector> at = vector(originProducer());
 			Evaluable<Vector> ev = at.get();
 
 			Vector p = ev.evaluate();

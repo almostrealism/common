@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -73,7 +74,7 @@ public interface RayFeatures extends VectorFeatures {
 				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default CollectionProducer<Vector> pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
+	default CollectionProducer<Vector> pointAt(Supplier<Evaluable<? extends Ray>> r, Producer<Scalar> t) {
 		return vector(add(origin(r), scalarMultiply(direction(r), t)));
 	}
 

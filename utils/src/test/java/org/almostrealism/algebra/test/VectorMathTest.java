@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
@@ -50,7 +49,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		ExpressionComputation<Vector> product = scalarMultiply(vector(1, 2, 3), 2);
+		CollectionProducer<Vector> product = scalarMultiply(vector(1, 2, 3), 2);
 		Vector result = product.get().evaluate();
 		assertEquals(2, result.getX());
 		assertEquals(4, result.getY());
@@ -97,13 +96,13 @@ public class VectorMathTest implements TestFeatures {
 		});
 	}
 
-	protected ExpressionComputation<Vector> crossProduct(Producer<Vector> v) {
+	protected CollectionProducer<Vector> crossProduct(Producer<Vector> v) {
 		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
 	@Test
 	public void crossProduct() {
-		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
+		CollectionProducer<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
 		Assert.assertEquals(1, cpo.getArgsCount());

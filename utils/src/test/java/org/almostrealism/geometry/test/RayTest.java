@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ public class RayTest implements TestFeatures {
 
 	@Test
 	public void dynamicPointAt() {
-		Supplier<Evaluable<? extends Scalar>> d = () -> new AdaptEvaluable<>(scalar(-20).get());
+		Producer<Scalar> d = () -> new AdaptEvaluable<>(scalar(-20).get());
 		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}

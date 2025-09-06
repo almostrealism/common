@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -96,10 +96,10 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void data1() {
 		System.out.println(def(data1).get().evaluate());
 
-		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
+		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
+		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
 		Producer<Scalar> u = TriangleIntersectAt.u(
@@ -113,10 +113,10 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void conjunction() {
 		System.out.println(def(data1).get().evaluate());
 
-		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
+		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
+		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data1), origin1);
@@ -163,10 +163,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("def = " + def.get().evaluate());
 		System.out.println("jkl = " + jkl.get().evaluate());
 
-		ExpressionComputation<Vector> h = TriangleIntersectAt.h(def(data2), direction2);
+		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data2), direction2);
 		System.out.println("h = " + h.get().evaluate());
 
-		ExpressionComputation<Scalar> f = TriangleIntersectAt.f(abc(data2), h);
+		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data2), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
 		Producer<Scalar> u = TriangleIntersectAt.u(
@@ -178,7 +178,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data2), origin2);
 		System.out.println("s = " + s.get().evaluate());
 
-		ExpressionComputation<Vector> q = TriangleIntersectAt.q(abc(data2), s);
+		CollectionProducer<Vector> q = TriangleIntersectAt.q(abc(data2), s);
 		System.out.println("q = " + q.get().evaluate());
 
 		Producer<Scalar> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
