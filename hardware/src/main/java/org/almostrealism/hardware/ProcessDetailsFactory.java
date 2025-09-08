@@ -220,7 +220,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
+				if (kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
+					kernelArgEvaluables[i] instanceof HardwareEvaluable) {
+					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
+				} else {
+					asyncEvaluables[i] = kernelArgEvaluables[i].async();
+				}
 
 				// TODO  Removing this supports async evaluation, but
 				// TODO  it may prevent the kernel size from being

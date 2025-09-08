@@ -34,6 +34,8 @@ public interface ComputeContext<MEM> {
 
 	void runLater(Runnable runnable);
 
+	boolean isExecutorThread();
+
 	boolean isCPU();
 
 	default boolean isProfiling() {

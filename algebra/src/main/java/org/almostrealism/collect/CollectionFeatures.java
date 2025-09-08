@@ -96,6 +96,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
@@ -139,7 +140,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: shape with dimensions [2, 3, 4], total size = 24
 	 * }</pre>
 	 */
-	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
+	default TraversalPolicy shape(int... dims) {
+		if (dims[0] == -1) {
+			return new TraversalPolicy(false, false, IntStream.of(dims).skip(1).toArray());
+		}
+
+		return new TraversalPolicy(dims);
+	}
 	
 	/**
 	 * Creates a new {@link TraversalPolicy} with the specified dimensions using long values.
@@ -160,7 +167,13 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: shape with dimensions [10000, 20000], total size = 200000000
 	 * }</pre>
 	 */
-	default TraversalPolicy shape(long... dims) { return new TraversalPolicy(dims); }
+	default TraversalPolicy shape(long... dims) {
+		if (dims[0] == -1) {
+			return new TraversalPolicy(false, false, LongStream.of(dims).skip(1).toArray());
+		}
+
+		return new TraversalPolicy(dims);
+	}
 	
 	/**
 	 * Creates a position {@link TraversalPolicy} with the specified dimensions.

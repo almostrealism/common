@@ -28,7 +28,6 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.util.DescribableParent;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,19 +48,7 @@ public abstract class OperationAdapter<T> implements
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
 
-	private OperationMetadata metadata;
-
 	public OperationAdapter() { }
-
-	@SafeVarargs
-	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
-		setInputs(input);
-	}
-
-	public void init() {
-		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = new OperationMetadata(getFunctionName(), getName());
-	}
 
 	@Override
 	public void setFunctionName(String name) { function = name; }
@@ -70,16 +57,8 @@ public abstract class OperationAdapter<T> implements
 	public String getFunctionName() { return function; }
 
 	@Override
-	public OperationMetadata getMetadata() { return metadata; }
-
-	@Override
-	public String getName() { return operationName(null, getClass(), getFunctionName()); }
-
-	@Override
 	public int getArgsCount() { return getArguments().size(); }
 
-	@SafeVarargs
-	protected final void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
 	protected void setInputs(List<Supplier<Evaluable<? extends T>>> inputs) { this.inputs = inputs; }
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
@@ -97,14 +76,6 @@ public abstract class OperationAdapter<T> implements
 				.map(arg -> Optional.ofNullable(arg).map(Argument::getVariable).orElse(null))
 				.map(var -> (ArrayVariable<? extends T>) var)
 				.collect(Collectors.toList());
-	}
-
-	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
-		if (getArgumentVariables() == null) {
-			throw new IllegalArgumentException(getName() + " is not compiled");
-		}
-
-		return getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
 	}
 
 	public void resetArguments() { this.arguments = null; }

@@ -33,16 +33,23 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 
 	private final T dc;
 	private final Executor executor;
+	private final ThreadGroup executorGroup;
 
 	protected AbstractComputeContext(T dc) {
 		this.dc = dc;
+		this.executorGroup = new ThreadGroup("ComputeContext");
 		this.executor = Executors.newFixedThreadPool(KernelPreferences.getEvaluationParallelism(),
-				r -> new Thread(r, "ComputeContext-" + (threadId++)));
+				r -> new Thread(executorGroup, r, "ComputeContext-" + (threadId++)));
 	}
 
 	@Override
 	public void runLater(Runnable runnable) {
 		executor.execute(runnable);
+	}
+
+	@Override
+	public boolean isExecutorThread() {
+		return Thread.currentThread().getThreadGroup() == executorGroup;
 	}
 
 	public T getDataContext() { return dc; }

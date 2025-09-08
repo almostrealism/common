@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,12 +45,14 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
 					DescribableParent<Process<?, ?>> {
+	public static boolean enableDefaultAbsolute = false;
+
 	private TraversalPolicy shape;
 	private int argIndex;
 	private boolean absolute;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
-		this(shape, argIndex, false);
+		this(shape, argIndex, enableDefaultAbsolute && shape.isFixedCount());
 	}
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex, boolean absolute) {
@@ -86,7 +88,13 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public boolean isFixedCount() { return false; }
+	public boolean isFixedCount() {
+		if (absolute) {
+			return getShape().isFixedCount();
+		}
+
+		return false;
+	}
 
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {
@@ -119,12 +127,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Scope<T> getScope(KernelStructureContext context) {
-		Scope<T> scope = super.getScope(context);
-		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(((ArrayVariable) getOutputVariable()).referenceRelative(i).assign(getValueRelative(e(i))));
-		}
-
-		return scope;
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -143,11 +146,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public ArrayVariable getArgument(int index) {
 		return getArgumentVariables().get(index);
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return getValueAt(shape.index(pos));
 	}
 
 	@Override

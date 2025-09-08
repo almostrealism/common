@@ -46,6 +46,10 @@ public interface Evaluable<T> extends Computable {
 		throw new UnsupportedOperationException();
 	}
 
+	default StreamingEvaluable<T> async() {
+		return async(r -> new Thread(r, "Async Evaluable").start());
+	}
+
 	default StreamingEvaluable<T> async(Executor executor) {
 		return new EvaluableStreamingAdapter<>(this, executor);
 	}

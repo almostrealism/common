@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -33,9 +32,7 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceEvaluable<T> getAccelerated(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
-		return new AcceleratedRankedChoiceEvaluable(memLength, blankValue, forKernel, this,
-												new DynamicProducerForMemoryData<>(blankValue),
-												getEpsilon(), blankValue);
+	public Evaluable<T> getAccelerated(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
+		throw new UnsupportedOperationException();
 	}
 }

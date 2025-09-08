@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ public class DitherTest implements TestFeatures {
 	public void random2() {
 		PackedCollection<Scalar> random = Scalar.scalarBank(160);
 		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
-		ExpressionComputation<PackedCollection<Scalar>> dither = dither(160, v(Scalar.shape(), 0), v(Scalar.shape(), 1));
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(160, v(shape(-1, 2), 0), v(shape(-1, 2), 1));
 		Assert.assertFalse(Countable.isFixedCount(dither));
 		PackedCollection<Scalar> out = dither.get().evaluate(random, new Scalar(1.0));
 		assertNotEquals(0.0, out.get(20));

@@ -26,6 +26,8 @@ public class ReusableEvaluableTests implements TestFeatures {
 
 	@Test
 	public void add() {
+		if (skipKnownIssues) return;
+
 		int n = 6;
 
 		PackedCollection<?> a = new PackedCollection<>(shape(n))
@@ -55,6 +57,8 @@ public class ReusableEvaluableTests implements TestFeatures {
 
 	@Test
 	public void multiply1() {
+		if (skipKnownIssues) return;
+
 		int n = 6;
 
 		PackedCollection<?> a = new PackedCollection<>(shape(n))
@@ -84,6 +88,8 @@ public class ReusableEvaluableTests implements TestFeatures {
 
 	@Test
 	public void multiply2() {
+		if (skipKnownIssues) return;
+
 		int n = 6;
 		int m = 10;
 

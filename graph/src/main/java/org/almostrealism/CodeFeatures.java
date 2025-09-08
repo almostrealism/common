@@ -91,15 +91,15 @@ public interface CodeFeatures extends LayerFeatures,
 	}
 
 	default CollectionProducer<PackedCollection<?>> x(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 0));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
 	default CollectionProducer<PackedCollection<?>> y(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 1));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
 	default CollectionProducer<PackedCollection<?>> z(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 2));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
