@@ -128,13 +128,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		add(new Assignment<>(memLength, destination, producer));
 	}
 
-	@Deprecated
-	public <T extends MemoryData> KernelOperation<T> add(Producer<T> producer, MemoryBank destination, MemoryData... arguments) {
-		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
-		add(operation);
-		return operation;
-	}
-
 	@Override
 	public long getCountLong() {
 		if (count == null) {

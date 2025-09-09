@@ -109,11 +109,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 
 	@Override
 	public void request(Object[] args) {
-		if (operation instanceof Provider<T>) {
-			StreamingEvaluable<T> ev = operation.into(destination).async(executor);
-			ev.setDownstream(downstream);
-			ev.request(args);
-		} else if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
+		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 			details.getSemaphore().onComplete(() -> downstream.accept((T) destination));

@@ -36,10 +36,6 @@ import java.util.stream.IntStream;
 public interface ScalarBankFeatures extends ScalarFeatures {
 	boolean enableDeprecated = !SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
 
-	default CollectionProducer<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
-		return ExpressionComputation.fixed(value, Scalar.scalarBankPostprocessor());
-	}
-
 	@Deprecated
 	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
@@ -81,22 +77,18 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		return scalarBankAdd(count, input, ditherValue);
 	}
 
-	default ExpressionComputation<PackedCollection<Scalar>> ditherAndRemoveDcOffset(int count,
-														   Producer<PackedCollection<Scalar>> input,
-														   Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		ExpressionComputation<PackedCollection<Scalar>> dither = dither(count, input, ditherValue);
-		return scalarBankAdd(count, dither, scalar(subset(shape(count, 1), dither, 0).sum().divide(c(count)).multiply(c(-1))));
-	}
-
-	default Producer<PackedCollection<Scalar>> preemphasize(int count, Supplier<Evaluable<? extends PackedCollection<Scalar>>> input,
-											  Supplier<Evaluable<? extends Scalar>> coefficient) {
+	default Producer<PackedCollection<Scalar>> preemphasize(int count,
+															Supplier<Evaluable<? extends PackedCollection<Scalar>>> input,
+											  				Supplier<Evaluable<? extends Scalar>> coefficient) {
 		return () -> {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
 			Evaluable<? extends Scalar> coeff = coefficient.get();
 			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
-			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2));
-			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
+			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(
+					Input.value(shape(-1, 2), 1),
+					Input.value(shape(-1, 2), 2));
+			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(shape(-1, 2), 0), offset).get();
 
 			return args -> {
 				Scalar c = coeff.evaluate(args);
@@ -112,13 +104,6 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 				return out;
 			};
 		};
-	}
-
-	default ExpressionComputation<PackedCollection<Scalar>> scalars(Supplier<Evaluable<? extends Scalar>>... values) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueRelative(i % 2)));
-		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier[]) values)
-				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	static ScalarBankFeatures getInstance() {

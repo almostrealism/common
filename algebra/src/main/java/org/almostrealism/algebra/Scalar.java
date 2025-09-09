@@ -107,21 +107,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return (output, offset) -> Scalar.scalarBank(output.getMemLength() / 2, output, offset);
 	}
 
-	/**
-	 * Returns 1 if the sign of the given argument is positive; -1 if
-	 * negative; 0 if 0.
-	 */
-	@Deprecated
-	public static int sgn(double f) {
-		if (f > 0) {
-			return 1;
-		} else if (f < 0) {
-			return -1;
-		}
-
-		return 0;
-	}
-
 	@Deprecated
 	public static float[] toFloat(double d[]) {
 		float f[] = new float[d.length];

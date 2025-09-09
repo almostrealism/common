@@ -35,20 +35,6 @@ public class MemoryDataReplacementMap implements Destroyable {
 		this.replacements = new HashMap<>();
 	}
 
-	public void addReplacement(MemoryData original, MemoryData replacement) {
-		MemoryDataRef ref = new MemoryDataRef(original);
-
-		if (replacements.containsKey(ref)) {
-			throw new IllegalArgumentException();
-		}
-
-		replacements.put(ref, new MemoryDataSupplier(replacement));
-	}
-
-	public void addReplacement(MemoryData original, MemoryData replacement, int pos) {
-		addReplacement(original, new Bytes(original.getMemLength(), replacement, pos));
-	}
-
 	public void addReplacement(MemoryData original, Producer<MemoryData> replacement, int pos) {
 		MemoryDataRef ref = new MemoryDataRef(original);
 

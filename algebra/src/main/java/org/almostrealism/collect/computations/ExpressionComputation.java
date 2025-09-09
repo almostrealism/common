@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -31,14 +30,11 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /**
  * A deprecated computation class that evaluates mathematical expressions on {@link PackedCollection} data.
@@ -91,11 +87,6 @@ import java.util.stream.Stream;
  * // result contains [6.0, 8.0, 10.0, 12.0]
  * }</pre>
  * 
- * <h2>Shape Inference</h2>
- * <p>When {@link #enableInferShape} is set to true, the computation can automatically infer
- * the output shape based on the input arguments. This is useful when working with collections
- * of different dimensions.</p>
- * 
  * <h2>Fixed Value Creation</h2>
  * <p>The class provides utility methods for creating computations with fixed values:</p>
  * <pre>{@code
@@ -119,18 +110,6 @@ import java.util.stream.Stream;
 @Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends RelativeTraversableProducerComputation<T, T> {
-
-	/**
-	 * Configuration flag to enable automatic shape inference from input arguments.
-	 * When enabled, the computation will attempt to infer the output shape by analyzing
-	 * the shapes of input collections. If multiple input collections have different
-	 * shapes with counts greater than 1, an exception will be thrown.
-	 * 
-	 * <p>Default value is {@code false}.</p>
-	 * 
-	 * @see #shape(int, Supplier...)
-	 */
-	public static boolean enableInferShape = false;
 	
 	/**
 	 * Configuration flag to enable warning messages during computation construction.
@@ -151,8 +130,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 
 	/**
 	 * Creates an ExpressionComputation with automatic shape inference.
-	 * The output shape is determined automatically based on the number of expressions
-	 * and the shapes of the input arguments (if {@link #enableInferShape} is enabled).
+	 * The output shape is determined automatically based on the number of expressions.
 	 * 
 	 * @param expression A list of functions, each taking input {@link ArrayVariable}s and
 	 *                   returning an {@link Expression} that defines the computation for
@@ -164,12 +142,11 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	 * @throws IllegalArgumentException if the inferred shape size doesn't match the number of expressions
 	 * 
 	 * @see #ExpressionComputation(TraversalPolicy, List, Supplier[])
-	 * @see #enableInferShape
 	 */
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(shape(expression.size(), args), expression, args);
+		this(new TraversalPolicy(expression.size()), expression, args);
 	}
 
 	/**
@@ -331,39 +308,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	public String signature() { return null; }
 
 	/**
-	 * Creates a {@link CollectionProducer} that always returns the specified constant values.
-	 * This is a convenience method for creating computations with fixed, predetermined results.
-	 * 
-	 * <p><strong>Example:</strong></p>
-	 * <pre>{@code
-	 * CollectionProducer<PackedCollection<?>> constants = ExpressionComputation.fixed(1.0, 2.0, 3.0);
-	 * PackedCollection<?> result = constants.get().evaluate();
-	 * // result contains [1.0, 2.0, 3.0]
-	 * }</pre>
-	 * 
-	 * @param values The constant values to be returned by the computation
-	 * @return A {@link CollectionProducer} that produces a collection containing the specified values
-	 */
-	public static CollectionProducer<PackedCollection<?>> fixed(double... values) {
-		PackedCollection<?> c = PackedCollection.factory().apply(values.length);
-		c.setMem(0, values);
-		return fixed(c);
-	}
-
-	/**
-	 * Creates a {@link CollectionProducer} that always returns the specified collection value.
-	 * This method creates a computation that produces a copy of the provided collection
-	 * without any postprocessing.
-	 * 
-	 * @param value The {@link PackedCollection} to be returned by the computation
-	 * @param <T>   The type of the collection
-	 * @return A {@link CollectionProducer} that produces the specified collection
-	 */
-	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value) {
-		return fixed(value, null);
-	}
-
-	/**
 	 * Creates a {@link CollectionProducer} that returns the specified collection value
 	 * with optional postprocessing. This is the most flexible factory method for creating
 	 * constant-value computations.
@@ -418,45 +362,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 				v.setMem(value.toArray(0, value.getMemLength()));
 				return postprocessor == null ? v : postprocessor.apply(v, 0);
 			}).traverse(traversalAxis);
-		}
-	}
-
-	/**
-	 * Determines the appropriate {@link TraversalPolicy} shape for the computation output
-	 * based on the expression count and input argument shapes.
-	 * 
-	 * <p>If {@link #enableInferShape} is false, returns a simple 1D shape with the specified size.
-	 * If shape inference is enabled, analyzes the input arguments to determine if they have
-	 * consistent multi-dimensional shapes and prepends that dimension to the base shape.</p>
-	 * 
-	 * <p>Shape inference logic:</p>
-	 * <ul>
-	 *   <li>If no input arguments have count > 1: returns basic shape of specified size</li>
-	 *   <li>If all arguments with count > 1 have the same count: prepends that dimension</li>
-	 *   <li>If arguments have different counts > 1: throws IllegalArgumentException</li>
-	 * </ul>
-	 * 
-	 * @param size The base size (number of expressions/output elements)
-	 * @param args The input argument suppliers used for shape inference
-	 * @return A {@link TraversalPolicy} representing the computed output shape
-	 * 
-	 * @throws IllegalArgumentException if shape inference fails due to incompatible input shapes
-	 */
-	private static TraversalPolicy shape(int size, Supplier... args) {
-		TraversalPolicy shape = new TraversalPolicy(size);
-		if (!enableInferShape) return shape;
-
-		Set<Long> count = Stream.of(args)
-				.map(CollectionFeatures.getInstance()::shape)
-				.map(TraversalPolicy::getCountLong)
-				.filter(i -> i > 1)
-				.collect(Collectors.toSet());
-		if (count.isEmpty()) {
-			return shape;
-		} else if (count.size() == 1) {
-			return shape.prependDimension(Math.toIntExact(count.iterator().next()));
-		} else {
-			throw new IllegalArgumentException("Unable to infer shape from arguments");
 		}
 	}
 }

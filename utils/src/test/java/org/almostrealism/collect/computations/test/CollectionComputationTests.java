@@ -586,7 +586,7 @@ public class CollectionComputationTests implements TestFeatures {
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
 		System.out.println(series.traverse(1).getCountLong() + " series");
 
-		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(10, 0));
+		Producer<PackedCollection<?>> max = max(v(shape(-1, 10), 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -600,7 +600,7 @@ public class CollectionComputationTests implements TestFeatures {
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCountLong() + " series");
 
-		Producer<PackedCollection<?>> max = max(new PassThroughProducer<>(shape(10), 0));
+		Producer<PackedCollection<?>> max = max(v(shape(-1, 10), 0));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
 		verboseLog(() ->

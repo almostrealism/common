@@ -16,28 +16,14 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface PairBankFeatures extends ScalarFeatures {
-
-	default ExpressionComputation<PackedCollection<Pair<?>>> pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValueRelative(i % 2)));
-		return (ExpressionComputation) new ExpressionComputation(shape(input.length, 2).traverse(0), comp, input)
-				.setPostprocessor(Pair.bankPostprocessor());
-	}
 
 	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
 		int count = shape(index).getCount();

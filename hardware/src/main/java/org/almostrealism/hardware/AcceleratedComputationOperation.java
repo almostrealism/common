@@ -244,6 +244,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Deprecated
 	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
+		warn("Use of deprecated compile method");
 		this.instructions = instructions;
 		this.executionKey = executionKey;
 	}

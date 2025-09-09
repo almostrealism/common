@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,9 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Producer;
-
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -140,10 +136,6 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 		return new TraversalPolicy(2);
 	}
 
-	public static Producer<Pair<?>> empty() {
-		return new DynamicProducerForMemoryData<>(Pair::new, Pair::bank);
-	}
-
 	public static PackedCollection<Pair<?>> bank(int count) {
 		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
@@ -174,10 +166,5 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 			TraversalPolicy shape = ((PackedCollection) output).getShape();
 			return Pair.bank(shape.getTotalSize() / 2, output, offset);
 		};
-	}
-
-	public static ExpressionComputation<Pair<?>> postprocess(ExpressionComputation c) {
-		c.setPostprocessor(postprocessor());
-		return c;
 	}
 }

@@ -20,10 +20,8 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -41,15 +39,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface PairFeatures extends CollectionFeatures {
-
-	static CollectionProducer<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
-
-	static CollectionProducer<Pair<?>> of(Pair<?> value) {
-		CollectionProducerComputationBase producer =
-				DefaultTraversableExpressionComputation.fixed(value);
-		producer.setPostprocessor(Pair.postprocessor());
-		return producer;
-	}
 
 	default CollectionProducer<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
@@ -106,15 +95,6 @@ public interface PairFeatures extends CollectionFeatures {
 				(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> complexFromReal(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		if (value == null) return null;
-
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-		comp[0] = args -> args.get(1).getValueRelative(0);
-		comp[1] = args -> expressionForDouble(0.0);
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Pair.postprocessor());
-	}
-
 	default ExpressionComputation<Pair<?>> complexFromParts(Supplier<Evaluable<? extends PackedCollection<?>>> real,
 															Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
 		long size = shape(real).getTotalSizeLong();
@@ -131,13 +111,6 @@ public interface PairFeatures extends CollectionFeatures {
 //				new TraversalPolicy(size, 2).traverse(1),
 				shape(real).traverseEach().append(shape(2)),
 				List.of(comp), real, imag).setPostprocessor(pair ? Pair.postprocessor() : null);
-	}
-
-	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> Cosine.of(args.get(1).getValueRelative(0)));
-		comp.add(args -> Sine.of(args.get(1).getValueRelative(0)));
-		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) angle));
 	}
 
 	static PairFeatures getInstance() {

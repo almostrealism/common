@@ -182,11 +182,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
 	}
 
-	@Override
-	public Runnable compileRunnable(Computation<Void> c, boolean kernel) {
-		return new AcceleratedComputationOperation<>(getContext(c), c, kernel);
-	}
-
 	// TODO  The Computation may have a postProcessOutput method that will not be called
 	// TODO  when using this method of creating an Evaluable from it. Ideally, that feature
 	// TODO  of the Computation would be recognized, and applied after evaluation, so that

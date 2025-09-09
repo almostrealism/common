@@ -19,7 +19,6 @@ package org.almostrealism.color;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.io.IOException;

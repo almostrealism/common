@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-package io.almostrealism.relation;
-
-import io.almostrealism.compute.ParallelProcess;
-import io.almostrealism.compute.Process;
+package io.almostrealism.compute;
 
 import java.util.stream.DoubleStream;
 import java.util.stream.Stream;

@@ -39,8 +39,8 @@ public class PreemphasizeTest implements TestFeatures {
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
 
 		System.out.println("Fast...");
-		PackedCollection<Scalar> c = preemphasize(SIZE, v(2 * SIZE, 0),
-				v(Scalar.shape(), 1)).get().evaluate(window(), new Scalar(0.1));
+		PackedCollection<Scalar> c = preemphasize(SIZE, v(shape(-1, 2 * SIZE), 0),
+				v(shape(2), 1)).get().evaluate(window(), new Scalar(0.1));
 		IntStream.range(0, c.getCount()).mapToObj(c::get).forEach(System.out::println);
 
 		IntStream.range(0, c.getCount()).forEach(i -> assertEquals(b.get(i), c.get(i)));

@@ -18,7 +18,6 @@ package org.almostrealism.hardware.mem;
 
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.PooledMem;
 
 import java.util.HashMap;
 import java.util.List;
@@ -114,26 +113,6 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 		this.supply = supply;
 		this.cacheLevel = cacheLevel;
 		setDelegate(delegate, delegateOffset);
-		init();
-	}
-
-	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
-								PooledMem<MemoryData> pool, CacheLevel cacheLevel) {
-		if (count < 0 || memLength < 0) {
-			throw new IllegalArgumentException();
-		}
-
-		this.memLength = memLength;
-		this.count = count;
-		this.totalMemLength = memLength * count;
-		this.supply = supply;
-		this.cacheLevel = cacheLevel;
-
-		if (pool != null) {
-			setDelegate(pool, pool.reserveOffset(this));
-			setMem(new double[getMemLength()]);
-		}
-
 		init();
 	}
 
