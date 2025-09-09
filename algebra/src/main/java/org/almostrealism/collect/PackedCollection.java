@@ -44,6 +44,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -527,6 +528,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static PackedCollection<?> of(List<Double> values) {
+		return of(values.stream().mapToDouble(d -> d).toArray());
 	}
 
 	public static PackedCollection<?> of(double... values) {
