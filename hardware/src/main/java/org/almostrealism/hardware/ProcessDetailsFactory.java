@@ -61,7 +61,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private MemoryBank output;
 	private Object args[];
 	private boolean allMemoryData;
-	private MemoryData memoryDataArgs[];
 
 	private long kernelSize;
 	private MemoryData kernelArgs[];
@@ -103,81 +102,84 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) { this.evaluator = evaluator; }
 
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
-		if (kernelArgEvaluables == null || output != this.output || !Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
-			this.output = output;
-			this.args = args;
+		if (kernelArgEvaluables != null && output == this.output &&
+				Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
+			// The configuration is already valid as does not need to be repeated
+			return this;
+		}
 
-			allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
-			if (allMemoryData) memoryDataArgs = Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new);
+		this.output = output;
+		this.args = args;
 
-			if (!isKernel()) {
-				kernelSize = 1;
-			} else if (isFixedCount()) {
-				kernelSize = getCount();
-			} else if (output != null) {
-				kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());
+		allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
 
-				if (enableKernelSizeWarnings && getCountLong() > 1 && kernelSize != getCountLong()) {
-					warn("Operation count was reduced from " + getCountLong() +
-							" to " + kernelSize + " to match the output count");
-				}
-			} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
-				if (enableKernelSizeWarnings)
-					warn("Relying on argument count to determine kernel size");
+		if (!isKernel()) {
+			kernelSize = 1;
+		} else if (isFixedCount()) {
+			kernelSize = getCount();
+		} else if (output != null) {
+			kernelSize = enableOutputCount ? output.getCountLong() : Math.max(output.getCountLong(), getCountLong());
 
-				kernelSize = ((MemoryBank) args[0]).getCountLong();
-			} else {
-				kernelSize = -1;
+			if (enableKernelSizeWarnings && getCountLong() > 1 && kernelSize != getCountLong()) {
+				warn("Operation count was reduced from " + getCountLong() +
+						" to " + kernelSize + " to match the output count");
+			}
+		} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
+			if (enableKernelSizeWarnings)
+				warn("Relying on argument count to determine kernel size");
+
+			kernelSize = ((MemoryBank) args[0]).getCountLong();
+		} else {
+			kernelSize = -1;
+		}
+
+		kernelArgs = new MemoryData[arguments.size()];
+		kernelArgEvaluables = new Evaluable[arguments.size()];
+		asyncEvaluables = new StreamingEvaluable[arguments.size()];
+
+		if (outputArgIndex < 0 && output != null) {
+			// There is no output for this process
+			throw new UnsupportedOperationException();
+		}
+
+		/*
+		 * In the first pass, kernel size is inferred from Producer arguments that
+		 * reference an Evaluable argument.
+		 */
+		i:
+		for (int i = 0; i < arguments.size(); i++) {
+			if (arguments.get(i) == null) {
+				continue i;
+			} else if (i == outputArgIndex && output != null) {
+				kernelArgs[i] = output;
+				continue i;
 			}
 
-			kernelArgs = new MemoryData[arguments.size()];
-			kernelArgEvaluables = new Evaluable[arguments.size()];
-			asyncEvaluables = new StreamingEvaluable[arguments.size()];
+			int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
 
-			if (outputArgIndex < 0 && output != null) {
-				// There is no output for this process
+			if (refIndex >= 0) {
+				kernelArgs[i] = (MemoryData) args[refIndex];
+			}
+
+			if (kernelSize > 0) continue i;
+
+			// If the kernel size can be inferred from this operation argument
+			// capture it from the argument to the evaluation
+			if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCountLong() > 1) {
+				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCountLong();
+			}
+		}
+
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i));
+			if (kernelArgEvaluables[i] == null) {
 				throw new UnsupportedOperationException();
 			}
 
-			/*
-			 * In the first pass, kernel size is inferred from Producer arguments that
-			 * reference an Evaluable argument.
-			 */
-			i:
-			for (int i = 0; i < arguments.size(); i++) {
-				if (arguments.get(i) == null) {
-					continue i;
-				} else if (i == outputArgIndex && output != null) {
-					kernelArgs[i] = output;
-					continue i;
-				}
-
-				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
-
-				if (refIndex >= 0) {
-					kernelArgs[i] = (MemoryData) args[refIndex];
-				}
-
-				if (kernelSize > 0) continue i;
-
-				// If the kernel size can be inferred from this operation argument
-				// capture it from the argument to the evaluation
-				if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCountLong() > 1) {
-					kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCountLong();
-				}
-			}
-
-			i: for (int i = 0; i < arguments.size(); i++) {
-				if (kernelArgs[i] != null) continue i;
-
-				kernelArgEvaluables[i] = getEvaluator().getEvaluable(arguments.get(i));
-				if (kernelArgEvaluables[i] == null) {
-					throw new UnsupportedOperationException();
-				}
-
-				if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
-					kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
-				}
+			if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
+				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
 			}
 		}
 
@@ -186,6 +188,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	
 	public void reset() {
 		this.kernelArgEvaluables = null;
+		this.asyncEvaluables = null;
 	}
 
 	public AcceleratedProcessDetails construct() {
@@ -227,20 +230,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();
 				}
 
-				// TODO  Removing this supports async evaluation, but
-				// TODO  it may prevent the kernel size from being
-				// TODO  inferred from the output of an evaluation
-//				Object o = kernelArgEvaluables[i].evaluate(args);
-//				if (!(o instanceof MemoryData))
-//					throw new IllegalArgumentException();
-//
-//				kernelArgs[i] = (MemoryData) o;
-//
-//				long c = Countable.countLong(kernelArgs[i]);
-//
-//				if (kernelSize <= 0 && c > 1) {
-//					kernelSize = c;
-//				}
+				asyncEvaluables[i].setDownstream(result(i));
 			}
 		}
 
@@ -266,19 +256,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			Heap.addCreatedMemory(result);
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
-		}
-
-		/*
-		 * Now every StreamingEvaluable can be configured to deliver
-		 * results to the current AcceleratedProcessDetails and kicked
-		 * off via StreamingEvaluable#request
-		 */
-
-		for (int i = 0; i < asyncEvaluables.length; i++) {
-			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 			asyncEvaluables[i].setDownstream(result(i));
 		}
 
+		/*
+		 * Now that every StreamingEvaluable is configured to deliver
+		 * results to the current AcceleratedProcessDetails, their work
+		 * can be initiated via StreamingEvaluable#request
+		 */
 		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
 											replacements.get(), executor);
 

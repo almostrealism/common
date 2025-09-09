@@ -138,7 +138,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			throw new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")");
 		}
 
-		allocated.put(ref.getAddress(), ref);
+		try {
+			allocated.put(ref.getAddress(), ref);
+		} catch (ClassCastException e) {
+			warn("Unable to record allocation", e);
+		}
+
 		return ram;
 	}
 

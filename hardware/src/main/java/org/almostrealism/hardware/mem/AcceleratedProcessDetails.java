@@ -31,6 +31,8 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class AcceleratedProcessDetails implements ConsoleFeatures {
+	public static boolean enableAsyncListeners = false;
+
 	private boolean enableAggregation = true;
 
 	private Object[] originalArguments;
@@ -76,15 +78,23 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			arguments = enableAggregation ? replacementManager.processArguments(originalArguments) : originalArguments;
 		}
 
-		executor.execute(() -> {
+		Runnable notice = () -> {
 			listeners.forEach(r -> {
-				r.run();
-
-				if (semaphore != null) {
-					semaphore.countDown();
+				try {
+					r.run();
+				} finally {
+					if (semaphore != null) {
+						semaphore.countDown();
+					}
 				}
 			});
-		});
+		};
+
+		if (enableAsyncListeners) {
+			executor.execute(notice);
+		} else {
+			notice.run();
+		}
 	}
 
 	public boolean isReady() {

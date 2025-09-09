@@ -123,7 +123,13 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	}
 
 	@Override
-	public void setDownstream(Consumer<T> consumer) { this.downstream = consumer; }
+	public void setDownstream(Consumer<T> consumer) {
+		if (downstream != null) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.downstream = consumer;
+	}
 
 	@Override
 	public StreamingEvaluable<T> async(Executor executor) {

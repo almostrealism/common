@@ -152,6 +152,10 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 	@Override
 	public void setDownstream(Consumer<T> consumer) {
+		if (downstream != null) {
+			throw new UnsupportedOperationException();
+		}
+
 		this.downstream = consumer;
 	}
 
