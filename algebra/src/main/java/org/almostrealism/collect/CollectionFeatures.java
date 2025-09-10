@@ -142,6 +142,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 */
 	default TraversalPolicy shape(int... dims) {
 		if (dims[0] == -1) {
+			if (dims.length == 1) {
+				return new TraversalPolicy(false, false, 1);
+			}
+
 			return new TraversalPolicy(false, false, IntStream.of(dims).skip(1).toArray());
 		}
 
@@ -169,6 +173,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 */
 	default TraversalPolicy shape(long... dims) {
 		if (dims[0] == -1) {
+			if (dims.length == 1) {
+				return new TraversalPolicy(false, false, 1);
+			}
+
 			return new TraversalPolicy(false, false, LongStream.of(dims).skip(1).toArray());
 		}
 

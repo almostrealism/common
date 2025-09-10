@@ -600,12 +600,19 @@ public class CollectionComputationTests implements TestFeatures {
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCountLong() + " series");
 
-		Producer<PackedCollection<?>> max = max(v(shape(-1, 10), 0));
+		Producer<PackedCollection<?>> max = max(v(shape(10), 0));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
-		verboseLog(() ->
-			max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
+		try {
+			verboseLog(() ->
+					max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
+		} catch (IllegalArgumentException e) {
+			// Expected due to mixmatch of output and operation count
+			return;
+		}
 
+		// If this was permitted, it should perhaps repeat the
+		// result for every position in the output
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(14, dest.toArray(1, 1)[0]);

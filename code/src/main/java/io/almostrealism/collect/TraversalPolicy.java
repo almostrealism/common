@@ -982,7 +982,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			return this + "[axis=" + getTraversalAxis() + "]";
 		}
 
-		return this + "[axis=" + getTraversalAxis() + "|" + getCountLong() + "x" + getSizeLong() + "]";
+		String dim = getCountLong() + "x" + getSizeLong();
+		if (!fixed) dim = "x" + dim;
+
+		return this + "[axis=" + getTraversalAxis() + "|" + dim + "]";
 	}
 
 	@Override

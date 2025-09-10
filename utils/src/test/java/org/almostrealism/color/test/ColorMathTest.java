@@ -59,7 +59,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void greaterThanKernel() {
 		verboseLog(() -> {
-			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
+			Producer<Scalar> arg0 = v(shape(-1, 2), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);
 			PackedCollection<Scalar> input = Scalar.scalarBank(5);

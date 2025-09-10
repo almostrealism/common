@@ -38,7 +38,6 @@ import java.util.function.Function;
 public class Interpolate extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public static boolean enableAtomicShape = false;
 	public static boolean enableFunctionalPosition = true;
-	public static boolean enableScanning = false;
 
 	private Function<Expression, Expression> timeForIndex;
 	private Function<Expression, Expression> indexForTime;
@@ -74,7 +73,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 	protected Expression getArgumentValueRelative(int index, Expression<?> pos) {
 		ArrayVariable<?> var = getArgument(index);
 
-		if (var instanceof CollectionVariable && isFixedCount()) {
+		if (var instanceof CollectionVariable && ((CollectionVariable) var).getShape().isFixedCount()) {
 			CollectionVariable c = (CollectionVariable<?>) var;
 
 			if (c.getShape().getCountLong() == 1) {
@@ -127,7 +126,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
-		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String res = getArgumentValueRelative(0, 0).getSimpleExpression(getLanguage());
 		String start = "0";
 		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getRate();
@@ -154,28 +153,6 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 			code.accept("}\n");
 		}
 
-		if (enableScanning) {
-			Expression i = new StaticReference(Integer.class, "i");
-			String banki = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(i)).getSimpleExpression(getLanguage());
-
-			code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
-			code.accept("	if (" + banki + " >= " + cursor + ") {\n");
-			code.accept("		" + leftO + " = i > " + start + " ? i - 1 : (" + banki + " == " + cursor + " ? i : -1);\n");
-			code.accept("		" + rightO + " = i;\n");
-			code.accept("		" + bi + " = " + banki + ";\n");
-			code.accept("		break;\n");
-			code.accept("	}\n");
-			code.accept("}\n");
-
-			code.accept("if (" + leftO + " == -1.0) {\n");
-			code.accept("    " + left + " = -1.0;\n");
-			code.accept("}\n");
-
-			code.accept("if (" + rightO + " == -1.0) {\n");
-			code.accept("    " + right + " = -1.0;\n");
-			code.accept("}\n");
-		}
-
 		code.accept("if (" + left + " == -1 || " + right + " == -1) {\n");
 		code.accept("	" + res + " = 0;\n");
 		code.accept("} else if (" + bankl_time + " > " + cursor + ") {\n");
@@ -186,18 +163,12 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		code.accept("	" + t1 + " = (" + cursor + ") - (" + bankl_time + ");\n");
 		code.accept("	" + t2 + " = (" + bankr_time + ") - (" + bankl_time + ");\n");
 
-		if (enableScanning) {
-			code.accept("if (" + leftO + " != " + left + " || " + rightO + " != " + right + ") {\n");
-			code.accept("printf(\"left = %i, leftO = %i, right = %i, rightO = %i, banki = %f, cursor = %f\\n\", "
-					+ left + ", " + leftO + ", " + right + ", " + rightO + ", " + bi + ", " + cursor + ");\n");
-			code.accept("}\n");
-		}
-
 		code.accept("	if (" + t2 + " == 0) {\n");
 		code.accept("		" + res + " = " + v1 + ";\n");
 		code.accept("	} else {\n");
 		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
 		code.accept("	}\n");
+
 		code.accept("}");
 
 		return scope;

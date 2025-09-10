@@ -80,8 +80,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	}
 
 	protected LessThan<Scalar> lessThan() {
-		Producer<Scalar> one = Input.value(Scalar.shape(), 0);
-		Producer<Scalar> two = Input.value(Scalar.shape(), 1);
+		Producer<Scalar> one = v(shape(-1, 2), 0);
+		Producer<Scalar> two = v(shape(-1, 2), 1);
 		LessThan<Scalar> lt = lessThan(one, two);
 		return lt;
 	}

@@ -110,25 +110,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 	 * @throws UnsupportedOperationException if the producer type is not supported
 	 */
 	default CollectionProducer<Scalar> scalar(Producer<?> value) {
-		if (value instanceof ExpressionComputation) {
-			ExpressionComputation<?> c = (ExpressionComputation) value;
-			int size = ((ExpressionComputation) value).expression().size();
-
-			if (size == 1) {
-				List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-				comp.add(((ExpressionComputation<?>) value).expression().get(0));
-				comp.add(args -> new DoubleConstant(1.0));
-				return (ExpressionComputation<Scalar>) new ExpressionComputation(comp,
-							c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
-						.setPostprocessor(Scalar.postprocessor());
-			} else if (size == 2) {
-				return (ExpressionComputation<Scalar>) new ExpressionComputation(c.expression(),
-							c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
-						.setPostprocessor(Scalar.postprocessor());
-			} else {
-				throw new IllegalArgumentException();
-			}
-		} else if (value instanceof Shape) {
+		if (value instanceof Shape) {
 			TraversalPolicy shape = ((Shape) value).getShape();
 
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =

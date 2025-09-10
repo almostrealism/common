@@ -86,9 +86,9 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 			Evaluable<? extends Scalar> coeff = coefficient.get();
 			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
 			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(
-					Input.value(shape(-1, 2), 1),
-					Input.value(shape(-1, 2), 2));
-			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(shape(-1, 2), 0), offset).get();
+					Input.value(shape(2), 1),
+					Input.value(shape(2), 2));
+			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(shape(2), 0), offset).get();
 
 			return args -> {
 				Scalar c = coeff.evaluate(args);

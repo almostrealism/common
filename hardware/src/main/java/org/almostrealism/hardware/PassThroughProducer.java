@@ -45,7 +45,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
 					DescribableParent<Process<?, ?>> {
-	public static boolean enableDefaultAbsolute = false;
+	public static boolean enableDefaultAbsolute = true;
 
 	private TraversalPolicy shape;
 	private int argIndex;

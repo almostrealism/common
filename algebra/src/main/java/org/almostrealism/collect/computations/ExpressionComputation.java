@@ -200,17 +200,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	/**
-	 * Returns the list of expression functions that define this computation.
-	 * Each function in the list corresponds to one position in the output collection
-	 * and defines how to compute the value at that position based on the input data.
-	 * 
-	 * @return An unmodifiable view of the expression functions list
-	 */
-	public List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression() {
-		return expression;
-	}
-
-	/**
 	 * Adjusts the destination memory bank to accommodate the specified length.
 	 * This method ensures that the destination collection has the appropriate shape
 	 * and size to hold the computation results.

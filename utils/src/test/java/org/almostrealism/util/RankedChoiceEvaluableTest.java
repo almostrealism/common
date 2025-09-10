@@ -30,8 +30,6 @@ import org.almostrealism.hardware.Hardware;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements TestFeatures {

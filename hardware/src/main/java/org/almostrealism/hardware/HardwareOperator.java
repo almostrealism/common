@@ -48,7 +48,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
 					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
 
-	public static boolean enableDimensionMasks = true;
+	public static boolean enableDimensionMasks = false;
 	public static boolean enableAtomicDimensionMasks = true;
 
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
@@ -238,17 +238,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		} finally {
 			enableVerboseLog = log;
 			NativeCompiler.enableVerbose = compilerLog;
-		}
-	}
-
-	public static void disableDimensionMasks(Runnable r) {
-		boolean masks = enableDimensionMasks;
-
-		try {
-			enableDimensionMasks = false;
-			r.run();
-		} finally {
-			enableDimensionMasks = masks;
 		}
 	}
 }

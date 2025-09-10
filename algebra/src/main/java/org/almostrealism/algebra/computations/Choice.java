@@ -39,7 +39,7 @@ public class Choice<T extends PackedCollection<?>> extends TraversableExpression
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), idx -> {
 			Expression choice = args[1].getValueAt(e(0)).multiply(choiceCount).floor();
-			Expression pos = choice.multiply(getShape().getSize());
+			Expression pos = choice.toInt().multiply(getShape().getSize());
 			return args[2].getValueAt(pos.add(idx));
 		});
 	}

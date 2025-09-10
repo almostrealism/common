@@ -39,7 +39,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		PackedCollection<?> out = new PackedCollection<>(len);
 
-		Evaluable<PackedCollection<?>> ev = add(v(shape(1), 0), v(shape(1), 1)).get();
+		Evaluable<PackedCollection<?>> ev = add(v(shape(-1), 0), v(shape(-1), 1)).get();
 
 		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {
@@ -55,7 +55,7 @@ public class RepeatedTraversableComputationTests implements TestFeatures {
 
 		out.clear();
 
-		Evaluable<PackedCollection<?>> rev = ((CollectionProducerComputationAdapter) add(v(shape(1), 0), v(shape(1), 1))).toRepeated().get();
+		Evaluable<PackedCollection<?>> rev = ((CollectionProducerComputationAdapter) add(v(shape(-1), 0), v(shape(-1), 1))).toRepeated().get();
 
 		verboseLog(() -> {
 			for (int i = 0; i < 100; i++) {

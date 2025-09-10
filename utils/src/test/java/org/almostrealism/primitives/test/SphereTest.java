@@ -63,7 +63,7 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantKernel() {
-		Producer<Ray> ray = v(Ray.shape(), 0);
+		Producer<Ray> ray = v(shape(-1, 6), 0);
 
 		int w = 100;
 		int h = 100;
@@ -103,7 +103,7 @@ public class SphereTest implements TestFeatures {
 
 		Sphere s = new Sphere();
 
-		ShadableIntersection f = s.intersectAt(v(Ray.shape(), 0));
+		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
 		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
 		for (int x = 0; x < w; x++) {
