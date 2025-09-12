@@ -639,21 +639,6 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void scalarFromCollection() {
-		Tensor<Scalar> values = new Tensor<>();
-		values.insert(new Scalar(1.0), 0);
-		values.insert(new Scalar(2.0), 1);
-		values.insert(new Scalar(3.0), 2);
-
-		PackedCollection collection = values.pack();
-
-		Producer<Scalar> scalar = scalar(collection.getShape().traverse(1), p(collection), scalar(1));
-		Scalar output = scalar.get().evaluate();
-		assertEquals(2.0, output);
-		assertEquals(1.0, output.toDouble(1));
-	}
-
-	@Test
 	public void dynamicProjection() {
 		PackedCollection<?> in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
 

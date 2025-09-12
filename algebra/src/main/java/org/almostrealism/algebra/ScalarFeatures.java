@@ -136,32 +136,6 @@ public interface ScalarFeatures extends CollectionFeatures {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 	}
 
-	default CollectionProducer<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
-		CollectionProducerComputationBase p = (CollectionProducerComputationBase)
-				c(shape(2), (Producer) bank, c(index * 2, index * 2 + 1));
-		p.setPostprocessor(Scalar.postprocessor());
-		return p;
-	}
-
-	default ExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
-		// return scalar(shape, collection, v((double) index));
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> args.get(1).getValueRelative(shape.getSize() * index));
-		comp.add(args -> expressionForDouble(1.0));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(shape(2), comp, collection)
-				.setPostprocessor(Scalar.postprocessor());
-	}
-
-	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<Scalar>("scalar", shape,
-				args -> CollectionExpression.create(shape, i ->
-						conditional(i.toInt().eq(e(0)),
-								args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0))),
-				collection, (Supplier) index);
-		c.setPostprocessor(Scalar.postprocessor());
-		return c;
-	}
-
 	default Producer<Scalar> scalar() {
 		return Scalar.blank();
 	}

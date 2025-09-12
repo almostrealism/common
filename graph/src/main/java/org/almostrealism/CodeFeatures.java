@@ -28,7 +28,6 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
@@ -63,7 +62,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends LayerFeatures,
-								ScalarBankFeatures, PairBankFeatures,
+								PairBankFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
