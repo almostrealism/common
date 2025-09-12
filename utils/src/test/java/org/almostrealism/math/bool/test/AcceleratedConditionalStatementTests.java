@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.math.bool.test;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
@@ -102,7 +101,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	}
 
 	@Test
-	public void compactWithDotProduct() {
+	public void dotProduct() {
 		Evaluable<Scalar> lt = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0))).get();
 		if (TestSettings.enableArgumentCountAssertions)
 			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
@@ -113,10 +112,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	}
 
 	@Test
-	public void compactWithCrossProduct() {
+	public void crossProduct() {
 		LessThan<Scalar> lt1 = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0)));
 		AcceleratedConditionalStatement<Scalar> lt2 =
-				scalarLessThan(vlength(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
+				scalarLessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
 														lt1, scalar(1), scalar(2), false);
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();

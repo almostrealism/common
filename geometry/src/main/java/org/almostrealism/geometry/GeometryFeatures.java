@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -105,7 +105,7 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 
 	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
 		Producer<Vector> newVector = minus(vector);
-		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(vlengthSq(normal)));
+		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
 		return subtract(newVector, scalarMultiply(normal, s));
 	}
 }

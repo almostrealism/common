@@ -40,6 +40,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryBank;
@@ -131,23 +132,15 @@ public interface ScalarFeatures extends CollectionFeatures {
 		}
 	}
 
-	default ExpressionComputation<Scalar> toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		if (value == null) return null;
-
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-		comp[0] = args -> args.get(1).getValueRelative(0);
-		comp[1] = args -> expressionForDouble(1.0);
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(List.of(comp), value).setPostprocessor(Scalar.postprocessor());
-	}
-
 	default CollectionProducer<Scalar> value(Scalar value) {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueRelative(2 * index + i)));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, (Supplier) bank).setPostprocessor(Scalar.postprocessor());
+	default CollectionProducer<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
+		CollectionProducerComputationBase p = (CollectionProducerComputationBase)
+				c(shape(2), (Producer) bank, c(index * 2, index * 2 + 1));
+		p.setPostprocessor(Scalar.postprocessor());
+		return p;
 	}
 
 	default ExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {

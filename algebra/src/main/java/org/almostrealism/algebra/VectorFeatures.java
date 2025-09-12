@@ -59,9 +59,10 @@ public interface VectorFeatures extends ScalarFeatures {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 
-	default ExpressionComputation<Vector> vector(Supplier<Evaluable<? extends Scalar>> x,
-											   Supplier<Evaluable<? extends Scalar>> y,
-											   Supplier<Evaluable<? extends Scalar>> z) {
+	default <T extends PackedCollection<?>> ExpressionComputation<Vector> vector(
+												Producer<T> x,
+												Producer<T> y,
+												Producer<T> z) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
 		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(comp, (Supplier) x, (Supplier) y, (Supplier) z)
@@ -86,25 +87,16 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	default Producer<Vector> vector() { return Vector.blank(); }
 
-	default CollectionProducerComputationBase<?, Scalar> x(Supplier<Evaluable<? extends Vector>> v) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueRelative(0),
-				args -> expressionForDouble(1.0)),
-				(Supplier) v).setPostprocessor(Scalar.postprocessor());
+	default <T extends PackedCollection<?>> CollectionProducer<T> x(Producer<Vector> v) {
+		return c(v, 0);
 	}
 
-	default CollectionProducerComputationBase<?, Scalar> y(Supplier<Evaluable<? extends Vector>> v) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueRelative(1),
-				args -> expressionForDouble(1.0)),
-				(Supplier) v).setPostprocessor(Scalar.postprocessor());
+	default <T extends PackedCollection<?>> CollectionProducer<T> y(Producer<Vector> v) {
+		return c(v, 1);
 	}
 
-	default CollectionProducerComputationBase<?, Scalar> z(Supplier<Evaluable<? extends Vector>> v) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueRelative(2),
-				args -> expressionForDouble(1.0)),
-				(Supplier) v).setPostprocessor(Scalar.postprocessor());
+	default <T extends PackedCollection<?>> CollectionProducer<T> z(Producer<Vector> v) {
+		return c(v, 2);
 	}
 
 	@Deprecated
@@ -119,7 +111,7 @@ public interface VectorFeatures extends ScalarFeatures {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default CollectionProducer<Vector> crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
+	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
 		return vector(y(a).multiply(z(b)).subtract(z(a).multiply(y(b))),
 				z(a).multiply(x(b)).subtract(x(a).multiply(z(b))),
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
@@ -139,16 +131,6 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	@Deprecated
-	default CollectionProducer<Scalar> vlength(Producer<Vector> v) {
-		return toScalar(length((Producer) v));
-	}
-
-	@Deprecated
-	default CollectionProducer<Scalar> vlengthSq(Producer<Vector> v) {
-		return toScalar(lengthSq((Producer) v));
-	}
-
-	@Deprecated
 	default CollectionProducer<Vector> vnormalize(Producer<Vector> p) {
 		return vector(normalize(p));
 	}
@@ -157,12 +139,12 @@ public interface VectorFeatures extends ScalarFeatures {
 		return length(traverse(depth, value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<?> value) {
 		return sqrt(lengthSq(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<T> value) {
-		return multiply(value, value).sum();
+	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<?> value) {
+		return multiply((Producer) value, (Producer) value).sum();
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> normalize(Producer<T> value) {

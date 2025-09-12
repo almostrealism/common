@@ -24,9 +24,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
@@ -65,7 +65,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		// TODO  this for every operation where it matters
 		clear = new DefaultContextSpecific<>(() ->
 				CollectionFeatures.getInstance().multiply(
-						new PassThroughProducer<>(1, 0),
+						Input.value(new TraversalPolicy(false, false, 1), 0),
 						CollectionFeatures.getInstance().c(1)).get());
 	}
 
