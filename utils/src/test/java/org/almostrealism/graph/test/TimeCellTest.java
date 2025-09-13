@@ -18,8 +18,11 @@ package org.almostrealism.graph.test;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
@@ -43,18 +46,18 @@ public class TimeCellTest implements TestFeatures {
 
 	@Test
 	public void fmod() {
-		Scalar time = new Scalar();
-		Producer<Scalar> loopDuration = scalar(2.0);
+		Pair<?> time = new Pair<>();
+		Producer<PackedCollection<?>> loopDuration = c(2.0);
 
-		Producer<Scalar> left = l(() -> new Provider<>(time));
-		left = scalarGreaterThan(loopDuration, scalar(0.0),
-				scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
-				scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
+		CollectionProducer left = l(cp(time));
+		left = greaterThan(loopDuration, c(0.0),
+				mod(add(left, c(1.0)), loopDuration),
+				add(left, c(1.0)), false);
 
-		Producer<Scalar> right = r(() -> new Provider<>(time));
-		right = scalarAdd(right, ScalarFeatures.of(1.0));
+		CollectionProducer right = r(cp(time));
+		right = add(right, c(1.0));
 
-		Runnable r = new Assignment<>(2, () -> new Provider<>(time), pair(left, right)).get();
+		Runnable r = new Assignment<>(2, cp(time), pair(left, right)).get();
 
 		verboseLog(() -> {
 			for (int i = 0; i < 5; i++) {
@@ -62,6 +65,6 @@ public class TimeCellTest implements TestFeatures {
 			}
 		});
 
-		assertEquals(1.0, time);
+		assertEquals(1.0, time.toDouble(0));
 	}
 }

@@ -97,7 +97,7 @@ public class VectorMathTest implements TestFeatures {
 	}
 
 	protected CollectionProducer<Vector> crossProduct(Producer<Vector> v) {
-		return crossProduct(vector(0.0, 0.0, -1.0), v);
+		return vector(crossProduct(vector(0.0, 0.0, -1.0), v));
 	}
 
 	@Test

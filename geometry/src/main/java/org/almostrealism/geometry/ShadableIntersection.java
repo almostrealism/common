@@ -35,11 +35,11 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
-	public ShadableIntersection(Gradient surface, Supplier<Evaluable<? extends Ray>> r, Producer<Scalar> distance) {
+	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer<Scalar> distance) {
 		this(surface, RayFeatures.getInstance().pointAt(r, distance), RayFeatures.getInstance().direction(r), distance);
 	}
 
-	public ShadableIntersection(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Vector>> normal, Producer<Scalar> distance) {
+	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal, Producer<Scalar> distance) {
 		this(RayFeatures.getInstance().pointAt(r, distance), RayFeatures.getInstance().direction(r), normal, distance);
 	}
 
@@ -47,7 +47,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 		this(point, incident, surface.getNormalAt(point), distance);
 	}
 
-	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident, Supplier<Evaluable<? extends Vector>> normal, Producer<Scalar> distance) {
+	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident,
+								Producer<Vector> normal, Producer<Scalar> distance) {
 		super(point, distance);
 
 		this.incident = incident;

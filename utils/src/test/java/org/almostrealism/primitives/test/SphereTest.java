@@ -50,7 +50,7 @@ public class SphereTest implements TestFeatures {
 		System.out.println(distance);
 		assertEquals(2.2928932188134525, distance);
 
-		Ray r = f.get(0).get().evaluate();
+		Ray r = new Ray(f.get(0).get().evaluate(), 0);
 		System.out.println(r);
 
 		f = s.intersectAt(ray(0.0, 0.0, -2.0, 57.22891566265059, 72.32037025267255, 404.1157064026493));
@@ -142,7 +142,7 @@ public class SphereTest implements TestFeatures {
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(v(shape(h, w, 6), 0));
 
-		c.rayAt(pair(v(shape(w * h, 2), 0)), pair(w, h));
+		c.rayAt(v(shape(w * h, 2), 0), pair(w, h));
 
 		PackedCollection<?> positions = new PackedCollection<>(shape(w * h, 2), 1);
 		// TODO  Setup positions

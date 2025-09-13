@@ -34,9 +34,9 @@ public class SwitchTest implements TestFeatures {
 	}
 
 	public Switch choice(Scalar output, Producer<Scalar> decision, Producer<Scalar> multiplier) {
-		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(2.0)));
-		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(4.0)));
-		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, scalar(8.0)));
+		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
+		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));
+		Computation<Void> thirdChoice = a(1, p(output), multiply(multiplier, c(8.0)));
 		return new Switch((CollectionProducer) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
@@ -89,7 +89,7 @@ public class SwitchTest implements TestFeatures {
 		Producer<Scalar> decisionA = scalar(0.4);
 		Scalar output2a = new Scalar(0.0);
 		Scalar output2b = new Scalar(0.0);
-		Producer<Scalar> decisionB = scalarsMultiply(scalar(0.4), multiplier);
+		Producer<Scalar> decisionB = multiply(c(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));

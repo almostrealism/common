@@ -48,7 +48,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
 	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
-		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(v, TransformMatrix.postprocessor());
 	}
 
 	default CollectionProducer<TransformMatrix> translationMatrix(Producer<Vector> offset) {

@@ -16,41 +16,33 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface RayFeatures extends VectorFeatures {
 
 	default CollectionProducer<Ray> v(Ray value) { return value(value); }
 
 	default CollectionProducer<Ray> value(Ray value) {
-		return ExpressionComputation.fixed(value, Ray.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(value, Ray.postprocessor());
 	}
 
 	default CollectionProducer<Ray> ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
 	}
 
-	default CollectionProducer<Ray> ray(Supplier<Evaluable<? extends Vector>> origin,
-											Supplier<Evaluable<? extends Vector>> direction) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValueRelative(i % 3)));
-		return new ExpressionComputation<>(comp, (Supplier) origin, (Supplier) direction)
-				.setPostprocessor(Ray.postprocessor());
+	default CollectionProducer<Ray> ray(Producer<Vector> origin, Producer<Vector> direction) {
+		return concat(shape(6), (Producer) origin, (Producer) direction);
 	}
 
 	default CollectionProducer<Ray> ray(IntFunction<Double> values) {

@@ -48,7 +48,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	default CollectionProducer<Vector> v(Vector value) { return value(value); }
 
 	default CollectionProducer<Vector> value(Vector value) {
-		return ExpressionComputation.fixed(value, Vector.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(value, Vector.postprocessor());
 	}
 
 	default CollectionProducer<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
@@ -59,14 +59,11 @@ public interface VectorFeatures extends ScalarFeatures {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<Vector> vector(
+	default <T extends PackedCollection<?>> CollectionProducer<Vector> vector(
 												Producer<T> x,
 												Producer<T> y,
 												Producer<T> z) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
-		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(comp, (Supplier) x, (Supplier) y, (Supplier) z)
-				.setPostprocessor(Vector.postprocessor());
+		return concat(shape(3), (Producer) x, (Producer) y, (Producer) z);
 	}
 
 	default ExpressionComputation<Vector> vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {

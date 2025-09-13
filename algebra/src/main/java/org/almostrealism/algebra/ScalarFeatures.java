@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
@@ -36,14 +35,11 @@ import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,25 +49,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures {
-
-	/**
-	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value of -1.0.
-	 * This is a commonly used constant in mathematical operations.
-	 * 
-	 * @return An {@link ExpressionComputation} that evaluates to a {@link Scalar} containing -1.0
-	 * @see #of(double)
-	 */
-	static ExpressionComputation<Scalar> minusOne() { return of(-1.0); }
-
-	/**
-	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value.
-	 * This is a convenience method for creating scalar constants from primitive double values.
-	 * 
-	 * @param value The double value to be wrapped in a {@link Scalar}
-	 * @return An {@link ExpressionComputation} that evaluates to a {@link Scalar} containing the specified value
-	 * @see #of(Scalar)
-	 */
-	static ExpressionComputation<Scalar> of(double value) { return of(new Scalar(value)); }
 
 	/**
 	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value.
@@ -138,55 +115,6 @@ public interface ScalarFeatures extends CollectionFeatures {
 
 	default Producer<Scalar> scalar() {
 		return Scalar.blank();
-	}
-
-	default ExpressionComputation<Scalar> scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> Sum.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
-		comp.add(args -> expressionForDouble(1.0));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp, values).setPostprocessor(Scalar.postprocessor());
-	}
-
-	default ExpressionComputation<Scalar> scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return scalarAdd(a, scalarMinus(b));
-	}
-
-	default ExpressionComputation<Scalar> scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
-		comp.add(args -> (Expression<Double>) Product.of(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
-	}
-
-	default ExpressionComputation<Scalar> scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
-		return scalarsMultiply(ScalarFeatures.minusOne(), v);
-	}
-
-	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Producer<Scalar> exponent) {
-		// TODO  Certainty of exponent is ignored
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> Exponent.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				args -> Exponent.of(args.get(1).getValueRelative(1), args.get(2).getValueRelative(0))),
-				(Supplier) base, (Supplier) exponent)
-				.setPostprocessor(Scalar.postprocessor());
-	}
-
-	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Scalar exp) {
-		return scalarPow(base, of(exp));
-	}
-
-	default ExpressionComputation<Scalar> scalarMin(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> Min.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				args -> Min.of(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1))),
-				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
-	}
-
-	default ExpressionComputation<Scalar> scalarMod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				args -> args.get(1).getValueRelative(1)),
-				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default Choice choice(int choiceCount, TraversalPolicy resultShape,

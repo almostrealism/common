@@ -27,27 +27,4 @@ public class AcceleratedComputationOperationTest implements TestFeatures {
 
 		Evaluable<Vector> s = compileProducer((Computation) add(v, in));
 	}
-
-	@Test
-	public void providerExpressionComputation() {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				Sum.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-
-		PackedCollection<?> a = new PackedCollection(1);
-		PackedCollection<?> b = new PackedCollection(1);
-		a.setMem(3.0);
-		b.setMem(5.0);
-
-		ExpressionComputation<PackedCollection<?>> computation =
-				new ExpressionComputation<>(List.of(expression),
-						() -> new Provider<>(a),
-						() -> new Provider<>(b));
-
-		PackedCollection<?> out = new PackedCollection<>(1);
-		Assignment<?> assign = a(1, p(out), computation);
-
-		Runnable r = assign.get();
-		r.run();
-		assertEquals(8.0, out.toArray(0, 1)[0]);
-	}
 }

@@ -42,6 +42,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
+	public static boolean enableAsync = false;
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableOutputCount = true;
 	public static boolean enableConstantCache = true;
@@ -285,7 +286,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	protected void execute(Runnable r) {
-		executor.execute(r);
+		if (enableAsync) {
+			executor.execute(r);
+		} else {
+			r.run();
+		}
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {

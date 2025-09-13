@@ -187,8 +187,9 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	 * @see Expression
 	 */
 	@SafeVarargs
-	public ExpressionComputation(TraversalPolicy shape, List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
-							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public ExpressionComputation(TraversalPolicy shape,
+								 List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
+							     Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		if (shape.getSize() != expression.size())
 			throw new IllegalArgumentException("Expected " + shape.getSize() + " expressions");
@@ -295,62 +296,4 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	 */
 	@Override
 	public String signature() { return null; }
-
-	/**
-	 * Creates a {@link CollectionProducer} that returns the specified collection value
-	 * with optional postprocessing. This is the most flexible factory method for creating
-	 * constant-value computations.
-	 * 
-	 * <p>The method automatically handles different traversal patterns and creates
-	 * appropriate expression functions that return the constant values from the provided
-	 * collection. If a postprocessor is provided, it will be applied to the result.</p>
-	 * 
-	 * <p><strong>Example with postprocessing:</strong></p>
-	 * <pre>{@code
-	 * PackedCollection<?> originalData = new PackedCollection<>(shape(2, 2));
-	 * originalData.setMem(0, 1.0, 2.0, 3.0, 4.0);
-	 * 
-	 * // Create a computation that doubles all values
-	 * BiFunction<MemoryData, Integer, PackedCollection<?>> doubler = 
-	 *     (data, index) -> {
-	 *         PackedCollection<?> result = new PackedCollection<>(data.getShape());
-	 *         for (int i = 0; i < data.getMemLength(); i++) {
-	 *             result.setMem(i, data.toArray(i, 1)[0] * 2.0);
-	 *         }
-	 *         return result;
-	 *     };
-	 * 
-	 * CollectionProducer<PackedCollection<?>> computation = 
-	 *     ExpressionComputation.fixed(originalData, doubler);
-	 * }</pre>
-	 * 
-	 * @param value         The {@link PackedCollection} containing the base values
-	 * @param postprocessor Optional function to transform the result data, may be null
-	 * @param <T>           The type of the collection
-	 * @return A {@link CollectionProducer} that produces the specified collection,
-	 *         potentially with postprocessing applied
-	 */
-	public static <T extends PackedCollection<?>> CollectionProducer<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		int traversalAxis = value.getShape().getTraversalAxis();
-
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] =
-			IntStream.range(0, value.getShape().getTotalSize())
-					.mapToObj(i ->
-						(Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> value.getValueAt(new IntegerConstant(i)))
-					.toArray(Function[]::new);
-
-		if (traversalAxis == 0) {
-			return (ExpressionComputation<T>) new ExpressionComputation(value.getShape(), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
-				PackedCollection v = new PackedCollection(value.getShape());
-				v.setMem(value.toArray(0, value.getMemLength()));
-				return postprocessor == null ? v : postprocessor.apply(v, 0);
-			});
-		} else {
-			return new ExpressionComputation(value.getShape().traverse(0), List.of(comp)).setPostprocessor(postprocessor).setShortCircuit(args -> {
-				PackedCollection v = new PackedCollection(value.getShape());
-				v.setMem(value.toArray(0, value.getMemLength()));
-				return postprocessor == null ? v : postprocessor.apply(v, 0);
-			}).traverse(traversalAxis);
-		}
-	}
 }

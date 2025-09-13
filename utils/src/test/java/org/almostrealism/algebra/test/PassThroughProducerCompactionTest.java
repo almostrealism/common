@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,16 +18,15 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.Input;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements CodeFeatures {
-	protected ExpressionComputation<Scalar> sum() {
-		return scalarAdd(
+	protected CollectionProducer<Scalar> sum() {
+		return add(
 				Input.value(Scalar.shape(), 0),
 				Input.value(Scalar.shape(), 1));
 	}
@@ -35,19 +34,20 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 	@Test
 	public void applySum() {
 		Evaluable<Scalar> ev = sum().get();
-		Scalar s = ev.evaluate(new Scalar(1.0), new Scalar(2.0));
+		Scalar s = new Scalar(ev.evaluate(new Scalar(1.0), new Scalar(2.0)));
 		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
 	}
 
 	protected Evaluable<Scalar> product() {
-		return scalarsMultiply(sum(), Input.value(Scalar.shape(), 2)).get();
+		return multiply(sum(), Input.value(Scalar.shape(), 2)).get();
 	}
 
 	@Test
 	public void applyProduct() {
-		Scalar s = product().evaluate(scalar(1.0).get().evaluate(),
-									scalar(2.0).get().evaluate(),
-									scalar(3.0).get().evaluate());
+		Scalar s = new Scalar(product().evaluate(
+									c(1.0).get().evaluate(),
+									c(2.0).get().evaluate(),
+									c(3.0).get().evaluate()));
 		System.out.println(s.getValue());
 		System.out.println(s.getValue());
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
@@ -57,7 +57,7 @@ public class PassThroughProducerCompactionTest implements CodeFeatures {
 	public void applyProductCompact() {
 		Evaluable<Scalar> p = product();
 
-		Scalar s = p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0));
+		Scalar s = new Scalar(p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0)));
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
 	}
 }

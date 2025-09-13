@@ -29,6 +29,10 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 		super(2);
 	}
 
+	public Pair(MemoryData delegate) {
+		this(delegate, 0);
+	}
+
 	public Pair(MemoryData delegate, int delegateOffset) {
 		super(new TraversalPolicy(2), 0, delegate, delegateOffset);
 	}

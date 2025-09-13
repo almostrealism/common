@@ -49,26 +49,19 @@ public interface PairFeatures extends CollectionFeatures {
 				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp, x)
-				.setPostprocessor(Pair.postprocessor());
-	}
-
 	default CollectionProducer<Pair<?>> v(Pair value) { return value(value); }
 
 	default CollectionProducer<Pair<?>> value(Pair value) {
-		return ExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> l(Supplier<Evaluable<? extends Pair<?>>> p) {
+	default CollectionProducer<Scalar> l(Producer<Pair<?>> p) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(0),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
+	default CollectionProducer<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(1),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
@@ -111,6 +104,13 @@ public interface PairFeatures extends CollectionFeatures {
 //				new TraversalPolicy(size, 2).traverse(1),
 				shape(real).traverseEach().append(shape(2)),
 				List.of(comp), real, imag).setPostprocessor(pair ? Pair.postprocessor() : null);
+	}
+
+	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
+		int count = shape(index).getCount();
+		Producer<PackedCollection<?>> pair =
+				add(repeat(2, traverse(1, index)).multiply(2), repeat(count, c(0.0, 1.0)));
+		return (Producer) c(shape(index).append(shape(2)), bank, pair);
 	}
 
 	static PairFeatures getInstance() {

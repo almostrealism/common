@@ -28,6 +28,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -104,7 +105,17 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void assertEquals(Object expected, Object actual) {
-		if (!Objects.equals(expected, actual)) {
+		if (actual instanceof PackedCollection) {
+			assertEquals(expected, (PackedCollection<?>) actual);
+		} else if (!Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	default void assertEquals(Object expected, PackedCollection<?> actual) {
+		if (expected instanceof Number) {
+			assertEquals(((Number) expected).doubleValue(), actual.toDouble());
+		} else if (!Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " != " + expected);
 		}
 	}

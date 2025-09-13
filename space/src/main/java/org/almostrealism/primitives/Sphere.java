@@ -242,7 +242,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 	// TODO  Make private
 	public Producer<Scalar> discriminantSqrt(Producer<Ray> ray) {
-		return scalarPow(discriminant(ray), scalar(0.5));
+		return pow(discriminant(ray), c(0.5));
 	}
 
 	// TODO  Make private

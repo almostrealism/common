@@ -17,6 +17,7 @@
 package org.almostrealism.geometry.test;
 
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
@@ -70,7 +71,7 @@ public class MatrixTransformTests implements TestFeatures {
 		TransformMatrix m = translationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		r = transform(m.getInverse(), v(r)).evaluate();
+		r = new Ray(transform(m.getInverse(), v(r)).evaluate(), 0);
 		r.print();
 
 		assertEquals(1.0, r.getOrigin().getX());
@@ -90,9 +91,9 @@ public class MatrixTransformTests implements TestFeatures {
 				{ 0.0,  0.0,  0.0,   1.0 }
 		});
 
-		CollectionProducer<Ray> transform = transform(matrix,
+		CollectionProducer transform = transform(matrix,
 				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
-		Ray r = transform.evaluate();
+		Ray r = new Ray((PackedCollection) transform.evaluate(), 0);
 		System.out.println(r);
 
 		assertEquals(0.25, r.getOrigin().getX());

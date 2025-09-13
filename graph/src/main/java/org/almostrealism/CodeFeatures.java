@@ -25,7 +25,6 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -62,7 +61,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends LayerFeatures,
-								PairBankFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
@@ -110,10 +108,6 @@ public interface CodeFeatures extends LayerFeatures,
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
-
-	default Producer<PackedCollection<Scalar>> scalars(PackedCollection<Scalar> s) {
-		return ExpressionComputation.fixed(s, Scalar.scalarBankPostprocessor());
-	}
 
 	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 

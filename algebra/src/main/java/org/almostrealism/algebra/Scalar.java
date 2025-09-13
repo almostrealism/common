@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,6 +35,15 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public Scalar(boolean certain) { if (certain) setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
+
+	public Scalar(MemoryData delegate) {
+		this(delegate, 0);
+
+		if (delegate.getMemLength() != 2) {
+			warn("Scalar created with delegate of length " +
+					delegate.getMemLength() + " (expected 2)");
+		}
+	}
 
 	public Scalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);

@@ -151,14 +151,12 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void origin() {
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<Vector> at = vector(originProducer());
-			Evaluable<Vector> ev = at.get();
+		CollectionProducer<Vector> at = vector(originProducer());
+		Evaluable<Vector> ev = at.get();
 
-			Vector p = ev.evaluate();
-			p.print();
-			Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
-		});
+		Vector p = ev.evaluate();
+		p.print();
+		Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
 	}
 
 	protected PackedCollection<?> triangle() {
@@ -219,7 +217,7 @@ public class TriangleTest implements TestFeatures {
 	public void intersectionTest() {
 		Evaluable<Ray> ev = intersectAt().get();
 
-		Ray r = ev.evaluate();
+		Ray r = new Ray(ev.evaluate(), 0);
 		System.out.println(r);
 		Assert.assertEquals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)), r);
 	}
