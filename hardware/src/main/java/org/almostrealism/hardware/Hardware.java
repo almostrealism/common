@@ -86,14 +86,7 @@ public final class Hardware {
 			location = Location.HEAP;
 		} else if ("host".equalsIgnoreCase(memLocation)) {
 			location = Location.HOST;
-		}
-
-		boolean nioMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(false);
-		if (nioMem) {
-			if (memLocation != null && location != Location.DELEGATE) {
-				throw new IllegalArgumentException("Cannot use location " + memLocation + " with NIO memory");
-			}
-
+		} else if ("delegate".equalsIgnoreCase(memLocation)) {
 			location = Location.DELEGATE;
 		}
 
@@ -103,6 +96,8 @@ public final class Hardware {
 		String drivers[] = SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*").split(",");
 
 		List<ComputeRequirement> requirements = new ArrayList<>();
+
+		boolean nioMem = false;
 
 		for (String driver : drivers) {
 			if ("cl".equalsIgnoreCase(driver)) {
@@ -129,10 +124,25 @@ public final class Hardware {
 
 				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
 					KernelPreferences.enableSharedMemory();
+					nioMem = true;
 				}
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
+		}
+
+		nioMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(nioMem);
+
+		if (nioMem) {
+			if (memLocation != null) {
+				if (location == Location.HOST) {
+					console.warn("NIO memory is enabled, location will be set to DELEGATE instead of HOST");
+				} else if (location != Location.DELEGATE) {
+					throw new IllegalArgumentException("Cannot use location " + memLocation + " with NIO memory");
+				}
+			}
+
+			location = Location.DELEGATE;
 		}
 
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
