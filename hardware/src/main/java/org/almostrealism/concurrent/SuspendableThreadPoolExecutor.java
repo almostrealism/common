@@ -63,6 +63,8 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		}
 	}
 
+	public double getPriorityThreshold() { return minPriorityThreshold; }
+
 	@Override
 	protected void beforeExecute(Thread t, Runnable r) {
 		super.beforeExecute(t, r);
