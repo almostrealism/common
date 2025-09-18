@@ -32,8 +32,7 @@ import org.junit.Test;
 public class VectorMathTest implements TestFeatures {
 	@Test
 	public void scalarPow() {
-		Scalar result = scalar(scalar(3).pow(3)).get().evaluate();
-		assertEquals(27, result);
+		assertEquals(27, c(3).pow(3).evaluate());
 	}
 
 	@Test
@@ -49,7 +48,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		CollectionProducer<Vector> product = scalarMultiply(vector(1, 2, 3), 2);
+		CollectionProducer<Vector> product = multiply(vector(1, 2, 3), c(2));
 		Vector result = product.get().evaluate();
 		assertEquals(2, result.getX());
 		assertEquals(4, result.getY());
@@ -88,9 +87,8 @@ public class VectorMathTest implements TestFeatures {
 		verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
-			Producer<Scalar> s = scalar(y(a).multiply(z(b))
-					.subtract(z(a).multiply(y(b))));
-			HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
+			Producer<PackedCollection<?>> s = y(a).multiply(z(b)).subtract(z(a).multiply(y(b)));
+			HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());
 		});

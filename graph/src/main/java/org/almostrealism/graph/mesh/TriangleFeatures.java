@@ -25,6 +25,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -39,19 +40,19 @@ import java.util.stream.IntStream;
 public interface TriangleFeatures extends VectorFeatures {
 
 
-	default ExpressionComputation<Vector> abc(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default CollectionProducer<Vector> abc(Producer<PackedCollection<?>> t) {
 		return vector(t, 0);
 	}
 
-	default ExpressionComputation<Vector> def(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default CollectionProducer<Vector> def(Producer<PackedCollection<?>> t) {
 		return vector(t, 1);
 	}
 
-	default ExpressionComputation<Vector> jkl(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default CollectionProducer<Vector> jkl(Producer<PackedCollection<?>> t) {
 		return vector(t, 2);
 	}
 
-	default ExpressionComputation<Vector> normal(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+	default CollectionProducer<Vector> normal(Producer<PackedCollection<?>> t) {
 		return vector(t, 4);
 	}
 
@@ -68,7 +69,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		Producer<Vector> abc = subtract(p2, p1);
 		Producer<Vector> def = subtract(p3, p1);
 		Supplier jkl = p1;
-		return triangle(abc, def, jkl, vnormalize(crossProduct(abc, def)));
+		return triangle(abc, def, jkl, normalize(crossProduct(abc, def)));
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends Vector>> abc,

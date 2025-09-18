@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
@@ -28,20 +28,21 @@ public class Intersection implements DimensionAware {
 	public static final double e = 0.00000001;
 
 	private Producer<Vector> point;
-	private Producer<Scalar> distance;
+	private Producer<PackedCollection<?>> distance;
 
 	/**
 	 * Constructs a new {@link Intersection} that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray.
 	 */
-	public Intersection(Producer<Vector> point, Producer<Scalar> distance) {
+	public Intersection(Producer<Vector> point,
+						Producer<PackedCollection<?>> distance) {
 		this.point = point;
 		this.distance = distance;
 	}
 	
 	public Producer<Vector> getPoint() { return point; }
 
-	public Producer<Scalar> getDistance() { return distance; }
+	public Producer<PackedCollection<?>> getDistance() { return distance; }
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {

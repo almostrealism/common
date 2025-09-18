@@ -228,8 +228,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				if (kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
-					kernelArgEvaluables[i] instanceof HardwareEvaluable) {
+				if (!enableAsync ||
+						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
+						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
 				} else {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async();

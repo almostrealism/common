@@ -45,10 +45,10 @@ public class ScalarBankDotProductTest implements TestFeatures {
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);
 			Producer<PackedCollection<?>> b = subset(shape(SIZE, 1), v(shape(SIZE, 2), 1), 0);
-			Evaluable<? extends Scalar> ev = scalar(multiply(a, b).sum()).get();
+			Evaluable<PackedCollection<?>> ev = multiply(a, b).sum().get();
 
-			Scalar test = ev.evaluate(window().traverse(0), window().traverse(0));
-			System.out.println(test);
+			PackedCollection<?> test = ev.evaluate(window().traverse(0), window().traverse(0));
+			test.print();
 			assertEquals(given, test);
 		});
 	}

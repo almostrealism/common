@@ -32,21 +32,17 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface PairFeatures extends CollectionFeatures {
 
 	default CollectionProducer<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
-	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
-				.setPostprocessor(Pair.postprocessor());
+	default CollectionProducer<Pair<?>> pair(Producer<PackedCollection<?>> x,
+											 Producer<PackedCollection<?>> y) {
+		return concat(shape(2), x, y);
 	}
 
 	default CollectionProducer<Pair<?>> v(Pair value) { return value(value); }

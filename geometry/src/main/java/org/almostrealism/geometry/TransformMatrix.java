@@ -234,7 +234,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
-	public Producer<Ray> transform(Supplier<Evaluable<? extends Ray>> ray) {
+	public Producer<Ray> transform(Producer<Ray> ray) {
 		return transform(this, ray);
 	}
 

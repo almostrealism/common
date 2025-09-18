@@ -26,11 +26,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -41,8 +38,6 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public interface VectorFeatures extends ScalarFeatures {
 	default CollectionProducer<Vector> v(Vector value) { return value(value); }
@@ -66,10 +61,11 @@ public interface VectorFeatures extends ScalarFeatures {
 		return concat(shape(3), (Producer) x, (Producer) y, (Producer) z);
 	}
 
-	default ExpressionComputation<Vector> vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValueRelative(index * 3 + i)));
-		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
+	default CollectionProducer<Vector> vector(Producer<PackedCollection<?>> bank, int index) {
+		CollectionProducerComputationBase c = (CollectionProducerComputationBase)
+				c(shape(3), bank, c(3 * index, 3 * index + 1, 3 * index + 2));
+		c.setPostprocessor(Vector.postprocessor());
+		return c;
 	}
 
 	default CollectionProducer<Vector> vector(Producer<?> value) {
@@ -114,22 +110,9 @@ public interface VectorFeatures extends ScalarFeatures {
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
 
-	default CollectionProducer<Vector> scalarMultiply(Producer<Vector> a, double b) {
-		return scalarMultiply(a, new Scalar(b));
-	}
-
-	default CollectionProducer<Vector> scalarMultiply(Producer<Vector> a, Scalar b) {
-		return scalarMultiply(a, ScalarFeatures.of(b));
-	}
-
 	@Deprecated
 	default CollectionProducer<Vector> scalarMultiply(Producer<Vector> a, Producer<Scalar> b) {
 		return vector(multiply(a, vector(b, b, b)));
-	}
-
-	@Deprecated
-	default CollectionProducer<Vector> vnormalize(Producer<Vector> p) {
-		return vector(normalize(p));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> length(int depth, Producer<T> value) {

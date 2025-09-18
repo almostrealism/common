@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Evaluable;
@@ -58,25 +59,25 @@ public interface RayFeatures extends VectorFeatures {
 				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default ExpressionComputation<Vector> direction(Supplier<Evaluable<? extends Ray>> r) {
-		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
+	default CollectionProducer<Vector> direction(Producer<Ray> r) {
+		return new ExpressionComputation<Vector>(List.of(
 				args -> args.get(1).getValueRelative(3),
 				args -> args.get(1).getValueRelative(4),
 				args -> args.get(1).getValueRelative(5)),
-				(Supplier) r).setPostprocessor(Vector.postprocessor());
+				(Supplier) r);
 	}
 
-	default CollectionProducer<Vector> pointAt(Supplier<Evaluable<? extends Ray>> r, Producer<Scalar> t) {
-		return vector(add(origin(r), scalarMultiply(direction(r), t)));
+	default CollectionProducer<Vector> pointAt(Producer<Ray> r, Producer<PackedCollection<?>> t) {
+		return vector(direction(r).multiply(t).add(origin(r)));
 	}
 
-	default CollectionProducer<Scalar> oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
+	default CollectionProducer<Scalar> oDoto(Producer<Ray> r) { return dotProduct(origin(r), origin(r)); }
 
-	default CollectionProducer<Scalar> dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
+	default CollectionProducer<Scalar> dDotd(Producer<Ray> r) { return dotProduct(direction(r), direction(r)); }
 
-	default CollectionProducer<Scalar> oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
+	default CollectionProducer<Scalar> oDotd(Producer<Ray> r) { return dotProduct(origin(r), direction(r)); }
 
-	default CollectionProducer<Ray> transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
+	default CollectionProducer<Ray> transform(TransformMatrix t, Producer<Ray> r) {
 		return ray(
 				TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)),
 				TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));

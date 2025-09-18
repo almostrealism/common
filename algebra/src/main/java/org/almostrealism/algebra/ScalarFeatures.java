@@ -16,14 +16,8 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Min;
-import io.almostrealism.expression.Mod;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.Choice;
@@ -41,7 +35,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -58,56 +51,13 @@ public interface ScalarFeatures extends CollectionFeatures {
 	 * @param value The {@link Scalar} containing the constant values
 	 * @return An {@link ExpressionComputation} that evaluates to the specified {@link Scalar}
 	 */
-	static ExpressionComputation<Scalar> of(Scalar value) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
+	static CollectionProducer<Scalar> of(Scalar value) {
+		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 	}
 
 	default CollectionProducer<Scalar> v(Scalar value) { return value(value); }
 
 	default CollectionProducer<Scalar> scalar(double value) { return value(new Scalar(value)); }
-
-	/**
-	 * Creates a {@link Scalar} producer from a generic {@link Producer}.
-	 * This method handles conversion of various producer types to {@link Scalar} computations,
-	 * with special handling for {@link ExpressionComputation} instances.
-	 * 
-	 * <p>For {@link ExpressionComputation} inputs:</p>
-	 * <ul>
-	 *   <li>If the expression has 1 element: creates a 2-element scalar with the expression and a constant 1.0</li>
-	 *   <li>If the expression has 2 elements: uses the expressions directly for the scalar components</li>
-	 *   <li>Other sizes: throws IllegalArgumentException</li>
-	 * </ul>
-	 * 
-	 * <p>For {@link Shape} inputs: extracts values up to 2 elements, padding with 1.0 if needed</p>
-	 * 
-	 * @param value The producer to convert to a {@link Scalar}
-	 * @return A {@link CollectionProducer} that produces {@link Scalar} values
-	 * @throws IllegalArgumentException if ExpressionComputation has unsupported size
-	 * @throws UnsupportedOperationException if the producer type is not supported
-	 */
-	default CollectionProducer<Scalar> scalar(Producer<?> value) {
-		if (value instanceof Shape) {
-			TraversalPolicy shape = ((Shape) value).getShape();
-
-			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
-					IntStream.range(0, 2).mapToObj(i -> {
-								if (i < shape.getSize()) {
-									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-											np -> np.get(1).getValueRelative(i);
-								} else {
-									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-											np -> new DoubleConstant(1.0);
-								}
-							})
-							.collect(Collectors.toList());
-			return (ExpressionComputation<Scalar>) new ExpressionComputation<>(expressions, (Supplier) value)
-					.setPostprocessor(Scalar.postprocessor());
-		} else {
-			throw new UnsupportedOperationException();
-		}
-	}
 
 	default CollectionProducer<Scalar> value(Scalar value) {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());

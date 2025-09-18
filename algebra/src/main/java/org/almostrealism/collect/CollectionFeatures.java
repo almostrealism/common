@@ -2677,13 +2677,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						mod(shape, args[1], args[2]), a, b);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
 	}

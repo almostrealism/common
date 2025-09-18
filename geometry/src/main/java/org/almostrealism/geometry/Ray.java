@@ -112,25 +112,25 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
-	public Evaluable<Scalar> oDoto() {
+	public Evaluable<PackedCollection<?>> oDoto() {
 		// TODO  Cache
-		return scalar(origin(cp(this)).multiply(origin(cp(this))).sum()).get();
+		return origin(cp(this)).multiply(origin(cp(this))).sum().get();
 	}
 	
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
-	public Evaluable<Scalar> dDotd() {
+	public Evaluable<PackedCollection<?>> dDotd() {
 		// TODO  Cache
-		return scalar(direction(cp(this)).multiply(direction(cp(this))).sum()).get();
+		return direction(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
 	
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
-	public Evaluable<Scalar> oDotd() {
+	public Evaluable<PackedCollection<?>> oDotd() {
 		// TODO  Cache
-		return scalar(origin(cp(this)).multiply(direction(cp(this))).sum()).get();
+		return origin(cp(this)).multiply(direction(cp(this))).sum().get();
 	}
 	
 	/**
@@ -153,7 +153,7 @@ public class Ray extends PackedCollection<Ray> implements GeometryFeatures, Clon
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public CollectionProducer<Vector> pointAt(Producer<Scalar> t) {
+	public CollectionProducer<Vector> pointAt(Producer<PackedCollection<?>> t) {
 		return pointAt(v(this), t);
 	}
 

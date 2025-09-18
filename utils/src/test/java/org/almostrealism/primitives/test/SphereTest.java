@@ -36,7 +36,7 @@ public class SphereTest implements TestFeatures {
 
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
-		Scalar distance = f.getDistance().get().evaluate();
+		PackedCollection<?> distance = f.getDistance().get().evaluate();
 		System.out.println(distance);
 		assertEquals(-1, distance);
 
@@ -81,7 +81,7 @@ public class SphereTest implements TestFeatures {
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
 		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
-		Evaluable<Scalar> ev = scalar(greaterThan(c(d), c(0.0), scalar(1.0), scalar(-1.0))).get();
+		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;
@@ -114,7 +114,7 @@ public class SphereTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
-		Evaluable<Scalar> ev = f.getDistance().get();
+		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;
@@ -149,7 +149,7 @@ public class SphereTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
-		Evaluable<Scalar> ev = f.getDistance().get();
+		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination).evaluate(positions);
 
 		int hits = 0;

@@ -23,6 +23,7 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
@@ -34,22 +35,37 @@ import java.util.function.Supplier;
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
+		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 	}
 
 	@Test
 	public void pointAtTest2() {
-		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 
 	@Test
 	public void dynamicPointAt() {
-		Producer<Scalar> d = () -> new AdaptEvaluable<>(scalar(-20).get());
-		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
+		Producer<PackedCollection<?>> d = () -> new AdaptEvaluable<>(c(-20).get());
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), (Producer) d);
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+	}
+
+	@Test
+	public void directions() {
+		Producer<Vector> directions = direction(v(shape(-1, 6), 0));
+
+		PackedCollection<Ray> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.set(0, new Ray(new Vector(1, 2, 3), new Vector(4, 5, 6)));
+		rays.set(1, new Ray(new Vector(7, 8, 9), new Vector(10, 11, 12)));
+		rays.set(2, new Ray(new Vector(13, 14, 15), new Vector(16, 17, 18)));
+
+		PackedCollection<?> d = directions.evaluate(rays);
+		assertEquals(new Vector(4, 5, 6), d.get(0));
+		assertEquals(new Vector(10, 11, 12), d.get(1));
+		assertEquals(new Vector(16, 17, 18), d.get(2));
 	}
 
 	@Test

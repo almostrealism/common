@@ -132,12 +132,8 @@ public interface RGBFeatures extends ScalarFeatures {
 		return rgb((Producer) value, (Producer) value, (Producer) value);
 	}
 
-	default CollectionProducer<RGB> cfromScalar(Scalar value) {
-		return cfromScalar(ScalarFeatures.of(value));
-	}
-
 	default CollectionProducer<RGB> cfromScalar(double value) {
-		return cfromScalar(new Scalar(value));
+		return cfromScalar(c(value));
 	}
 
 	default Producer<RGB> attenuation(double da, double db, double dc,

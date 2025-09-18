@@ -18,6 +18,7 @@ package org.almostrealism.space.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
@@ -42,7 +43,7 @@ public class PlaneTest implements TestFeatures {
 	// TODO @Test
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
-		double distance = intersection.getDistance().evaluate().getValue();
+		double distance = intersection.getDistance().evaluate().toDouble();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
@@ -54,10 +55,9 @@ public class PlaneTest implements TestFeatures {
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
-		// p.compact();
+		Producer<PackedCollection<?>> p = intersection.getDistance();
 
-		double distance = p.get().evaluate().getValue();
+		double distance = p.get().evaluate().toDouble();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
@@ -73,9 +73,7 @@ public class PlaneTest implements TestFeatures {
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		verboseLog(() -> {
-			Assert.assertTrue(intersection.getDistance().get().evaluate().getValue() < 0);
-		});
+		Assert.assertTrue(intersection.getDistance().get().evaluate().toDouble() < 0);
 	}
 
 	// TODO @Test
@@ -97,7 +95,7 @@ public class PlaneTest implements TestFeatures {
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = t.get().evaluate().pointAt(scalar(-20)).get().evaluate();
+		Vector v = t.get().evaluate().pointAt(c(-20)).get().evaluate();
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

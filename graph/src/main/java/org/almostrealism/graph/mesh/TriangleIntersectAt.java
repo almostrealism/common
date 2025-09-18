@@ -34,7 +34,8 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class TriangleIntersectAt extends LessThanScalar {
-	private static TriangleIntersectAt create(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+	private static TriangleIntersectAt create(Producer<PackedCollection<?>> t,
+											  Producer<Ray> r) {
 		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
 				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
@@ -108,7 +109,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	// TODO  Make private
 	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
-		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(s, h)));
+		return f.multiply(Ops.o().dotProduct(s, h));
 	}
 
 	// TODO  Make private
@@ -118,14 +119,14 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	// TODO  Make private
 	public static Producer<Scalar> v(Producer<Vector> direction, CollectionProducer<Scalar> f, CollectionProducer<Vector> q) {
-		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(direction, q)));
+		return f.multiply(Ops.o().dotProduct(direction, q));
 	}
 
 	private static Producer<Scalar> t(Producer<Vector> def, Producer<Scalar> f, CollectionProducer<Vector> q) {
 		return Ops.o().multiply(f, Ops.o().dotProduct(def, q));
 	}
 
-	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+	public static TriangleIntersectAt construct(Producer<PackedCollection<?>> t, Producer<Ray> r) {
 		return create(t, r);
 	}
 }

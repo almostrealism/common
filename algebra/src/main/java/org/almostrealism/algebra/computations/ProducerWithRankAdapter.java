@@ -36,12 +36,12 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	 * {@link Producer} argument, which requires that the
 	 * {@link #get()} method be overridden.
 	 */
-	protected ProducerWithRankAdapter(Producer<Scalar> rank) {
+	protected ProducerWithRankAdapter(Producer rank) {
 		this.p = this;
 		this.rank = rank;
 	}
 
-	public ProducerWithRankAdapter(Producer<T> p, Producer<Scalar> rank) {
+	public ProducerWithRankAdapter(Producer<T> p, Producer rank) {
 		this.p = p;
 		this.rank = rank;
 	}
