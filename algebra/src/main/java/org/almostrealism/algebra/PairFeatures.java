@@ -51,16 +51,12 @@ public interface PairFeatures extends CollectionFeatures {
 		return DefaultTraversableExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 
-	default CollectionProducer<Scalar> l(Producer<Pair<?>> p) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueRelative(0),
-				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
+	default CollectionProducer<PackedCollection<?>> l(Producer<Pair<?>> p) {
+		return subset(shape(1), p, 0);
 	}
 
-	default CollectionProducer<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueRelative(1),
-				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
+	default CollectionProducer<PackedCollection<?>> r(Producer<Pair<?>> p) {
+		return subset(shape(1), p, 1);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiplyComplex(Producer<T> a, Producer<T> b) {

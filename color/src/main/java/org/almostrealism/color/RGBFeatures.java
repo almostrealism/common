@@ -44,12 +44,6 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default CollectionProducer<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
-	default CollectionProducer<RGB> rgb(Producer<RGB> rgb) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
-		return (ExpressionComputation<RGB>) new ExpressionComputation<>(comp, (Supplier) rgb).setPostprocessor(RGB.postprocessor());
-	}
-
 	default CollectionProducer<RGB> rgb(Producer<PackedCollection<?>> r,
 										Producer<PackedCollection<?>> g,
 										Producer<PackedCollection<?>> b) {

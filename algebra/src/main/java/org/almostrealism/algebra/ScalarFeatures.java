@@ -16,10 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.Choice;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
@@ -30,16 +27,11 @@ import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures {
 

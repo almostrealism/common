@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -96,12 +96,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 		}
 	}
 
-	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time,
-														Supplier<Evaluable<? extends Scalar>> value) {
-		return new ExpressionComputation<>(
-				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
-				(Supplier) time, (Supplier) value)
-				.setPostprocessor(TemporalScalar.postprocessor());
+	default CollectionProducer<TemporalScalar> temporal(Producer<PackedCollection<?>> time,
+														Producer<PackedCollection<?>> value) {
+		return concat(shape(2), time, value);
 	}
 
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,

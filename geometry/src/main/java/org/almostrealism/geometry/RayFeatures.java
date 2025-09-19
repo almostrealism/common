@@ -23,12 +23,8 @@ import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import io.almostrealism.relation.Evaluable;
 
-import java.util.List;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 
 public interface RayFeatures extends VectorFeatures {
 
@@ -51,20 +47,12 @@ public interface RayFeatures extends VectorFeatures {
 				values.apply(3), values.apply(4), values.apply(5));
 	}
 
-	default ExpressionComputation<Vector> origin(Supplier<Evaluable<? extends Ray>> r) {
-		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
-				args -> args.get(1).getValueRelative(0),
-				args -> args.get(1).getValueRelative(1),
-				args -> args.get(1).getValueRelative(2)),
-				(Supplier) r).setPostprocessor(Vector.postprocessor());
+	default CollectionProducer<Vector> origin(Producer<Ray> r) {
+		return subset(shape(3), r, 0);
 	}
 
 	default CollectionProducer<Vector> direction(Producer<Ray> r) {
-		return new ExpressionComputation<Vector>(List.of(
-				args -> args.get(1).getValueRelative(3),
-				args -> args.get(1).getValueRelative(4),
-				args -> args.get(1).getValueRelative(5)),
-				(Supplier) r);
+		return subset(shape(3), r, 3);
 	}
 
 	default CollectionProducer<Vector> pointAt(Producer<Ray> r, Producer<PackedCollection<?>> t) {

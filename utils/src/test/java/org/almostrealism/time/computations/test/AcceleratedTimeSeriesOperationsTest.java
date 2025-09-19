@@ -97,7 +97,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add(temporal(r(p(cursors)), scalar(30)));
+		return series.add(temporal(r(p(cursors)), c(30)));
 	}
 
 	protected Supplier<Runnable> assign() {

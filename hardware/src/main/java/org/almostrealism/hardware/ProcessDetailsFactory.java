@@ -44,6 +44,7 @@ import java.util.stream.Stream;
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
 	public static boolean enableAsync = false;
 	public static boolean enableArgumentKernelSize = true;
+	public static boolean enableArgumentReferenceKernelSize = true;
 	public static boolean enableOutputCount = true;
 	public static boolean enableConstantCache = true;
 	public static boolean enableKernelSizeWarnings =
@@ -170,7 +171,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			// If the kernel size can be inferred from this operation argument
 			// capture it from the argument to the evaluation
-			if (kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCountLong() > 1) {
+			if (enableArgumentReferenceKernelSize && kernelArgs[i] instanceof MemoryBank && ((MemoryBank<?>) kernelArgs[i]).getCountLong() > 1) {
 				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCountLong();
 			}
 		}

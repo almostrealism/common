@@ -26,6 +26,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -62,7 +63,11 @@ public class RayTest implements TestFeatures {
 		rays.set(1, new Ray(new Vector(7, 8, 9), new Vector(10, 11, 12)));
 		rays.set(2, new Ray(new Vector(13, 14, 15), new Vector(16, 17, 18)));
 
-		PackedCollection<?> d = directions.evaluate(rays);
+		PackedCollection<?> d = new PackedCollection<>(shape(3, 3).traverse(1));
+
+		directions.into(d.each()).evaluate(rays);
+		d.print();
+
 		assertEquals(new Vector(4, 5, 6), d.get(0));
 		assertEquals(new Vector(10, 11, 12), d.get(1));
 		assertEquals(new Vector(16, 17, 18), d.get(2));

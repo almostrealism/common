@@ -274,6 +274,18 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	 */
 	@Override
 	protected Expression projectIndex(Expression index) {
+		Expression block;
+		long blockSize = getShape().getTotalSizeLong();
+
+		if (!isFixedCount()) {
+			// Determine the current block
+			block = index.divide(blockSize);
+			index = index.imod(blockSize);
+		} else {
+			// There can be only one block
+			block = e(0);
+		}
+
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 
 		Expression<?> p;
@@ -288,7 +300,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			p = inputShape.subset(getShape(), index, pos);
 		}
 
-		return p;
+		return block.multiply(inputShape.getTotalSizeLong()).add(p);
 	}
 
 	/**
