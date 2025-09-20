@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
@@ -84,26 +83,11 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 		return values.uniqueNonZeroOffset(globalIndex);
 	}
 
-	default Expression uniqueNonZeroIndex(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		Expression offset = uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-		if (offset == null) return null;
-
-		return ((Expression) globalIndex)
-				.multiply(Math.toIntExact(localIndex.getLimit().getAsLong()))
-				.add(offset);
-	}
-
-	default Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
-		return uniqueNonZeroIndex(new KernelIndex(), localIndex, targetIndex);
-	}
-
 	default boolean isIndexIndependent() { return false; }
 
 	default boolean isTraversable() {
 		return true;
 	}
-
-	default boolean isRelative() { return false; }
 
 	static TraversableExpression traverse(Object o) {
 		if (o instanceof TraversableExpression) {

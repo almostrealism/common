@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 
 import java.util.Set;
-import java.util.function.IntFunction;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
 
@@ -80,11 +79,7 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 
 	@Override
 	public Expression<T> getValueRelative(Expression index) {
-		if (expression.isRelative()) {
-			return expression.getValueRelative(index);
-		} else {
-			return expression.getValueAt(offset.get().add(index));
-		}
+		return expression.getValueAt(offset.get().add(index));
 	}
 
 	@Override
@@ -93,25 +88,5 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression targetIndex) {
-		if (expression.isRelative()) {
-			return expression.uniqueNonZeroIndexRelative(localIndex, targetIndex);
-		} else {
-			Set<Index> indices = offset.get().getIndices();
-
-			if (indices.isEmpty()) {
-				return null;
-			} else if (indices.size() > 1) {
-				throw new UnsupportedOperationException();
-			}
-
-			return expression.uniqueNonZeroIndex(indices.iterator().next(), localIndex, offset.get().add(targetIndex));
-		}
-	}
-
-	@Override
 	public boolean isTraversable() { return expression.isTraversable(); }
-
-	@Override
-	public boolean isRelative() { return expression.isRelative(); }
 }

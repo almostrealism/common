@@ -107,9 +107,6 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		if (isFixedCount()) {
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
-			if (inputArg.isRelative()) {
-				throw new UnsupportedOperationException();
-			}
 
 			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());

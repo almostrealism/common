@@ -160,11 +160,6 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
-		return getExpression(new IntegerConstant(0)).uniqueNonZeroIndexRelative(localIndex, targetIndex);
-	}
-
-	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
 		throw new UnsupportedOperationException();
 	}

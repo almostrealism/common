@@ -528,22 +528,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
-		return producer instanceof TraversableExpression ?
-				((TraversableExpression) producer).uniqueNonZeroIndexRelative(localIndex, targetIndex) :
-				TraversableExpression.super.uniqueNonZeroIndexRelative(localIndex, targetIndex);
-	}
-
-	@Override
 	public boolean isTraversable() {
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
-	}
-
-	@Override
-	public boolean isRelative() {
-		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isRelative();
-		return true;
 	}
 
 	@Override
