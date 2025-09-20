@@ -48,9 +48,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
 					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
 
-	public static boolean enableDimensionMasks = false;
-	public static boolean enableAtomicDimensionMasks = true;
-
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 
@@ -165,7 +162,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 				}
 			}
 
-			if (enableAtomicDimensionMasks && getGlobalWorkSize() == 1) {
+			if (getGlobalWorkSize() == 1) {
 				return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
 			} else {
 				if (getGlobalWorkSize() > Integer.MAX_VALUE) {

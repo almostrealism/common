@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -83,7 +84,7 @@ public class NativeExecution extends HardwareOperator {
 		int dimMasks[] = computeDimensionMasks(data);
 
 		long s = System.nanoTime();
-		if (enableDimensionMasks) {
+		if (ScopeSettings.enableDimensionMasking) {
 			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
 		} else {
 			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength()).toArray();

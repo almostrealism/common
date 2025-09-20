@@ -20,6 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -148,7 +149,7 @@ public class MetalOperator extends HardwareOperator {
 				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
 				size.setContents(sizeValues);
 
-				if (enableDimensionMasks) {
+				if (ScopeSettings.enableDimensionMasking) {
 					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
 					dim0.setContents(dim0Values);
 				} else {

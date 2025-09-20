@@ -20,6 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
@@ -143,7 +144,7 @@ public class CLOperator extends HardwareOperator {
 
 				for (int i = 0; i < argCount; i++) {
 					if (data[i] != argCache[i]) {
-						if (enableDimensionMasks) {
+						if (ScopeSettings.enableDimensionMasking) {
 							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 									Pointer.to(new int[]{data[i].getAtomicMemLength() * dimMasks[i]})); // Dim0
 						} else {

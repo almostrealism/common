@@ -179,9 +179,19 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	public Expression getDimValue() {
+		return getDimValue(0);
+	}
+
+	public Expression getDimValue(int dimension) {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		return new DimValue(this, 0);
+		if (ScopeSettings.enableDimensionMasking) {
+			return new DimValue(this, dimension);
+		} else if (dimension == 0) {
+			return new SizeValue(this);
+		} else {
+			throw new IllegalArgumentException("Dimension masking is disabled");
+		}
 	}
 
 	public Expression<Integer> length() {
@@ -206,7 +216,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		Expression offset = new IntegerConstant(0);
 
 		if (v.getProducer() instanceof Countable) {
-			Expression dim = new DimValue(v, idx.getKernelAxis());
+			Expression dim = v.getDimValue(idx.getKernelAxis());
 
 			Expression kernelOffset = idx.multiply(dim);
 			return kernelOffset.add(offset).add(pos.toInt());
