@@ -16,27 +16,20 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.texture.GraphicsConverter;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public interface RGBFeatures extends ScalarFeatures {
 

@@ -4,15 +4,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class PairBankTest implements TestFeatures {
 	@Test
@@ -30,7 +23,7 @@ public class PairBankTest implements TestFeatures {
 	public void concat() {
 		Producer<PackedCollection<?>> in = v(shape(-1, 4, 1), 0);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(in, in);
+		CollectionProducer<PackedCollection<?>> concat = concat(shape(4, 2), in, in);
 
 		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
@@ -58,7 +51,7 @@ public class PairBankTest implements TestFeatures {
 
 		verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-			destination.print();
+			destination.traverse(1).print();
 		});
 
 		assertEquals(6.0, destination.valueAt(2, 0));

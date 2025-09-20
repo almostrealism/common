@@ -19,19 +19,13 @@ package org.almostrealism.geometry.test;
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.function.Supplier;
 
 public class RayTest implements TestFeatures {
 	@Test

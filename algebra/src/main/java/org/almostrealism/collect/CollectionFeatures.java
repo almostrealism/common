@@ -70,7 +70,6 @@ import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
@@ -866,12 +865,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] = IntStream.range(0, producers.length)
-				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
-				.toArray(Function[]::new);
-		return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers);
+	default <T extends PackedCollection<?>> CollectionProducer<T> concat(Producer<PackedCollection<?>>... producers) {
+		return concat(0, producers);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {

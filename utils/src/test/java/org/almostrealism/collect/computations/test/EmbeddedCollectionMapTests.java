@@ -16,25 +16,13 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertions {
 

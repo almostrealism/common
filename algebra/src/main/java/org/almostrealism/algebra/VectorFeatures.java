@@ -19,25 +19,17 @@ package org.almostrealism.algebra;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 
 public interface VectorFeatures extends ScalarFeatures {
 	default CollectionProducer<Vector> v(Vector value) { return value(value); }

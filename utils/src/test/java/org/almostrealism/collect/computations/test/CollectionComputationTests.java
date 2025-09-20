@@ -18,31 +18,21 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.function.Function;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {

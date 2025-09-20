@@ -16,9 +16,10 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.Choice;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatement;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanScalar;
@@ -27,8 +28,6 @@ import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.function.Supplier;
@@ -36,12 +35,12 @@ import java.util.function.Supplier;
 public interface ScalarFeatures extends CollectionFeatures {
 
 	/**
-	 * Creates an {@link ExpressionComputation} that produces a constant {@link Scalar} value.
+	 * Creates an {@link CollectionProducer} that produces a constant {@link Scalar} value.
 	 * This method creates a computation that returns the values from the provided {@link Scalar},
 	 * effectively creating a constant computation that always returns the same values.
 	 * 
 	 * @param value The {@link Scalar} containing the constant values
-	 * @return An {@link ExpressionComputation} that evaluates to the specified {@link Scalar}
+	 * @return An {@link CollectionProducer} that evaluates to the specified {@link Scalar}
 	 */
 	static CollectionProducer<Scalar> of(Scalar value) {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());

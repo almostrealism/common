@@ -20,19 +20,13 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
-import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -80,22 +74,17 @@ public interface PairFeatures extends CollectionFeatures {
 				(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 	}
 
-	default ExpressionComputation<Pair<?>> complexFromParts(Supplier<Evaluable<? extends PackedCollection<?>>> real,
-															Supplier<Evaluable<? extends PackedCollection<?>>> imag) {
+	default CollectionProducer<Pair<?>> complexFromParts(Producer<PackedCollection<?>> real,
+													     Producer<PackedCollection<?>> imag) {
 		long size = shape(real).getTotalSizeLong();
 		if (shape(imag).getTotalSizeLong() != size) {
 			throw new IllegalArgumentException();
 		}
 
-		boolean pair = size == 1;
-
-		Function<List<ArrayVariable<Double>>, Expression<Double>> comp[] = new Function[2];
-		comp[0] = args -> args.get(1).getValueRelative(0);
-		comp[1] = args -> args.get(2).getValueRelative(0);
-		return (ExpressionComputation<Pair<?>>) new ExpressionComputation(
-//				new TraversalPolicy(size, 2).traverse(1),
-				shape(real).traverseEach().append(shape(2)),
-				List.of(comp), real, imag).setPostprocessor(pair ? Pair.postprocessor() : null);
+		TraversalPolicy shape = shape(real).traverseEach().append(shape(2));
+		real = reshape(shape(real).appendDimension(1), real);
+		imag = reshape(shape(imag).appendDimension(1), imag);
+		return concat(shape, real, imag);
 	}
 
 	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
