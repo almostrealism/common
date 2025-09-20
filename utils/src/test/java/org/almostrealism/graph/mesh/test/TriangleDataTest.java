@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
@@ -74,7 +74,7 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		PackedCollection<PackedCollection<Vector>> points = points();
-		ExpressionComputation<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
+		CollectionProducer<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
 		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));

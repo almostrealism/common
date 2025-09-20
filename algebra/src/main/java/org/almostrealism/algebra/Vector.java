@@ -261,7 +261,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return dotProduct(v(this), v(vector)).get().evaluate().getValue();
+		return dotProduct(v(this), v(vector)).evaluate().toDouble();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */

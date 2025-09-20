@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -64,7 +64,8 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	protected AcceleratedComputationEvaluable<Scalar> dotProductConjunction(Producer<Ray> r) {
-		return conjunction(oDotd(ray(i -> Math.random())), scalar(1), oDotd(v(Ray.shape(), 0)), scalar(1));
+		return conjunction((Producer) oDotd(ray(i -> Math.random())), scalar(1),
+				(Producer) oDotd(v(Ray.shape(), 0)), scalar(1));
 	}
 
 	@Test

@@ -16,22 +16,15 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.expression.Cosine;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 
-import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatures {
@@ -74,19 +67,6 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 														 Producer<PackedCollection<?>> phase,
 														 Producer<PackedCollection<?>> amp) {
 		return sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
-	}
-
-	@Deprecated
-	default ExpressionComputation relativeSin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args ->
-				Sine.of(args.get(1).getValueRelative(0));
-		return new ExpressionComputation(List.of(exp), input);
-	}
-
-	default CollectionProducer<PackedCollection<?>> relativeSinw(Producer<PackedCollection<?>> input,
-																 Producer<PackedCollection<?>> wavelength,
-																 Producer<PackedCollection<?>> amp) {
-		return relativeSin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
 	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {

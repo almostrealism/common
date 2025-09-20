@@ -17,24 +17,19 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 /**
  * A deprecated computation class that evaluates mathematical expressions on {@link PackedCollection} data.
@@ -127,27 +122,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	 * in the output collection.
 	 */
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
-
-	/**
-	 * Creates an ExpressionComputation with automatic shape inference.
-	 * The output shape is determined automatically based on the number of expressions.
-	 * 
-	 * @param expression A list of functions, each taking input {@link ArrayVariable}s and
-	 *                   returning an {@link Expression} that defines the computation for
-	 *                   the corresponding position in the output collection
-	 * @param args       Variable arguments representing the input data suppliers.
-	 *                   Each supplier provides an {@link Evaluable} that produces
-	 *                   a {@link PackedCollection} containing the input data
-	 * 
-	 * @throws IllegalArgumentException if the inferred shape size doesn't match the number of expressions
-	 * 
-	 * @see #ExpressionComputation(TraversalPolicy, List, Supplier[])
-	 */
-	@SafeVarargs
-	public ExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
-								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(new TraversalPolicy(expression.size()), expression, args);
-	}
 
 	/**
 	 * Creates an ExpressionComputation with an explicitly specified output shape.

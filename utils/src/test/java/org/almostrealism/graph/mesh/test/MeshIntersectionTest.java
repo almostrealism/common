@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.mesh.test;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArgumentList;
@@ -24,7 +23,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
@@ -36,7 +34,6 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -99,10 +96,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
+		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		Producer<Scalar> u = TriangleIntersectAt.u(
+		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
@@ -116,16 +113,16 @@ public class MeshIntersectionTest implements TestFeatures {
 		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data1), h);
+		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data1), origin1);
 		System.out.println("s = " + s.get().evaluate());
 
-		Producer<Scalar> u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
+		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().getValue());
 
-		Producer<Scalar> v = TriangleIntersectAt.v(direction1, f,
+		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction1, f,
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
@@ -135,18 +132,18 @@ public class MeshIntersectionTest implements TestFeatures {
 		HardwareEvaluable<Scalar> fo = (HardwareEvaluable) f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
-		HardwareEvaluable<Scalar> uo = (HardwareEvaluable<Scalar>) u.get();
+		HardwareEvaluable<PackedCollection<?>> uo = (HardwareEvaluable<PackedCollection<?>>) u.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
 
-		HardwareEvaluable<Scalar> vo = (HardwareEvaluable<Scalar>) v.get();
+		HardwareEvaluable<PackedCollection<?>> vo = (HardwareEvaluable<PackedCollection<?>>) v.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
-				scalarGreaterThan(u, scalar(0.0), true),
-				scalarLessThan(u, scalar(1.0), true),
-				scalarGreaterThan(v, scalar(0.0), true),
-				scalarLessThan(add(u, v), scalar(1.0), true));
+				scalarGreaterThan((Producer) u, scalar(0.0), true),
+				scalarLessThan((Producer) u, scalar(1.0), true),
+				scalarGreaterThan((Producer) v, scalar(0.0), true),
+				scalarLessThan((Producer) add(u, v), scalar(1.0), true));
 		ArgumentList<Scalar> evs = (ArgumentList) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
@@ -166,10 +163,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data2), direction2);
 		System.out.println("h = " + h.get().evaluate());
 
-		CollectionProducer<Scalar> f = TriangleIntersectAt.f(abc(data2), h);
+		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data2), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		Producer<Scalar> u = TriangleIntersectAt.u(
+		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
@@ -181,7 +178,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		CollectionProducer<Vector> q = TriangleIntersectAt.q(abc(data2), s);
 		System.out.println("q = " + q.get().evaluate());
 
-		Producer<Scalar> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
+		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
 		System.out.println("v = " + v.get().evaluate().getValue());
 	}
 

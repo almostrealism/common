@@ -93,15 +93,13 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	@Deprecated
-	default ExpressionComputation<Scalar> dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> Sum.of(
-				Product.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
-				Product.of(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1)),
-				Product.of(args.get(1).getValueRelative(2), args.get(2).getValueRelative(2))
-				));
-		comp.add(args -> expressionForDouble(1.0));
-		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
+	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
+		return new DefaultTraversableExpressionComputation<>("dotProduct", shape(1), args ->
+				CollectionExpression.create(shape(1), idx -> Sum.of(
+				Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(0))),
+				Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(1))),
+				Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(2)))
+				)), a, b);
 	}
 
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {

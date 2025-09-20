@@ -65,8 +65,8 @@ public interface ScalarFeatures extends CollectionFeatures {
 		return new Choice(resultShape, choiceCount, decision, choices);
 	}
 
-	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,
-																	  Supplier<Evaluable<? extends Scalar>> right,
+	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Producer<Scalar> left,
+																	  Producer<Scalar> right,
 																	  boolean includeEqual) {
 		return scalarGreaterThan(left, right, null, null, includeEqual);
 	}

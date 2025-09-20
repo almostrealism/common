@@ -17,7 +17,6 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -59,11 +58,11 @@ public interface RayFeatures extends VectorFeatures {
 		return vector(direction(r).multiply(t).add(origin(r)));
 	}
 
-	default CollectionProducer<Scalar> oDoto(Producer<Ray> r) { return dotProduct(origin(r), origin(r)); }
+	default CollectionProducer<PackedCollection<?>> oDoto(Producer<Ray> r) { return dotProduct(origin(r), origin(r)); }
 
-	default CollectionProducer<Scalar> dDotd(Producer<Ray> r) { return dotProduct(direction(r), direction(r)); }
+	default CollectionProducer<PackedCollection<?>> dDotd(Producer<Ray> r) { return dotProduct(direction(r), direction(r)); }
 
-	default CollectionProducer<Scalar> oDotd(Producer<Ray> r) { return dotProduct(origin(r), direction(r)); }
+	default CollectionProducer<PackedCollection<?>> oDotd(Producer<Ray> r) { return dotProduct(origin(r), direction(r)); }
 
 	default CollectionProducer<Ray> transform(TransformMatrix t, Producer<Ray> r) {
 		return ray(

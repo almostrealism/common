@@ -53,39 +53,40 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	private static TriangleIntersectAt create(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
 											  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-											  CollectionProducer<Scalar> f, CollectionProducer<Vector> q, Producer<Vector> s) {
+											  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s) {
 		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
 	private static TriangleIntersectAt createv(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
-								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<Scalar> f, CollectionProducer<Vector> q, Producer<Vector> s, Producer<Scalar> v) {
+								  			   CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
+								               CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
+											   Producer<PackedCollection<?>> v) {
 		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
 	private static TriangleIntersectAt createu(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
 								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<Scalar> f, CollectionProducer<Vector> q, Producer<Vector> s,
-								  Producer<Scalar> u, Producer<Scalar> v) {
+								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
+								  Producer<PackedCollection<?>> u, Producer<PackedCollection<?>> v) {
 		return createt(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
 	}
 
 	private static TriangleIntersectAt createt(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
 								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<Scalar> f, CollectionProducer<Vector> q, Producer<Vector> s,
-								  Producer<Scalar> u, Producer<Scalar> v, Producer<Scalar> t) {
+								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
+								  Producer<PackedCollection<?>> u, Producer<PackedCollection<?>> v, Producer<PackedCollection<?>> t) {
 		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ScalarFeatures.getInstance().scalar(-1.0),
-						Ops.o().scalarGreaterThan(u, Ops.o().scalar(0.0), true),
-						Ops.o().scalarLessThan(u, Ops.o().scalar(1.0), true),
-						Ops.o().scalarGreaterThan(v, Ops.o().scalar(0.0), true),
-						Ops.o().scalarLessThan(Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
+						Ops.o().scalarGreaterThan((Producer) u, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan((Producer) u, Ops.o().scalar(1.0), true),
+						Ops.o().scalarGreaterThan((Producer) v, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan((Producer) Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
 	}
 
 	protected TriangleIntersectAt(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
 								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<Scalar> f, CollectionProducer<Vector> q, Producer<Vector> s,
+								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
 								  AcceleratedConjunctionScalar trueValue) {
 		super(f, ScalarFeatures.getInstance().scalar(-Intersection.e), trueValue,
 				new GreaterThanScalar(f, ScalarFeatures.getInstance().scalar(Intersection.e), trueValue,
@@ -98,7 +99,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static CollectionProducer<Scalar> f(Producer<Vector> abc, CollectionProducer<Vector> h) {
+	public static CollectionProducer<PackedCollection<?>> f(Producer<Vector> abc, CollectionProducer<Vector> h) {
 		return Ops.o().dotProduct(abc, h);
 	}
 
@@ -108,7 +109,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
+	public static Producer<PackedCollection<?>> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
 		return f.multiply(Ops.o().dotProduct(s, h));
 	}
 
@@ -118,11 +119,13 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> v(Producer<Vector> direction, CollectionProducer<Scalar> f, CollectionProducer<Vector> q) {
+	public static Producer<PackedCollection<?>> v(Producer<Vector> direction,
+												  CollectionProducer<PackedCollection<?>> f,
+												  CollectionProducer<Vector> q) {
 		return f.multiply(Ops.o().dotProduct(direction, q));
 	}
 
-	private static Producer<Scalar> t(Producer<Vector> def, Producer<Scalar> f, CollectionProducer<Vector> q) {
+	private static Producer<PackedCollection<?>> t(Producer<Vector> def, Producer<PackedCollection<?>> f, CollectionProducer<Vector> q) {
 		return Ops.o().multiply(f, Ops.o().dotProduct(def, q));
 	}
 
