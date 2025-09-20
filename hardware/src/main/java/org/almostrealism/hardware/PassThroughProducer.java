@@ -32,6 +32,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
@@ -152,9 +153,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public Expression<Double> getValueAt(Expression index) {
 		if (absolute) {
 			return (Expression) getArgumentVariables().get(0).referenceAbsolute(index);
+		} else if (ScopeSettings.enableDimensionMasking) {
+			return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
+		} else {
+			return (Expression) getArgumentVariables().get(0).referenceRelative(index);
 		}
-
-		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 
 	@Override

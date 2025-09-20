@@ -18,6 +18,7 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.expression.DimValue;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.compute.PhysicalScope;
@@ -156,6 +157,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return reference(pos, false);
 	}
 
+	@Deprecated
 	public Expression<T> referenceDynamic(Expression<?> pos) {
 		return reference(pos, true);
 	}
@@ -163,13 +165,23 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	protected Expression<T> reference(Expression<?> pos, boolean dynamic) {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		if (getDelegate() == null) {
-			return InstanceReference.create(this, pos, dynamic);
-		} else if (getDelegate() == this) {
+		if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
-		} else {
+		} else if (getDelegate() != null) {
 			return getDelegate().reference(pos.add(getDelegateOffset()), false);
 		}
+
+		Expression<?> index = pos;
+		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
+
+		pos = index.toInt();
+		if (dynamic) {
+			index = pos.imod(length());
+			pos = pos.divide(length()).multiply(getDimValue()).add(index);
+		}
+
+		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
+		return ScopeSettings.enableInstanceReferenceMasking ? Mask.of(condition, ref) : ref;
 	}
 
 	public Expression getOffsetValue() {

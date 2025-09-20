@@ -39,7 +39,6 @@ import java.util.function.BiFunction;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
-	public static boolean enableMask = false;
 
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
@@ -130,7 +129,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	}
 
 	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
-		if (children.size() == 0) {
+		if (children.isEmpty()) {
 			return new InstanceReference<>(var);
 		} else if (children.size() == 1) {
 			return new InstanceReference<>(var, children.get(0), index);
@@ -146,21 +145,5 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) e;
 		return Objects.equals(var, alt.var) && Objects.equals(pos, alt.pos) && Objects.equals(index, alt.index);
-	}
-
-	public static <T> Expression<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
-		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
-
-		Expression<?> pos = index.toInt();
-		if (dynamic) {
-			index = pos.imod(var.length());
-			pos = pos.divide(var.length()).multiply(var.getDimValue()).add(index);
-		}
-
-		if (enableMask) {
-			return Mask.of(condition, new InstanceReference<>(var, pos, index));
-		} else {
-			return new InstanceReference<>(var, pos, index);
-		}
 	}
 }
