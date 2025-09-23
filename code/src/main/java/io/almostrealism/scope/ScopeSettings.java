@@ -36,7 +36,8 @@ public class ScopeSettings {
 	public static boolean enableInstructionSetReuse = true;
 
 	public static boolean enableKernelIndexAliases = false;
-	public static boolean enableDimensionMasking = false;
+	public static boolean enableDimensionMasking = true;
+	public static boolean enableRelativePassThrough = !enableDimensionMasking;
 	public static boolean enableInstanceReferenceMasking = false;
 
 	public static boolean enableKernelSeqCache = false;
