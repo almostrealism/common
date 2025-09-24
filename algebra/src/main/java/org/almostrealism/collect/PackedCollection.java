@@ -474,11 +474,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
-	public void store(File f) throws IOException {
-		store(new FileOutputStream(f));
+	public void save(File f) throws IOException {
+		save(new FileOutputStream(f));
 	}
 
-	public void store(OutputStream out) throws IOException {
+	public void save(OutputStream out) throws IOException {
 		try (DataOutputStream dos = new DataOutputStream(out)) {
 			getShape().store(dos);
 
