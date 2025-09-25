@@ -229,7 +229,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 */
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return super.prepareMetadata(metadata).withShape(getShape());
+		return super.prepareMetadata(metadata).withShape(getShape()).withSignature(signature());
 	}
 
 	/**

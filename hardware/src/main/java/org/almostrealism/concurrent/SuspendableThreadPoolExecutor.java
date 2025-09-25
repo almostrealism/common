@@ -1,17 +1,17 @@
 /*
  * Copyright 2025 Michael Murray
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 package org.almostrealism.concurrent;
@@ -20,14 +20,20 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToDoubleFunction;
 
 public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements ConsoleFeatures {
-	private volatile double minPriorityThreshold;
+	private static long id = 0;
+
 	private final Object suspensionLock = new Object();
-	private ToDoubleFunction<Runnable> priority;
+
+    private volatile double minPriorityThreshold;
+	private volatile boolean highPriorityTaskAdded;
+
+    private ToDoubleFunction<Runnable> priority;
 
 	public SuspendableThreadPoolExecutor() {
 		this(r -> 0.5);
@@ -40,61 +46,136 @@ public class SuspendableThreadPoolExecutor extends ThreadPoolExecutor implements
 		setPriority(priority);
 	}
 
-	public SuspendableThreadPoolExecutor(int corePoolSize, int maximumPoolSize,
-										 long keepAliveTime, TimeUnit unit,
-										 PriorityBlockingQueue<? extends Runnable> queue) {
-		super(corePoolSize, maximumPoolSize, keepAliveTime, unit,
-				(PriorityBlockingQueue) queue);
-		minPriorityThreshold = -1.0;
-	}
+    public SuspendableThreadPoolExecutor(int corePoolSize, int maximumPoolSize,
+                                         long keepAliveTime, TimeUnit unit,
+                                         PriorityBlockingQueue<? extends Runnable> queue) {
+        super(corePoolSize, maximumPoolSize, keepAliveTime, unit,
+                (PriorityBlockingQueue) queue,
+				SuspendableThreadPoolExecutor.threadFactory(id++));
+        minPriorityThreshold = -1.0;
+    }
 
-	public ToDoubleFunction<Runnable> getPriority() {
-		return priority;
-	}
+    public ToDoubleFunction<Runnable> getPriority() {
+        return priority;
+    }
 
-	public void setPriority(ToDoubleFunction<Runnable> priority) {
-		this.priority = priority;
-	}
+    public void setPriority(ToDoubleFunction<Runnable> priority) {
+        this.priority = priority;
+    }
 
-	public void suspendTasks(double minPriority) {
-		setPriorityThreshold(minPriority);
-	}
+    public void suspendTasks(double minPriority) {
+        setPriorityThreshold(minPriority);
+    }
 
-	public void resumeAllTasks() {
-		setPriorityThreshold(-1.0);
-	}
+    public void resumeAllTasks() {
+        setPriorityThreshold(-1.0);
+    }
 
-	public void setPriorityThreshold(double minPriority) {
-		if (minPriority == minPriorityThreshold) {
-			return;
-		}
+    public void setPriorityThreshold(double minPriority) {
+        if (minPriority == minPriorityThreshold) {
+            return;
+        }
 
-		synchronized (suspensionLock) {
-			this.minPriorityThreshold = minPriority;
-			suspensionLock.notifyAll();
-		}
-	}
+        synchronized (suspensionLock) {
+            this.minPriorityThreshold = minPriority;
+            suspensionLock.notifyAll();
+        }
+    }
 
-	@Override
-	protected void beforeExecute(Thread t, Runnable r) {
-		super.beforeExecute(t, r);
-		if (priority == null) return;
+    public double getPriorityThreshold() { 
+        return minPriorityThreshold; 
+    }
 
-		if (priority.applyAsDouble(r) < minPriorityThreshold) {
-			log("Priority for " + r + " is " + priority.applyAsDouble(r) +
-					" (threshold is " + minPriorityThreshold + ")");
-		}
+    @Override
+    public void execute(Runnable command) {
+		super.execute(command);
 
-		synchronized (suspensionLock) {
-			while (priority.applyAsDouble(r) < minPriorityThreshold) {
-				try {
-					// Wait until resumed or the threshold is lowered
-					suspensionLock.wait();
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
+        // If this task exceeds the priority threshold, make sure
+		// to notify suspended threads to take it up instead
+        if (priority != null && priority.applyAsDouble(command) >= minPriorityThreshold) {
+            synchronized (suspensionLock) {
+                highPriorityTaskAdded = true;
+                suspensionLock.notifyAll();
+            }
+        }
+    }
+
+    @Override
+    protected void beforeExecute(Thread t, Runnable r) {
+        super.beforeExecute(t, r);
+        if (priority == null) return;
+
+        double taskPriority = priority.applyAsDouble(r);
+        
+        synchronized (suspensionLock) {
+            while (taskPriority < minPriorityThreshold) {
+                // Check if a high-priority task was added while we were waiting
+                if (highPriorityTaskAdded) {
+					highPriorityTaskAdded = false;
+
+					// Put the current low-priority task back in the queue
+                    log("Abandoning " + r);
+                    getQueue().offer(r);
+
+                    throw new TaskAbandonedException("Task abandoned for higher priority work");
+                }
+
+                if (taskPriority < minPriorityThreshold) {
+                    log("Priority for " + r + " is " + taskPriority +
+                            " (threshold is " + minPriorityThreshold + ")");
+                }
+
+                try {
+                    // Wait until threshold is altered
+					// or new priority task arrives
+                    suspensionLock.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                
+                // Check for updated priority in case it has changed
+                taskPriority = priority.applyAsDouble(r);
+            }
+        }
+    }
+
+    @Override
+    protected void afterExecute(Runnable r, Throwable t) {
+        if (t instanceof TaskAbandonedException) {
+            log("Skipped " + r + " due to higher priority tasks");
+            return;
+        }
+
+        super.afterExecute(r, t);
+    }
+
+	public static ThreadFactory threadFactory(long id) {
+		return threadFactory(new ThreadGroup("SuspendableThreadPool-" + id) {
+			@Override
+			public void uncaughtException(Thread t, Throwable e) {
+				if (e instanceof TaskAbandonedException) {
+					// Don't print stack traces for task abandonment
 					return;
 				}
+
+				super.uncaughtException(t, e);
 			}
-		}
+		});
+	}
+
+	public static ThreadFactory threadFactory(ThreadGroup group) {
+		return new ThreadFactory() {
+			int id = 0;
+
+			@Override
+			public Thread newThread(Runnable r) {
+				return new Thread(group, r, group.getName() + "-" + id++);
+			}
+		};
+	}
+
+	protected static class TaskAbandonedException extends RuntimeException {
+		public TaskAbandonedException(String message) { super(message); }
 	}
 }

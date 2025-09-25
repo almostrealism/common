@@ -50,7 +50,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return getMem() == null;
 	}
 
-	default void load(byte b[]) {
+	default void read(byte b[]) {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
 
 		for (int i = 0; i < getMemLength() * 8; i++) {
@@ -64,7 +64,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
-	default void load(InputStream in) throws IOException {
+	default void read(InputStream in) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {

@@ -148,6 +148,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
 		this.generateSignature = generateSignature;
+		setMetadata(getMetadata().withSignature(signature()));
 	}
 
 	/**

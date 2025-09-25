@@ -143,7 +143,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {
-			throw new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")");
+			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 
 		try {

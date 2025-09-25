@@ -23,13 +23,53 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.function.Function;
 
 public class CollectionEnumerateTests implements TestFeatures {
+
+	@Test
+	public void transposeAbsolute() { transpose(true); }
+
+	@Test
+	public void transposeRelative() { transpose(false); }
+
+	@Test
+	public void transpose() {
+		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
+	}
+
+	public void transpose(boolean absolute) {
+		int n = 64;
+		int m = 256;
+
+		transpose(n, m, input -> {
+			PassThroughProducer p = new PassThroughProducer(shape(n, m), 0, absolute);
+			Evaluable<PackedCollection<?>> transpose = c(p).transpose().get();
+			return transpose
+					.into(new PackedCollection<>(shape(m, n)).each())
+					.evaluate(input.reshape(n, m));
+		});
+	}
+
+	public void transpose(int n, int m, Function<PackedCollection<?>, PackedCollection<?>> operate) {
+		PackedCollection<?> input = new PackedCollection<>(shape(n, m)).randFill();
+		PackedCollection<?> output = operate.apply(input);
+
+		assertEquals(m, output.getShape().length(0));
+		assertEquals(n, output.getShape().length(1));
+
+		for (int i = 0; i < m; i++) {
+			for (int j = 0; j < n; j++) {
+				assertEquals(input.valueAt(j, i), output.valueAt(i, j));
+			}
+		}
+	}
 
 	@Test
 	public void enumerateSmall() {

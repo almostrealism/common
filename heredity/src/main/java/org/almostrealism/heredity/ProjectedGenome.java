@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class ProjectedGenome implements Genome<PackedCollection<?>> {
 	public static final long initialSeed = 0xDEAD;
@@ -105,5 +106,12 @@ public class ProjectedGenome implements Genome<PackedCollection<?>> {
 
 	public ProjectedGenome random() {
 		return new ProjectedGenome(new PackedCollection<>(parameters.getShape()).randFill());
+	}
+
+	@Override
+	public String signature() {
+		return parameters.doubleStream()
+				.mapToObj(Double::toHexString)
+				.collect(Collectors.joining(":"));
 	}
 }
