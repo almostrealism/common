@@ -179,12 +179,18 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 				}
 			}
 
+			Expression<Boolean> cond = Conjunction.of(conditions);
+			if (!cond.booleanValue().orElse(Boolean.TRUE)) {
+				// If conditions are definitely false,
+				// there is no need to obtain the value
+				return e(0.0);
+			}
+
 			// Get the value from the input collection at the computed indices
 			Expression<?> out = args[1].getValueAt(inputShape.index(innerPos));
-			if (conditions.isEmpty()) return out;
 
 			// Return input value if all conditions are met, otherwise return 0
-			return conditional(Conjunction.of(conditions), out, e(0.0));
+			return conditional(cond, out, e(0.0));
 		});
 	}
 

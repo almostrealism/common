@@ -74,6 +74,10 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 
 	@Override
 	public Expression<T> getValueAt(Expression index) {
+		if (index.longValue().orElse(0) < 0) {
+			throw new IllegalArgumentException();
+		}
+
 		return expression.getValueAt(index);
 	}
 

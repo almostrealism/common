@@ -78,6 +78,7 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(v);
 	}
 
+	@Deprecated
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}

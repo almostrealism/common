@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ public class ScalarBankDotProductTest implements TestFeatures {
 	public void scalarBankDotProduct32() {
 		PackedCollection<Scalar> window = window();
 
-		Scalar given = new Scalar(IntStream.range(0, SIZE)
+		PackedCollection<?> given = pack(IntStream.range(0, SIZE)
 				.mapToDouble(i -> window.get(i).getValue() * window.get(i).getValue()).sum());
 
 		verboseLog(() -> {

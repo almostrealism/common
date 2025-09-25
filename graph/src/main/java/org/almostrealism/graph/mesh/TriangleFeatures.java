@@ -68,7 +68,11 @@ public interface TriangleFeatures extends VectorFeatures {
 
 	default CollectionProducer<PackedCollection<Vector>> triangle(Producer<Vector> abc, Producer<Vector> def,
 																  Producer<Vector> jkl, Producer<Vector> normal) {
-		return concat(shape(4, 3), (Producer) abc, (Producer) def, (Producer) jkl, (Producer) normal);
+		return concat(shape(4, 3),
+				reshape(shape(1, 3), abc),
+				reshape(shape(1, 3), def),
+				reshape(shape(1, 3), jkl),
+				reshape(shape(1, 3), normal));
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {

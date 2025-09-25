@@ -109,9 +109,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		if (TestSettings.enableArgumentCountAssertions)
 			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
 
-		double v = lt.evaluate(ray(i -> Math.random()).get().evaluate()).toDouble();
-		System.out.println(v);
-		Assert.assertNotEquals(0, v);
+		PackedCollection<?> r = lt.evaluate(ray(i -> Math.random()).get().evaluate());
+		r.print();
+
+		Assert.assertNotEquals(0.0, r.toDouble(0));
 	}
 
 	@Test

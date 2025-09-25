@@ -31,6 +31,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareOperator;
@@ -113,22 +114,28 @@ public class TriangleTest implements TestFeatures {
 				ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
-	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
+	protected CollectionProducer<Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		CollectionProducerComputationBase<Vector, Vector> originVector =
-				(CollectionProducerComputationBase)
-						((CollectionProducerComputationBase) noRank).getInputs().get(1);
+		if (noRank instanceof ReshapeProducer)
+			noRank = ((ReshapeProducer) noRank).getComputation();
 
-		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
+		CollectionProducer<Vector> originVector =
+				(CollectionProducer)
+						((CollectionProducerComputationBase) noRank).getInputs().get(1);
+		if (originVector instanceof ReshapeProducer) {
+			originVector = (CollectionProducer<Vector>) ((ReshapeProducer) originVector).getComputation();
+		}
+
+		return (CollectionProducer<Vector>) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
 	}
 
 	protected Producer<Vector> originPointProducer() {
-		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+		CollectionProducer<Vector> origin = originProducer();
 		return vector((Producer) ((ComputableBase) origin).getInputs().get(1));
 	}
 
 	protected Producer<Vector> originDirectionProducer() {
-		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+		CollectionProducer<Vector> origin = originProducer();
 		return vector((Producer) ((ComputableBase) origin).getInputs().get(2));
 	}
 

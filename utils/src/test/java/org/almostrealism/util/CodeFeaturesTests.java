@@ -118,7 +118,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation7() {
 		Scalar multiplier = new Scalar(1.0);
-		Producer<PackedCollection<?>> p = multiply(() -> args -> multiplier, c(2.0));
+		Producer<PackedCollection<?>> p = multiply(func(shape(2), args -> multiplier), c(2.0));
 		Producer<PackedCollection<?>> q = add(c(5.0), p);
 		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
 

@@ -120,7 +120,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		} else if (isFixedCount()) {
 			kernelSize = getCount();
 
-			if (output != null && output.getCountLong() != getCountLong()) {
+			if (output != null && !List.of(1L, getCountLong()).contains(output.getCountLong())) {
 				throw new IllegalArgumentException();
 			}
 		} else if (output != null) {

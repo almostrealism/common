@@ -97,13 +97,13 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("h = " + h.get().evaluate());
 
 		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
-		System.out.println("f = " + f.get().evaluate().getValue());
+		System.out.println("f = " + f.get().evaluate().toDouble());
 
 		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().getValue());
+		System.out.println("u = " + u.get().evaluate().toDouble());
 	}
 
 	@Test
@@ -114,17 +114,17 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("h = " + h.get().evaluate());
 
 		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
-		System.out.println("f = " + f.get().evaluate().getValue());
+		System.out.println("f = " + f.get().evaluate().toDouble());
 
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data1), origin1);
 		System.out.println("s = " + s.get().evaluate());
 
 		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().getValue());
+		System.out.println("u = " + u.get().evaluate().toDouble());
 
 		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction1, f,
 							TriangleIntersectAt.q(abc(data1), s));
-		System.out.println("v = " + v.get().evaluate().getValue());
+		System.out.println("v = " + v.get().evaluate().toDouble());
 
 		HardwareEvaluable<Vector> ho = (HardwareEvaluable) h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
@@ -164,13 +164,13 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("h = " + h.get().evaluate());
 
 		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data2), h);
-		System.out.println("f = " + f.get().evaluate().getValue());
+		System.out.println("f = " + f.get().evaluate().toDouble());
 
 		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().getValue());
+		System.out.println("u = " + u.get().evaluate().toDouble());
 
 		Producer<Vector> s = TriangleIntersectAt.s(jkl(data2), origin2);
 		System.out.println("s = " + s.get().evaluate());
@@ -179,7 +179,7 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("q = " + q.get().evaluate());
 
 		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
-		System.out.println("v = " + v.get().evaluate().getValue());
+		System.out.println("v = " + v.get().evaluate().toDouble());
 	}
 
 	@Test

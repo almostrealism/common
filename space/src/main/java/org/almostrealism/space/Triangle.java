@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 //		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
 //				Input.value(Ray.shape(), 0, -1)).get();
 		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
-				Input.value(Ray.shape(), 0)).get();
+				Input.value(new TraversalPolicy(false, false, 6), 0)).get();
 	}
 
 	/**
@@ -256,7 +256,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public Producer<RGB> getValueAt(Producer<Vector> point) {
 		Producer<RGB> dcp = getColorAt(point, useT);
 
-		return () -> args -> {
+		return func(shape(3), args -> {
 			RGB dc = dcp.get().evaluate(args);
 
 			Vector triple = point.get().evaluate(args);
@@ -314,7 +314,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 			} else {
 				return dc;
 			}
-		};
+		});
 	}
 	
 	/**
@@ -324,7 +324,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> p) {
 		if (smooth && vertexData == null) {
-			return () -> args -> {
+			return func(shape(3), args -> {
 				Vector point = p.get().evaluate(args);
 
 				double g = point.getX();
@@ -363,7 +363,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 				n.divideBy(n.length());
 
 				return n;
-			};
+			});
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
@@ -390,7 +390,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		if (enableHardwareOperator) {
 			Evaluable<Ray> er = r.get();
 			// TODO  Perhaps r should be ray...
-			return new ShadableIntersection(this, r, () -> new AdaptEvaluable<>(intersectAt, er, new Provider<>(data)));
+			return new ShadableIntersection(this, r, func(shape(1),
+					args -> new AdaptEvaluable<>(intersectAt, er, new Provider<>(data)).evaluate(args)));
 		} else {
 			final Supplier<Evaluable<? extends Ray>> fr = r;
 

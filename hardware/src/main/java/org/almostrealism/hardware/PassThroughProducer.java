@@ -63,6 +63,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		init();
 	}
 
+	@Deprecated
 	public PassThroughProducer(int size, int argIndex) {
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);

@@ -48,8 +48,8 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		CollectionProducer<Vector> product = multiply(vector(1, 2, 3), c(2));
-		Vector result = product.get().evaluate();
+		CollectionProducer<PackedCollection<?>> product = vector(1, 2, 3).multiply(c(2));
+		Vector result = new Vector(product.get().evaluate(), 0);
 		assertEquals(2, result.getX());
 		assertEquals(4, result.getY());
 		assertEquals(6, result.getZ());
