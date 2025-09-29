@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -32,12 +31,17 @@ import java.util.function.Supplier;
 
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
 
-	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
+	public WaveCellPush(WaveCellData data,
+						PackedCollection<?> wave,
+						Producer<PackedCollection<?>> frame,
+						PackedCollection<?> output) {
 		super(data, wave, frame, output);
 	}
 
-	public WaveCellPush(WaveCellData data, Producer<PackedCollection<?>> wave,
-						Producer<Scalar> frame, Scalar output) {
+	public WaveCellPush(WaveCellData data,
+						Producer<PackedCollection<?>> wave,
+						Producer<PackedCollection<?>> frame,
+						PackedCollection<?> output) {
 		super(data, wave, frame, output);
 	}
 

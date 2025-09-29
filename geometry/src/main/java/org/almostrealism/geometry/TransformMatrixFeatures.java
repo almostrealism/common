@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,12 +25,16 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,13 +42,34 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface TransformMatrixFeatures extends CollectionFeatures {
+public interface TransformMatrixFeatures extends MatrixFeatures {
 	boolean enableCollectionExpression = true;
 
 	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
 	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
 		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
+	}
+
+	default CollectionProducer<TransformMatrix> translationMatrix(Producer<Vector> offset) {
+		CollectionProducer m = pad(shape(4, 4), c(offset).reshape(3, 1), 0, 3)
+				.add(identity(4));
+
+		if (m instanceof ReshapeProducer) {
+			((CollectionProducerComputationBase) ((ReshapeProducer) m).getComputation())
+					.setPostprocessor(TransformMatrix.postprocessor());
+		} else {
+			((CollectionProducerComputationBase) m)
+					.setPostprocessor(TransformMatrix.postprocessor());
+		}
+
+		return m;
+	}
+
+	default CollectionProducer<TransformMatrix> scaleMatrix(Producer<Vector> scale) {
+		CollectionProducerComputationBase m = (CollectionProducerComputationBase)
+				diagonal(concat(shape(4), (Producer) scale, c(1.0)));
+		return m.setPostprocessor(TransformMatrix.postprocessor());
 	}
 
 	default CollectionProducerComputation<Vector> transformAsLocation(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {

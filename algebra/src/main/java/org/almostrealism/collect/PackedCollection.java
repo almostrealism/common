@@ -44,6 +44,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -130,6 +131,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 					shape.subset(shape.getTraversalAxis()), shape.getTraversalAxis(),
 					null, this, shape.getSize() * index);
 		}
+	}
+
+	public PackedCollection<?> get(int index, TraversalPolicy memberShape) {
+		return range(memberShape, index * memberShape.getTotalSize());
 	}
 
 	@Override
@@ -469,11 +474,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
-	public void store(File f) throws IOException {
-		store(new FileOutputStream(f));
+	public void save(File f) throws IOException {
+		save(new FileOutputStream(f));
 	}
 
-	public void store(OutputStream out) throws IOException {
+	public void save(OutputStream out) throws IOException {
 		try (DataOutputStream dos = new DataOutputStream(out)) {
 			getShape().store(dos);
 
@@ -523,6 +528,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static PackedCollection<?> of(List<Double> values) {
+		return of(values.stream().mapToDouble(d -> d).toArray());
 	}
 
 	public static PackedCollection<?> of(double... values) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -39,8 +38,7 @@ public class CursorPair extends Pair {
 
 	public double getDelayCursor() { return getB(); }
 
-	public Supplier<Runnable> increment(Producer<Scalar> value) {
-		Producer<PackedCollection<?>> v = concat(c(value, 0), c(value, 0));
-		return a("CursorPair Increment", p(this), add(p(this), v));
+	public Supplier<Runnable> increment(Producer<PackedCollection<?>> value) {
+		return a("CursorPair Increment", p(this), add(p(this), c(value).repeat(2)));
 	}
 }

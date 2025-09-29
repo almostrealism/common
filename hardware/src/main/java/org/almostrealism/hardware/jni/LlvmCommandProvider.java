@@ -30,6 +30,25 @@ import java.util.List;
 public abstract class LlvmCommandProvider implements CompilerCommandProvider, ConsoleFeatures {
 	private static String includePath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_INCLUDES", "Contents/Resources/include");
 	private static String libPath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS", "Contents/Resources/lib");
+	private static MathOptLevel optLevel;
+
+	static {
+		String opt = SystemUtils.getProperty("AR_HARDWARE_MATH_OPT", "enabled");
+
+		if (opt.equalsIgnoreCase("enabled")) {
+			optLevel = MathOptLevel.FAST;
+		} else if (opt.equalsIgnoreCase("aggressive")) {
+			optLevel = MathOptLevel.AGGRESSIVE;
+		} else {
+			if (!opt.equalsIgnoreCase("none") &&
+					!opt.equalsIgnoreCase("disabled")) {
+				Hardware.console.warn(opt +
+						" is not a recognized math optimization level, disabling optimization");
+			}
+
+			optLevel = MathOptLevel.NONE;
+		}
+	}
 
 	private String path, cmd;
 	private List<String> includes;
@@ -64,6 +83,8 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 
 	protected void addLinker(List<String> command) { }
 
+	public MathOptLevel getMathOptLevel() { return optLevel; }
+
 	@Override
 	public List<String> getCommand(String inputFile, String outputFile, boolean lib) {
 		if (includes == null) init();
@@ -79,6 +100,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 			command.add("OpenCL");
 		}
 
+		command.addAll(getMathOptLevel().getFlags());
 		command.addAll(includes);
 
 		command.add("-" + cmd);
@@ -86,15 +108,24 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		command.add(inputFile);
 		command.add("-o");
 		command.add(outputFile);
-
-		// log(Arrays.toString(command.toArray()));
-
 		return command;
 	}
 
 	@Override
 	public Console console() {
 		return Hardware.console;
+	}
+
+	public enum MathOptLevel {
+		AGGRESSIVE, FAST, NONE;
+
+		public List<String> getFlags() {
+			switch (this) {
+				case AGGRESSIVE: return List.of("-O3", "-ffast-math");
+				case FAST: return List.of("-O3");
+				default: return List.of("-O0");
+			}
+		}
 	}
 }
 

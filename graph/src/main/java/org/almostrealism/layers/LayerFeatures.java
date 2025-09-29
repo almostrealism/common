@@ -634,7 +634,7 @@ public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, Console
 		if (init) {
 			Random randn = randn(weightShape);
 			setup.add(() -> randn::refresh);
-			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).all())));
+			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
 			if (biases != null) {
 				setup.add(a(p(biases.each()), c(0.0)));
 			}

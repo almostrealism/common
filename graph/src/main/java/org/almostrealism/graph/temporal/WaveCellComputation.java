@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -33,18 +32,23 @@ import java.util.function.Supplier;
 public abstract class WaveCellComputation extends OperationComputationAdapter<PackedCollection<?>> {
 	protected HybridScope scope;
 
-	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
+	public WaveCellComputation(WaveCellData data,
+							   PackedCollection<?> wave,
+							   Producer<PackedCollection<?>> frame,
+							   PackedCollection<?> output) {
 		this(data, () -> new Provider<>(wave), frame, output);
 	}
 
-	public WaveCellComputation(WaveCellData data, Producer<PackedCollection<?>> wave, Producer<Scalar> frame, Scalar output) {
+	public WaveCellComputation(WaveCellData data,
+							   Producer<PackedCollection<?>> wave,
+							   Producer<PackedCollection<?>> frame,
+							   PackedCollection<?> output) {
 		super(() -> new Provider<>(output), wave,
-				(Supplier) Objects.requireNonNull(frame),
-				(Supplier) data.getWaveLength(),
-				(Supplier) data.getWaveIndex(),
-				(Supplier) data.getWaveCount(),
-				(Supplier) data.getAmplitude(),
-				(Supplier) data.getDuration());
+				Objects.requireNonNull(frame),
+				data.getWaveLength(),
+				data.getWaveIndex(),
+				data.getWaveCount(),
+				data.getAmplitude());
 	}
 
 	protected WaveCellComputation(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
@@ -58,9 +62,6 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	public ArrayVariable getWaveIndex() { return getArgument(4); }
 	public ArrayVariable getWaveCount() { return getArgument(5); }
 	public ArrayVariable getAmplitude() { return getArgument(6); }
-
-	@Deprecated
-	public ArrayVariable getDuration() { return getArgument(7); }
 
 	@Override
 	public Scope getScope(KernelStructureContext context) { return scope == null ? super.getScope(context) : scope; }

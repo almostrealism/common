@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,8 +34,17 @@ public class KernelPreferences {
 		}
 	}
 
+	public static int getCpuParallelism() {
+		return SystemUtils.getInt("AR_HARDWARE_CPU_PARALLELISM")
+				.orElse(Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
+	}
+
 	public static int getWorkSubdivisionMinimum() {
-		return 512;
+		return getWorkSubdivisionUnit() * 8;
+	}
+
+	public static int getWorkSubdivisionUnit() {
+		return 32;
 	}
 
 	public static void requireUniformPrecision() {

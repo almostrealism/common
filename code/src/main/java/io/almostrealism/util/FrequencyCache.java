@@ -90,6 +90,12 @@ public class FrequencyCache<K, V> {
 
 	public boolean isEmpty() { return cache.isEmpty(); }
 
+	public boolean isFull() {
+		return size() >= capacity;
+	}
+
+	public int size() { return reverseCache.size(); }
+
 	public void put(K key, V value) {
 		clock++;
 

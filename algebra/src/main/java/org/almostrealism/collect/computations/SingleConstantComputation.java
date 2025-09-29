@@ -181,6 +181,22 @@ public class SingleConstantComputation<T extends PackedCollection<?>> extends Co
 	}
 
 	/**
+	 * Isolation is not supported for single constant computations.
+	 *
+	 * <p>In practice, constant computations are so trivial that isolation
+	 * would provide no benefit and might actually reduce performance
+	 * by adding unnecessary computation steps while wasting memory.</p>
+	 *
+	 * @return This instance itself, as it cannot be isolated
+	 *
+	 * @see Process#isolate()
+	 */
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		return this;
+	}
+
+	/**
 	 * Creates a new SingleConstantComputation with the shape traversed along the specified axis.
 	 * The constant value is preserved while the shape is transformed according to the
 	 * traversal policy's traverse operation.

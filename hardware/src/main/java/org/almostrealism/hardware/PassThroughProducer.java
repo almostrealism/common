@@ -47,11 +47,17 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 					DescribableParent<Process<?, ?>> {
 	private TraversalPolicy shape;
 	private int argIndex;
+	private boolean absolute;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
+		this(shape, argIndex, false);
+	}
+
+	public PassThroughProducer(TraversalPolicy shape, int argIndex, boolean absolute) {
 		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
+		this.absolute = absolute;
 		init();
 	}
 
@@ -59,6 +65,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
+		this.absolute = false;
 		init();
 	}
 
@@ -92,7 +99,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 			throw new UnsupportedOperationException();
 		}
 
-		return new PassThroughProducer<>(shape, argIndex);
+		return new PassThroughProducer<>(shape, argIndex, absolute);
 	}
 
 	@Override
@@ -145,6 +152,10 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		if (absolute) {
+			return (Expression) getArgumentVariables().get(0).referenceAbsolute(index);
+		}
+
 		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 

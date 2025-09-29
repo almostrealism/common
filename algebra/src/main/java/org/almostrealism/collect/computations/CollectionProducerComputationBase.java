@@ -229,7 +229,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 */
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return super.prepareMetadata(metadata).withShape(getShape());
+		return super.prepareMetadata(metadata).withShape(getShape()).withSignature(signature());
 	}
 
 	/**
@@ -886,5 +886,24 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		} finally {
 			enableDestinationLogging = log;
 		}
+	}
+
+	public static <T extends PackedCollection<?>> CollectionProducer<T> assignDeltaAlternate(
+			CollectionProducer<T> producer, CollectionProducer<T> alternate) {
+		Producer computation;
+
+		if (producer instanceof ReshapeProducer) {
+			computation = ((ReshapeProducer) producer).getComputation();
+		} else {
+			computation = producer;
+		}
+
+		if (computation instanceof CollectionProducerComputationBase) {
+			((CollectionProducerComputationBase<?, T>) computation).setDeltaAlternate(alternate);
+		} else {
+			throw new IllegalArgumentException();
+		}
+
+		return producer;
 	}
 }

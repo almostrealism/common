@@ -39,22 +39,30 @@ the automated production of artwork. These libraries provide abstractions that c
 at runtime with a whole range of different acceleration strategies, so you do not have to make
 a commitment to a particular strategy for production use of your model code ahead of time.
 
-There is a complete implementation of n-dimensional arrays, but unlike other acceleration
-frameworks where specific operations are accelerated, this library provides a mechanism for
-compiling an entire accelerator program from a hierarchy of mathematical operations. This
-makes it potentially faster than systems which are designed to perform certain common operations
-quickly, but are not capable of generating custom accelerator code.
-
-Machine learning capabilities will be expanded substantially over the remainder of 2023, but
-an early example of a neural network is provided at the end of this document.
-
 Using this library correctly allows you to take complex operations, written in Java, and end
 up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
 
- *Note: A subset of this documentation for use as the preamble to a LLM prompt is available in PROMPT.md*
- *(This can sometimes be an easier way to get help using the library, than reading this yourself.)*
+*Note: A subset of this documentation for use as the preamble to a LLM prompt is available in PROMPT.md*
+*(This can sometimes be an easier way to get help using the library, than reading this yourself.)*
 
-#### Support Accelerators
+#### An Intermediate Representation for Portable Programs
+
+One way to understand this project is as a kind of intermediate representation for portable computer
+programs, plus associated tools for optimization and execution, with a focus on mathematical operations.
+In this way it might be understood as loosely comparable to the LLVM project, but with a much narrower
+focus. The [code](code/README.md) module forms the basis of this intermediate representation.
+
+#### A Tensor Algebra Toolkit
+
+The project includes an implementation of the tensor, or n-dimensional array, along with many associated
+operations. Unlike other acceleration frameworks, where specific operations are accelerated with predefined
+kernel programs, the paradigm used here allows for the compilation at runtime of new accelerator programs
+from a tree of mathematical operations. This makes it potentially faster than systems which are designed
+to perform certain common operations quickly, but are not capable of generating custom accelerator code.
+The [algebra](algebra/README.md) module provides these tools, and they are extended in a range of ways
+by other modules.
+
+#### Supported Accelerators
     1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
     2. OpenCL on CPU (x86/Aarch64)
     3. OpenCL on GPU (x86/Aarch64)
@@ -104,7 +112,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.69</version>
+            <version>0.70</version>
         </dependency>
 
 ### Enabling Your Application

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import org.almostrealism.io.SystemUtils;
@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 
 public abstract class RAM implements Memory {
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
-	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(8);
+	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(16);
 
 	private final StackTraceElement[] allocationStackTrace;
 
@@ -52,6 +52,18 @@ public abstract class RAM implements Memory {
 
 	public StackTraceElement[] getAllocationStackTrace() {
 		return allocationStackTrace;
+	}
+
+	public boolean isActive() { return true; }
+
+	@Override
+	public boolean equals(Object obj) {
+		return (obj instanceof RAM) && ((RAM) obj).getContainerPointer() == getContainerPointer();
+	}
+
+	@Override
+	public int hashCode() {
+		return Long.hashCode(getContainerPointer());
 	}
 
 	@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,30 +24,38 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public int maxThreadgroupWidth() {
+		if (isReleased()) throw new IllegalStateException();
 		return MTL.maxThreadgroupWidth(getNativePointer());
 	}
 
 	public int maxThreadgroupHeight() {
+		if (isReleased()) throw new IllegalStateException();
 		return MTL.maxThreadgroupHeight(getNativePointer());
 	}
 
 	public int maxThreadgroupDepth() {
+		if (isReleased()) throw new IllegalStateException();
 		return MTL.maxThreadgroupDepth(getNativePointer());
 	}
 
 	public MTLCommandQueue newCommandQueue() {
+		if (isReleased()) throw new IllegalStateException();
 		return new MTLCommandQueue(this, MTL.createCommandQueue(getNativePointer()));
 	}
 
 	public MTLComputePipelineState newComputePipelineState(MTLFunction function) {
+		if (isReleased()) throw new IllegalStateException();
 		return new MTLComputePipelineState(MTL.createComputePipelineState(getNativePointer(), function.getNativePointer()));
 	}
 
 	public MTLFunction newFunction(String func, String src) {
+		if (isReleased()) throw new IllegalStateException();
 		return new MTLFunction(MTL.createFunction(getNativePointer(), func, src));
 	}
 
 	public MTLBuffer newIntBuffer32(long len) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -58,6 +66,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newIntBuffer32(int values[]) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -68,6 +78,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newBuffer16(long len) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -78,6 +90,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newBuffer16(float[] data) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -88,6 +102,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newBuffer32(long len) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -98,6 +114,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newSharedBuffer32(String fileName, long len) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -109,6 +127,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newSharedBuffer32(String fileName, float data[]) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -120,6 +140,8 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newBuffer32(float[] data) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -129,8 +151,12 @@ public class MTLDevice extends MTLObject {
 		}
 	}
 
+	@Override
 	public void release() {
-		MTL.releaseDevice(getNativePointer());
+		if (!isReleased()) {
+			MTL.releaseDevice(getNativePointer());
+			super.release();
+		}
 	}
 
 	public static MTLDevice createSystemDefaultDevice() {

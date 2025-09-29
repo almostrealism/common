@@ -45,23 +45,24 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+@Deprecated
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
 	public static boolean enableAtomicKernel = false;
 	public static boolean enableChainDelta = false;
 
-	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
+	private Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper;
 	private TraversableExpression<Double> mapped;
 	private TraversalPolicy inputShape;
 
 	private boolean ignoreTraversalAxis;
 
-	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
 		this(shape(collection), collection, mapper);
 	}
 
-	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
 		super(null, shape, (Supplier) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;
@@ -135,7 +136,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionExpression expression = createCollectionExpression(input, sliceShape, traversalShape);
 		CollectionProducerComputationBase computation = new ItemComputation(sliceShape, args -> expression);
 
-		CollectionProducerComputation<?> mapped = mapper.apply(computation);
+		CollectionProducer<?> mapped = mapper.apply(computation);
 
 		if (mapped.getShape().getTotalSize() != getShape().getSize()) {
 			throw new IllegalArgumentException("Mapping returned " + mapped.getShape() +

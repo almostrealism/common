@@ -50,6 +50,10 @@ public class Variable<T, V extends Variable<T, ?>>
 		this(name, null, null, null);
 	}
 
+	public Variable(String name, Class<?> type) {
+		this(name, null, type, null);
+	}
+
 	public Variable(String name, PhysicalScope scope,
 					Class<?> type,
 					Supplier<Evaluable<? extends T>> producer) {

@@ -43,6 +43,10 @@ public class AssetGroup {
 		this.assets = assets;
 	}
 
+	public AssetGroup(Stream<Asset> assets) {
+		this.assets = assets.collect(Collectors.toList());
+	}
+
 	public List<Asset> getAllAssets() { return assets; }
 
 	public Asset getAsset(String name) {
@@ -66,5 +70,9 @@ public class AssetGroup {
 
 	public boolean isLoaded() {
 		return assets().allMatch(Asset::isLoaded);
+	}
+
+	public long getTotalSize() {
+		return assets().mapToLong(Asset::getSize).sum();
 	}
 }

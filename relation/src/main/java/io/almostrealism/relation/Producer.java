@@ -16,6 +16,7 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 
 import java.util.function.Supplier;
@@ -34,6 +35,18 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 
 	default Evaluable<T> into(Object destination) {
 		return get().into(destination);
+	}
+
+	/**
+	 * Delegates to {@link Process#optimized(Supplier)} before
+	 * using obtaining the {@link Evaluable} and delegating to
+	 * {@link Evaluable#evaluate()}.
+	 * <p>
+	 * TODO  Eventually this should be removed, as {@link Producer#evaluate(Object...)}
+	 * TODO  should always perform optimization.
+	 */
+	default T evaluateOptimized(Object... args) {
+		return Process.optimized(this).get().evaluate(args);
 	}
 
 	default T evaluate(Object... args) {

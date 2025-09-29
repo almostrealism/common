@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,27 +42,25 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
-		super(null, new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+		super("timeSeriesValueAt", new TraversalPolicy(1).traverse(0), new Producer[] { series, cursors });
 	}
 
 	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
-		super(null, new TraversalPolicy(2).traverse(0), arguments);
+		super("timeSeriesValueAt", new TraversalPolicy(1).traverse(0), arguments);
 	}
 
 	@Override
-	public CollectionProducerParallelProcess<Scalar> generate(List<Process<?, ?>> children) {
+	public CollectionProducerParallelProcess<PackedCollection<?>> generate(List<Process<?, ?>> children) {
 		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	@Override
-	public Scope<Scalar> getScope(KernelStructureContext context) {
-		HybridScope<Scalar> scope = new HybridScope<>(this);
+	public Scope<PackedCollection<?>> getScope(KernelStructureContext context) {
+		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
-
-		scope.getVariables().add(outputVariable.valueAt(1).assign(e(1.0)));
 
 		Expression i = new StaticReference(Integer.class, "i");
 		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
@@ -79,7 +77,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), new DoubleConstant(0.0)));
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String res = outputVariable.valueAt(0).getSimpleExpression(getLanguage());
 		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
 		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
 		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
@@ -119,10 +117,5 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 //		code.accept("}\n");
 
 		return scope;
-	}
-
-	@Override
-	public Scalar postProcessOutput(MemoryData output, int offset) {
-		return (Scalar) Scalar.postprocessor().apply(output, offset);
 	}
 }

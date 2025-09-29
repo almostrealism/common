@@ -24,9 +24,11 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
@@ -42,7 +44,7 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class CLDataContext implements DataContext<MemoryData> {
+public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public static boolean enableClNative = SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
 
 	private final String name;
@@ -257,7 +259,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContexts.get().isEmpty()) {
-			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContexts.get().add(createContext());
 
 			if (enableClNative) {
@@ -323,6 +325,9 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (ctx != null) CL.clReleaseContext(ctx);
 		ctx = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 
 	protected static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

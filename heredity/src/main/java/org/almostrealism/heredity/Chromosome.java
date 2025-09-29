@@ -17,8 +17,10 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Plural;
 
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
@@ -32,6 +34,14 @@ public interface Chromosome<T> extends Plural<Gene<T>>, IntFunction<Gene<T>> {
 
 	default Factor<T> valueAt(int gene, int factor) {
 		return valueAt(gene).valueAt(factor);
+	}
+
+	default void forEach(Consumer<Gene<T>> consumer) {
+		IntStream.range(0, length()).mapToObj(this::valueAt).forEach(consumer);
+	}
+
+	default Producer<T> getResultant(int gene, int factor, Producer<T> input) {
+		return valueAt(gene, factor).getResultant(input);
 	}
 
 	default String signature() {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,20 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.test;
+package org.almostrealism.persistence;
 
-import org.almostrealism.geometry.computations.MatrixAdjoint;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.CodeFeatures;
-import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestUtils;
-import org.junit.Test;
+import java.util.Optional;
 
-public class MatrixAdjointTest implements TestFeatures {
-	@Test
-	public void test() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
+public interface AssetInfoProvider {
+	default Optional<AssetGroup> getAssetGroup(String name) {
+		return Optional.ofNullable(getAssetGroupInfo(name))
+				.map(AssetGroup::new);
+	}
 
-		new MatrixAdjoint(p(new TransformMatrix())).evaluate();
+	default AssetGroupInfo getAssetGroupInfo(String name) {
+		throw new UnsupportedOperationException();
 	}
 }

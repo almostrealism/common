@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.Precision;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.generated.BaseGeneratedOperation;
@@ -41,7 +42,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class NativeCompiler implements ConsoleFeatures {
+public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	public static boolean enableVerbose = SystemUtils.isEnabled("AR_HARDWARE_COMPILER_LOGGING").orElse(false);
 
 	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
@@ -203,6 +204,14 @@ public class NativeCompiler implements ConsoleFeatures {
 		};
 	}
 
+	@Override
+	public void destroy() {
+		// TODO
+	}
+
+	@Override
+	public Console console() { return Hardware.console; }
+
 	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
@@ -254,7 +263,4 @@ public class NativeCompiler implements ConsoleFeatures {
 	 * by instances of {@link NativeCompiler}.
 	 */
 	public static long getTotalInstructionSets() { return runnableCount; }
-
-	@Override
-	public Console console() { return Hardware.console; }
 }

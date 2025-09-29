@@ -18,13 +18,11 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
@@ -42,7 +40,7 @@ public class MetalDataContext extends HardwareDataContext {
 
 	private MTLDevice mainDevice;
 
-	private MemoryProvider<RAM> mainRam;
+	private MemoryProvider<MetalMemory> mainRam;
 	private MemoryProvider<Memory> altRam;
 
 	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
@@ -107,13 +105,13 @@ public class MetalDataContext extends HardwareDataContext {
 	}
 
 	@Override
-	protected MemoryProvider<RAM> getSharedMemoryProvider() {
+	protected MemoryProvider getSharedMemoryProvider() {
 		return Optional.ofNullable(super.getSharedMemoryProvider())
 				.orElseGet(() -> new MetalMemoryProvider(this, getPrecision().bytes(),
 						getMaxReservation() * getPrecision().bytes(), true));
 	}
 
-	public MemoryProvider<RAM> getMemoryProvider() {
+	public MemoryProvider<MetalMemory> getMemoryProvider() {
 		if (start != null) start.run();
 		return mainRam;
 	}

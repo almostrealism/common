@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,10 +17,9 @@
 package org.almostrealism.time;
 
 import io.almostrealism.lifecycle.Lifecycle;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
@@ -85,7 +84,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency);
 	}
 
-	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {
+	public Producer<PackedCollection<?>> valueAt(Producer<CursorPair> cursor) {
 		return new AcceleratedTimeSeriesValueAt(() -> new Provider<>(this), cursor);
 	}
 

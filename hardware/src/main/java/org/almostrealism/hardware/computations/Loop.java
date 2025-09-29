@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
@@ -32,8 +31,6 @@ import java.util.List;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> implements ExpressionFeatures {
-	public static boolean enableRepeated = true;
-
 	private final Computation atom;
 	private final int iterations;
 
@@ -72,39 +69,12 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		if (enableRepeated) {
-			Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
-			Variable<Integer, ?> i = Variable.integer(getNameProvider().getVariablePrefix() + "_i");
-			scope.setInterval(e(1));
-			scope.setIndex(i);
-			scope.setCondition(i.ref().lessThan(e(iterations)));
-			scope.add(atom.getScope(context));
-			return scope;
-		} else {
-			Scope<Void> atomScope = atom.getScope(context);
-			atomScope.convertArgumentsToRequiredScopes(context);
-
-			HybridScope<Void> scope = new HybridScope<>(this);
-			scope.setMetadata(getMetadata());
-			scope.getRequiredScopes().add(atomScope);
-
-			String i = getNameProvider().getVariablePrefix() + "_i";
-
-			scope.setSource((s, lang) -> {
-				StringBuilder code = new StringBuilder();
-				code.append("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
-				code.append("    " + lang.renderMethod(s.getRequiredScopes().get(0).call()) + "\n");
-				code.append("}\n");
-				return code.toString();
-			});
-
-			scope.getExplicit().setWriter(w -> {
-				w.println("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
-				atomScope.write(w);
-				w.println("}\n");
-			});
-
-			return scope;
-		}
+		Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
+		Variable<Integer, ?> i = Variable.integer(getNameProvider().getVariablePrefix() + "_i");
+		scope.setInterval(e(1));
+		scope.setIndex(i);
+		scope.setCondition(i.ref().lessThan(e(iterations)));
+		scope.add(atom.getScope(context));
+		return scope;
 	}
 }

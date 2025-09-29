@@ -205,8 +205,6 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel1() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		Producer<Ray> ray = ray(origin1, direction1);
 		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
@@ -216,8 +214,6 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectAt2() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		double distance = intersection().get().evaluate(
 				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
@@ -226,8 +222,6 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel2() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
@@ -237,8 +231,6 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel3() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
 		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);

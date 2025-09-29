@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,21 +18,18 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 
 public interface WaveCellData extends BaseAudioData {
 
 	default Scalar waveIndex() { return get(3); }
 	default Scalar waveCount() { return get(4); }
-	default Scalar duration() { return get(5); }
-	default Scalar value() { return get(9); }
+	default PackedCollection<?> value() { return get(9).range(shape(1)); }
 
-	default Producer<Scalar> getWaveIndex() { return p(waveIndex()); }
+	default Producer<PackedCollection<?>> getWaveIndex() { return p(waveIndex().range(shape(1))); }
 	default void setWaveIndex(int count) { waveIndex().setValue(count); }
 
-	default Producer<Scalar> getWaveCount() { return p(waveCount()); }
+	default Producer<PackedCollection<?>> getWaveCount() { return p(waveCount().range(shape(1))); }
 	default void setWaveCount(int count) { waveCount().setValue(count); }
-
-	default Producer<Scalar> getDuration() { return p(duration()); }
-	default void setDuration(double duration) { duration().setValue(duration); }
 }
 

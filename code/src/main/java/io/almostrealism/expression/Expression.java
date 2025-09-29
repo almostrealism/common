@@ -581,6 +581,9 @@ public abstract class Expression<T> implements
 	public Expression eq(long operand) { return eq(ExpressionFeatures.getInstance().e(operand)); };
 	public Expression eq(double operand) { return eq(new DoubleConstant(operand)); };
 	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); };
+	public Expression neq(Expression<?> operand) {
+		return Equals.of(this, operand).not();
+	}
 	public Expression and(Expression<Boolean> operand) { return Conjunction.of((Expression) this, operand); };
 	public Expression conditional(Expression<?> positive, Expression<?> negative) {
 		if (getType() != Boolean.class) throw new IllegalArgumentException();

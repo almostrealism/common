@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,15 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.computations.MatrixAdjoint;
-import org.almostrealism.geometry.computations.MatrixDeterminant;
-import org.almostrealism.geometry.computations.MatrixProduct;
-import org.almostrealism.geometry.computations.MatrixToUpperTriangle;
-import org.almostrealism.geometry.computations.MatrixTranspose;
+import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
+import org.almostrealism.geometry.computations.TransformMatrixDeterminant;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -89,7 +84,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	private void initMem(boolean identity) {
 		init();
 		if (identity) {
-			new IdentityMatrix(() -> new Provider<>(this)).evaluate();
+			setMatrix(TransformMatrix.identity);
 		}
 	}
 
@@ -167,10 +162,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * represented by the specified {@link TransformMatrix} and returns the result as a
 	 * {@link TransformMatrix}.
 	 *
-	 * @see  MatrixProduct
+	 * @see  org.almostrealism.algebra.MatrixFeatures#matmul
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return new MatrixProduct(v(this), v(matrix)).evaluate();
+		return matmul(cp(this).reshape(4, 4),
+				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate();
 	}
 
 	@Override
@@ -204,11 +200,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 
 	/**
 	 * Computes and returns the result of the vector multiplication of the matrix represented by this
-	 * TransformMatrix object and the vector represented by the specified Vector object assuming that
-	 * the specified vector describes a location on 3d space.
+	 * {@link TransformMatrix} and the vector represented by the specified {@link Vector}, assuming that
+	 * the specified vector describes a location in 3d space.
 	 */
 	public Vector transformAsLocation(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
@@ -220,7 +216,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * assuming that the specified vector describes an offset in 3d space.
 	 */
 	public Vector transformAsOffset(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
@@ -232,7 +228,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * assuming that the specified vector describes a surface normal in 3d space.
 	 */
 	public Vector transformAsNormal(Vector vector) {
-		vector = (Vector) vector.clone();
+		vector = vector.clone();
 		if (this.isIdentity) return vector;
 
 		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
@@ -309,36 +305,29 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		return new MatrixDeterminant(v(this)).evaluate().getValue();
+		return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
 	}
 
 	/**
 	 * Computes the transpose of the matrix represented by this {@link TransformMatrix} and
 	 * returns the result as a {@link TransformMatrix}. If this method is called after the
-	 * last matrix modification it will return a stored transposition.
+	 * last matrix modification, it will return a stored transposition.
 	 */
+	@Override
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			transposeMatrix = new MatrixTranspose(v(this)).evaluate();
+			transposeMatrix = new TransformMatrix(false, reshape(4, 4).transpose(), 0);
 		}
 
 		return transposeMatrix;
 	}
 
 	/**
-	 * Computes the adjoint of the matrix represented by this TransformMatrix object and
-	 * returns the result as a TransformMatrix object.
+	 * Computes the adjoint of the matrix represented by this {@link TransformMatrix},
+	 * returning the result as a {@link TransformMatrix}.
 	 */
 	public TransformMatrix adjoint() {
-		return new MatrixAdjoint(() -> new Provider<>(this)).evaluate();
-	}
-
-	/**
-	 * Converts the matrix represented by this TransformMatrix object to an upper triangle matrix and
-	 * returns the result as a TransformMatrix object.
-	 */
-	public TransformMatrix toUpperTriangle() {
-		return new MatrixToUpperTriangle(() -> new Provider<>(this)).evaluate();
+		return new TransformMatrixAdjoint(() -> new Provider<>(this)).evaluate();
 	}
 
 	@Override
@@ -389,7 +378,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * Generates a {@link TransformMatrix} that can be used to translate vectors using
 	 * the specified translation coordinates.
 	 *
-	 * Use {@link org.almostrealism.geometry.TranslationMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#translationMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(double tx, double ty, double tz) {
@@ -405,10 +394,10 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
+	 * Generates a {@link TransformMatrix} that can be used to translate vectors using the specified
 	 * translation coordinates.
 	 *
-	 * USE {@link org.almostrealism.geometry.TranslationMatrix} instead.
+	 * @deprecated Use {@link TransformMatrixFeatures#translationMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(Vector t) {
@@ -416,7 +405,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	/**
-	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#scaleMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createScaleMatrix(Vector s) {
@@ -427,7 +416,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * Generates a {@link TransformMatrix} that can be used to scale vectors using the specified scaling
 	 * coefficients.
 	 *
-	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
+	 * Use {@link TransformMatrixFeatures#scaleMatrix(Producer)} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createScaleMatrix(double sx, double sy, double sz) {

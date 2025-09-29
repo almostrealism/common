@@ -39,6 +39,10 @@ public interface ConsoleFeatures {
 		console().warn(formatMessage(message), null);
 	}
 
+	default void warn(Throwable ex) {
+		warn(ex.getMessage(), ex);
+	}
+
 	default void warn(String message, Throwable ex) {
 		console().warn(formatMessage(message), ex);
 	}

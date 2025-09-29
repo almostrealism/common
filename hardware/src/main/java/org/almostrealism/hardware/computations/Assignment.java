@@ -28,6 +28,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
@@ -158,7 +159,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
 		}
 
-		boolean shortCircuit = ev instanceof AcceleratedOperation<?>;
+		boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
 
 		if (!enableAggregatedShortCircuit &&
 				MemoryDataArgumentMap.isAggregationTarget(destination)) {

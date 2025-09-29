@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ public class OperationProfileNode extends OperationProfile
 	private TimingMetric stageDetailTime;
 
 	private Map<String, String> metadataCache;
-	private FrequencyCache<String, OperationProfileNode> nodeCache;
+	private Map<String, OperationProfileNode> nodeCache;
 
 	public OperationProfileNode() { this(null, "default"); }
 
@@ -128,6 +128,12 @@ public class OperationProfileNode extends OperationProfile
 	protected void addChild(OperationProfileNode node) {
 		if (children == null) children = new ArrayList<>();
 		children.add(node);
+
+		if (nodeCache != null) {
+			// If caching is active for this node,
+			// cache all the new children
+			cache(node);
+		}
 	}
 
 	public Map<String, String> getMetadata() {
@@ -194,6 +200,14 @@ public class OperationProfileNode extends OperationProfile
 		return operationSources;
 	}
 
+	protected void cache(OperationProfileNode node) {
+		if (nodeCache == null) {
+			nodeCache = new HashMap<>();
+		}
+
+		node.all().forEach(n -> nodeCache.put(n.getKey(), n));
+	}
+
 	/**
 	 * Attempt to retrieve the specific {@link OperationProfileNode} that matches the
 	 * provided {@link OperationMetadata operationMetadata} which is a child of the
@@ -209,8 +223,11 @@ public class OperationProfileNode extends OperationProfile
 
 		return getProfileNode(requesterMetadata).getProfileNode(metadataKey(operationMetadata))
 				.orElseGet(() -> {
-					warn("Could not find " + operationMetadata.describe() +
-							" under " + requesterMetadata.describe());
+					if (metadataWarnings) {
+						warn("Could not find " + operationMetadata.describe() +
+								" under " + requesterMetadata.describe());
+					}
+
 					return getProfileNode(operationMetadata);
 				});
 	}
@@ -226,28 +243,35 @@ public class OperationProfileNode extends OperationProfile
 		Optional<OperationProfileNode> node = getProfileNode(key);
 
 		if (top) {
+			if (nodeCache == null) {
+				// If the cache doesn't exist already, initialize
+				// it with all the existing nodes
+				cache(this);
+			}
+
 			if (node.isEmpty()) {
 				node = Optional.of(OperationProfileNode.forMetadata(metadata, this::recordMetadata, getIdentifier()));
 				recordMetadata(metadata);
 				addChild(node.get());
 			}
-
-			if (nodeCache == null) nodeCache = new FrequencyCache<>(60, 0.5);
-			nodeCache.put(metadataKey(metadata), node.get());
 		}
 
 		return node.orElse(null);
 	}
 
 	public Optional<OperationProfileNode> getProfileNode(String key) {
+		return getProfileNode(key, children != null);
+	}
+
+	public Optional<OperationProfileNode> getProfileNode(String key, boolean traverse) {
 		if (Objects.equals(key, getKey())) {
 			return Optional.of(this);
-		} else if (nodeCache != null && nodeCache.containsKey(key)) {
-			return Optional.of(nodeCache.get(key));
-		} else if (children != null) {
-			return getChildren().stream()
-					.map(v -> v.getProfileNode(key).orElse(null))
-					.filter(Objects::nonNull)
+		} else if (nodeCache != null) {
+			return Optional.ofNullable(nodeCache.get(key));
+		} else if (traverse) {
+			return children(false)
+					.map(v -> v.getProfileNode(key, false))
+					.filter(Optional::isPresent).map(Optional::get)
 					.findFirst();
 		}
 

@@ -43,6 +43,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Deprecated
 public class AcceleratedRankedChoiceEvaluable<T extends MemoryData>
 		extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware, ExpressionFeatures {
 	public static final boolean enableCompaction = true;

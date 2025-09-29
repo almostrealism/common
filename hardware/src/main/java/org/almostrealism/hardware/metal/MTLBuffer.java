@@ -44,6 +44,8 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public long getContentPointer() {
+		if (isReleased()) throw new IllegalStateException();
+
 		try {
 			long ptr = MTL.getContentPointer(getNativePointer());
 			if (ptr == -1) throw new NullPointerException();
@@ -54,6 +56,8 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public void setContents(int values[]) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -67,6 +71,8 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public void setContents(IntBuffer buf, int offset, int length) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -77,6 +83,8 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public void setContents(FloatBuffer buf, int offset, int length) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -95,6 +103,8 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public void getContents(FloatBuffer buf, int offset, int length) {
+		if (isReleased()) throw new IllegalStateException();
+
 		long start = System.nanoTime();
 
 		try {
@@ -113,10 +123,17 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public long length() {
+		if (isReleased()) throw new IllegalStateException();
 		return MTL.bufferLength(getNativePointer());
 	}
 
-	public void release() {
-		MTL.releaseBuffer(getNativePointer());
+	@Override
+	public synchronized void release() {
+		if (!isReleased()) {
+			MTL.releaseBuffer(getNativePointer());
+			super.release();
+		} else {
+			throw new IllegalStateException("Buffer already released");
+		}
 	}
 }

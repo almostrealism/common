@@ -50,7 +50,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return getMem() == null;
 	}
 
-	default void load(byte b[]) {
+	default void read(byte b[]) {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
 
 		for (int i = 0; i < getMemLength() * 8; i++) {
@@ -64,7 +64,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
-	default void load(InputStream in) throws IOException {
+	default void read(InputStream in) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
@@ -206,7 +206,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 		if (getMemOrdering() == null) {
 			float out[] = new float[length];
-			getMem(0, out, offset, length);
+			getMem(offset, out, 0, length);
 			return out;
 		} else {
 			double raw[] = toArray(offset, length);
@@ -292,6 +292,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
+	default void setMem(double[] source, int srcOffset, int length) {
+		setMem(0, source, srcOffset, length);
+	}
+
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
 		if (getDelegate() == null) {
 			if (offset + length > getMemLength()) {
@@ -308,6 +312,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default void setMem(int offset, MemoryData src) {
 		setMem(offset, src, 0, src.getMemLength());
+	}
+
+	default void setMem(MemoryData src, int srcOffset, int length) {
+		setMem(0, src, srcOffset, length);
 	}
 
 	default void setMem(int offset, MemoryData src, int srcOffset, int length) {

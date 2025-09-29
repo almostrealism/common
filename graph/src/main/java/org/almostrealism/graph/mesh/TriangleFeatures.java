@@ -32,7 +32,6 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -69,7 +68,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		Producer<Vector> abc = subtract(p2, p1);
 		Producer<Vector> def = subtract(p3, p1);
 		Supplier jkl = p1;
-		return triangle(abc, def, jkl, normalize(crossProduct(abc, def)));
+		return triangle(abc, def, jkl, vnormalize(crossProduct(abc, def)));
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends Vector>> abc,

@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
@@ -33,7 +34,7 @@ public class Console {
 	private List<Consumer<String>> listeners = new ArrayList<>();
 	private List<UnaryOperator<String>> filters = new ArrayList<>();
 	private List<AlertDeliveryProvider> alertDeliveryProviders = new ArrayList<>();
-	private boolean flag;
+	private Optional<String> flag;
 
 	private DateTimeFormatter format;
 	private StringBuffer data = new StringBuffer();
@@ -219,9 +220,20 @@ public class Console {
 		}
 	}
 
-	public void flag() { this.flag = true; }
-	public boolean clearFlag() { boolean f = this.flag; this.flag = false; return f; }
-	public boolean checkFlag() { return this.flag; }
+	public void flag() { flag(""); }
+	public void flag(String value) { this.flag = Optional.of(value); }
+
+	public Optional<String> clearFlag() {
+		try {
+			return checkFlag();
+		} finally {
+			this.flag = null;
+		}
+	}
+
+	public Optional<String> checkFlag() {
+		return flag == null ? Optional.empty() : flag;
+	}
 
 	public Console child() {
 		return new Console(this);

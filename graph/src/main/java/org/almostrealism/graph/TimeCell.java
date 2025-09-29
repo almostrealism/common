@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
 public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatures {
 	private Receptor r;
 	private Pair<?> time;
-	private Producer<Scalar> initial, loopDuration;
+	private Producer<PackedCollection<?>> initial, loopDuration;
 	private PackedCollection<?> resets;
 
 	public TimeCell() {
@@ -49,11 +49,11 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		initResets();
 	}
 
-	public TimeCell(Producer<Scalar> initial, Producer<Scalar> loopDuration) {
+	public TimeCell(Producer<PackedCollection<?>> initial, Producer<PackedCollection<?>> loopDuration) {
 		this(initial, loopDuration, 1);
 	}
 
-	public TimeCell(Producer<Scalar> initial, Producer<Scalar> loopDuration, int maxResets) {
+	public TimeCell(Producer<PackedCollection<?>> initial, Producer<PackedCollection<?>> loopDuration, int maxResets) {
 		this(maxResets);
 		this.initial = initial;
 		this.loopDuration = loopDuration;
@@ -76,9 +76,9 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 	@Override
 	public Supplier<Runnable> setup() {
 		if (initial == null) {
-			return new Assignment<>(2, () -> new Provider<>(time), PairFeatures.of(0.0, 0.0));
+			return a(cp(time), c(0.0).repeat(2));
 		} else {
-			return new Assignment<>(2, () -> new Provider<>(time), pair(initial, initial));
+			return a(cp(time), repeat(2, initial));
 		}
 	}
 
@@ -92,18 +92,19 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		OperationList tick = new OperationList("TimeCell Tick");
 
 		if (loopDuration == null) {
-			tick.add(new Assignment<>(2, p(time),
-					add(p(time), PairFeatures.of(1.0, 1.0))));
+			tick.add(a(cp(time),
+					add(cp(time), c(1.0).repeat(2))));
 		} else {
 			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
-			Producer<PackedCollection<?>> left = c(p(time), 0);
+			Producer<PackedCollection<?>> left = cp(time.range(shape(1)));
 			left = add(left, c(1.0));
-			left = greaterThanConditional(ld, c(0.0), relativeMod(left, ld), left, false);
+			left = greaterThanConditional(ld, c(0.0), mod(left, ld), left, false);
 
-			Producer<PackedCollection<?>> right = c(p(time), 1);
+			Producer<PackedCollection<?>> right = cp(time.range(shape(1), 1));
 			right = add(right, c(1.0));
 
-			tick.add(a(2, p(time), concat(left, right)));
+			tick.add(a(cp(time.range(shape(1))), left));
+			tick.add(a(cp(time.range(shape(1), 1)), right));
 		}
 
 		tick.add(new TimeCellReset(p(time), resets));
@@ -128,9 +129,9 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 		return time.toDouble(0);
 	}
 
-	public Producer<Scalar> frameScalar() { return l(() -> new Provider<>(time)); }
+	public Producer<Scalar> frameScalar() { return l(cp(time)); }
 
-	public Producer<PackedCollection<?>> frame() { return c(() -> new Provider<>(time), 0); }
+	public Producer<PackedCollection<?>> frame() { return cp(time.range(shape(1))); }
 
 	public Producer<PackedCollection<?>> time(double sampleRate) {
 		return divide(frame(), c(sampleRate));

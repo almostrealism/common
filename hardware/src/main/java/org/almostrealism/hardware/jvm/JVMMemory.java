@@ -18,8 +18,6 @@ package org.almostrealism.hardware.jvm;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.RAM;
-import org.jocl.cl_mem;
 
 public class JVMMemory implements Memory {
 	private JVMMemoryProvider provider;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,9 +18,8 @@ package org.almostrealism.time.computations.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
@@ -80,8 +79,8 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		Evaluable<Scalar> compiled = valueAt.get();
-		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
+		Evaluable<PackedCollection<?>> compiled = valueAt.get();
+		Assert.assertEquals(series.valueAt(3.25).toDouble(), compiled.evaluate().toDouble(), Math.pow(10, -10));
 	}
 
 	protected void valueAtAssertions(AcceleratedTimeSeries series) {
@@ -110,7 +109,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	}
 
 	protected Supplier<Runnable> increment() {
-		return cursors.increment(scalar(1));
+		return cursors.increment(c(1));
 	}
 
 	@Test
@@ -150,7 +149,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	protected void postPurgeAssertions(int index) {
 		Assert.assertEquals(2, series.getLength());
 		Assert.assertEquals(30.0, series.valueAt(index + 6.0).getValue(), Math.pow(10, -10));
-		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
+		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().toDouble(), Math.pow(10, -10));
 	}
 
 	// TODO  @Test
