@@ -55,7 +55,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<PackedCollection<?>> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCountLong(); i++) {

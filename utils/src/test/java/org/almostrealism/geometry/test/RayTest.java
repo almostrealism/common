@@ -43,7 +43,7 @@ public class RayTest implements TestFeatures {
 
 	@Test
 	public void dynamicPointAt() {
-		Producer<PackedCollection<?>> d = () -> new AdaptEvaluable<>(c(-20).get());
+		Producer<PackedCollection<?>> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
 		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), (Producer) d);
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}

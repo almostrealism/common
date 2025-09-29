@@ -665,6 +665,10 @@ public class ReshapeProducer<T extends Shape<T>>
 	 */
 	private T apply(Shape<T> in) {
 		if (shape == null) {
+			if (getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
+				throw new IllegalArgumentException();
+			}
+
 			return in.reshape(in.getShape().traverse(traversalAxis));
 		} else {
 			return in.reshape(shape);

@@ -55,7 +55,7 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	default CollectionProducer<Vector> pointAt(Producer<Ray> r, Producer<PackedCollection<?>> t) {
-		return vector(direction(r).multiply(t).add(origin(r)));
+		return direction(r).multiply(t).add(origin(r));
 	}
 
 	default CollectionProducer<PackedCollection<?>> oDoto(Producer<Ray> r) { return dotProduct(origin(r), origin(r)); }

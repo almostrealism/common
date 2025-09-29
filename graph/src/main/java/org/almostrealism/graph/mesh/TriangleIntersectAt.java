@@ -16,24 +16,22 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.bool.AcceleratedConjunctionCollection;
+import org.almostrealism.bool.GreaterThanCollection;
+import org.almostrealism.bool.LessThanCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.LessThanScalar;
-import io.almostrealism.relation.Evaluable;
 
-import java.util.function.Supplier;
-
-public class TriangleIntersectAt extends LessThanScalar {
+public class TriangleIntersectAt extends LessThanCollection {
 	private static TriangleIntersectAt create(Producer<PackedCollection<?>> t,
 											  Producer<Ray> r) {
 		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
@@ -68,29 +66,30 @@ public class TriangleIntersectAt extends LessThanScalar {
 								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
 								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
 								  Producer<PackedCollection<?>> u, Producer<PackedCollection<?>> v) {
-		return createt(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
+		return createt(f, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	private static TriangleIntersectAt createt(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
-								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
-								  Producer<PackedCollection<?>> u, Producer<PackedCollection<?>> v, Producer<PackedCollection<?>> t) {
-		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
-				new AcceleratedConjunctionScalar(
-						t, ScalarFeatures.getInstance().scalar(-1.0),
+	private static TriangleIntersectAt createt(CollectionProducer<PackedCollection<?>> f,
+											   Producer<PackedCollection<?>> u,
+											   Producer<PackedCollection<?>> v,
+											   Producer<PackedCollection<?>> t) {
+		return new TriangleIntersectAt(f,
+				new AcceleratedConjunctionCollection(
+						t, Ops.o().c(-1.0),
 						Ops.o().scalarGreaterThan((Producer) u, Ops.o().scalar(0.0), true),
 						Ops.o().scalarLessThan((Producer) u, Ops.o().scalar(1.0), true),
 						Ops.o().scalarGreaterThan((Producer) v, Ops.o().scalar(0.0), true),
 						Ops.o().scalarLessThan((Producer) Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
 	}
 
-	protected TriangleIntersectAt(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
-								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
-								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
-								  AcceleratedConjunctionScalar trueValue) {
-		super(f, ScalarFeatures.getInstance().scalar(-Intersection.e), trueValue,
-				new GreaterThanScalar(f, ScalarFeatures.getInstance().scalar(Intersection.e), trueValue,
-						ScalarFeatures.getInstance().scalar(-1.0)), true);
+	protected TriangleIntersectAt(CollectionProducer<PackedCollection<?>> f,
+								  AcceleratedConjunctionCollection trueValue) {
+		super(f, CollectionFeatures.getInstance().c(-Intersection.e), trueValue,
+				new GreaterThanCollection(new TraversalPolicy(1),
+						f, CollectionFeatures.getInstance().c(Intersection.e),
+						trueValue,
+						CollectionFeatures.getInstance().c(-1.0)),
+				true);
 	}
 
 	// TODO  Make private
@@ -131,5 +130,10 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	public static TriangleIntersectAt construct(Producer<PackedCollection<?>> t, Producer<Ray> r) {
 		return create(t, r);
+	}
+
+	@Override
+	public PackedCollection<?> createDestination(int len) {
+		throw new UnsupportedOperationException();
 	}
 }

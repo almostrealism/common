@@ -508,6 +508,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				.orElse(0L);
 	}
 
+	@Override
+	public boolean isFixedCount() {
+		return getShape().isFixedCount() && super.isFixedCount();
+	}
+
 	/**
 	 * Returns the maximum parallelism level for this computation.
 	 * If the output size exceeds the maximum reservation limit, returns -1

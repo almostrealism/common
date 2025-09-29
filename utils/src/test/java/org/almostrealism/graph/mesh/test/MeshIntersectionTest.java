@@ -184,42 +184,41 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectAt1() {
-		evaluate(intersection(), true);
+		evaluate(intersection());
 	}
 
 	@Test
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
-		evaluate(intersect, true);
+		evaluate(intersect);
 	}
 
-	protected void evaluate(TriangleIntersectAt intersect, boolean assertions) {
-		Evaluable<Scalar> ev = intersect.get();
-		double distance = ev.evaluate(data1.get(0), origin1.get().evaluate(), direction1.get().evaluate()).getValue();
-		System.out.println("distance = " + distance);
-		if (assertions) assertEquals(1.0, distance);
+	protected void evaluate(TriangleIntersectAt intersect) {
+		Evaluable<PackedCollection<?>> ev = intersect.get();
+		double distance = ev.evaluate(data1.get(0), origin1.get().evaluate(), direction1.get().evaluate()).toDouble();
+		assertEquals(1.0, distance);
 	}
 
 	@Test
 	public void intersectionKernel1() {
-		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
+		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(1, 1).traverse(1));
 		Producer<Ray> ray = ray(origin1, direction1);
 		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
-		System.out.println("distance = " + distances.get(0).getValue());
-		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
+		System.out.println("distance = " + distances.get(0).toDouble());
+		assertEquals(1.0, distances.get(0).toDouble());
 	}
 
 	@Test
 	public void intersectAt2() {
 		double distance = intersection().get().evaluate(
-				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
+				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).toDouble();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(1.0, distance, Math.pow(10, -10));
 	}
 
 	@Test
 	public void intersectionKernel2() {
-		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
+		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(1, 1).traverse(1));
 		CollectionProducer<Ray> ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
@@ -229,7 +228,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel3() {
 		Evaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
-		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
+		PackedCollection<PackedCollection<?>> distances = new PackedCollection<>(shape(200, 1).traverse(1));
 		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions
 	}

@@ -914,6 +914,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			}
 		}
 
+		if (axis < 0) {
+			throw new UnsupportedOperationException();
+		}
+
 		int total = 0;
 		List<TraversalPolicy> positions = new ArrayList<>();
 

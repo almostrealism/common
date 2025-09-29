@@ -32,6 +32,22 @@ public class GreaterThanCollection<T extends PackedCollection<?>> extends Collec
 
 	public GreaterThanCollection(
 			TraversalPolicy shape,
+			Producer leftOperand,
+			Producer rightOperand) {
+		this(shape, leftOperand, rightOperand, null, null);
+	}
+
+	public GreaterThanCollection(
+			TraversalPolicy shape,
+			Producer leftOperand,
+			Producer rightOperand,
+			Producer trueValue,
+			Producer falseValue) {
+		this(shape, leftOperand, rightOperand, trueValue, falseValue, false);
+	}
+
+	public GreaterThanCollection(
+			TraversalPolicy shape,
 			Producer<PackedCollection<?>> left, Producer<PackedCollection<?>> right,
 			Producer<PackedCollection<?>> trueValue, Producer<PackedCollection<?>> falseValue,
 			boolean includeEqual) {

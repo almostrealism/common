@@ -24,11 +24,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ctx.ContextSpecific;
-import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
@@ -58,16 +55,10 @@ import java.util.stream.Stream;
 
 public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
-	private static ContextSpecific<Evaluable<PackedCollection<?>>> clear;
+	private static Evaluable<PackedCollection<?>> clear;
 
 	static {
-		// TODO  The use of ContextSpecific as a container for Evaluable
-		// TODO  should no longer be required as HardwareEvaluable does
-		// TODO  this for every operation where it matters
-		clear = new DefaultContextSpecific<>(() ->
-				CollectionFeatures.getInstance().multiply(
-						Input.value(new TraversalPolicy(false, false, 1), 0),
-						CollectionFeatures.getInstance().c(1)).get());
+		clear = CollectionFeatures.getInstance().zeros(new TraversalPolicy(false, false, 1)).get();
 	}
 
 	private final TraversalPolicy shape;
@@ -310,7 +301,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	}
 
 	public void clear() {
-		clear.getValue().into(this.traverseEach()).evaluate(new PackedCollection<>(1));
+		clear.into(this.traverseEach()).evaluate();
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape) {
