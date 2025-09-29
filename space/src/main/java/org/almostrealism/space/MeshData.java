@@ -59,7 +59,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCountLong(); i++) {
-			destination.get(i).setMem(result.get(i).getA(), 1.0);
+			destination.get(i).setMem(result.get(i).getA());
 		}
 	}
 

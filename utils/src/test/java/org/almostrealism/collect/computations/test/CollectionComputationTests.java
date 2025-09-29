@@ -352,7 +352,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> a = new PackedCollection<>(shape(10));
 		PackedCollection<?> b = new PackedCollection<>(shape(15));
 
-		Evaluable<PackedCollection<?>> size = sizeOf(cv(shape(1), 0)).get();
+		Evaluable<PackedCollection<?>> size = sizeOf(cv(shape(-1), 0)).get();
 		PackedCollection<?> result = size.evaluate(a);
 		result.print();
 		assertEquals(10.0, result.toDouble(0));

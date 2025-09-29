@@ -665,7 +665,7 @@ public class ReshapeProducer<T extends Shape<T>>
 	 */
 	private T apply(Shape<T> in) {
 		if (shape == null) {
-			if (getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
+			if (getShape().isFixedCount() && getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
 				throw new IllegalArgumentException();
 			}
 

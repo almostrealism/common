@@ -24,28 +24,27 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
 		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
-		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
-		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
+		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
+		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 	}
 
 	@Test
 	public void pointAtTest2() {
 		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
-		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
 	@Test
 	public void dynamicPointAt() {
 		Producer<PackedCollection<?>> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
 		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), (Producer) d);
-		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
 	@Test
