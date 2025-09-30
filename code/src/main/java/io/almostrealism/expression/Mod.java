@@ -133,10 +133,20 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 		if (!isFP() && m.isPresent()) {
 			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()) {
-				long span = upper.getAsLong() - lower.getAsLong();
+				long top = upper.getAsLong();
+				long bottom = lower.getAsLong();
 				long ml = m.getAsLong();
 
-				if (span < ml) {
+				boolean contained = ml > bottom && ml < top;
+				long span = top - bottom;
+				if (!contained && span < ml) {
+					// (1) The modulus is not between the lower and upper bound
+					//     of the dividend,
+					// and
+					// (2) The span of the bounds is no greater than the modulo;
+					//
+					// then the upper bound of the result must obtain at
+					// either the upper or lower bound of the dividend
 					return OptionalLong.of(Math.max(lower.getAsLong() % ml, upper.getAsLong() % ml));
 				}
 			}

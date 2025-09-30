@@ -94,7 +94,7 @@ public class MatrixTransformTests implements TestFeatures {
 		CollectionProducer transform = transform(matrix,
 				ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0));
 		Ray r = new Ray((PackedCollection) transform.evaluate(), 0);
-		System.out.println(r);
+		log(r);
 
 		assertEquals(0.25, r.getOrigin().getX());
 		assertEquals(3.9, r.getOrigin().getY());

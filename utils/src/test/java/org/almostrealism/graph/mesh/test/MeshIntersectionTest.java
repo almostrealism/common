@@ -186,7 +186,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void intersectAt1() {
 		TriangleIntersectAt intersect = intersection();
 		Evaluable<PackedCollection<?>> ev = intersect.get();
-		double distance = ev.evaluate(data1.get(0), origin1.get().evaluate(), direction1.get().evaluate()).toDouble();
+		double distance = ev.evaluate(data1.get(0).traverse(0), origin1.get().evaluate(), direction1.get().evaluate()).toDouble();
 		assertEquals(1.0, distance);
 	}
 
@@ -202,7 +202,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectAt2() {
 		double distance = intersection().get().evaluate(
-				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).toDouble();
+				data2.get(0).traverse(0), origin2.get().evaluate(), direction2.get().evaluate()).toDouble();
 		System.out.println("distance = " + distance);
 		assertEquals(1.0, distance);
 	}
