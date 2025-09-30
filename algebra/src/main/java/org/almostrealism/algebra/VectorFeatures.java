@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.IndexProjectionExpression;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
@@ -95,9 +96,26 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
-		return vector(y(a).multiply(z(b)).subtract(z(a).multiply(y(b))),
-				z(a).multiply(x(b)).subtract(x(a).multiply(z(b))),
-				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
+		return new DefaultTraversableExpressionComputation<>("crossProduct", shape(3), args ->
+				CollectionExpression.create(shape(3), idx -> {
+					Expression x = Sum.of(
+							Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(2))),
+							Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(1))).minus()
+					);
+					Expression y = Sum.of(
+							Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(0))),
+							Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(2))).minus()
+					);
+					Expression z = Sum.of(
+							Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(1))),
+							Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(0))).minus()
+					);
+
+					Expression p = idx.imod(3);
+					Expression result = conditional(p.eq(1), y, x);
+					result = conditional(p.eq(2), z, result);
+					return result;
+				}), a, b);
 	}
 
 	@Deprecated

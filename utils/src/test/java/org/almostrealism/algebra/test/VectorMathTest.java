@@ -103,14 +103,42 @@ public class VectorMathTest implements TestFeatures {
 		CollectionProducer<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
-		Assert.assertEquals(1, cpo.getArgsCount());
+		assertEquals(1, cpo.getArgsCount());
 
 		Vector v = cp.get().evaluate();
 		System.out.println(v);
 
-		Assert.assertEquals(-200, v.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-100, v.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, v.getZ(), Math.pow(10, -10));
+		assertEquals(-200, v.getX());
+		assertEquals(-100, v.getY());
+		assertEquals(0, v.getZ());
+	}
+
+	@Test
+	public void normalizedCrossProduct1() {
+		CollectionProducer<Vector> cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
+
+		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
+		assertEquals(1, cpo.getArgsCount());
+
+		Vector v = new Vector(cp.get().evaluate(), 0);
+		v.print();
+
+		assertEquals(-0.894427191, v.getX());
+		assertEquals(-0.447213595, v.getY());
+		assertEquals(0, v.getZ());
+	}
+
+	@Test
+	public void normalizedCrossProduct2() {
+		CollectionProducer<Vector> cp = normalize(crossProduct(v(shape(3), 0)));
+		Evaluable<Vector> ev = cp.get();
+
+		Vector v = new Vector(ev.evaluate(new Vector(100, -200, 0)), 0);
+		v.print();
+
+		assertEquals(-0.894427191, v.getX());
+		assertEquals(-0.447213595, v.getY());
+		assertEquals(0, v.getZ());
 	}
 
 	@Test

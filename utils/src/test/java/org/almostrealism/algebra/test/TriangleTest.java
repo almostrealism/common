@@ -220,6 +220,6 @@ public class TriangleTest implements TestFeatures {
 
 		Ray r = new Ray(ev.evaluate(), 0);
 		r.print();
-		Assert.assertEquals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)), r);
+		assertEquals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)), r);
 	}
 }

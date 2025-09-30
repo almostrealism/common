@@ -43,7 +43,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 					in, new Pair(3, Intersection.e));
 
 			System.out.println("rank = " + out.getA());
-			Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
+			assertEquals(1.0, out.getA());
 		});
 	}
 
