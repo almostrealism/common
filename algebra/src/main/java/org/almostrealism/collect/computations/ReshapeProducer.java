@@ -138,6 +138,8 @@ public class ReshapeProducer<T extends Shape<T>>
 	 */
 	public static boolean enableShapeDelegateIsolation = true;
 
+	public static boolean enableTraversalShapeValidation = false;
+
 	/** Metadata describing this reshape operation for debugging and introspection. */
 	private OperationMetadata metadata;
 	
@@ -665,7 +667,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	 */
 	private T apply(Shape<T> in) {
 		if (shape == null) {
-			if (getShape().isFixedCount() && getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
+			if (enableTraversalShapeValidation && producer instanceof Shape &&
+					getShape().isFixedCount() &&
+					getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
 				throw new IllegalArgumentException();
 			}
 

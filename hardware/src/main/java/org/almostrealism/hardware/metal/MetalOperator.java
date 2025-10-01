@@ -25,6 +25,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -114,10 +115,6 @@ public class MetalOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		if (enableVerboseLog) {
-			log(prog.getMetadata().getDisplayName() + " (" + id + ")");
-		}
-
 		if (dependsOn != null) dependsOn.waitFor();
 
 		MemoryData data[] = prepareArguments(argCount, args);
@@ -144,10 +141,17 @@ public class MetalOperator extends HardwareOperator {
 				}
 
 				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-				offset.setContents(offsetValues);
-
 				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+
+				offset.setContents(offsetValues);
 				size.setContents(sizeValues);
+
+				if (enableVerboseLog) {
+					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
+					log("\tSizes = " + Arrays.toString(sizeValues));
+					log("\tOffsets = " + Arrays.toString(offsetValues));
+					log("\tDimMasks = " + Arrays.toString(dimMasks));
+				}
 
 				if (ScopeSettings.enableDimensionMasking) {
 					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();

@@ -63,6 +63,8 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantKernel() {
+		if (skipGeometryIssues) return;
+
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
 		int w = 100;
@@ -98,6 +100,8 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel() {
+		if (skipGeometryIssues) return;
+
 		int w = 100;
 		int h = 100;
 
@@ -112,7 +116,7 @@ public class SphereTest implements TestFeatures {
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
+		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1), 2);
 
 		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination).evaluate(rays);

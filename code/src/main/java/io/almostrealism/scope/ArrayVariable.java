@@ -178,6 +178,8 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		if (dynamic) {
 			index = pos.imod(length());
 			pos = pos.divide(length()).multiply(getDimValue()).add(index);
+		} else if (ScopeSettings.enableModSizeReferences) {
+			index = pos.imod(length());
 		}
 
 		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);

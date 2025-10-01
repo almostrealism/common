@@ -36,8 +36,25 @@ public class ScopeSettings {
 	public static boolean enableInstructionSetReuse = true;
 
 	public static boolean enableKernelIndexAliases = false;
-	public static boolean enableDimensionMasking = true;
+	public static boolean enableDimensionMasking = SystemUtils.isEnabled("AR_DIMENSION_MASKING").orElse(false);
+
+	/**
+	 * Should {@link io.almostrealism.expression.InstanceReference}s associated with parameters
+	 * to the {@link io.almostrealism.relation.Evaluable} use relative referencing.
+	 * 
+	 * @see  ArrayVariable#reference(Expression, boolean)
+	 */
 	public static boolean enableRelativePassThrough = enableDimensionMasking;
+
+	/**
+	 * Should variables apply a modulo length to the index generated for
+	 * {@link io.almostrealism.expression.InstanceReference}s or allow
+	 * the index to simply overflow the {@link ArrayVariable#length()}.
+	 * 
+	 * @see  ArrayVariable#reference(Expression, boolean) 
+	 */
+	public static boolean enableModSizeReferences = !enableRelativePassThrough;
+
 	public static boolean enableInstanceReferenceMasking = false;
 
 	public static boolean enableKernelSeqCache = false;

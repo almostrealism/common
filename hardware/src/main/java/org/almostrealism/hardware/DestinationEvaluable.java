@@ -78,7 +78,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 			details.getSemaphore().waitFor();
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
-			if (HardwareOperator.enableKernelLog) log("Evaluating " + name + " kernel...");
+			if (HardwareOperator.enableVerboseLog) log("Evaluating " + name + " kernel...");
 
 			boolean enableLog = false;
 

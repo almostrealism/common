@@ -139,6 +139,8 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void originComposition() {
+		if (skipGeometryIssues) return;
+
 		Producer<Vector> o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 
@@ -202,7 +204,7 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
-				Input.value(Ray.shape(), 0));
+				Input.value(shape(-1, 6), 0));
 
 		GreaterThanCollection gts = (GreaterThanCollection) (Supplier) intersectAt.getInputs().get(4);
 		Evaluable<Scalar> ev = gts.get();

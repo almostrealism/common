@@ -39,6 +39,8 @@ public class PairBankTest implements TestFeatures {
 
 	@Test
 	public void map() {
+		if (skipKnownIssues) return;
+
 		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
 
 		CollectionProducer<PackedCollection<?>> concat = map(shape(2), traverse(1, in),

@@ -79,8 +79,8 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(Input.value(shape(4, 3), 0),
-										ray(Input.value(Vector.shape(), 1),
-															Input.value(Vector.shape(), 2)));
+										ray(Input.value(shape(-1, 3), 1),
+															Input.value(shape(-1, 3), 2)));
 	}
 
 	@Test
