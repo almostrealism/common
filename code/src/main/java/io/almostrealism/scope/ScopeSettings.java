@@ -41,10 +41,11 @@ public class ScopeSettings {
 	/**
 	 * Should {@link io.almostrealism.expression.InstanceReference}s associated with parameters
 	 * to the {@link io.almostrealism.relation.Evaluable} use relative referencing.
-	 * 
+	 * F
 	 * @see  ArrayVariable#reference(Expression, boolean)
 	 */
-	public static boolean enableRelativePassThrough = enableDimensionMasking;
+	public static boolean enableRelativePassThrough =
+			SystemUtils.isEnabled("AR_RELATIVE_ARGS").orElse(enableDimensionMasking);
 
 	/**
 	 * Should variables apply a modulo length to the index generated for
@@ -53,7 +54,11 @@ public class ScopeSettings {
 	 * 
 	 * @see  ArrayVariable#reference(Expression, boolean) 
 	 */
-	public static boolean enableModSizeReferences = !enableRelativePassThrough;
+	public static boolean enableModSizeReferences =
+			SystemUtils.isEnabled("AR_MOD_SIZE_REFS").orElse(!enableRelativePassThrough);
+
+	public static boolean enableDynamicReferences =
+			SystemUtils.isEnabled("AR_DYNAMIC_REFS").orElse(enableDimensionMasking);
 
 	public static boolean enableInstanceReferenceMasking = false;
 

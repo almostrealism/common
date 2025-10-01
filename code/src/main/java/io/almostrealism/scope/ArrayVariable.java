@@ -116,7 +116,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
 		}
 
-		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
+		return (Expression) referenceRelative(new IntegerConstant(index), new KernelIndex());
 	}
 
 	@Override
@@ -142,14 +142,14 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 
 	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
-		return referenceRelative(pos, new KernelIndex(null, 0));
+		return referenceRelative(pos, new KernelIndex());
 	}
 
 	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else {
-			return reference(getArrayPosition(this, pos, idx), false);
+			return reference(getArrayPosition(pos, idx), false);
 		}
 	}
 
@@ -221,16 +221,11 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
-	@Deprecated
-	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
-		return getArrayPosition(v, pos, new KernelIndex(null, kernelIndex));
-	}
-
-	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
+	private Expression<?> getArrayPosition(Expression pos, KernelIndex idx) {
 		Expression offset = new IntegerConstant(0);
 
-		if (v.getProducer() instanceof Countable) {
-			Expression dim = v.getDimValue(idx.getKernelAxis());
+		if (getProducer() instanceof Countable) {
+			Expression dim = getDimValue(idx.getKernelAxis());
 
 			Expression kernelOffset = idx.multiply(dim);
 			return kernelOffset.add(offset).add(pos.toInt());

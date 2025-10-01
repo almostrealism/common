@@ -153,7 +153,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public Expression<Double> getValueAt(Expression index) {
 		if (absolute) {
 			return (Expression) getArgumentVariables().get(0).referenceAbsolute(index);
-		} else if (ScopeSettings.enableDimensionMasking) {
+		} else if (ScopeSettings.enableDynamicReferences) {
 			return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 		} else {
 			return (Expression) getArgumentVariables().get(0).referenceRelative(index);
