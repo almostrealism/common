@@ -36,35 +36,17 @@ public class ScopeSettings {
 	public static boolean enableInstructionSetReuse = true;
 
 	public static boolean enableKernelIndexAliases = false;
-	public static boolean enableDimensionMasking = SystemUtils.isEnabled("AR_DIMENSION_MASKING").orElse(false);
+	public static boolean enableDimensionMasking =
+			SystemUtils.isEnabled("AR_DIMENSION_MASKING").orElse(false);
 
 	/**
-	 * Should {@link io.almostrealism.expression.InstanceReference}s associated with parameters
-	 * to the {@link io.almostrealism.relation.Evaluable} use relative referencing.
-	 * F
-	 * @see  ArrayVariable#reference(Expression, boolean)
-	 */
-	public static boolean enableRelativePassThrough =
-			SystemUtils.isEnabled("AR_RELATIVE_ARGS").orElse(enableDimensionMasking);
-
-	/**
-	 * Should variables allow dynamic referencing, which generates
-	 * {@link io.almostrealism.expression.InstanceReference}s that
-	 * use the dimension mask to choose a relative or absolute index
-	 * at runtime.
-	 */
-	public static boolean enableDynamicReferences =
-			SystemUtils.isEnabled("AR_DYNAMIC_REFS").orElse(true);
-
-	/**
-	 * Should variables apply a modulo length to the index generated for
-	 * {@link io.almostrealism.expression.InstanceReference}s or allow
-	 * the index to simply overflow the {@link ArrayVariable#length()}.
+	 * Should arguments be treated as variable count, independent of their
+	 * actual {@link io.almostrealism.collect.TraversalPolicy}.
 	 *
-	 * @see  ArrayVariable#reference(Expression, boolean)
+	 * @see  io.almostrealism.collect.TraversalPolicy#isFixedCount()
 	 */
-	public static boolean enableModSizeReferences =
-			SystemUtils.isEnabled("AR_MOD_SIZE_REFS").orElse(false);
+	public static boolean requireVariablePassThrough =
+			SystemUtils.isEnabled("AR_RELATIVE_ARGS").orElse(false);
 
 	public static boolean enableInstanceReferenceMasking = false;
 

@@ -75,7 +75,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public boolean isFixedCount() {
-		if (!ScopeSettings.enableRelativePassThrough) {
+		if (!ScopeSettings.requireVariablePassThrough) {
 			return getShape().isFixedCount();
 		}
 
@@ -136,15 +136,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		ArrayVariable var = getArgumentVariables().get(0);
-
-		if (ScopeSettings.enableDynamicReferences) {
-			return (Expression) var.referenceDynamic(index);
-		} else if (ScopeSettings.enableRelativePassThrough) {
-			return (Expression) var.referenceRelative(index.imod(var.length()));
-		} else {
-			return (Expression) var.referenceAbsolute(index);
-		}
+		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 
 	@Override
