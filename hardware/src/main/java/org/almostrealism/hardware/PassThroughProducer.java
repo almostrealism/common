@@ -49,26 +49,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	private TraversalPolicy shape;
 	private int argIndex;
-	private boolean absolute;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
-		this(shape, argIndex, !ScopeSettings.enableRelativePassThrough);
-	}
-
-	public PassThroughProducer(TraversalPolicy shape, int argIndex, boolean absolute) {
 		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
-		this.absolute = absolute;
-		init();
-	}
-
-	@Deprecated
-	public PassThroughProducer(int size, int argIndex) {
-		this();
-		this.shape = new TraversalPolicy(size).traverse(0);
-		this.argIndex = argIndex;
-		this.absolute = false;
 		init();
 	}
 
@@ -90,7 +75,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public boolean isFixedCount() {
-		if (absolute) {
+		if (!ScopeSettings.enableRelativePassThrough) {
 			return getShape().isFixedCount();
 		}
 
@@ -108,7 +93,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 			throw new UnsupportedOperationException();
 		}
 
-		return new PassThroughProducer<>(shape, argIndex, absolute);
+		return new PassThroughProducer<>(shape, argIndex);
 	}
 
 	@Override
@@ -151,12 +136,14 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (absolute) {
-			return (Expression) getArgumentVariables().get(0).referenceAbsolute(index);
-		} else if (ScopeSettings.enableDynamicReferences) {
-			return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
+		ArrayVariable var = getArgumentVariables().get(0);
+
+		if (ScopeSettings.enableDynamicReferences) {
+			return (Expression) var.referenceDynamic(index);
+		} else if (ScopeSettings.enableRelativePassThrough) {
+			return (Expression) var.referenceRelative(index.imod(var.length()));
 		} else {
-			return (Expression) getArgumentVariables().get(0).referenceRelative(index);
+			return (Expression) var.referenceAbsolute(index);
 		}
 	}
 

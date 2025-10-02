@@ -40,11 +40,6 @@ public class CollectionAddTests implements TestFeatures {
 	int size = 150000;
 	int parallelism = KernelPreferences.getCpuParallelism();
 
-	@Override
-	public <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
-		return new PassThroughProducer(shape, argIndex, true);
-	}
-
 	public void add(ComputeRequirement... req) {
 		if (testDepth < 3) return;
 

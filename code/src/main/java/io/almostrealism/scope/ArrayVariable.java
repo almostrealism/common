@@ -222,15 +222,13 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	private Expression<?> getArrayPosition(Expression pos, KernelIndex idx) {
-		Expression offset = new IntegerConstant(0);
-
 		if (getProducer() instanceof Countable) {
 			Expression dim = getDimValue(idx.getKernelAxis());
 
 			Expression kernelOffset = idx.multiply(dim);
-			return kernelOffset.add(offset).add(pos.toInt());
+			return kernelOffset.add(pos.toInt());
 		} else {
-			return offset.add(pos).toInt();
+			return pos.toInt();
 		}
 	}
 

@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -45,11 +46,15 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 	public void transpose(boolean absolute) {
+		if (absolute == ScopeSettings.enableRelativePassThrough) {
+			throw new UnsupportedOperationException();
+		}
+
 		int n = 64;
 		int m = 256;
 
 		transpose(n, m, input -> {
-			PassThroughProducer p = new PassThroughProducer(shape(n, m), 0, absolute);
+			PassThroughProducer p = new PassThroughProducer(shape(n, m), 0);
 			Evaluable<PackedCollection<?>> transpose = c(p).transpose().get();
 			return transpose
 					.into(new PackedCollection<>(shape(m, n)).each())
