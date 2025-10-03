@@ -39,14 +39,16 @@ public class ScopeSettings {
 	public static boolean enableDimensionMasking =
 			SystemUtils.isEnabled("AR_DIMENSION_MASKING").orElse(false);
 
+	public static boolean enableAtomicMasking = false;
+	public static boolean enableNonAtomicMasking = true;
+
 	/**
 	 * Should arguments be treated as variable count, independent of their
 	 * actual {@link io.almostrealism.collect.TraversalPolicy}.
 	 *
 	 * @see  io.almostrealism.collect.TraversalPolicy#isFixedCount()
 	 */
-	public static boolean requireVariablePassThrough =
-			SystemUtils.isEnabled("AR_RELATIVE_ARGS").orElse(false);
+	public static boolean requireVariablePassThrough = false;
 
 	public static boolean enableInstanceReferenceMasking = false;
 

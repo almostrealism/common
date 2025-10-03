@@ -136,6 +136,10 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		if (isFixedCount()) {
+			index = index.toInt().imod(getShape().getTotalSizeLong());
+		}
+
 		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 

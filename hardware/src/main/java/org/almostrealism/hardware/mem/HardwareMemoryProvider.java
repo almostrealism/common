@@ -43,7 +43,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private HashMap<Long, NativeRef<T>> allocated;
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 	private ReferenceQueue<T> referenceQueue;
-	private boolean destroying;
+	private volatile boolean destroying;
 
 	public HardwareMemoryProvider() {
 		this.allocated = new HashMap<>();
