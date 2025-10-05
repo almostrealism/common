@@ -32,6 +32,15 @@ public class DimValue extends StaticReference<Integer> {
 	}
 
 	@Override
+	public Expression<Integer> simplify(KernelStructureContext context, int depth) {
+		if (context.getKernelMaximum().orElse(Integer.MAX_VALUE) <= 1) {
+			return new IntegerConstant(0);
+		}
+
+		return super.simplify(context, depth);
+	}
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.getVariableDimName((ArrayVariable) getReferent(), dim);
 	}
