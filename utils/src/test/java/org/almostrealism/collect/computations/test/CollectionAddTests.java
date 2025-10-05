@@ -41,7 +41,7 @@ public class CollectionAddTests implements TestFeatures {
 	int parallelism = KernelPreferences.getCpuParallelism();
 
 	public void add(ComputeRequirement... req) {
-		if (testDepth < 3) return;
+		if (testDepth < 4) return;
 
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
@@ -74,7 +74,7 @@ public class CollectionAddTests implements TestFeatures {
 
 	@Test
 	public void javaAdd() throws InterruptedException {
-		if (testDepth < 3) return;
+		if (skipLongTests) return;
 
 		double a[] = new double[size];
 		double b[] = new double[size];
