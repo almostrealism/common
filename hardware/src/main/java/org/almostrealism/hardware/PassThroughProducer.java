@@ -74,13 +74,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public boolean isFixedCount() {
-		if (!ScopeSettings.requireVariablePassThrough) {
-			return getShape().isFixedCount();
-		}
-
-		return false;
-	}
+	public boolean isFixedCount() { return getShape().isFixedCount(); }
 
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {

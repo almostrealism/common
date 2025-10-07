@@ -166,20 +166,14 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 				// Is it though?
 				throw new IllegalArgumentException("globalWorkSize is too large");
-			} else if (getGlobalWorkSize() == 1) {
-				if (ScopeSettings.enableAtomicMasking) {
-					return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
-				} else {
-					return IntStream.range(0, getArgCount()).map(i -> 1).toArray();
-				}
-			} else if (!ScopeSettings.enableNonAtomicMasking) {
+			} else if (getGlobalWorkSize() == 1 || !ScopeSettings.enableNonAtomicMasking) {
 				return IntStream.range(0, getArgCount()).map(i -> 1).toArray();
 			}
 
 			int masks[] = Arrays.stream(sizes)
 						.mapToInt(size -> (size >= getGlobalWorkSize() && size % getGlobalWorkSize() == 0) ? 1 : 0)
 						.toArray();
-			if (ScopeSettings.enableDimensionMasking &&
+			if (enableVerboseLog &&
 					IntStream.of(masks).anyMatch(i -> i == 0)) {
 				warn("Dimension masking used by " + getName() + " for globalWorkSize " + getGlobalWorkSize());
 			}
