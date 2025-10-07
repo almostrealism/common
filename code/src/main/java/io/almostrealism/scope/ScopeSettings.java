@@ -50,6 +50,8 @@ public class ScopeSettings {
 	 */
 	public static boolean requireVariablePassThrough = false;
 
+	public static boolean enableFixedCountMod = false;
+
 	public static boolean enableInstanceReferenceMasking = false;
 
 	public static boolean enableKernelSeqCache = false;

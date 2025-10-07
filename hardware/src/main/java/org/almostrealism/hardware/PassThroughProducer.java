@@ -136,7 +136,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (isFixedCount()) {
+		if (ScopeSettings.enableFixedCountMod && isFixedCount()) {
 			index = index.toInt().imod(getShape().getTotalSizeLong());
 		}
 
