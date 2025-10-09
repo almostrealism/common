@@ -22,7 +22,6 @@ import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.IndexSequence;
 import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
@@ -274,6 +273,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 		Expression<?> numerator = operands.get(0);
 		Expression<?> denominator = operands.get(1);
+
+		if (numerator.longValue().orElse(-1) == 0)
+			return new IntegerConstant(0);
 
 		OptionalLong d = denominator.longValue();
 
