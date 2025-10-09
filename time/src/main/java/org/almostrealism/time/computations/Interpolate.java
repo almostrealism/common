@@ -77,19 +77,46 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 			CollectionVariable c = (CollectionVariable<?>) var;
 
 			if (c.getShape().getCountLong() == 1) {
-				return ((CollectionVariable<?>) var).getValueAt(pos);
+				return c.getValueAt(pos);
 			} else if (c.getShape().getDimensions() == 1) {
 				if (pos.intValue().orElse(1) != 0) {
 					throw new IllegalArgumentException();
 				}
 
-				return ((CollectionVariable<?>) var).getValue(kernel());
+				return c.getValue(kernel());
 			} else {
-				return ((CollectionVariable<?>) var).getValue(kernel(), pos);
+				return c.getValue(kernel(), pos);
 			}
 		} else {
 			return var.referenceRelative(pos);
 		}
+	}
+
+	protected Expression getSeriesValue(Expression<?> pos) {
+		ArrayVariable<?> var = getArgument(1);
+
+		if (var instanceof CollectionVariable) {
+			CollectionVariable c = (CollectionVariable) var;
+
+			if (c.getShape().getTotalSizeLong() == 1) {
+				// This is a hack to allow the a collection of size 1
+				// to be used as a shortcut for a value of unknown size.
+				// This would normally be accomplished using a value
+				// that has a variable count, but unfortunately that
+				// distinction can't easily distinguish between a
+				// variable length time series a variable number of
+				// time series' of a fixed length.
+				return c.referenceAbsolute(pos);
+			} else if (c.getShape().isFixedCount()) {
+				return c.getValueAt(pos);
+			}
+		}
+
+		return var.referenceRelative(pos);
+	}
+
+	protected Expression getTime() {
+		return getArgumentValueRelative(2, 0);
 	}
 
 	protected Expression<Double> getRate() {
@@ -132,14 +159,14 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		Expression<Double> rate = getRate();
 
 		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
-		String bankl_value = getArgumentValueRelative(1, left).getSimpleExpression(getLanguage());
+		String bankl_value = getSeriesValue(left).getSimpleExpression(getLanguage());
 		String bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
-		String bankr_value = getArgumentValueRelative(1, right).getSimpleExpression(getLanguage());
+		String bankr_value = getSeriesValue(right).getSimpleExpression(getLanguage());
 		String cursor = getArgumentValueRelative(2, e(0)).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 
-		Expression<Double> time = getArgumentValueRelative(2, 0).multiply(rate);
+		Expression<Double> time = getTime().multiply(rate);
 		Expression index = indexForTime.apply(time);
 
 		if (enableFunctionalPosition) {

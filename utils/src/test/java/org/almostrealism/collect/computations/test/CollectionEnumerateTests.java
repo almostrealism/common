@@ -46,7 +46,7 @@ public class CollectionEnumerateTests implements TestFeatures {
 	}
 
 	public void transpose(boolean absolute) {
-		if (absolute == ScopeSettings.requireVariablePassThrough) {
+		if (!absolute) {
 			throw new UnsupportedOperationException();
 		}
 

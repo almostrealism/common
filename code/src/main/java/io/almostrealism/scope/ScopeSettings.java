@@ -39,8 +39,9 @@ public class ScopeSettings {
 
 	public static boolean enableDimensionMasking =
 			SystemUtils.isEnabled("AR_DIMENSION_MASKING").orElse(false);
+	public static boolean enableDimValue = true;
 	public static boolean enableNonAtomicMasking = true;
-	public static boolean enableFixedCountMod = false;
+	public static boolean enableFixedCountMod = true;
 
 	public static boolean enableInstanceReferenceMasking = false;
 

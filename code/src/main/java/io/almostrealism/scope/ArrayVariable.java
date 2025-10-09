@@ -197,7 +197,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public Expression getDimValue(int dimension) {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		if (ScopeSettings.enableDimensionMasking) {
+		if (ScopeSettings.enableDimValue) {
 			return new DimValue(this, dimension);
 		} else if (dimension == 0) {
 			return new SizeValue(this);
