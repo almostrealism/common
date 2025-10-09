@@ -59,6 +59,15 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	public TraversalPolicy getShape() { return shape; }
 
+	public boolean isFixedCount() {
+		Supplier p = getProducer();
+		if (p instanceof Delegated) {
+			p = (Producer) ((Delegated<?>) p).getDelegate();
+		}
+
+		return Countable.isFixedCount(p);
+	}
+
 	@Override
 	public CollectionVariable<T> reshape(TraversalPolicy shape) {
 		throw new UnsupportedOperationException();
@@ -71,7 +80,11 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	@Override
 	public Expression<Integer> length() {
-		return getShape().getSize() == 1 ? super.length() : e(getShape().getSize());
+		if (isFixedCount() && getShape().getSize() != 1) {
+			return e(getShape().getSize());
+		}
+
+		return super.length();
 	}
 
 	@Override

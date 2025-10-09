@@ -179,7 +179,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		pos = index.toInt();
 		if (dynamic) {
 			index = pos.imod(length());
-			pos = pos.divide(length()).multiply(length()).add(index);
 		}
 
 		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
