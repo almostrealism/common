@@ -119,7 +119,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		String to = supported.get(0).getName();
 		OperationMetadata metadata =
 				new OperationMetadata("reassignMemory_" + from + "_" + to,
-				"Reassign Memory " + from + " -> " + to);
+						"Reassign Memory " + from + " -> " + to);
 
 		recordDuration(null, new OperationWithInfo.RunnableWithInfo(metadata,
 				() -> {
@@ -135,53 +135,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					root.reallocate(supported.get(0));
 				}), false);
 
-	}
-
-	protected int[] computeDimensionMasks(Object args[]) {
-		long start = System.nanoTime();
-
-		try {
-			long sizes[] = new long[args.length];
-
-			for (int i = 0; i < getArgCount(); i++) {
-				if (args[i] == null) {
-					throw new NullPointerException("argument " + i + " to function " + getName());
-				}
-
-				if (!(args[i] instanceof MemoryData)) {
-					throw new IllegalArgumentException("argument " + i + " (" +
-							args[i].getClass().getSimpleName() + ") to function " +
-							getName() + " is not a MemoryData");
-				}
-
-				if (args[i] instanceof MemoryBank) {
-					sizes[i] = ((MemoryBank) args[i]).getCountLong();
-				} else if (args[i] instanceof Bytes) {
-					sizes[i] = ((Bytes) args[i]).getCountLong();
-				} else {
-					sizes[i] = ((MemoryData) args[i]).getMemLength();
-				}
-			}
-
-			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-				// Is it though?
-				throw new IllegalArgumentException("globalWorkSize is too large");
-			} else if (getGlobalWorkSize() == 1 || !ScopeSettings.enableNonAtomicMasking) {
-				return IntStream.range(0, getArgCount()).map(i -> 1).toArray();
-			}
-
-			int masks[] = Arrays.stream(sizes)
-						.mapToInt(size -> (size >= getGlobalWorkSize() && size % getGlobalWorkSize() == 0) ? 1 : 0)
-						.toArray();
-			if (enableVerboseLog &&
-					IntStream.of(masks).anyMatch(i -> i == 0)) {
-				warn("Dimension masking used by " + getName() + " for globalWorkSize " + getGlobalWorkSize());
-			}
-
-			return masks;
-		} finally {
-			computeDimMasksMetric.addEntry(System.nanoTime() - start);
-		}
 	}
 
 	protected void recordDuration(Semaphore semaphore, Runnable r) {

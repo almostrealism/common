@@ -65,7 +65,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	@Override
 	default void destroy() { }
 
-	default void apply(long idx, long kernelSize, int[] dim0, MemoryData... args) {
+	default void apply(long idx, long kernelSize, MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
@@ -81,7 +81,11 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
 					Stream.of(args).mapToInt(MemoryData::getAtomicMemLength).toArray(),
-					dim0, i, kernelSize);
+					i, kernelSize);
+	}
+
+	default void apply(RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
+		apply(args, offsets, sizes, sizes, globalId, kernelSize);
 	}
 
 	default void apply(RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {

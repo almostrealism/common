@@ -112,8 +112,6 @@ public class CLOperator extends HardwareOperator {
 			long totalSize = 0;
 
 			try {
-				int dimMasks[] = computeDimensionMasks(data);
-
 				for (int i = 0; i < argCount; i++) {
 					if (data[i] != argCache[i]) {
 						CLMemory mem = (CLMemory) data[i].getMem();
@@ -144,13 +142,8 @@ public class CLOperator extends HardwareOperator {
 
 				for (int i = 0; i < argCount; i++) {
 					if (data[i] != argCache[i]) {
-						if (ScopeSettings.enableDimensionMasking) {
-							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-									Pointer.to(new int[]{data[i].getAtomicMemLength() * dimMasks[i]})); // Dim0
-						} else {
-							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-									Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Dim0
-						}
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+								Pointer.to(new int[]{data[i].getAtomicMemLength()}));
 					} else {
 						index++;
 					}

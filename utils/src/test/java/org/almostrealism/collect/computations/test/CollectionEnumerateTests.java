@@ -35,21 +35,12 @@ import java.util.function.Function;
 public class CollectionEnumerateTests implements TestFeatures {
 
 	@Test
-	public void transposeAbsolute() { transpose(true); }
-
-	@Test
-	public void transposeRelative() { transpose(false); }
-
-	@Test
 	public void transpose() {
 		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
 	}
 
-	public void transpose(boolean absolute) {
-		if (!absolute) {
-			throw new UnsupportedOperationException();
-		}
-
+	@Test
+	public void transposePassThrough() {
 		int n = 64;
 		int m = 256;
 

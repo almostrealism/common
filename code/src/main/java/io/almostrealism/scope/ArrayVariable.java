@@ -17,7 +17,6 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.expression.DimValue;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.kernel.KernelIndex;
@@ -85,9 +84,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public void setDelegateOffset(Expression<Integer> delegateOffset) { this.delegateOffset = delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { setDelegateOffset(new IntegerConstant(delegateOffset)); }
 
-	public boolean isDisableOffset() {
-		return disableOffset;
-	}
+	public boolean isDisableOffset() { return disableOffset; }
 	public void setDisableOffset(boolean disableOffset) {
 		this.disableOffset = disableOffset;
 	}
@@ -145,11 +142,16 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return referenceRelative(pos, new KernelIndex());
 	}
 
+	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
+		} else if (!(getProducer() instanceof Countable)) {
+			return reference(pos, false);
+		} else if (idx.getKernelAxis() != 0) {
+			throw new UnsupportedOperationException();
 		} else {
-			return reference(getArrayPosition(pos, idx), false);
+			return reference(idx.multiply(length()).add(pos.toInt()), false);
 		}
 	}
 
@@ -177,7 +179,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		pos = index.toInt();
 		if (dynamic) {
 			index = pos.imod(length());
-			pos = pos.divide(length()).multiply(getDimValue()).add(index);
+			pos = pos.divide(length()).multiply(length()).add(index);
 		}
 
 		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
@@ -188,22 +190,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		if (destroyed) throw new UnsupportedOperationException();
 
 		return new StaticReference<>(Integer.class, getName() + "Offset");
-	}
-
-	public Expression getDimValue() {
-		return getDimValue(0);
-	}
-
-	public Expression getDimValue(int dimension) {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		if (ScopeSettings.enableDimValue) {
-			return new DimValue(this, dimension);
-		} else if (dimension == 0) {
-			return new SizeValue(this);
-		} else {
-			throw new IllegalArgumentException("Dimension masking is disabled");
-		}
 	}
 
 	public Expression<Integer> length() {
@@ -219,18 +205,5 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
-	private Expression<?> getArrayPosition(Expression pos, KernelIndex idx) {
-		if (getProducer() instanceof Countable) {
-			Expression dim = getDimValue(idx.getKernelAxis());
-
-			Expression kernelOffset = idx.multiply(dim);
-			return kernelOffset.add(pos.toInt());
-		} else {
-			return pos.toInt();
-		}
-	}
-
-	public void destroy() {
-		this.destroyed = true;
-	}
+	public void destroy() { this.destroyed = true; }
 }

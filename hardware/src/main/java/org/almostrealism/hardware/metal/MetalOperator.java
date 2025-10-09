@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -122,8 +122,6 @@ public class MetalOperator extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		int dimMasks[] = computeDimensionMasks(data);
-
 		Future<?> run = context.getCommandRunner().submit((offset, size, dim0, queue) -> {
 			recordDuration(null, () -> {
 				int index = 0;
@@ -145,20 +143,12 @@ public class MetalOperator extends HardwareOperator {
 
 				offset.setContents(offsetValues);
 				size.setContents(sizeValues);
+				dim0.setContents(sizeValues);
 
 				if (enableVerboseLog) {
 					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
 					log("\tSizes = " + Arrays.toString(sizeValues));
 					log("\tOffsets = " + Arrays.toString(offsetValues));
-					log("\tDimMasks = " + Arrays.toString(dimMasks));
-				}
-
-				if (ScopeSettings.enableDimensionMasking) {
-					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
-					dim0.setContents(dim0Values);
-				} else {
-					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-					dim0.setContents(dim0Values);
 				}
 
 				encoder.setBuffer(index++, offset);
