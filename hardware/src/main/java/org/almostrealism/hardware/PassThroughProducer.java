@@ -142,7 +142,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
+		return (Expression) getArgumentVariables().get(0).reference(kernel().multiply(getMemLength()).add(index));
 	}
 
 	@Override
