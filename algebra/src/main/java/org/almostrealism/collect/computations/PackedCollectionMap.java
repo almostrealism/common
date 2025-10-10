@@ -108,7 +108,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			scope.getVariables().add(output.referenceRelative(e(i), kernel).assign(value));
+			scope.getVariables().add(output.reference(index).assign(value));
 		}
 
 		return scope;

@@ -330,9 +330,9 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 			if (statementCount > 1) index = index.multiply(statementCount).add(i);
 
 			if (relativeOutput) {
-				scope.getStatements().add(output.referenceRelative(e(i), kernelIndex).assign(getValueAt(index)));
+				scope.getStatements().add(output.reference(index).assign(getValueAt(index)));
 			} else {
-				scope.getStatements().add(output.referenceAbsolute(kernelIndex).assign(getValueAt(index)));
+				scope.getStatements().add(output.reference(kernelIndex).assign(getValueAt(index)));
 			}
 		}
 
