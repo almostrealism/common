@@ -630,11 +630,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DelegatedCollectionProducer<>(c(actual), false, false);
 	}
 
-	@Override
-	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
-		return new CollectionProducerSubstitution(original, replacement);
-	}
-
 	/**
 	 * Creates a {@link CollectionProducer} from a sequence of double values.
 	 * This is a fundamental method for creating computational producers

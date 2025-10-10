@@ -94,8 +94,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.executor = executor;
 	}
 
-	public int getArgumentCount() { return kernelArgs.length; }
-
 	public boolean isKernel() { return kernel; }
 	public boolean isFixedCount() { return fixedCount; }
 	public long getCountLong() { return count; }

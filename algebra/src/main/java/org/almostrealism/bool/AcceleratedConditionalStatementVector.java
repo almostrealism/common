@@ -22,6 +22,7 @@ import io.almostrealism.code.CollectionUtils;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, ProducerComputation<Vector> {
 	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier trueValue, Supplier falseValue) {
 		return and(trueValue, falseValue, operand);

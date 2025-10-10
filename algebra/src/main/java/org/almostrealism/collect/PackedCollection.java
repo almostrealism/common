@@ -141,14 +141,6 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
 
-	public void copyFrom(PackedCollection<T> source) {
-		if (source.getShape().getTotalSize() != getShape().getTotalSize()) {
-			throw new UnsupportedOperationException();
-		}
-
-		setMem(0, source, 0, source.getMemLength());
-	}
-
 	@Override
 	public long getCountLong() {
 		return shape.getCountLong();

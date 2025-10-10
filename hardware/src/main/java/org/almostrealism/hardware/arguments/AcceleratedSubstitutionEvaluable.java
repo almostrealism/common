@@ -34,10 +34,6 @@ public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements E
 		this.substitutions = new ArrayList<>();
 	}
 
-	public <V> void addSubstitution(Producer<V> original, Producer<V> replacement) {
-		substitutions.add(new ProducerSubstitution<>(original, replacement));
-	}
-
 	public <V> void addSubstitution(ProducerSubstitution<V> substitution) {
 		substitutions.add(substitution);
 	}

@@ -29,12 +29,4 @@ public interface ComputerFeatures extends HardwareFeatures {
 	default <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
 		return Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
-
-	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
-	}
 }

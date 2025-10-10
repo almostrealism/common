@@ -33,13 +33,6 @@ public class GreaterThanCollection<T extends PackedCollection<?>> extends Collec
 	public GreaterThanCollection(
 			TraversalPolicy shape,
 			Producer leftOperand,
-			Producer rightOperand) {
-		this(shape, leftOperand, rightOperand, null, null);
-	}
-
-	public GreaterThanCollection(
-			TraversalPolicy shape,
-			Producer leftOperand,
 			Producer rightOperand,
 			Producer trueValue,
 			Producer falseValue) {

@@ -156,9 +156,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	/** Cached hardware-accelerated evaluable instance for this computation. */
 	private HardwareEvaluable<O> evaluable;
-	
-	/** Flag indicating whether the cached evaluable needs to be regenerated. */
-	private boolean evaluableOutdated;
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
 	private CollectionProducer<O> deltaAlternate;
@@ -354,19 +351,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (dependentLifecycles != null)
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
-		this.evaluableOutdated = true;
 		// this.evaluable = null;
-	}
-
-	/**
-	 * Sets the traversal policy (shape) for this computation.
-	 * This method is protected and intended for use by subclasses
-	 * that need to modify the shape after construction.
-	 * 
-	 * @param shape The new traversal policy to set
-	 */
-	protected void setShape(TraversalPolicy shape) {
-		this.shape = shape;
 	}
 
 	/**
