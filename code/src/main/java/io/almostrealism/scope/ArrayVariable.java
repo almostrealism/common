@@ -147,39 +147,37 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else if (!(getProducer() instanceof Countable)) {
-			return reference(pos, false);
+			return reference(pos);
 		} else if (idx.getKernelAxis() != 0) {
 			throw new UnsupportedOperationException();
 		} else {
-			return reference(idx.multiply(length()).add(pos.toInt()), false);
+			return reference(idx.multiply(length()).add(pos.toInt()));
 		}
 	}
 
 	public Expression<T> referenceAbsolute(Expression<?> pos) {
-		return reference(pos, false);
+		return reference(pos);
 	}
 
 	@Deprecated
 	public Expression<T> referenceDynamic(Expression<?> pos) {
-		return reference(pos, true);
+		return reference(pos);
 	}
 
-	protected Expression<T> reference(Expression<?> pos, boolean dynamic) {
+	protected Expression<T> reference(Expression<?> pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else if (getDelegate() != null) {
-			return getDelegate().reference(pos.add(getDelegateOffset()), false);
+			return getDelegate().reference(pos.add(getDelegateOffset()));
 		}
 
 		Expression<?> index = pos;
 		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
 
 		pos = index.toInt();
-		if (dynamic) {
-			index = pos.imod(length());
-		}
+		index = pos.imod(length());
 
 		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
 		return ScopeSettings.enableInstanceReferenceMasking ? Mask.of(condition, ref) : ref;

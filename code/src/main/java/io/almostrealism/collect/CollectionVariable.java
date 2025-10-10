@@ -91,7 +91,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	public Expression<T> referenceRelative(Expression<?> idx) {
 		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.reference(p, false);
+			return parent.reference(p);
 		}
 
 		return super.referenceRelative(idx);
@@ -144,7 +144,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		boolean fixedCount = Countable.isFixedCount(getProducer());
 
 		if (getShape().getTotalSize() == 1 && fixedCount) {
-			return (Expression) reference(e(0), false);
+			return (Expression) reference(e(0));
 		} else {
 			if (getShape().getSize() != 1 || fixedCount) {
 				index = index.toInt().imod(getShape().getTotalSize());
@@ -154,7 +154,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 				index = getShape().getOrder().indexOf(index);
 			}
 
-			return (Expression) reference(index, false);
+			return (Expression) reference(index);
 		}
 	}
 
