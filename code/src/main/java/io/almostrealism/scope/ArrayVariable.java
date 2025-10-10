@@ -159,12 +159,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return reference(pos);
 	}
 
-	@Deprecated
-	public Expression<T> referenceDynamic(Expression<?> pos) {
-		return reference(pos);
-	}
-
-	protected Expression<T> reference(Expression<?> pos) {
+	public Expression<T> reference(Expression<?> pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == this) {

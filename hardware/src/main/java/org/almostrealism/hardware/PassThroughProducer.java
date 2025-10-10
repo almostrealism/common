@@ -131,10 +131,13 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		if (isFixedCount()) {
+			// TODO  This should eventually be unnecessary, since the
+			// TODO  behavior in CollectionVariable should take care
+			// TODO  of this consideration
 			index = index.toInt().imod(getShape().getTotalSizeLong());
 		}
 
-		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
+		return (Expression) getArgumentVariables().get(0).reference(index);
 	}
 
 	@Override

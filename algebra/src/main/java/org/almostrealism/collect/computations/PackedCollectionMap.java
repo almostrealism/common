@@ -103,7 +103,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 				ComputableBase<?, ?> op = (ComputableBase) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
-				value = v.referenceRelative(e(i));
+				value = v.reference(index);
 			}
 
 			if (value == null) throw new UnsupportedOperationException();
