@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -107,8 +109,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept(getCondition().getSimpleExpression(getLanguage()));
 		scope.code().accept(") {\n");
 
+		KernelIndex k = kernel(context);
+		Expression m = k.multiply(getMemLength());
+
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getTrueValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.reference(m.add(i)).assign(getTrueValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
@@ -121,7 +126,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			ExpressionAssignment<?> var = outputVariable.referenceRelative(i).assign(getFalseValueExpression().apply(i));
+			ExpressionAssignment<?> var = outputVariable.reference(m.add(i)).assign(getFalseValueExpression().apply(i));
 			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");

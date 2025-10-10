@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package io.almostrealism.collect;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -31,12 +30,8 @@ import java.util.function.Supplier;
 
 public class CollectionVariable<T extends Collection<Double, ? extends Collection<?, ?>>>
 		extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
-	public static boolean enableAbsoluteValueAt = false;
 
 	private TraversalPolicy shape;
-
-	private CollectionVariable<T> parent;
-	private Expression pos[];
 
 	public CollectionVariable(String name, TraversalPolicy shape,
 							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
@@ -48,13 +43,6 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 							  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(name, scope, type, p);
 		this.shape = shape;
-	}
-
-	protected CollectionVariable(TraversalPolicy shape, CollectionVariable<T> parent, Expression... pos) {
-		super(null, null, null, null);
-		this.shape = shape;
-		this.parent = parent;
-		this.pos = pos;
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -88,40 +76,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	@Override
-	public Expression<T> referenceRelative(Expression<?> idx) {
-		if (parent != null) {
-			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.reference(p);
-		}
-
-		return super.referenceRelative(idx);
-	}
-
-	@Override
-	public Expression<T> valueAt(Expression<?> exp) {
-		if (enableAbsoluteValueAt)
-			return (Expression) getValueAt(exp);
-
-		return super.valueAt(exp);
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		if (parent != null) {
-			Expression<?> index = getShape().index(pos);
-			return parent.getValue(parent.getShape().subset(getShape(), index, this.pos));
-		}
-
-		return getValueAt(getShape().index(pos));
-	}
-
-	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (parent != null) {
-			Expression<?> p = parent.getShape().subset(getShape(), index, pos);
-			return parent.getValueAt(p);
-		}
-
 		Supplier producer = getProducer();
 
 		if (producer instanceof Delegated) {
@@ -171,30 +126,6 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		}
 
 		return CollectionExpression.super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-	}
-
-	public Expression<Double> get(Expression<?>... pos) {
-		return getValue(pos);
-	}
-
-	public CollectionVariable<T> get(TraversalPolicy shape, int... pos) {
-		// TODO  This can be made more efficient by converting pos[] into an index ahead of time
-
-		Expression[] p = new Expression[pos.length];
-		for (int i = 0; i < pos.length; i++) {
-			p[i] = new IntegerConstant(pos[i]);
-		}
-		return get(shape, p);
-	}
-
-	public CollectionVariable<T> get(TraversalPolicy shape, Expression... pos) {
-		if (shape.getDimensions() != this.shape.getDimensions()) {
-			System.out.println("WARN: Obtaining a " + shape.getDimensions() +
-					"d subset of a " + this.shape.getDimensions() +
-					"d collection is likely to produce an unexpected result");
-		}
-
-		return new CollectionVariable<>(shape, this, pos);
 	}
 
 	@Override

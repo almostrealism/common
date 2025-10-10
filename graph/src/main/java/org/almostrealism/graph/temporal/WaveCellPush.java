@@ -32,13 +32,6 @@ import java.util.function.Supplier;
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
 
 	public WaveCellPush(WaveCellData data,
-						PackedCollection<?> wave,
-						Producer<PackedCollection<?>> frame,
-						PackedCollection<?> output) {
-		super(data, wave, frame, output);
-	}
-
-	public WaveCellPush(WaveCellData data,
 						Producer<PackedCollection<?>> wave,
 						Producer<PackedCollection<?>> frame,
 						PackedCollection<?> output) {

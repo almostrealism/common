@@ -100,30 +100,30 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	public Expression<Double> getValueRelative(int index) {
+		return getValueRelative(new IntegerConstant(index));
+	}
+
+	public Expression<Double> getValueRelative(Expression index) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		TraversableExpression exp = TraversableExpression.traverse(getProducer());
 
 		if (exp != null) {
-			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
+			Expression<Double> value = exp.getValueRelative(index);
 			if (value != null) return value;
 		}
 
 		if (getDelegate() != null) {
-			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
+			return getDelegate().getValueRelative(index.add(getDelegateOffset()));
 		}
 
-		return (Expression) referenceRelative(new IntegerConstant(index), new KernelIndex());
+		return (Expression) reference(new KernelIndex().multiply(length()).add(index.toInt()));
 	}
 
 	@Override
 	public Expression<T> valueAt(Expression<?> exp) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(exp);
-	}
-
-	public InstanceReference<Multiple<T>, T> ref(int pos) {
-		return ref(new IntegerConstant(pos));
 	}
 
 	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
@@ -139,19 +139,12 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 
 	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
-		return referenceRelative(pos, new KernelIndex());
-	}
-
-	@Deprecated
-	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 		} else if (!(getProducer() instanceof Countable)) {
 			return reference(pos);
-		} else if (idx.getKernelAxis() != 0) {
-			throw new UnsupportedOperationException();
 		} else {
-			return reference(idx.multiply(length()).add(pos.toInt()));
+			return reference(new KernelIndex().multiply(length()).add(pos.toInt()));
 		}
 	}
 
