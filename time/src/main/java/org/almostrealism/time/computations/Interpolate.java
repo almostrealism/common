@@ -106,7 +106,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 				// distinction can't easily distinguish between a
 				// variable length time series a variable number of
 				// time series' of a fixed length.
-				return c.referenceAbsolute(pos);
+				return c.reference(pos);
 			} else if (c.getShape().isFixedCount()) {
 				return c.getValueAt(pos);
 			}

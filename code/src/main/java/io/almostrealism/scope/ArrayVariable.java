@@ -155,10 +155,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		}
 	}
 
-	public Expression<T> referenceAbsolute(Expression<?> pos) {
-		return reference(pos);
-	}
-
 	public Expression<T> reference(Expression<?> pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 
