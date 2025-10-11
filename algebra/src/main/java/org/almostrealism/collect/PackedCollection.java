@@ -42,6 +42,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -266,8 +267,18 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		return this;
 	}
 
+	public PackedCollection<T> randFill(Random source) {
+		rand(getShape(), source).get().into(this).evaluate();
+		return this;
+	}
+
 	public PackedCollection<T> randnFill() {
 		randn(getShape()).get().into(this).evaluate();
+		return this;
+	}
+
+	public PackedCollection<T> randnFill(Random source) {
+		randn(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
