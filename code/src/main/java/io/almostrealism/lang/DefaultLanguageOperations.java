@@ -133,8 +133,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.OFFSET);
 				out.accept(", ");
 				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.SIZE);
-				out.accept(", ");
-				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, ParamType.DIM0);
 			}
 		} else {
 			renderArguments(arguments, out, false, false,  Accessibility.INTERNAL, ParamType.NONE);
@@ -162,8 +160,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				renderArguments(arguments, out, true, false, access, ParamType.OFFSET);
 				out.accept(", ");
 				renderArguments(arguments, out, true, false, access, ParamType.SIZE);
-				out.accept(", ");
-				renderArguments(arguments, out, true, false, access, ParamType.DIM0);
 			}
 		} else {
 			renderArguments(arguments, out, true, true, access, ParamType.NONE);
@@ -176,8 +172,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			ArrayVariable<?> arg = arguments.get(i);
 
 			if (arg.isDisableOffset() && type == ParamType.OFFSET) {
-				out.accept("0");
-			} else if (arg.isDisableOffset() && type == ParamType.DIM0) {
 				out.accept("0");
 			} else if (arg.isDisableOffset() && type == ParamType.SIZE) {
 				out.accept(arg.getArraySize().getExpression(this));
@@ -241,7 +235,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	protected enum ParamType {
-		NONE, ARRAY, OFFSET, SIZE, DIM0;
+		NONE, ARRAY, OFFSET, SIZE;
 
 		public Class getType() {
 			switch (this) {
@@ -250,7 +244,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 					return null;
 				case OFFSET:
 				case SIZE:
-				case DIM0:
 					return Integer.class;
 				default: throw new UnsupportedOperationException();
 			}
@@ -262,7 +255,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 				case ARRAY: return "*";
 				case OFFSET:
 				case SIZE:
-				case DIM0:
 					return "";
 				default: throw new UnsupportedOperationException();
 			}
@@ -275,7 +267,6 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 					return "";
 				case OFFSET: return "Offset";
 				case SIZE: return "Size";
-				case DIM0: return "Dim0";
 				default: throw new UnsupportedOperationException();
 			}
 		}

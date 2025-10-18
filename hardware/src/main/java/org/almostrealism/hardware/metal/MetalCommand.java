@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,5 +18,5 @@ package org.almostrealism.hardware.metal;
 
 @FunctionalInterface
 public interface MetalCommand {
-	void run(MTLBuffer offset, MTLBuffer size, MTLBuffer dim0, MTLCommandQueue queue);
+	void run(MTLBuffer offset, MTLBuffer size, MTLCommandQueue queue);
 }

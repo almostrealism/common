@@ -142,10 +142,6 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
 							new StaticReference<>(Integer.class, "(int) sizeArr[" + i + "]")))
 					.forEach(this::println);
-			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
-							new StaticReference<>(Integer.class, "(int) dim0Arr[" + i + "]")))
-					.forEach(this::println);
 		}
 
 		if (enableArgumentValueReads) {

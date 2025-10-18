@@ -22,5 +22,5 @@ public class GeneratedOperation4412 extends BaseGeneratedOperation {
 	public GeneratedOperation4412(Computation computation) { super(computation); }
 
 	@Override
-	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId, long kernelSize);
+	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count, int globalId, long kernelSize);
 }

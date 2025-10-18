@@ -20,7 +20,6 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -122,7 +121,7 @@ public class MetalOperator extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		Future<?> run = context.getCommandRunner().submit((offset, size, dim0, queue) -> {
+		Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
 			recordDuration(null, () -> {
 				int index = 0;
 				long totalSize = 0;
@@ -143,7 +142,6 @@ public class MetalOperator extends HardwareOperator {
 
 				offset.setContents(offsetValues);
 				size.setContents(sizeValues);
-				dim0.setContents(sizeValues);
 
 				if (enableVerboseLog) {
 					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
@@ -153,7 +151,6 @@ public class MetalOperator extends HardwareOperator {
 
 				encoder.setBuffer(index++, offset);
 				encoder.setBuffer(index++, size);
-				encoder.setBuffer(index++, dim0);
 
 				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 					throw new UnsupportedOperationException();

@@ -50,9 +50,6 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		println(new ExpressionAssignment<int[]>(true,
 				new StaticReference(int[].class, "*sizeArr"),
 				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
-		println(new ExpressionAssignment<int[]>(true,
-				new StaticReference(int[].class, "*dim0Arr"),
-				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
 		String numberType = getLanguage().getPrecision().typeName();
 		int numberSize = getLanguage().getPrecision().bytes();
@@ -75,15 +72,6 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 								new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
 								new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
 				.forEach(this::println);
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new ExpressionAssignment(
-						new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
-						new StaticReference<>(Integer.class, "dim0Arr[" + i + "]")))
-				.forEach(this::println);
-
-//		for (int i = 0; i < arguments.size(); i++) {
-//			printf(arguments.get(i).getName() + "Dim0 = %i", arguments.get(i).getName() + "Dim0");
-//		}
 
 		println(new ExpressionAssignment(
 				new StaticReference(cl_event.class, "*nativeEventWaitList"),
