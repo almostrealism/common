@@ -61,14 +61,16 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		this(true, null, 0);
 	}
 
-	protected TransformMatrix(MemoryData delegate, int delegateOffset) {
+	public TransformMatrix(MemoryData delegate, int delegateOffset) {
 		this(true, delegate, delegateOffset);
 	}
 
 	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
-		super(new TraversalPolicy(16), 0);
-		setDelegate(delegate, delegateOffset);
-		initMem(identity);
+		super(new TraversalPolicy(16), 0, delegate, delegateOffset);
+
+		if (identity) {
+			setMatrix(TransformMatrix.identity);
+		}
 	}
 
 	/**
@@ -77,15 +79,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 */
 	public TransformMatrix(double matrix[][]) {
 		super(new TraversalPolicy(16), 0);
-		initMem(false);
 		this.setMatrix(matrix);
-	}
-
-	private void initMem(boolean identity) {
-		init();
-		if (identity) {
-			setMatrix(TransformMatrix.identity);
-		}
 	}
 
 	/**
@@ -165,8 +159,8 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * @see  org.almostrealism.algebra.MatrixFeatures#matmul
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return matmul(cp(this).reshape(4, 4),
-				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate();
+		return new TransformMatrix(matmul(cp(this).reshape(4, 4),
+				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate(), 0);
 	}
 
 	@Override

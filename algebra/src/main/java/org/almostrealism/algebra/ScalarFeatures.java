@@ -48,7 +48,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 
 	default CollectionProducer<Scalar> v(Scalar value) { return value(value); }
 
-	default CollectionProducer<Scalar> scalar(double value) { return value(new Scalar(value)); }
+	default CollectionProducer scalar(double value) { return c(value); }
 
 	default CollectionProducer<Scalar> value(Scalar value) {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());

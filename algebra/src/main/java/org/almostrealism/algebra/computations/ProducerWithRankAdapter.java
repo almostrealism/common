@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelStructureContext;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Evaluable;
@@ -27,7 +29,7 @@ import io.almostrealism.relation.ProducerWithRank;
 
 import java.util.stream.Stream;
 
-public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, ScopeLifecycle {
+public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, ScopeLifecycle, Shape<T> {
 	private Producer<T> p;
 	private Producer<Scalar> rank;
 
@@ -77,5 +79,29 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 		} else {
 			return getProducer() == null ? null : p.get();
 		}
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		if (getProducer() instanceof Shape) {
+			return ((Shape<?>) getProducer()).getShape();
+		}
+		throw new UnsupportedOperationException("Wrapped producer does not implement Shape");
+	}
+
+	@Override
+	public T reshape(TraversalPolicy shape) {
+		if (getProducer() instanceof Shape) {
+			return (T) ((Shape<?>) getProducer()).reshape(shape);
+		}
+		throw new UnsupportedOperationException("Wrapped producer does not implement Shape");
+	}
+
+	@Override
+	public T traverse(int axis) {
+		if (getProducer() instanceof Shape) {
+			return (T) ((Shape<?>) getProducer()).traverse(axis);
+		}
+		throw new UnsupportedOperationException("Wrapped producer does not implement Shape");
 	}
 }

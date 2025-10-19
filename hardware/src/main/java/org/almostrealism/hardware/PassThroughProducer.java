@@ -42,6 +42,39 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+/**
+ * {@link PassThroughProducer} represents an input argument being passed through
+ * a computation without transformation. It serves as a reference to a specific
+ * argument index with a defined {@link TraversalPolicy} shape.
+ *
+ * <p><b>Fixed vs Variable Count:</b></p>
+ * <p>The behavior of {@link PassThroughProducer} with respect to {@link #isFixedCount()}
+ * is determined entirely by its {@link TraversalPolicy}:</p>
+ * <ul>
+ *   <li><b>Fixed count ({@code new TraversalPolicy(memLength)}):</b> The shape has a
+ *       predetermined size. This is suitable for arguments with a known, unchanging size.
+ *       Example: {@code Input.value(3, 0)} creates a pass-through for a 3-element vector.</li>
+ *   <li><b>Variable count ({@code new TraversalPolicy(false, false, memLength)}):</b>
+ *       The shape can adapt to the actual size of runtime arguments. This is essential
+ *       for operations that process variable-sized inputs. Example:
+ *       {@code Input.value(new TraversalPolicy(false, false, 1), 0)} creates a
+ *       pass-through that adapts to the input argument size.</li>
+ * </ul>
+ *
+ * <p><b>Kernel Execution Implications:</b></p>
+ * <p>When a {@link PassThroughProducer} with a fixed count is used in a kernel,
+ * the output size must either be 1 (scalar) or exactly match the operation's count.
+ * This is enforced in {@link ProcessDetailsFactory#init}. If the output size doesn't
+ * match, an {@link IllegalArgumentException} is thrown.</p>
+ *
+ * <p>Variable-count {@link PassThroughProducer}s allow the kernel size to be determined
+ * from the output size at runtime, providing flexibility for operations that process
+ * collections of varying sizes.</p>
+ *
+ * @see Input#value(TraversalPolicy, int)
+ * @see TraversalPolicy#TraversalPolicy(boolean, boolean, long...)
+ * @see ProcessDetailsFactory
+ */
 public class PassThroughProducer<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,

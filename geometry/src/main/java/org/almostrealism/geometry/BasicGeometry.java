@@ -16,12 +16,12 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.ZeroVector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.io.DecodePostProcessing;
 
 /**
@@ -259,20 +259,20 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			completeTransform = new TransformMatrix();
 
 			if (getLocation() != null) {
-				completeTransform =
-						completeTransform.multiply(
-								translationMatrix(v(getLocation())).evaluate());
+				completeTransform = completeTransform.multiply(
+						new TransformMatrix(translationMatrix(v(getLocation())).get().evaluate(), 0));
 			}
 
-			Evaluable<TransformMatrix> sm;
+			CollectionProducer<TransformMatrix> sm;
 
 			if (size == 1.0) {
-				sm = scaleMatrix(v(scale)).get();
+				sm = scaleMatrix(v(scale));
 			} else {
-				sm = scaleMatrix(v(scale.multiply(size))).get();
+				sm = scaleMatrix(v(scale.multiply(size)));
 			}
 
-			this.completeTransform = this.completeTransform.multiply(sm.evaluate());
+			this.completeTransform = this.completeTransform.multiply(
+					new TransformMatrix(sm.get().evaluate(), 0));
 
 			if (this.rotateX != 0.0) {
 				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateXMatrix(this.rotateX));

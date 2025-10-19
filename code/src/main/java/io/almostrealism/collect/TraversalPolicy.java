@@ -47,7 +47,30 @@ import java.util.stream.Stream;
  * a position in the output space (the space of the collection) into an
  * index in the input space (the natural order of elements) and vice versa.
  *
+ * <p><b>Fixed vs Variable Count:</b></p>
+ * <p>A {@link TraversalPolicy} can be either <i>fixed-count</i> or <i>variable-count</i>:</p>
+ * <ul>
+ *   <li><b>Fixed-count ({@code fixed=true}, default):</b> The dimensions are predetermined
+ *       and do not change. Created via {@code new TraversalPolicy(dims)} or
+ *       {@code new TraversalPolicy(true, dims)}.</li>
+ *   <li><b>Variable-count ({@code fixed=false}):</b> The dimensions can adapt to runtime
+ *       inputs, particularly the size of arguments passed to {@link io.almostrealism.relation.Evaluable#evaluate}.
+ *       Created via {@code new TraversalPolicy(false, false, dims)} where the first
+ *       {@code false} is {@code tolerateZero} and the second is {@code fixed}.</li>
+ * </ul>
+ *
+ * <p><b>Usage Pattern:</b></p>
+ * <pre>{@code
+ * // Fixed-count: Always processes exactly 100 elements
+ * TraversalPolicy fixed = new TraversalPolicy(100);
+ *
+ * // Variable-count: Processes N elements where N is determined at runtime
+ * TraversalPolicy variable = new TraversalPolicy(false, false, 1);
+ * }</pre>
+ *
  * @author  Michael Murray
+ * @see org.almostrealism.hardware.PassThroughProducer
+ * @see Countable#isFixedCount()
  */
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
 	public static boolean enableStrictSizes = true;
@@ -87,6 +110,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	private int traversalAxis;
 
+	/**
+	 * Determines whether this {@link TraversalPolicy} has a fixed count
+	 * (predetermined dimensions) or variable count (dimensions that can
+	 * adapt to runtime input sizes). See class-level documentation for
+	 * usage patterns.
+	 *
+	 * @see #isFixedCount()
+	 */
 	private boolean fixed;
 
 	public TraversalPolicy(int... dims) {
@@ -839,6 +870,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return getTraversalAxis() != axis ? traverse(axis) : this;
 	}
 
+	/**
+	 * Returns {@code true} if this {@link TraversalPolicy} has a fixed count,
+	 * {@code false} if it has a variable count that adapts to runtime inputs.
+	 *
+	 * @return the value of the {@code fixed} field set during construction
+	 */
 	@Override
 	public boolean isFixedCount() { return fixed; }
 

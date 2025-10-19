@@ -16,6 +16,31 @@
 
 package io.almostrealism.relation;
 
+/**
+ * {@link Countable} represents a data structure or computation that has a countable
+ * number of elements. The count can be either fixed at construction time or variable
+ * based on runtime arguments.
+ *
+ * <p><b>Fixed vs Variable Count:</b></p>
+ * <ul>
+ *   <li><b>Fixed count:</b> The number of elements is known at construction time and
+ *       cannot change. For example, a {@link org.almostrealism.collect.PackedCollection}
+ *       with a specific size, or a computation that always produces exactly N outputs.</li>
+ *   <li><b>Variable count:</b> The number of elements depends on runtime inputs,
+ *       particularly the size of input arguments. For example, a computation that
+ *       processes each element of an input collection would have a variable count
+ *       that matches the input size.</li>
+ * </ul>
+ *
+ * <p><b>Kernel Execution:</b> The distinction between fixed and variable count is
+ * critical for GPU kernel execution. Fixed-count operations compile kernels with
+ * a predetermined size, while variable-count operations compile kernels that can
+ * adapt to different input sizes. See {@link org.almostrealism.hardware.ProcessDetailsFactory}
+ * for kernel size determination logic.</p>
+ *
+ * @see org.almostrealism.hardware.PassThroughProducer
+ * @see io.almostrealism.collect.TraversalPolicy
+ */
 public interface Countable {
 	default int getCount() {
 		return Math.toIntExact(getCountLong());
@@ -23,6 +48,18 @@ public interface Countable {
 
 	long getCountLong();
 
+	/**
+	 * Returns {@code true} if the count is fixed at construction time,
+	 * {@code false} if it varies based on runtime arguments (particularly
+	 * the size of input arguments).
+	 *
+	 * <p>Default implementation returns {@code true} for backward compatibility.
+	 * Classes that support variable counts (like {@link org.almostrealism.hardware.PassThroughProducer}
+	 * with variable {@link io.almostrealism.collect.TraversalPolicy}) should override
+	 * this to return {@code false}.</p>
+	 *
+	 * @return {@code true} if count is fixed, {@code false} if variable
+	 */
 	default boolean isFixedCount() {
 		return true;
 	}

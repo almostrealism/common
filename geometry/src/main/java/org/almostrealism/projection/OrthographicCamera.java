@@ -161,17 +161,28 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 
 	/** Updates the orthonormal vectors used to describe camera space for this {@link OrthographicCamera}. */
 	public void updateUVW() {
-		// Convert UVW to producers, so that these computations can be evaluated as part of the rendering tree
+		// Calculate camera space vectors using simple math (not Producer-based)
+		// to avoid native compilation during camera construction
 		this.w = this.viewDirection.divide(this.viewDirection.length()).minus();
-		
-		this.u = this.upDirection.crossProduct(this.w);
+
+		// Manual cross product: upDirection x w
+		this.u = manualCrossProduct(this.upDirection, this.w);
 		this.u.divideBy(this.u.length());
-		
-		this.v = this.w.crossProduct(this.u);
-		
+
+		// Manual cross product: w x u
+		this.v = manualCrossProduct(this.w, this.u);
+
 //		if (Settings.produceCameraOutput) {
 //			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
 //		}
+	}
+
+	/** Manual cross product calculation to avoid native code compilation during construction. */
+	private Vector manualCrossProduct(Vector a, Vector b) {
+		double x = a.getY() * b.getZ() - a.getZ() * b.getY();
+		double y = a.getZ() * b.getX() - a.getX() * b.getZ();
+		double z = a.getX() * b.getY() - a.getY() * b.getX();
+		return new Vector(x, y, z);
 	}
 	
 	@Override
