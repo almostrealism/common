@@ -123,7 +123,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	@Override
 	public Expression<T> valueAt(Expression<?> exp) {
 		if (destroyed) throw new UnsupportedOperationException();
-		return referenceRelative(exp);
+		return reference(exp);
 	}
 
 	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {

@@ -80,11 +80,11 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		String res = outputVariable.valueAt(0).getSimpleExpression(getLanguage());
 		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
 		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
-		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
-		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression(getLanguage());
-		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
-		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression(getLanguage());
-		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String banki = getArgument(1).reference(i.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl0 = getArgument(1).reference(left.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl1 = getArgument(1).reference(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String bankr0 = getArgument(1).reference(right.multiply(2)).getSimpleExpression(getLanguage());
+		String bankr1 = getArgument(1).reference(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
 		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();

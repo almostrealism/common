@@ -170,6 +170,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	 */
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		return ((ArrayVariable) getOutputVariable()).valueAt(localIndex);
+		ArrayVariable out = (ArrayVariable) getOutputVariable();
+		return out.reference(globalIndex.multiply(out.length()).add(localIndex));
 	}
 }

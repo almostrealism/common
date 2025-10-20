@@ -28,8 +28,13 @@ import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
 
+// TODO  The generics here are wrong, because ArrayVariable<T> is a Variable<Multiple<T>>,
+// TODO  but this class assumes that T is the collection - resulting in the redundant type
+// TODO  Multiple<Collection<Double>>
 public class CollectionVariable<T extends Collection<Double, ? extends Collection<?, ?>>>
 		extends ArrayVariable<T> implements CollectionExpression<CollectionVariable<T>> {
+
+	public static boolean enableValueAt = false;
 
 	private TraversalPolicy shape;
 
@@ -73,6 +78,15 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		}
 
 		return super.length();
+	}
+
+	@Override
+	public Expression<T> valueAt(Expression<?> exp) {
+		if (enableValueAt) {
+			return (Expression) getValueAt(exp);
+		}
+
+		return super.valueAt(exp);
 	}
 
 	@Override
