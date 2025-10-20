@@ -61,7 +61,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 		Repeated loop = new Repeated<>(i, i.ref().lessThan(count));
 		Scope<?> loopBody = new Scope<>(); {
 			Expression<Double> value = loopBody.declareDouble(varName("value"),
-									distances.valueAt(i.ref().multiply(2)));
+									distances.reference(i.ref().multiply(2)));
 
 			Scope updateClosest = new Scope<>();
 			updateClosest.assign(closest, value);

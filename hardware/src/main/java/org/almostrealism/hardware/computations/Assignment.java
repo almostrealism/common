@@ -112,7 +112,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			if (len > 1) index = index.multiply(len).add(i);
 
 			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
-			Expression<Double> value = exp == null ? getArgument(1).valueAt(index) : exp.getValueAt(index);
+			Expression<Double> value = exp == null ? getArgument(1).reference(index) : exp.getValueAt(index);
 			if (value == null) {
 				throw new UnsupportedOperationException();
 			}
