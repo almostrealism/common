@@ -210,7 +210,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see  Countable#getCount()
 	 * @see  TraversalPolicy#getSize()
 	 * @see  MemoryDataComputation#getMemLength()
-	 * @see  ArrayVariable#referenceRelative(Expression, KernelIndex)
 	 */
 	protected boolean isOutputRelative() { return true; }
 
@@ -313,8 +312,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @see #getStatementCount(KernelStructureContext)
 	 * @see #isOutputRelative()
 	 * @see #getValueAt(Expression)
-	 * @see io.almostrealism.scope.ArrayVariable#referenceRelative(Expression, io.almostrealism.kernel.KernelIndex)
-	 * @see io.almostrealism.scope.ArrayVariable#referenceAbsolute(Expression)
+	 * @see io.almostrealism.scope.ArrayVariable#reference(Expression)
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {

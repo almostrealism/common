@@ -131,17 +131,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
 	}
 
-	@Deprecated
-	public Expression<T> referenceRelative(Expression<?> pos) {
-		if (getDelegate() != null) {
-			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
-		} else if (!(getProducer() instanceof Countable)) {
-			return reference(pos);
-		} else {
-			return reference(new KernelIndex().multiply(length()).add(pos.toInt()));
-		}
-	}
-
 	public Expression<T> reference(Expression<?> pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 

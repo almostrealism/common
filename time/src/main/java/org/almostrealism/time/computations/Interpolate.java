@@ -66,32 +66,6 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		this.applyRate = rate != null;
 	}
 
-	protected Expression getArgumentValueRelative(int index, int pos) {
-		return getArgumentValueRelative(index, e(pos));
-	}
-
-	protected Expression getArgumentValueRelative(int index, Expression<?> pos) {
-		ArrayVariable<?> var = getArgument(index);
-
-		if (var instanceof CollectionVariable && ((CollectionVariable) var).getShape().isFixedCount()) {
-			CollectionVariable c = (CollectionVariable<?>) var;
-
-			if (c.getShape().getCountLong() == 1) {
-				return c.getValueAt(pos);
-			} else if (c.getShape().getDimensions() == 1) {
-				if (pos.intValue().orElse(1) != 0) {
-					throw new IllegalArgumentException();
-				}
-
-				return c.getValue(kernel());
-			} else {
-				return c.getValue(kernel(), pos);
-			}
-		} else {
-			return var.referenceRelative(pos);
-		}
-	}
-
 	protected Expression getSeriesValue(Expression<?> pos) {
 		ArrayVariable<?> var = getArgument(1);
 
@@ -112,16 +86,16 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 			}
 		}
 
-		return var.referenceRelative(pos);
+		return var.getValueRelative(pos);
 	}
 
 	protected Expression getTime() {
-		return getArgumentValueRelative(2, 0);
+		return getArgument(2).reference(kernel());
 	}
 
 	protected Expression<Double> getRate() {
 		if (applyRate) {
-			return getArgumentValueRelative(3, 0);
+			return getArgument(3).valueAt(0);
 		}
 
 		return e(1.0);
@@ -153,7 +127,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
 		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
-		String res = getArgumentValueRelative(0, 0).getSimpleExpression(getLanguage());
+		String res = getArgument(0).reference(kernel(context)).getSimpleExpression(getLanguage());
 		String start = "0";
 		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getRate();
@@ -162,7 +136,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		String bankl_value = getSeriesValue(left).getSimpleExpression(getLanguage());
 		String bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
 		String bankr_value = getSeriesValue(right).getSimpleExpression(getLanguage());
-		String cursor = getArgumentValueRelative(2, e(0)).getSimpleExpression(getLanguage());
+		String cursor = getArgument(2).reference(kernel(context)).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 
