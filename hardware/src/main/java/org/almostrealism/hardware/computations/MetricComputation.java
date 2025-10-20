@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -26,7 +27,7 @@ import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.function.Supplier;
 
-public class MetricComputation<T> extends OperationComputationAdapter<T> {
+public class MetricComputation<T> extends OperationComputationAdapter<T> implements ExpressionFeatures {
 	private String message;
 	private int logFrequency;
 	private int pos, memLength;
@@ -42,8 +43,8 @@ public class MetricComputation<T> extends OperationComputationAdapter<T> {
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Scope<Void> scope = super.getScope(context);
-		Metric metric = new Metric(getArgument(0).referenceRelative(0), logFrequency);
-		metric.addMonitoredVariable(message, getArgument(1).referenceRelative(pos));
+		Metric metric = new Metric(getArgument(0).reference(e(0)), logFrequency);
+		metric.addMonitoredVariable(message, getArgument(1).reference(e(pos)));
 		scope.getMetrics().add(metric);
 		return scope;
 	}

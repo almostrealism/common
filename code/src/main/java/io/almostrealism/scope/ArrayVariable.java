@@ -132,12 +132,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	@Deprecated
-	public Expression<T> referenceRelative(int pos) {
-		if (destroyed) throw new UnsupportedOperationException();
-		return referenceRelative(new IntegerConstant(pos));
-	}
-
-	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));

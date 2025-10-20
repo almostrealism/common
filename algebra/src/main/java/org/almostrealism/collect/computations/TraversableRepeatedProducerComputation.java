@@ -286,7 +286,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 * @return An {@link Expression} representing the computation result for
 	 *         the specified local index position
 	 * 
-	 * @see io.almostrealism.collect.CollectionVariable#referenceRelative(io.almostrealism.expression.IntegerConstant)
+	 * @see io.almostrealism.collect.CollectionVariable#reference(io.almostrealism.expression.Expression)
 	 * @see io.almostrealism.collect.RelativeTraversableExpression
 	 */
 	@Override
