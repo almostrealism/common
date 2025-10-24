@@ -151,21 +151,20 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
-	 * Qwen3 attention with QK-Norm for improved training stability.
+	 * Attention with QK-Norm and Grouped Query Attention (GQA).
 	 *
-	 * @deprecated This method duplicates functionality. Use generalized attention methods
-	 * with optional QK-Norm parameters instead. This model-specific method will be removed
-	 * in a future version to reduce code duplication and improve maintainability.
-	 *
-	 * <p>Key differences from standard attention:</p>
+	 * <p>This variant extends standard attention with two key features:</p>
 	 * <ul>
-	 * <li>Applies RMSNorm to Q and K projections before RoPE (QK-Norm)</li>
-	 * <li>Supports Grouped Query Attention (GQA) with separate KV heads</li>
-	 * <li>Uses epsilon = 1e-6 for QK-Norm stability</li>
+	 * <li><b>QK-Norm:</b> Applies RMSNorm to Q and K projections before RoPE for improved
+	 * training stability (epsilon = 1e-6)</li>
+	 * <li><b>Grouped Query Attention (GQA):</b> Supports fewer KV heads than query heads
+	 * to reduce memory usage while maintaining performance</li>
 	 * </ul>
 	 *
+	 * <p>Used by models like Qwen3 that require QK-Norm for stability with high learning rates.</p>
+	 *
 	 * @param heads Number of query attention heads
-	 * @param kvHeads Number of key/value attention heads (for GQA)
+	 * @param kvHeads Number of key/value attention heads (for GQA, typically heads/4)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
 	 * @param wk Key projection weights
 	 * @param wv Value projection weights
@@ -176,9 +175,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param freqCis RoPE frequency embeddings
 	 * @param position Current position in sequence
 	 * @param requirements Compute requirements for hardware acceleration
-	 * @return Attention block with QK-Norm
+	 * @return Attention block with QK-Norm and GQA support
 	 */
-	@Deprecated
 	default Block qwen3Attention(int heads, int kvHeads,
 								 PackedCollection<?> rmsAttWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
@@ -547,14 +545,20 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
-	 * Qwen3 transformer layer with QK-Norm attention and SwiGLU FFN.
+	 * Transformer layer with QK-Norm attention, GQA, and SwiGLU FFN.
 	 *
-	 * @deprecated This method duplicates functionality. Use generalized transformer methods
-	 * with optional QK-Norm parameters instead. This model-specific method will be removed
-	 * in a future version to reduce code duplication and improve maintainability.
+	 * <p>This transformer layer combines:</p>
+	 * <ul>
+	 * <li><b>QK-Norm Attention:</b> RMSNorm applied to Q and K projections before RoPE</li>
+	 * <li><b>Grouped Query Attention (GQA):</b> Fewer KV heads than query heads for efficiency</li>
+	 * <li><b>SwiGLU FFN:</b> Gated feed-forward network with SiLU activation</li>
+	 * </ul>
+	 *
+	 * <p>This architecture is used by models like Qwen3 that require QK-Norm for
+	 * training stability with high learning rates and large context windows.</p>
 	 *
 	 * @param heads Number of query attention heads
-	 * @param kvHeads Number of key/value attention heads (for GQA)
+	 * @param kvHeads Number of key/value attention heads (for GQA, typically heads/4)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
 	 * @param wk Key projection weights
 	 * @param wv Value projection weights
@@ -569,9 +573,8 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param w3 FFN up projection
 	 * @param position Current position in sequence
 	 * @param requirements Compute requirements
-	 * @return Complete transformer layer block
+	 * @return Complete transformer layer block with QK-Norm, GQA, and SwiGLU
 	 */
-	@Deprecated
 	default Block qwen3Transformer(int heads, int kvHeads,
 								   PackedCollection<?> rmsAttWeight,
 								   PackedCollection<?> wk, PackedCollection<?> wv,

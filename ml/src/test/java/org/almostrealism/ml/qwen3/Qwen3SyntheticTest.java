@@ -2,8 +2,11 @@ package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 import static org.junit.Assert.*;
@@ -26,9 +29,11 @@ public class Qwen3SyntheticTest {
 
 	/**
 	 * Create random weights with correct shapes for a Qwen3 config.
+	 * Returns a StateDictionary populated with HuggingFace-style key names.
 	 */
-	private static Qwen3Weights createRandomWeights(Qwen3Config config, long seed) {
+	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
 		Random random = new Random(seed);
+		Map<String, PackedCollection<?>> weights = new HashMap<>();
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
@@ -36,44 +41,55 @@ public class Qwen3SyntheticTest {
 		System.out.println("  kvDim: " + kvDim);
 
 		// Token embeddings
-		PackedCollection<?> tokenEmbeddings = randomCollection(random, config.vocabSize, config.dim);
+		weights.put("model.embed_tokens.weight",
+				randomCollection(random, config.vocabSize, config.dim));
 
-		// RMS norm weights
-		PackedCollection<?> rmsAttWeights = randomCollection(random, config.layerCount, config.dim);
-		PackedCollection<?> rmsFfn = randomCollection(random, config.layerCount, config.dim);
-		PackedCollection<?> rmsFinalWeight = randomCollection(random, config.dim);
+		// Final RMS norm
+		weights.put("model.norm.weight",
+				randomCollection(random, config.dim));
 
-		// Attention weights (in format expected by dense layer: output_dim, input_dim)
-		// Q projection: dim -> dim
-		PackedCollection<?> wq = randomCollection(random, config.layerCount, config.dim, config.dim);
-		// K projection: dim -> kvDim (note: output first!)
-		PackedCollection<?> wk = randomCollection(random, config.layerCount, kvDim, config.dim);
-		// V projection: dim -> kvDim (note: output first!)
-		PackedCollection<?> wv = randomCollection(random, config.layerCount, kvDim, config.dim);
-		// O projection: dim -> dim
-		PackedCollection<?> wo = randomCollection(random, config.layerCount, config.dim, config.dim);
+		// Per-layer weights
+		for (int i = 0; i < config.layerCount; i++) {
+			String prefix = String.format("model.layers.%d", i);
 
-		// QK-Norm weights (the new addition for Qwen3!)
-		PackedCollection<?> qkNormQ = randomCollection(random, config.layerCount, config.headCount, config.headSize);
-		PackedCollection<?> qkNormK = randomCollection(random, config.layerCount, config.kvHeadCount, config.headSize);
+			// RMS norm weights
+			weights.put(prefix + ".input_layernorm.weight",
+					randomCollection(random, config.dim));
+			weights.put(prefix + ".post_attention_layernorm.weight",
+					randomCollection(random, config.dim));
 
-		// FFN weights
-		PackedCollection<?> w1 = randomCollection(random, config.layerCount, config.hiddenDim, config.dim);
-		PackedCollection<?> w2 = randomCollection(random, config.layerCount, config.dim, config.hiddenDim);
-		PackedCollection<?> w3 = randomCollection(random, config.layerCount, config.hiddenDim, config.dim);
+			// Attention weights (in HuggingFace format: output_dim, input_dim)
+			weights.put(prefix + ".self_attn.q_proj.weight",
+					randomCollection(random, config.dim, config.dim));
+			weights.put(prefix + ".self_attn.k_proj.weight",
+					randomCollection(random, kvDim, config.dim));
+			weights.put(prefix + ".self_attn.v_proj.weight",
+					randomCollection(random, kvDim, config.dim));
+			weights.put(prefix + ".self_attn.o_proj.weight",
+					randomCollection(random, config.dim, config.dim));
 
-		// RoPE frequencies - use actual computation instead of random
-		PackedCollection<?> freqCis = computeRopeFreqs(config);
+			// QK-Norm weights
+			weights.put(prefix + ".self_attn.q_norm.weight",
+					randomCollection(random, config.headCount, config.headSize));
+			weights.put(prefix + ".self_attn.k_norm.weight",
+					randomCollection(random, config.kvHeadCount, config.headSize));
 
-		// Classifier weights (shared)
-		PackedCollection<?> wcls = config.sharedWeights ? tokenEmbeddings :
-			randomCollection(random, config.vocabSize, config.dim);
+			// FFN weights
+			weights.put(prefix + ".mlp.gate_proj.weight",
+					randomCollection(random, config.hiddenDim, config.dim));
+			weights.put(prefix + ".mlp.down_proj.weight",
+					randomCollection(random, config.dim, config.hiddenDim));
+			weights.put(prefix + ".mlp.up_proj.weight",
+					randomCollection(random, config.hiddenDim, config.dim));
+		}
 
-		return new Qwen3Weights(
-			tokenEmbeddings, rmsAttWeights, wq, wk, wv, wo,
-			qkNormQ, qkNormK, rmsFfn, w1, w2, w3,
-			rmsFinalWeight, freqCis, wcls
-		);
+		// Classifier weights (shared with embeddings if configured)
+		if (!config.sharedWeights) {
+			weights.put("lm_head.weight",
+					randomCollection(random, config.vocabSize, config.dim));
+		}
+
+		return new StateDictionary(weights);
 	}
 
 	private static PackedCollection<?> randomCollection(Random random, int... dims) {
@@ -87,32 +103,6 @@ public class Qwen3SyntheticTest {
 		}
 
 		return collection;
-	}
-
-	private static PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
-		int headSize = config.headSize;
-		int seqLen = config.seqLen;
-		double theta = config.ropeTheta;
-
-		int freqDim = headSize / 2;
-		double[] freqs = new double[freqDim];
-		for (int i = 0; i < freqDim; i++) {
-			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-		}
-
-		TraversalPolicy shape = new TraversalPolicy(seqLen, freqDim, 2);
-		PackedCollection<?> freqCis = new PackedCollection<>(shape);
-
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double angle = pos * freqs[i];
-				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
 	}
 
 	@Test
@@ -137,44 +127,36 @@ public class Qwen3SyntheticTest {
 
 		try {
 			config.validate();
-			System.out.println("✓ Config validation passed");
+			System.out.println("[OK] Config validation passed");
 		} catch (Exception e) {
 			fail("Config validation failed: " + e.getMessage());
 		}
 
 		// Create random weights
-		Qwen3Weights weights;
+		StateDictionary stateDict;
 		try {
-			weights = createRandomWeights(config, 12345L);
-			System.out.println("✓ Random weights created");
+			stateDict = createRandomWeights(config, 12345L);
+			System.out.println("[OK] Random weights created");
 		} catch (Exception e) {
 			fail("Failed to create random weights: " + e.getMessage());
 			return;
 		}
 
-		// Validate weight shapes
-		try {
-			weights.validate(config);
-			System.out.println("✓ Weight shape validation passed");
-		} catch (Exception e) {
-			fail("Weight validation failed: " + e.getMessage());
-		}
-
 		// Create tokenizer
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
-		System.out.println("✓ Test tokenizer created");
+		System.out.println("[OK] Test tokenizer created");
 
 		// Try to create model
 		try {
-			Qwen3 model = new Qwen3(config, weights, tokenizer);
-			System.out.println("✓ Model instance created");
+			Qwen3 model = new Qwen3(config, stateDict, tokenizer);
+			System.out.println("[OK] Model instance created");
 			assertNotNull("Model should not be null", model);
 		} catch (Exception e) {
 			e.printStackTrace();
 			fail("Model construction failed: " + e.getMessage());
 		}
 
-		System.out.println("✓ All construction tests passed!\n");
+		System.out.println("[OK] All construction tests passed!\n");
 	}
 
 	@Test
@@ -186,23 +168,23 @@ public class Qwen3SyntheticTest {
 			64, 192, 2, 4, 4, 100, 32, true, 10000.0
 		);
 
-		Qwen3Weights weights = createRandomWeights(config, 12345L);
+		StateDictionary stateDict = createRandomWeights(config, 12345L);
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
 		try {
-			Qwen3 model = new Qwen3(config, weights, tokenizer);
-			System.out.println("✓ Model created");
+			Qwen3 model = new Qwen3(config, stateDict, tokenizer);
+			System.out.println("[OK] Model created");
 
 			// The model should compile when we try to run it
 			// We won't actually run it yet, just create it
-			System.out.println("✓ Model ready for compilation (happens on first run)");
+			System.out.println("[OK] Model ready for compilation (happens on first run)");
 
 		} catch (Exception e) {
 			e.printStackTrace();
 			fail("Model compilation setup failed: " + e.getMessage());
 		}
 
-		System.out.println("✓ Compilation test passed!\n");
+		System.out.println("[OK] Compilation test passed!\n");
 	}
 
 	@Test
@@ -214,46 +196,57 @@ public class Qwen3SyntheticTest {
 
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
-		Qwen3Weights weights = createRandomWeights(config, 12345L);
+		StateDictionary stateDict = createRandomWeights(config, 12345L);
 
-		// Check individual weight shapes
+		// Check token embeddings
+		PackedCollection<?> embeddings = stateDict.get("model.embed_tokens.weight");
+		assertNotNull("Token embeddings should exist", embeddings);
 		assertEquals("tokenEmbeddings shape",
 			config.vocabSize * config.dim,
-			weights.tokenEmbeddings.getShape().getTotalSize());
+			embeddings.getShape().getTotalSize());
 
-		assertEquals("wq shape",
-			config.layerCount * config.dim * config.dim,
-			weights.wq.getShape().getTotalSize());
+		// Check first layer attention weights
+		PackedCollection<?> wq = stateDict.get("model.layers.0.self_attn.q_proj.weight");
+		assertNotNull("Query weights should exist", wq);
+		assertEquals("wq shape per layer",
+			config.dim * config.dim,
+			wq.getShape().getTotalSize());
 
-		assertEquals("wk shape (GQA)",
-			config.layerCount * config.dim * kvDim,
-			weights.wk.getShape().getTotalSize());
+		PackedCollection<?> wk = stateDict.get("model.layers.0.self_attn.k_proj.weight");
+		assertNotNull("Key weights should exist", wk);
+		assertEquals("wk shape per layer (GQA)",
+			kvDim * config.dim,
+			wk.getShape().getTotalSize());
 
-		assertEquals("qkNormQ shape",
-			config.layerCount * config.headCount * config.headSize,
-			weights.qkNormQ.getShape().getTotalSize());
+		PackedCollection<?> qkNormQ = stateDict.get("model.layers.0.self_attn.q_norm.weight");
+		assertNotNull("QK-Norm Q should exist", qkNormQ);
+		assertEquals("qkNormQ shape per layer",
+			config.headCount * config.headSize,
+			qkNormQ.getShape().getTotalSize());
 
-		assertEquals("qkNormK shape (GQA)",
-			config.layerCount * config.kvHeadCount * config.headSize,
-			weights.qkNormK.getShape().getTotalSize());
+		PackedCollection<?> qkNormK = stateDict.get("model.layers.0.self_attn.k_norm.weight");
+		assertNotNull("QK-Norm K should exist", qkNormK);
+		assertEquals("qkNormK shape per layer (GQA)",
+			config.kvHeadCount * config.headSize,
+			qkNormK.getShape().getTotalSize());
 
-		System.out.println("✓ All weight shapes correct");
-		System.out.println("  Token embeddings: " + weights.tokenEmbeddings.getShape());
-		System.out.println("  Query weights: " + weights.wq.getShape());
-		System.out.println("  Key weights (GQA): " + weights.wk.getShape());
-		System.out.println("  QK-Norm Q: " + weights.qkNormQ.getShape());
-		System.out.println("  QK-Norm K: " + weights.qkNormK.getShape());
-		System.out.println("✓ Shape verification passed!\n");
+		System.out.println("[OK] All weight shapes correct");
+		System.out.println("  Token embeddings: " + embeddings.getShape());
+		System.out.println("  Query weights (layer 0): " + wq.getShape());
+		System.out.println("  Key weights (layer 0, GQA): " + wk.getShape());
+		System.out.println("  QK-Norm Q (layer 0): " + qkNormQ.getShape());
+		System.out.println("  QK-Norm K (layer 0): " + qkNormK.getShape());
+		System.out.println("[OK] Shape verification passed!\n");
 	}
 
 	/**
 	 * Main method for running tests without JUnit.
 	 */
 	public static void main(String[] args) {
-		System.out.println("╔════════════════════════════════════════════════════════════╗");
-		System.out.println("║  Qwen3 Synthetic Test - Random Weights                    ║");
-		System.out.println("║  Purpose: Verify model doesn't crash with valid shapes    ║");
-		System.out.println("╚════════════════════════════════════════════════════════════╝");
+		System.out.println("+============================================================+");
+		System.out.println("|  Qwen3 Synthetic Test - Random Weights                    |");
+		System.out.println("|  Purpose: Verify model doesn't crash with valid shapes    |");
+		System.out.println("+============================================================+");
 
 		Qwen3SyntheticTest test = new Qwen3SyntheticTest();
 		int passed = 0;
@@ -264,7 +257,7 @@ public class Qwen3SyntheticTest {
 			test.testTinyModelConstruction();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("✗ Test 1 FAILED: " + e.getMessage());
+			System.err.println("[FAIL] Test 1 FAILED: " + e.getMessage());
 			e.printStackTrace();
 			failed++;
 		}
@@ -274,7 +267,7 @@ public class Qwen3SyntheticTest {
 			test.testModelCompilation();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("✗ Test 2 FAILED: " + e.getMessage());
+			System.err.println("[FAIL] Test 2 FAILED: " + e.getMessage());
 			e.printStackTrace();
 			failed++;
 		}
@@ -284,17 +277,17 @@ public class Qwen3SyntheticTest {
 			test.testWeightShapes();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			System.err.println("✗ Test 3 FAILED: " + e.getMessage());
+			System.err.println("[FAIL] Test 3 FAILED: " + e.getMessage());
 			e.printStackTrace();
 			failed++;
 		}
 
-		System.out.println("\n╔════════════════════════════════════════════════════════════╗");
-		System.out.println("║  Test Results                                              ║");
-		System.out.println("╠════════════════════════════════════════════════════════════╣");
-		System.out.printf("║  Passed: %d                                                  ║%n", passed);
-		System.out.printf("║  Failed: %d                                                  ║%n", failed);
-		System.out.println("╚════════════════════════════════════════════════════════════╝");
+		System.out.println("\n+============================================================+");
+		System.out.println("|  Test Results                                              |");
+		System.out.println("+------------------------------------------------------------+");
+		System.out.printf("|  Passed: %d                                                  |%n", passed);
+		System.out.printf("|  Failed: %d                                                  |%n", failed);
+		System.out.println("+============================================================+");
 
 		if (failed > 0) {
 			System.exit(1);

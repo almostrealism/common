@@ -78,6 +78,15 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		init();
 	}
 
+	/**
+	 * Create a {@link StateDictionary} with manually provided weights (for testing).
+	 *
+	 * @param weights Map of weight names to PackedCollections
+	 */
+	public StateDictionary(Map<String, PackedCollection<?>> weights) {
+		this.weights = weights;
+	}
+
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
 		loadWeights();

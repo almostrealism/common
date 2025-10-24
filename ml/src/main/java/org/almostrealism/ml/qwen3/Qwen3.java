@@ -1,11 +1,11 @@
 package org.almostrealism.ml.qwen3;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
-import org.almostrealism.ml.BPE;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 
@@ -48,7 +48,7 @@ public class Qwen3 implements AttentionFeatures {
 	}
 
 	private Qwen3Config config;
-	private Qwen3Weights weights;
+	private StateDictionary stateDict;
 	private Qwen3Tokenizer tokenizer;
 
 	private AutoregressiveModel model;
@@ -110,7 +110,7 @@ public class Qwen3 implements AttentionFeatures {
 
 		// Load state dictionary
 		System.out.println("Loading weights from: " + weightsDirectory);
-		StateDictionary stateDict = new StateDictionary(weightsDirectory);
+		this.stateDict = new StateDictionary(weightsDirectory);
 
 		// Infer or validate config
 		if (config == null) {
@@ -121,12 +121,7 @@ public class Qwen3 implements AttentionFeatures {
 		System.out.println("Config: " + config);
 		config.validate();
 
-		// Load weights
-		this.weights = new Qwen3Weights(config, stateDict);
 		System.out.println("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
-
-		// Validate weight shapes
-		weights.validate(config);
 
 		// Load tokenizer if provided
 		if (tokenizerPath != null) {
@@ -192,11 +187,15 @@ public class Qwen3 implements AttentionFeatures {
 	}
 
 	/**
-	 * Constructor for testing with custom configuration.
+	 * Constructor for testing with custom configuration and weights.
+	 *
+	 * @param config Model configuration
+	 * @param stateDict StateDictionary containing model weights
+	 * @param tokenizer Tokenizer instance
 	 */
-	public Qwen3(Qwen3Config config, Qwen3Weights weights, Qwen3Tokenizer tokenizer) {
+	public Qwen3(Qwen3Config config, StateDictionary stateDict, Qwen3Tokenizer tokenizer) {
 		this.config = config;
-		this.weights = weights;
+		this.stateDict = stateDict;
 		this.tokenizer = tokenizer;
 		this.profile = new OperationProfile();
 		this.model = model(profile);
@@ -240,32 +239,41 @@ public class Qwen3 implements AttentionFeatures {
 		int dim = config.dim;
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
+		// Get token embeddings and output weights
+		PackedCollection<?> tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
+		PackedCollection<?> wcls = config.sharedWeights ? tokenEmbeddings :
+				stateDict.get("lm_head.weight");
+		PackedCollection<?> rmsFinalWeight = stateDict.get("model.norm.weight");
+
+		// Compute RoPE frequencies (not stored in state dict)
+		PackedCollection<?> freqCis = computeRopeFreqs(config);
+
 		// Build transformer stack: 36 layers for Qwen3-4B
 		for (int i = 0; i < config.layerCount; i++) {
 			// Each layer consists of:
 			// 1. RMSNorm + Multi-Head Attention with QK-Norm + Residual
 			// 2. RMSNorm + SwiGLU FFN + Residual
 
-			// Extract weight slices for this layer
-			PackedCollection<?> layerRmsAtt = weights.rmsAttWeights.range(shape(dim), i * dim);
-			PackedCollection<?> layerRmsFfn = weights.rmsFfn.range(shape(dim), i * dim);
+			// Load weights directly from StateDictionary
+			String prefix = String.format("model.layers.%d", i);
 
-			// Attention weights (note: wk and wv are in dense layer format: output, input)
-			PackedCollection<?> layerWq = weights.wq.range(shape(dim, dim), dim * dim * i);
-			PackedCollection<?> layerWk = weights.wk.range(shape(kvDim, dim), kvDim * dim * i);
-			PackedCollection<?> layerWv = weights.wv.range(shape(kvDim, dim), kvDim * dim * i);
-			PackedCollection<?> layerWo = weights.wo.range(shape(dim, dim), dim * dim * i);
+			PackedCollection<?> layerRmsAtt = stateDict.get(prefix + ".input_layernorm.weight");
+			PackedCollection<?> layerRmsFfn = stateDict.get(prefix + ".post_attention_layernorm.weight");
 
-			// QK-Norm weights (per head)
-			int qkNormQSize = config.headCount * config.headSize;
-			int qkNormKSize = config.kvHeadCount * config.headSize;
-			PackedCollection<?> layerQkNormQ = weights.qkNormQ.range(shape(config.headCount, config.headSize), i * qkNormQSize);
-			PackedCollection<?> layerQkNormK = weights.qkNormK.range(shape(config.kvHeadCount, config.headSize), i * qkNormKSize);
+			// Attention weights
+			PackedCollection<?> layerWq = stateDict.get(prefix + ".self_attn.q_proj.weight");
+			PackedCollection<?> layerWk = stateDict.get(prefix + ".self_attn.k_proj.weight");
+			PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
+			PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
+
+			// QK-Norm weights
+			PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
+			PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
 
 			// FFN weights
-			PackedCollection<?> layerW1 = weights.w1.range(shape(config.hiddenDim, dim), dim * config.hiddenDim * i);
-			PackedCollection<?> layerW2 = weights.w2.range(shape(dim, config.hiddenDim), dim * config.hiddenDim * i);
-			PackedCollection<?> layerW3 = weights.w3.range(shape(config.hiddenDim, dim), dim * config.hiddenDim * i);
+			PackedCollection<?> layerW1 = stateDict.get(prefix + ".mlp.gate_proj.weight");
+			PackedCollection<?> layerW2 = stateDict.get(prefix + ".mlp.down_proj.weight");
+			PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
 			// Add complete transformer layer
 			transformer.add(qwen3Transformer(
@@ -274,7 +282,7 @@ public class Qwen3 implements AttentionFeatures {
 					layerRmsAtt,          // Pre-attention norm
 					layerWk, layerWv, layerWq, layerWo,  // Attention projections
 					layerQkNormQ, layerQkNormK,           // QK-Norm weights
-					weights.freqCis,      // RoPE frequencies
+					freqCis,              // RoPE frequencies
 					layerRmsFfn,          // Pre-FFN norm
 					layerW1, layerW2, layerW3,  // FFN projections (SwiGLU)
 					p(position),          // Current position
@@ -282,16 +290,45 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Final RMS Norm
-		transformer.add(rmsnorm(weights.rmsFinalWeight));
+		transformer.add(rmsnorm(rmsFinalWeight));
 
 		// Output logits projection (shared with token embeddings)
-		transformer.add(dense(weights.wcls));
+		transformer.add(dense(wcls));
 
 		// Wrap in autoregressive model with token embeddings
 		return AutoregressiveModel.of(
 				transformer.compile(false, profile),
 				step -> position.setMem((double) step),
-				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim));
+				t -> tokenEmbeddings.range(shape(config.dim), t * config.dim));
+	}
+
+	/**
+	 * Compute RoPE frequency embeddings.
+	 */
+	private static PackedCollection<?> computeRopeFreqs(Qwen3Config config) {
+		int headSize = config.headSize;
+		int seqLen = config.seqLen;
+		double theta = config.ropeTheta;
+
+		int freqDim = headSize / 2;
+		double[] freqs = new double[freqDim];
+		for (int i = 0; i < freqDim; i++) {
+			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
+		}
+
+		TraversalPolicy shape = new TraversalPolicy(seqLen, freqDim, 2);
+		PackedCollection<?> freqCis = new PackedCollection<>(shape);
+
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int i = 0; i < freqDim; i++) {
+				double angle = pos * freqs[i];
+				int idx = (pos * freqDim + i) * 2;
+				freqCis.setMem(idx, Math.cos(angle));
+				freqCis.setMem(idx + 1, Math.sin(angle));
+			}
+		}
+
+		return freqCis;
 	}
 
 	/**
