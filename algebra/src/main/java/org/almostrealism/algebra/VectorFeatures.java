@@ -87,12 +87,9 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	@Deprecated
 	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
-		return new DefaultTraversableExpressionComputation<>("dotProduct", shape(1), args ->
-				CollectionExpression.create(shape(1), idx -> Sum.of(
-				Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(0))),
-				Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(1))),
-				Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(2)))
-				)), a, b);
+		// Use general tensor operations: multiply element-wise, then sum
+		// Works correctly with both single vectors and batches via traversal
+		return multiply((Producer) a, (Producer) b).sum();
 	}
 
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {

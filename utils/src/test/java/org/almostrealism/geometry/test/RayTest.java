@@ -105,4 +105,108 @@ public class RayTest implements TestFeatures {
 		assertEquals(5.0, r.getDirection().getY());
 		assertEquals(6.0, r.getDirection().getZ());
 	}
+
+	@Test
+	public void batchMultiply() {
+		Producer<Ray> rays = v(shape(-1, 6), 0);
+
+		// origin * direction element-wise
+		Producer<?> product = multiply(origin(rays), direction(rays));
+
+		PackedCollection<Ray> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
+		rayData.set(0, new Ray(new Vector(1, 2, 3), new Vector(2, 3, 4)));      // (1,2,3) * (2,3,4) = (2,6,12)
+		rayData.set(1, new Ray(new Vector(1, 1, 1), new Vector(1, 1, 1)));      // (1,1,1) * (1,1,1) = (1,1,1)
+		rayData.set(2, new Ray(new Vector(0, 0, 0), new Vector(5, 5, 5)));      // (0,0,0) * (5,5,5) = (0,0,0)
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 3).traverse(1));
+		product.into(result.each()).evaluate(rayData);
+
+		result.print();
+
+		assertEquals(new Vector(2, 6, 12), result.get(0));
+		assertEquals(new Vector(1, 1, 1), result.get(1));
+		assertEquals(new Vector(0, 0, 0), result.get(2));
+	}
+
+	@Test
+	public void batchDotProduct() {
+		Producer<Ray> rays = v(shape(-1, 6), 0);
+
+		// Dot product via multiply().sum()
+		Producer<?> dotProd = multiply(origin(rays), direction(rays)).sum();
+
+		PackedCollection<Ray> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
+		rayData.set(0, new Ray(new Vector(0, 0, 3), new Vector(0, 0, -1)));     // 0*0 + 0*0 + 3*(-1) = -3
+		rayData.set(1, new Ray(new Vector(1, 0, 0), new Vector(1, 0, 0)));      // 1*1 + 0*0 + 0*0 = 1
+		rayData.set(2, new Ray(new Vector(1, 2, 3), new Vector(2, 3, 4)));      // 1*2 + 2*3 + 3*4 = 2+6+12 = 20
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 1).traverse(1));
+		dotProd.into(result.each()).evaluate(rayData);
+
+		result.print();
+
+		assertEquals(-3.0, result.valueAt(0, 0));
+		assertEquals(1.0, result.valueAt(1, 0));
+		assertEquals(20.0, result.valueAt(2, 0));
+	}
+
+	@Test
+	public void batchODotD() {
+		Producer<Ray> rays = v(shape(-1, 6), 0);
+		Producer<?> oDotdProd = oDotd(rays);
+
+		PackedCollection<Ray> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
+		rayData.set(0, new Ray(new Vector(0, 0, 3), new Vector(0, 0, -1)));     // -3
+		rayData.set(1, new Ray(new Vector(1, 0, 0), new Vector(1, 0, 0)));      // 1
+		rayData.set(2, new Ray(new Vector(1, 2, 3), new Vector(2, 3, 4)));      // 20
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 1).traverse(1));
+		oDotdProd.into(result.each()).evaluate(rayData);
+
+		result.print();
+
+		assertEquals(-3.0, result.valueAt(0, 0));
+		assertEquals(1.0, result.valueAt(1, 0));
+		assertEquals(20.0, result.valueAt(2, 0));
+	}
+
+	@Test
+	public void batchDDotD() {
+		Producer<Ray> rays = v(shape(-1, 6), 0);
+		Producer<?> dDotdProd = dDotd(rays);
+
+		PackedCollection<Ray> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
+		rayData.set(0, new Ray(new Vector(1, 2, 3), new Vector(0, 0, -1)));     // 0+0+1 = 1
+		rayData.set(1, new Ray(new Vector(0, 0, 0), new Vector(2, 2, 2)));      // 4+4+4 = 12
+		rayData.set(2, new Ray(new Vector(1, 2, 3), new Vector(3, 4, 5)));      // 9+16+25 = 50
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 1).traverse(1));
+		dDotdProd.into(result.each()).evaluate(rayData);
+
+		result.print();
+
+		assertEquals(1.0, result.valueAt(0, 0));
+		assertEquals(12.0, result.valueAt(1, 0));
+		assertEquals(50.0, result.valueAt(2, 0));
+	}
+
+	@Test
+	public void batchODotO() {
+		Producer<Ray> rays = v(shape(-1, 6), 0);
+		Producer<?> oDotoProd = oDoto(rays);
+
+		PackedCollection<Ray> rayData = new PackedCollection<>(shape(3, 6).traverse(1));
+		rayData.set(0, new Ray(new Vector(0, 0, 3), new Vector(1, 1, 1)));      // 0+0+9 = 9
+		rayData.set(1, new Ray(new Vector(1, 0, 0), new Vector(2, 2, 2)));      // 1+0+0 = 1
+		rayData.set(2, new Ray(new Vector(1, 2, 3), new Vector(0, 0, 0)));      // 1+4+9 = 14
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 1).traverse(1));
+		oDotoProd.into(result.each()).evaluate(rayData);
+
+		result.print();
+
+		assertEquals(9.0, result.valueAt(0, 0));
+		assertEquals(1.0, result.valueAt(1, 0));
+		assertEquals(14.0, result.valueAt(2, 0));
+	}
 }
