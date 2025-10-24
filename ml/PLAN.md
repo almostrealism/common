@@ -682,6 +682,27 @@ The synthetic test DOES NOT prove:
 - ✅ `QWEN3_USAGE.md` - Usage documentation
 - ✅ `PHASE4_SUMMARY.md` - Tokenization phase summary
 - ✅ `PHASE5_SYNTHETIC_TEST_FINDINGS.md` - Detailed test findings and bug analysis
+- ✅ `../claude.md` - Common AR framework guidelines
+- ✅ `claude.md` - ML-specific development patterns
+
+### 🔄 Code Organization Principles
+
+#### Use StateDictionary as Standard
+- **Deprecated**: Creating separate weight container classes (e.g., `Qwen3Weights`)
+- **Preferred**: Use `StateDictionary` directly to access weights
+- **Rationale**: Avoids duplication, clearer weight provenance, follows HuggingFace naming
+
+#### Generalize, Don't Duplicate
+- **Deprecated**: Model-specific copies of attention/layer methods (e.g., `qwen3Attention()`)
+- **Preferred**: Extend existing methods with optional parameters
+- **Rationale**: Single source of truth, easier maintenance, better testing
+
+#### Binary Checkpoint Format
+- **Deprecated**: Binary checkpoint constructors (single `.bin` file)
+- **Preferred**: StateDictionary with protobuf format (directory of `.pb` files)
+- **Rationale**: Better compatibility with HuggingFace, easier debugging, more flexible
+
+**See** [../claude.md](../claude.md) and [claude.md](claude.md) for detailed guidelines.
 
 ---
 

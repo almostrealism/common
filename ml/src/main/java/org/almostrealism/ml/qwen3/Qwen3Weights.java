@@ -10,29 +10,21 @@ import java.nio.FloatBuffer;
 /**
  * Weights for Qwen3 models.
  *
- * Key differences from Llama2:
+ * @deprecated This class is deprecated. Use {@link StateDictionary} directly instead.
+ * This wrapper class adds unnecessary indirection and storage duplication.
+ * Access weights directly from StateDictionary using HuggingFace key names
+ * (e.g., "model.layers.0.self_attn.q_proj.weight").
+ *
+ * <p>This class is retained for backward compatibility with existing tests
+ * but will be removed in a future version. New code should use StateDictionary directly.</p>
+ *
+ * <p>Key differences from Llama2:
  * - Adds QK-Norm weights for query and key normalization
  * - Larger vocabulary size (151,669 tokens)
  * - No biases in QKV projections
- * - 36 layers with GQA (32 query heads / 8 KV heads)
- *
- * Weight layout in binary format:
- * 1. Token embeddings: (vocabSize, dim)
- * 2. Attention RMS norm weights: (layerCount, dim)
- * 3. Query projection: (layerCount, dim, dim)
- * 4. Key projection: (layerCount, dim, kvDim) where kvDim = dim * kvHeadCount / headCount
- * 5. Value projection: (layerCount, dim, kvDim)
- * 6. Output projection: (layerCount, dim, dim)
- * 7. QK-Norm weights for queries: (layerCount, headCount, headSize)
- * 8. QK-Norm weights for keys: (layerCount, kvHeadCount, headSize)
- * 9. FFN RMS norm weights: (layerCount, dim)
- * 10. FFN gate projection (w1): (layerCount, hiddenDim, dim)
- * 11. FFN down projection (w2): (layerCount, dim, hiddenDim)
- * 12. FFN up projection (w3): (layerCount, hiddenDim, dim)
- * 13. Final RMS norm: (dim)
- * 14. RoPE freq_cis: (seqLen, headSize/2) real and imaginary components
- * 15. Classifier weights (wcls): shared with token embeddings or separate (vocabSize, dim)
+ * - 36 layers with GQA (32 query heads / 8 KV heads)</p>
  */
+@Deprecated
 public class Qwen3Weights implements CodeFeatures {
 	// Token embedding table
 	public final PackedCollection<?> tokenEmbeddings; // (vocabSize, dim)
@@ -142,11 +134,17 @@ public class Qwen3Weights implements CodeFeatures {
 
 	/**
 	 * Load weights from a binary checkpoint file.
-	 * The FloatBuffer should be positioned after the config header.
+	 *
+	 * @deprecated Binary checkpoint format is deprecated in favor of StateDictionary.
+	 * Use the StateDictionary constructor instead. This constructor has known bugs
+	 * (transposed K/V weights) and will be removed in a future version.
+	 *
+	 * <p>The FloatBuffer should be positioned after the config header.</p>
 	 *
 	 * @param config Qwen3 configuration specifying model dimensions
 	 * @param buffer FloatBuffer containing the weight data
 	 */
+	@Deprecated
 	public Qwen3Weights(Qwen3Config config, FloatBuffer buffer) {
 		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 

@@ -153,10 +153,16 @@ public interface AttentionFeatures extends RotationFeatures {
 	/**
 	 * Qwen3 attention with QK-Norm for improved training stability.
 	 *
-	 * Key differences from standard attention:
-	 * - Applies RMSNorm to Q and K projections before RoPE (QK-Norm)
-	 * - Supports Grouped Query Attention (GQA) with separate KV heads
-	 * - Uses epsilon = 1e-6 for QK-Norm stability
+	 * @deprecated This method duplicates functionality. Use generalized attention methods
+	 * with optional QK-Norm parameters instead. This model-specific method will be removed
+	 * in a future version to reduce code duplication and improve maintainability.
+	 *
+	 * <p>Key differences from standard attention:</p>
+	 * <ul>
+	 * <li>Applies RMSNorm to Q and K projections before RoPE (QK-Norm)</li>
+	 * <li>Supports Grouped Query Attention (GQA) with separate KV heads</li>
+	 * <li>Uses epsilon = 1e-6 for QK-Norm stability</li>
+	 * </ul>
 	 *
 	 * @param heads Number of query attention heads
 	 * @param kvHeads Number of key/value attention heads (for GQA)
@@ -172,6 +178,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param requirements Compute requirements for hardware acceleration
 	 * @return Attention block with QK-Norm
 	 */
+	@Deprecated
 	default Block qwen3Attention(int heads, int kvHeads,
 								 PackedCollection<?> rmsAttWeight,
 								 PackedCollection<?> wk, PackedCollection<?> wv,
@@ -542,6 +549,10 @@ public interface AttentionFeatures extends RotationFeatures {
 	/**
 	 * Qwen3 transformer layer with QK-Norm attention and SwiGLU FFN.
 	 *
+	 * @deprecated This method duplicates functionality. Use generalized transformer methods
+	 * with optional QK-Norm parameters instead. This model-specific method will be removed
+	 * in a future version to reduce code duplication and improve maintainability.
+	 *
 	 * @param heads Number of query attention heads
 	 * @param kvHeads Number of key/value attention heads (for GQA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
@@ -560,6 +571,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param requirements Compute requirements
 	 * @return Complete transformer layer block
 	 */
+	@Deprecated
 	default Block qwen3Transformer(int heads, int kvHeads,
 								   PackedCollection<?> rmsAttWeight,
 								   PackedCollection<?> wk, PackedCollection<?> wv,
