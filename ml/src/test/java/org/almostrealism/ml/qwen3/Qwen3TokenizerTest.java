@@ -84,8 +84,8 @@ public class Qwen3TokenizerTest {
 	public void testMultiByteCharacters() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
-		// Test with multi-byte UTF-8 characters
-		String text = "Hello 世界";
+		// Test with multi-byte UTF-8 characters (Chinese: "world")
+		String text = "Hello \u4e16\u754c";
 		int[] tokens = tokenizer.encode(text, false, false);
 
 		assertNotNull(tokens);

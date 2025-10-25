@@ -122,16 +122,13 @@ def extract_weights(model, output_dir, layer_split=True):
                                    k.startswith("model.norm") or
                                    k.startswith("lm_head"))
 
-        # Extract each layer separately
-        num_layers = len([k for k in state_dict.keys() if "model.layers.0." in k])
-        if num_layers == 0:
-            # Count layers
-            layer_nums = set()
-            for k in state_dict.keys():
-                if "model.layers." in k:
-                    layer_num = int(k.split("model.layers.")[1].split(".")[0])
-                    layer_nums.add(layer_num)
-            num_layers = len(layer_nums)
+        # Count unique layer numbers
+        layer_nums = set()
+        for k in state_dict.keys():
+            if "model.layers." in k:
+                layer_num = int(k.split("model.layers.")[1].split(".")[0])
+                layer_nums.add(layer_num)
+        num_layers = len(layer_nums)
 
         print(f"Extracting {num_layers} transformer layers...")
         for i in range(num_layers):

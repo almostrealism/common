@@ -24,11 +24,10 @@ public class Qwen3RealWeightsTest {
 		System.out.println("\n=== Test: Load Real Weights ===");
 
 		// Config from Qwen2.5-0.5B-Instruct
-		// Note: Using only 12 layers since extraction only got 12 of 24
 		Qwen3Config config = new Qwen3Config(
 			896,      // dim
 			4864,     // hiddenDim
-			12,       // layerCount (only 12 extracted)
+			24,       // layerCount (full model)
 			14,       // headCount
 			2,        // kvHeadCount (GQA: 14/2 = 7:1 ratio!)
 			151936,   // vocabSize
@@ -79,6 +78,10 @@ public class Qwen3RealWeightsTest {
 		} catch (Exception e) {
 			e.printStackTrace();
 			fail("Model construction failed: " + e.getMessage());
+		} finally {
+			// Clean up StateDictionary to free memory
+			stateDict.destroy();
+			System.out.println("[CLEANUP] StateDictionary destroyed");
 		}
 
 		System.out.println("[OK] Real weights test passed!\n");
@@ -90,7 +93,7 @@ public class Qwen3RealWeightsTest {
 
 		// Same config as above
 		Qwen3Config config = new Qwen3Config(
-			896, 4864, 12, 14, 2, 151936, 32768, true, 1000000.0
+			896, 4864, 24, 14, 2, 151936, 32768, true, 1000000.0
 		);
 
 		StateDictionary stateDict;
@@ -111,22 +114,36 @@ public class Qwen3RealWeightsTest {
 		// Try to generate a few tokens
 		try {
 			System.out.println("Attempting token generation...");
-			model.setTemperature(0.0);  // Deterministic
+			model.setTemperature(0.8);  // Sampling for more interesting output
 
-			String prompt = "Hello";
+			String prompt = "Tell me a story in 3 parts";
 			System.out.println("Prompt: \"" + prompt + "\"");
+			System.out.println("Generating 20 tokens...\n");
 
-			model.run(10, prompt, token -> {
+			long startTime = System.currentTimeMillis();
+			int[] tokenCount = {0};
+
+			long duration = model.run(20, prompt, token -> {
 				System.out.print(token);
 				System.out.flush();
+				tokenCount[0]++;
 			});
 
-			System.out.println("\n[OK] Generation completed");
+			long totalTime = System.currentTimeMillis() - startTime;
+			double tokensPerSecond = (tokenCount[0] - 1) / (duration / 1000.0);  // Exclude prompt processing
+
+			System.out.println("\n\n[OK] Generation completed");
+			System.out.println("Generated " + tokenCount[0] + " tokens in " + totalTime + "ms");
+			System.out.println(String.format("Tokens per second: %.2f", tokensPerSecond));
 		} catch (Exception e) {
 			System.err.println("\n[EXPECTED] Generation failed (likely GQA not implemented):");
 			e.printStackTrace();
 			// Don't fail the test - we expect this to fail due to GQA
 			// Just document what broke
+		} finally {
+			// Clean up StateDictionary to free memory
+			stateDict.destroy();
+			System.out.println("[CLEANUP] StateDictionary destroyed");
 		}
 
 		System.out.println("[OK] Generation test completed\n");

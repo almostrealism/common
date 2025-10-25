@@ -14,12 +14,17 @@
 
 ### 🔧 In Progress
 - **Phase 6**: Real weights validation
-- **BLOCKER**: GQA (Grouped Query Attention) not fully implemented in `attentionKeys()`/`attentionValues()`
+  - ✅ GQA (Grouped Query Attention) implemented using `traverse().repeat()` pattern
+  - ✅ Successfully generated 20 tokens with real weights (0.35 tokens/sec)
+  - ✅ PyTorch reference data generation (`generate_qwen3_reference.py`)
+  - ✅ Test infrastructure for systematic comparison (`Qwen3TransformerBlockTest`)
+  - 🔄 **CURRENT**: Implementing full transformer block comparison
 
 ### ❌ Remaining
-- Fix GQA support in attention computation
-- Validate generation with real weights
-- Performance optimization
+- Complete transformer block validation (attention + FFN)
+- Debug if outputs don't match PyTorch reference
+- Debug tokenizer (BPE merges not loading, UTF-8 issues)
+- Performance optimization (currently 0.35 tokens/sec)
 - Documentation
 
 ---
@@ -456,7 +461,40 @@ public void testTokenizer() {
 }
 ```
 
-#### 6.2 Integration Tests
+#### 6.2 Transformer Block Validation (Systematic Comparison)
+
+**Purpose**: Validate that our transformer block implementation matches PyTorch reference exactly.
+
+**Approach** (following pattern from `AttentionTests.qkNormCompare()`):
+
+1. **Python Script** (`generate_qwen3_reference.py`):
+   - Load Qwen2.5-0.5B-Instruct from HuggingFace
+   - Extract a single transformer layer (layer 0)
+   - Generate random test inputs matching our implementation
+   - Run through PyTorch transformer layer
+   - Save inputs, weights, and expected outputs to protobuf
+
+2. **Java Test** (`Qwen3TransformerBlockTest.testTransformerBlockReference()`):
+   - Load reference data from protobuf using StateDictionary
+   - Build equivalent transformer block using our implementation
+   - Run same inputs through our transformer block
+   - Compare outputs using `compare()` method
+   - Assert difference < 1e-5 tolerance
+
+**What This Validates**:
+- Self-attention computation (Q/K/V projections, attention scores, output projection)
+- QK-Norm application
+- RoPE (Rotary Position Embeddings)
+- GQA (Grouped Query Attention) expansion
+- FFN (Feed-Forward Network with SwiGLU)
+- RMSNorm for both attention and FFN
+- Residual connections
+
+**Files**:
+- `generate_qwen3_reference.py` - Python reference data generator
+- `Qwen3TransformerBlockTest.java` - Java comparison test
+
+#### 6.3 Integration Tests
 ```java
 @Test
 public void testSingleTokenGeneration() {
