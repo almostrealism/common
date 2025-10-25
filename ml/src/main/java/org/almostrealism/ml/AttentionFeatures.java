@@ -216,6 +216,14 @@ public interface AttentionFeatures extends RotationFeatures {
 		PackedCollection<?> keyCache = new PackedCollection<>(seqLen, kvHeads, headSize);
 		PackedCollection<?> valueCache = new PackedCollection<>(seqLen, kvHeads, headSize);
 
+		// Zero-initialize caches to prevent garbage values from causing numerical explosions
+		for (int i = 0; i < keyCache.getMemLength(); i++) {
+			keyCache.setMem(i, 0.0);
+		}
+		for (int i = 0; i < valueCache.getMemLength(); i++) {
+			valueCache.setMem(i, 0.0);
+		}
+
 		attention.add(rmsnorm(rmsAttWeight, requirements));
 
 		SequentialBlock keys = attention.branch();

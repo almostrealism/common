@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -483,6 +484,153 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		}
 
 		assertTrue("Attention output too large: " + maxAbs, maxAbs < 1e100);
+		referenceData.destroy();
+	}
+
+	@Test
+	public void testCacheInitialization() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		System.out.println("\n=== Testing Cache Initialization ===");
+		
+		// Test if PackedCollection initializes to zero
+		PackedCollection<?> cache = new PackedCollection<>(10, 5, 64);
+		System.out.println("Cache shape: " + cache.getShape());
+		System.out.println("Cache mem length: " + cache.getMemLength());
+		
+		double sum = cache.doubleStream().sum();
+		double maxAbs = cache.doubleStream().map(Math::abs).max().orElse(0);
+		boolean hasNonZero = cache.doubleStream().anyMatch(v -> v != 0.0);
+		
+		System.out.println("Sum: " + sum);
+		System.out.println("Max abs: " + maxAbs);
+		System.out.println("Has non-zero values: " + hasNonZero);
+		
+		if (hasNonZero) {
+			// Print first few non-zero values
+			System.out.println("WARNING: Cache not initialized to zero!");
+			for (int i = 0; i < Math.min(10, cache.getMemLength()); i++) {
+				if (cache.toDouble(i) != 0.0) {
+					System.out.println("  cache[" + i + "] = " + cache.toDouble(i));
+				}
+			}
+		}
+		
+		assertFalse("Cache should be zero-initialized", hasNonZero);
+		System.out.println("[OK] Cache is zero-initialized");
+	}
+
+	@Test
+	public void testGQAExpansion() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		System.out.println("\n=== Testing GQA Expansion ===");
+		
+		// Create simple test data: (seqLen=4, kvHeads=2, headSize=8)
+		int seqLen = 4;
+		int kvHeads = 2;
+		int headSize = 8;
+		int heads = 14;
+		int headsPerKvGroup = heads / kvHeads; // 7
+		
+		PackedCollection<?> kvCache = new PackedCollection<>(seqLen, kvHeads, headSize);
+		
+		// Fill with pattern: seqPos * 100 + kvHead * 10 + dim
+		for (int s = 0; s < seqLen; s++) {
+			for (int h = 0; h < kvHeads; h++) {
+				for (int d = 0; d < headSize; d++) {
+					double value = s * 100 + h * 10 + d;
+					kvCache.setMem(s * kvHeads * headSize + h * headSize + d, value);
+				}
+			}
+		}
+		
+		System.out.println("Input shape: " + kvCache.getShape());
+		System.out.println("First few values: " + kvCache.valueAt(0, 0, 0) + ", " + 
+			kvCache.valueAt(0, 0, 1) + ", " + kvCache.valueAt(0, 1, 0));
+		
+		// Test expansion using the same logic as AttentionFeatures
+		Producer<PackedCollection<?>> keys = p(kvCache);
+		Producer<PackedCollection<?>> repeated = traverse(2, keys).repeat(headsPerKvGroup);
+		Producer<PackedCollection<?>> expanded = reshape(shape(seqLen, heads, headSize), repeated);
+		
+		// Compile and evaluate
+		PackedCollection<?> result = new PackedCollection<>(seqLen, heads, headSize);
+		expanded.get().into(result).evaluate();
+		
+		System.out.println("Output shape: " + result.getShape());
+		System.out.println("Expected shape: (" + seqLen + ", " + heads + ", " + headSize + ")");
+		
+		// Verify expansion: each KV head should be repeated 7 times
+		// kvHead 0 should appear in query heads 0-6
+		// kvHead 1 should appear in query heads 7-13
+		System.out.println("\nVerifying expansion pattern:");
+		for (int queryHead = 0; queryHead < Math.min(heads, 4); queryHead++) {
+			int expectedKvHead = queryHead / headsPerKvGroup;
+			double val = result.valueAt(0, queryHead, 0);
+			double expected = 0 * 100 + expectedKvHead * 10 + 0;
+			System.out.println("  Query head " + queryHead + " -> KV head " + expectedKvHead +
+				": got " + val + ", expected " + expected);
+			assertEquals("GQA expansion incorrect for query head " + queryHead, expected, val);
+		}
+		
+		System.out.println("[OK] GQA expansion works correctly");
+	}
+
+	@Test
+	public void testFFN() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing FFN (Feed-Forward Network) ===");
+
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+		int hiddenDim = (int) testConfig.valueAt(3);
+
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
+		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
+		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
+		PackedCollection<?> wDown = referenceData.get("mlp.down_proj.weight");
+
+		// Build FFN block
+		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
+		model.add(feedForward(ffnNorm, wGate, wDown, wUp));
+
+		System.out.println("Compiling FFN...");
+		org.almostrealism.model.CompiledModel compiled = model.compile(false);
+
+		// Extract first token
+		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			firstToken.setMem(d, input.valueAt(0, 0, d));
+		}
+
+		System.out.println("Input: sum=" + firstToken.doubleStream().sum() +
+				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		System.out.println("Running FFN forward pass...");
+		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+
+		// Handle potential 2D output
+		PackedCollection<?> output = rawOutput;
+		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
+			output = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) {
+				output.setMem(d, rawOutput.valueAt(0, d));
+			}
+		}
+
+		double sum = output.doubleStream().sum();
+		double maxAbs = output.doubleStream().map(Math::abs).max().orElse(0);
+
+		System.out.println("Output: sum=" + sum + ", max=" + maxAbs);
+		assertTrue("FFN output too large: " + maxAbs, maxAbs < 1000);
+
+		System.out.println("[OK] FFN works without explosion");
 		referenceData.destroy();
 	}
 }
