@@ -69,6 +69,10 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.2.1</version>
+				<configuration>
+					<!-- Timeout in seconds for forked test processes (1 hour default) -->
+					<forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.jacoco</groupId>
