@@ -207,7 +207,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							Producer<PackedCollection<?>> position,
 							ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = freqCis.getShape().size(1);
+		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
 		int seqLen = freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
 

@@ -127,8 +127,29 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
 
+		// Check input is reasonable
+		System.out.println("\nInput diagnostics:");
+		System.out.println("  First 5 values: " + firstToken.valueAt(0) + ", " + firstToken.valueAt(1) + ", " + firstToken.valueAt(2));
+		System.out.println("  Sum: " + firstToken.doubleStream().sum());
+		double inputMean = firstToken.doubleStream().average().orElse(0);
+		double inputMax = firstToken.doubleStream().map(Math::abs).max().orElse(0);
+		System.out.println("  Mean: " + inputMean + ", Max abs: " + inputMax);
+
 		System.out.println("\nRunning forward pass on first token...");
 		PackedCollection<?> rawOutput = compiled.forward(firstToken);
+
+		System.out.println("  Raw output shape: " + rawOutput.getShape());
+		System.out.println("  Raw output memLength: " + rawOutput.getMemLength());
+		if (rawOutput.getMemLength() > 0) {
+			// Output is 2D (1, 896), so use 2D indexing
+			System.out.println("  Raw output first 5 values: " + rawOutput.valueAt(0, 0) + ", " + rawOutput.valueAt(0, 1) + ", " + rawOutput.valueAt(0, 2));
+			System.out.println("  Raw output sum: " + rawOutput.doubleStream().sum());
+			boolean hasNaN = rawOutput.doubleStream().anyMatch(Double::isNaN);
+			boolean hasInf = rawOutput.doubleStream().anyMatch(Double::isInfinite);
+			System.out.println("  Has NaN: " + hasNaN + ", Has Inf: " + hasInf);
+		} else {
+			System.out.println("  WARNING: Raw output is empty!");
+		}
 
 		// Squeeze output if needed (remove batch dimension)
 		PackedCollection<?> actualOutput;

@@ -966,3 +966,78 @@ default Producer<PackedCollection<?>> expandKeysForGQA(
 - Qwen2.5 Architecture: Uses GQA with various head ratios depending on model size
 - Current test: Qwen2.5-0.5B-Instruct (14:2 ratio)
 
+
+## Debugging Findings (2025-10-25)
+
+### Numerical Explosion Investigation
+
+**Problem**: Transformer block output explodes to 8.6e292 vs expected 6.4
+
+**Tests Performed**:
+1. ✅ **Weight Statistics** - All weights in reasonable range (±1.3, mean~0, std~0.01-0.08)
+2. ✅ **RMSNorm** - Works correctly, normalizes to ~1.0 max abs
+3. ⚠️ **Dense Layer** - Shape mismatch error when testing in isolation
+
+**Key Findings**:
+- Weights are loading correctly from protobuf
+- RMSNorm implementation is correct
+- Issue appears during attention/dense layer computation
+- Full transformer produces 2.2e262 output (massive explosion)
+
+**Next Steps**:
+- Resolve dense layer shape issues
+- Test RoPE rotation for numerical stability
+- Test attention mechanism without FFN
+- Compare intermediate activations with PyTorch
+
+
+## Critical Debugging Update (2025-10-25 - Continued)
+
+### Explosion Located: ATTENTION MECHANISM
+
+Through systematic component testing, the numerical explosion has been definitively located in the **attention mechanism**, NOT the FFN.
+
+#### Test Results Summary
+
+| Component | Status | Output Range |
+|-----------|--------|--------------|
+| Weight Statistics | ✅ Pass | ±1.3 |
+| RMSNorm | ✅ Pass | max=1.0 |
+| Dense (Q Projection) | ✅ Pass | max=1.1 |
+| RMSNorm + Dense | ✅ Pass | max=1.1 |
+| RoPE Frequencies | ✅ Pass | [0, 1] (cos/sin) |
+| RoPE Rotation | ✅ Pass | max=1.1 |
+| **Full Attention** | ❌ **FAIL** | **max=2.49e293** |
+| Full Transformer | ❌ FAIL | max=8.6e292 |
+
+#### Root Cause: Attention Computation
+
+The explosion occurs AFTER RoPE rotation, during one of:
+1. Q·K^T computation (attentionKeys)
+2. Softmax normalization  
+3. Attention·V weighted sum (attentionValues)
+4. Output projection dense(wo)
+
+#### Leading Theories
+
+1. **GQA Expansion Bug** (Most Likely)
+   - 14:2 head ratio requires each KV head to be repeated 7x
+   - `traverse(2, keys).repeat(7)` may have incorrect behavior
+   - Shape warnings suggest dimension mismatches
+
+2. **Uninitialized Cache**
+   - key/value caches may contain garbage values
+   - These multiply through the attention computation
+
+3. **Softmax Overflow**
+   - Large Q·K^T values (>700) would overflow softmax
+   - Though divide by sqrt(64)=8 should prevent this
+
+#### Next Investigation Steps
+
+1. Test Q·K^T (attentionKeys) in isolation
+2. Verify GQA expansion with simple test
+3. Check PackedCollection initialization
+4. Add intermediate value logging
+5. Compare attention scores with PyTorch reference
+
