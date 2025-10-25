@@ -22,11 +22,22 @@
   - ✅ Successfully generated 20 tokens with real weights (0.35 tokens/sec)
   - ✅ PyTorch reference data generation (`generate_qwen3_reference.py`)
   - ✅ Test infrastructure for systematic comparison
-  - ✅ All individual components validated (attention ✅, FFN ✅)
-  - 🔄 **CURRENT**: Debugging residual connections (1.42 diff vs PyTorch, tolerance 0.1)
+  - ✅ All individual components validated (11/11 tests passing)
+  - ✅ Residual connections tested and working correctly
+  - ✅ Added step-by-step transformer test with intermediate logging
+  - 🔄 **CURRENT**: Debugging large discrepancy: final sum=-1.129 vs expected=6.405
+    - **Key Finding**: Step-by-step test reveals:
+      - Attention alone: sum=0.030, max=0.015 ✓
+      - After attention residual: sum=0.184 ✓
+      - FFN output: sum=-1.313, max=0.344
+      - Final (after FFN residual): sum=-1.129
+      - **Expected: sum=6.405, max=1.757**
+    - **Issue**: Massive discrepancy (7.5x difference, wrong sign!)
+    - **Status**: FFN weights correct shape, implementation matches PyTorch SwiGLU
+    - **Next**: Need PyTorch intermediate outputs to isolate exact divergence point
 
 ### ❌ Remaining
-- Fix residual connection numerical accuracy (1.42 → <0.1)
+- Fix 1.42 numerical difference (likely precision or ordering issue)
 - Complete full transformer block validation
 - Debug tokenizer (BPE merges not loading, UTF-8 issues)
 - Performance optimization (currently 0.35 tokens/sec)

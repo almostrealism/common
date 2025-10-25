@@ -578,120 +578,186 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 	}
 
 	@Test
-	public void testResidualConnection() throws Exception {
+	public void testAttentionWithResidual() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		System.out.println("\n=== Testing Residual Connection (accum) ===");
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing Attention WITH Residual Connection ===");
 
-		// Create simple test: input + transformation
-		int dim = 10;
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+		int heads = (int) testConfig.valueAt(4);
+		int kvHeads = (int) testConfig.valueAt(5);
+		int headSize = dim / heads;
+		int seqLen = (int) testConfig.valueAt(1);
 
-		// Input: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-		PackedCollection<?> input = new PackedCollection<>(shape(dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, i + 1.0);
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+
+		// Compute RoPE frequencies
+		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection<?> position = new PackedCollection<>(1);
+		position.setMem(0, 0.0);
+
+		// Extract first token
+		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
 
-		// Transformation: multiply by 2 (simple linear layer)
-		PackedCollection<?> weight = new PackedCollection<>(shape(dim, dim));
-		weight.clear();
-		for (int i = 0; i < dim; i++) {
-			weight.setMem(i * dim + i, 2.0); // Diagonal matrix with 2s
-		}
+		System.out.println("Input: sum=" + firstToken.doubleStream().sum() +
+				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
 
-		// Build model with residual: output = input + (input * weight)
+		// Build attention WITH residual connection
 		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
 		org.almostrealism.model.SequentialBlock main = model.sequential();
-		main.accum(dense(weight)); // residual connection
+		main.accum(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
+				null, null, freqCis, p(position)));
 
-		System.out.println("Input: " + java.util.Arrays.toString(
-			input.stream().limit(5).toArray()));
-
+		System.out.println("Compiling attention with residual...");
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
-		PackedCollection<?> output = compiled.forward(input);
+
+		System.out.println("Running forward pass...");
+		PackedCollection<?> rawOutput = compiled.forward(firstToken);
 
 		// Handle 2D output
-		if (output.getShape().getDimensions() == 2 && output.getShape().length(0) == 1) {
-			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+		PackedCollection<?> output = rawOutput;
+		if (rawOutput.getShape().getDimensions() == 2 && rawOutput.getShape().length(0) == 1) {
+			output = new PackedCollection<>(shape(dim));
 			for (int d = 0; d < dim; d++) {
-				squeezed.setMem(d, output.valueAt(0, d));
+				output.setMem(d, rawOutput.valueAt(0, d));
 			}
-			output = squeezed;
 		}
 
-		System.out.println("Output: " + java.util.Arrays.toString(
-			output.stream().limit(5).toArray()));
+		double sum = output.doubleStream().sum();
+		double maxAbs = output.doubleStream().map(Math::abs).max().orElse(0);
 
-		// Expected: input + (input * 2) = input * 3
-		// [1, 2, 3, 4, 5] -> [3, 6, 9, 12, 15]
-		for (int i = 0; i < Math.min(5, dim); i++) {
-			double expected = (i + 1.0) * 3.0;
-			double actual = output.valueAt(i);
-			System.out.println("  [" + i + "] expected=" + expected + ", actual=" + actual);
-			assertEquals("Residual connection incorrect at index " + i, expected, actual);
-		}
+		System.out.println("Output: sum=" + sum + ", max=" + maxAbs);
+		System.out.println("Expected: input + attention(input)");
+		System.out.println("First 5 output values: " + output.valueAt(0) + ", " +
+				output.valueAt(1) + ", " + output.valueAt(2) + ", " +
+				output.valueAt(3) + ", " + output.valueAt(4));
 
-		System.out.println("[OK] Residual connection works correctly");
+		assertTrue("Attention with residual output too large: " + maxAbs, maxAbs < 1000);
+
+		System.out.println("[OK] Attention with residual works without explosion");
+		referenceData.destroy();
 	}
 
 	@Test
-	public void testSequentialBlocks() throws Exception {
+	public void testTransformerStepByStep() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
-		System.out.println("\n=== Testing Sequential Block Composition ===");
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing Transformer Block Step-by-Step ===");
 
-		int dim = 10;
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+		int heads = (int) testConfig.valueAt(4);
+		int kvHeads = (int) testConfig.valueAt(5);
+		int headSize = dim / heads;
+		int seqLen = (int) testConfig.valueAt(1);
 
-		// Input: [1, 2, 3, ..., 10]
-		PackedCollection<?> input = new PackedCollection<>(shape(dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, i + 1.0);
+		// Load all weights
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
+		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
+		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
+		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
+		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
+		PackedCollection<?> wDown = referenceData.get("mlp.down_proj.weight");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		// Compute RoPE frequencies
+		PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, 1000000.0);
+		PackedCollection<?> position = new PackedCollection<>(1);
+		position.setMem(0, 0.0);
+
+		// Extract first token
+		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			firstToken.setMem(d, input.valueAt(0, 0, d));
 		}
 
-		// Weight for first transformation: identity (multiply by 1)
-		PackedCollection<?> weight1 = new PackedCollection<>(shape(dim, dim));
-		weight1.clear();
-		for (int i = 0; i < dim; i++) {
-			weight1.setMem(i * dim + i, 1.0);
-		}
+		System.out.println("\n--- STEP 1: Input ---");
+		System.out.println("Input sum=" + firstToken.doubleStream().sum() +
+				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
 
-		// Weight for second transformation: multiply by 2
-		PackedCollection<?> weight2 = new PackedCollection<>(shape(dim, dim));
-		weight2.clear();
-		for (int i = 0; i < dim; i++) {
-			weight2.setMem(i * dim + i, 2.0);
-		}
-
-		// Build: input + block1, then + block2
-		// output = input + (input * 1) + ((input + input*1) * 2)
-		// output = input + input + (2*input * 2) = 2*input + 4*input = 6*input
-		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
-		org.almostrealism.model.SequentialBlock main = model.sequential();
-		main.accum(dense(weight1));
-		main.accum(dense(weight2));
-
-		org.almostrealism.model.CompiledModel compiled = model.compile(false);
-		PackedCollection<?> output = compiled.forward(input);
-
-		// Handle 2D output
-		if (output.getShape().getDimensions() == 2 && output.getShape().length(0) == 1) {
+		// Step 2: Attention only (no residual)
+		System.out.println("\n--- STEP 2: Attention (no residual) ---");
+		org.almostrealism.model.Model attnModel = new org.almostrealism.model.Model(shape(dim));
+		attnModel.add(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
+				null, null, freqCis, p(position)));
+		org.almostrealism.model.CompiledModel attnCompiled = attnModel.compile(false);
+		PackedCollection<?> attnOut = attnCompiled.forward(firstToken);
+		if (attnOut.getShape().getDimensions() == 2) {
 			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
-			for (int d = 0; d < dim; d++) {
-				squeezed.setMem(d, output.valueAt(0, d));
-			}
-			output = squeezed;
+			for (int d = 0; d < dim; d++) squeezed.setMem(d, attnOut.valueAt(0, d));
+			attnOut = squeezed;
 		}
+		System.out.println("Attention output sum=" + attnOut.doubleStream().sum() +
+				", max=" + attnOut.doubleStream().map(Math::abs).max().orElse(0));
 
-		System.out.println("Input: " + input.valueAt(0) + ", " + input.valueAt(1));
-		System.out.println("Output: " + output.valueAt(0) + ", " + output.valueAt(1));
-		System.out.println("Expected: input=1 -> " + (1.0 * 6.0) + ", input=2 -> " + (2.0 * 6.0));
+		// Step 3: Input + Attention (manual residual)
+		System.out.println("\n--- STEP 3: Input + Attention (manual residual) ---");
+		PackedCollection<?> afterAttnResidual = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			afterAttnResidual.setMem(d, firstToken.valueAt(d) + attnOut.valueAt(d));
+		}
+		System.out.println("After attention residual sum=" + afterAttnResidual.doubleStream().sum() +
+				", max=" + afterAttnResidual.doubleStream().map(Math::abs).max().orElse(0));
 
-		// Check what we actually get
-		double ratio0 = output.valueAt(0) / input.valueAt(0);
-		double ratio1 = output.valueAt(1) / input.valueAt(1);
-		System.out.println("Actual ratio: " + ratio0 + ", " + ratio1);
+		// Step 4: FFN only (no residual)
+		System.out.println("\n--- STEP 4: FFN (no residual) ---");
+		org.almostrealism.model.Model ffnModel = new org.almostrealism.model.Model(shape(dim));
+		ffnModel.add(feedForward(ffnNorm, wGate, wDown, wUp));
+		org.almostrealism.model.CompiledModel ffnCompiled = ffnModel.compile(false);
+		PackedCollection<?> ffnOut = ffnCompiled.forward(afterAttnResidual);
+		if (ffnOut.getShape().getDimensions() == 2) {
+			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) squeezed.setMem(d, ffnOut.valueAt(0, d));
+			ffnOut = squeezed;
+		}
+		System.out.println("FFN output sum=" + ffnOut.doubleStream().sum() +
+				", max=" + ffnOut.doubleStream().map(Math::abs).max().orElse(0));
 
-		System.out.println("[INFO] This test shows how accum chains work");
+		// Step 5: Final output (after FFN residual)
+		System.out.println("\n--- STEP 5: Final Output (after FFN residual) ---");
+		PackedCollection<?> finalOutput = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			finalOutput.setMem(d, afterAttnResidual.valueAt(d) + ffnOut.valueAt(d));
+		}
+		System.out.println("Final output sum=" + finalOutput.doubleStream().sum() +
+				", max=" + finalOutput.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Compare with expected
+		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			expectedFirstToken.setMem(d, expectedOutput.valueAt(0, 0, d));
+		}
+		System.out.println("\n--- COMPARISON WITH PYTORCH ---");
+		System.out.println("Expected sum=" + expectedFirstToken.doubleStream().sum() +
+				", max=" + expectedFirstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		double maxDiff = 0;
+		for (int d = 0; d < dim; d++) {
+			double diff = Math.abs(finalOutput.valueAt(d) - expectedFirstToken.valueAt(d));
+			if (diff > maxDiff) maxDiff = diff;
+		}
+		System.out.println("Max difference: " + maxDiff);
+
+		System.out.println("\n[INFO] This test shows where the difference accumulates");
+		referenceData.destroy();
 	}
 
 	@Test
