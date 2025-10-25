@@ -90,16 +90,12 @@ public interface AttentionFeatures extends RotationFeatures {
 	default Producer<PackedCollection<?>> expandKeysForGQA(
 			Producer<PackedCollection<?>> keys,
 			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
-		// Reshape to (seqLength * kvHeads, headSize) for traversal
-		Producer<PackedCollection<?>> flat = reshape(shape(seqLength * kvHeads, headSize), keys);
+		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
+		// traverse(2) traverses first 2 dims, repeat inserts new dimension
+		Producer<PackedCollection<?>> repeated = traverse(2, keys).repeat(headsPerKvGroup);
 
-		// Expand each entry by repeating headsPerKvGroup times
-		Producer<PackedCollection<?>> expanded = traverse(1, flat)
-				.expand(headsPerKvGroup, x -> x.repeat(headsPerKvGroup))
-				.reshape(shape(seqLength * kvHeads * headsPerKvGroup, headSize));
-
-		// Reshape to (seqLength, heads, headSize)
-		return reshape(shape(seqLength, heads, headSize), expanded);
+		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
+		return reshape(shape(seqLength, heads, headSize), repeated);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
@@ -156,16 +152,11 @@ public interface AttentionFeatures extends RotationFeatures {
 	default Producer<PackedCollection<?>> expandValuesForGQA(
 			Producer<PackedCollection<?>> values,
 			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
-		// Reshape to (seqLength * kvHeads, headSize) for traversal
-		Producer<PackedCollection<?>> flat = reshape(shape(seqLength * kvHeads, headSize), values);
+		// (seqLength, kvHeads, headSize) -> (seqLength, kvHeads, headsPerKvGroup, headSize)
+		Producer<PackedCollection<?>> repeated = traverse(2, values).repeat(headsPerKvGroup);
 
-		// Expand each entry by repeating headsPerKvGroup times
-		Producer<PackedCollection<?>> expanded = traverse(1, flat)
-				.expand(headsPerKvGroup, x -> x.repeat(headsPerKvGroup))
-				.reshape(shape(seqLength * kvHeads * headsPerKvGroup, headSize));
-
-		// Reshape to (seqLength, heads, headSize)
-		return reshape(shape(seqLength, heads, headSize), expanded);
+		// (seqLength, kvHeads, headsPerKvGroup, headSize) -> (seqLength, heads, headSize)
+		return reshape(shape(seqLength, heads, headSize), repeated);
 	}
 
 	/**
