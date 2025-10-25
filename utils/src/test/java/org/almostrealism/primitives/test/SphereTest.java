@@ -280,6 +280,71 @@ public class SphereTest implements TestFeatures {
 	}
 
 	@Test
+	public void padSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test padding operation with a batch of scalars
+		// We want to pad each scalar in the batch to position 0 of shape(2)
+		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection<?>> padded = pad(shape(2), input, 0);
+
+		// Create batch of 3 scalars
+		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
+		scalars.setMem(0, 5.0);   // Batch 0
+		scalars.setMem(1, 10.0);  // Batch 1
+		scalars.setMem(2, 15.0);  // Batch 2
+
+		// Pad to shape(2) - should give [5.0, 0.0], [10.0, 0.0], [15.0, 0.0]
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
+		padded.get().into(result.each()).evaluate(scalars);
+
+		System.out.println("Pad batch test:");
+		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
+		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
+		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
+
+		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
+		Assert.assertEquals(0.0, result.valueAt(0, 1), 0.01);
+		Assert.assertEquals(10.0, result.valueAt(1, 0), 0.01);
+		Assert.assertEquals(0.0, result.valueAt(1, 1), 0.01);
+		Assert.assertEquals(15.0, result.valueAt(2, 0), 0.01);
+		Assert.assertEquals(0.0, result.valueAt(2, 1), 0.01);
+	}
+
+	@Test
+	public void concatSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test concat operation with batch of scalars
+		// We'll create two separate values from a scalar input and concat them
+		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
+		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
+		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
+
+		// Create batch of 3 scalars: [5, 10, 15]
+		// Expected: concat([5, 10], [10, 20], [15, 30])
+		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
+		scalars.setMem(0, 5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
+		scalars.setMem(1, 10.0);  // Batch 1: concat([10], [20]) -> [10, 20]
+		scalars.setMem(2, 15.0);  // Batch 2: concat([15], [30]) -> [15, 30]
+
+		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
+		concatenated.get().into(result.each()).evaluate(scalars);
+
+		System.out.println("Concat batch test:");
+		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
+		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
+		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
+
+		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
+		Assert.assertEquals(10.0, result.valueAt(0, 1), 0.01);
+		Assert.assertEquals(10.0, result.valueAt(1, 0), 0.01);
+		Assert.assertEquals(20.0, result.valueAt(1, 1), 0.01);
+		Assert.assertEquals(15.0, result.valueAt(2, 0), 0.01);
+		Assert.assertEquals(30.0, result.valueAt(2, 1), 0.01);
+	}
+
+	@Test
 	public void pairCreationSmallBatch() {
 		if (skipGeometryIssues) return;
 
