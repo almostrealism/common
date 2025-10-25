@@ -264,28 +264,48 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		Producer leftDist = l(t);
 		Producer rightDist = r(t);
 
-		// Sentinel value - larger than any valid intersection distance
-		// This allows min() to naturally select positive values over sentinels
-		double SENTINEL = 1e10;
+		// Check if left > 0
+		Producer leftPositive = greaterThan((Producer) leftDist, (Producer) c(0.0), c(1.0), c(0.0));
+		// Check if right > 0
+		Producer rightPositive = greaterThan((Producer) rightDist, (Producer) c(0.0), c(1.0), c(0.0));
 
-		// Replace negative values with sentinel
-		// Positive values pass through unchanged
-		Producer leftFiltered = greaterThan((Producer) leftDist, (Producer) c(0.0),
-				(Producer) leftDist, (Producer) c(SENTINEL));
-		Producer rightFiltered = greaterThan((Producer) rightDist, (Producer) c(0.0),
-				(Producer) rightDist, (Producer) c(SENTINEL));
+		// Check if left < right
+		Producer leftLessRight = lessThan((Producer) leftDist, (Producer) rightDist, c(1.0), c(0.0));
 
-		// Find minimum - naturally selects:
-		// - If both positive: returns smaller value
-		// - If one positive: returns positive value (sentinel is larger)
-		// - If neither positive: returns SENTINEL
-		// Use lessThan to implement min: if left < right, return left, else return right
-		Producer minDist = lessThan((Producer) leftFiltered, (Producer) rightFiltered,
-				(Producer) leftFiltered, (Producer) rightFiltered);
+		// If both positive: return min(left, right)
+		// If only left positive: return left
+		// If only right positive: return right
+		// If neither positive: return -1.0
 
-		// Replace sentinel with -1.0 to indicate no valid intersection
-		return lessThan((Producer) minDist, (Producer) c(SENTINEL),
-				(Producer) minDist, (Producer) c(-1.0));
+		// bothPositive = leftPositive * rightPositive
+		Producer bothPositive = multiply(leftPositive, rightPositive);
+
+		// minValue = leftLessRight * left + (1 - leftLessRight) * right
+		Producer minValue = add(
+			multiply(leftLessRight, leftDist),
+			multiply(subtract(c(1.0), leftLessRight), rightDist)
+		);
+
+		// onlyLeft = leftPositive * (1 - rightPositive)
+		Producer onlyLeft = multiply(leftPositive, subtract(c(1.0), rightPositive));
+
+		// onlyRight = rightPositive * (1 - leftPositive)
+		Producer onlyRight = multiply(rightPositive, subtract(c(1.0), leftPositive));
+
+		// result = bothPositive * minValue + onlyLeft * left + onlyRight * right + neitherPositive * (-1.0)
+		// neitherPositive = (1 - leftPositive) * (1 - rightPositive)
+		Producer neitherPositive = multiply(subtract(c(1.0), leftPositive), subtract(c(1.0), rightPositive));
+
+		return add(
+			add(
+				multiply(bothPositive, minValue),
+				multiply(onlyLeft, leftDist)
+			),
+			add(
+				multiply(onlyRight, rightDist),
+				multiply(neitherPositive, c(-1.0))
+			)
+		);
 	}
 
 	private CollectionProducer<Pair<?>> t(Producer<Ray> ray) {

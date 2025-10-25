@@ -98,6 +98,8 @@ import java.util.function.Supplier;
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
 public class PackedCollectionPad<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+	public static boolean enableConditionSimplify = true;
+
 	/** The shape/dimensions of the input collection being padded */
 	private TraversalPolicy inputShape;
 	
@@ -187,6 +189,10 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			}
 
 			Expression<Boolean> cond = Conjunction.of(conditions);
+			if (enableConditionSimplify) {
+				cond = (Expression) cond.simplify();
+			}
+
 			if (!cond.booleanValue().orElse(Boolean.TRUE)) {
 				// If conditions are definitely false,
 				// there is no need to obtain the value
