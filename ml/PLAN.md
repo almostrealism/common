@@ -1,7 +1,33 @@
 # Plan: Qwen3-Instruct-2507 4B Implementation in ar-ml
 
+## Current Status (2025-10-25)
+
+### ✅ Completed
+- **Phase 1-3**: Core architecture, QK-Norm, and transformer layers implemented
+- **Phase 4**: Tokenization (Qwen3Tokenizer with BPE support)
+- **Phase 5**: Weight extraction from HuggingFace
+  - Python script to extract weights to protobuf format
+  - StateDictionary loading from protobuf files
+  - Successfully extracted Qwen2.5-0.5B-Instruct weights (147 tensors, 1.8GB)
+- **Code cleanup**: Eliminated Qwen3Weights wrapper, generalized attention methods
+- **Test infrastructure**: Synthetic tests passing (3/3)
+
+### 🔧 In Progress
+- **Phase 6**: Real weights validation
+- **BLOCKER**: GQA (Grouped Query Attention) not fully implemented in `attentionKeys()`/`attentionValues()`
+
+### ❌ Remaining
+- Fix GQA support in attention computation
+- Validate generation with real weights
+- Performance optimization
+- Documentation
+
+---
+
 ## Overview
 This document outlines the plan to replicate Qwen3-Instruct-2507 4B in the ar-ml package, following the pattern established by the Llama2 implementation. The target is the non-thinking mode variant which is optimized for efficient inference without chain-of-thought reasoning.
+
+**Note**: Currently testing with Qwen2.5-0.5B-Instruct (14 heads / 2 KV heads) which uses the same architecture as Qwen3.
 
 ## Architecture Summary
 
@@ -771,3 +797,134 @@ The synthetic test DOES NOT prove:
 - **Code Quality**: Follow existing code style and conventions from Llama2
 - **Testing**: Comprehensive testing at each phase
 - **Documentation**: Keep this plan updated as implementation progresses
+
+---
+
+## Current Blocker: GQA Implementation in AttentionFeatures
+
+### Problem Statement
+
+**Date Discovered**: 2025-10-25  
+**Test**: Qwen3RealWeightsTest with Qwen2.5-0.5B-Instruct weights  
+**Status**: BLOCKING real weights validation
+
+### The Issue
+
+`attentionKeys()` and `attentionValues()` in `AttentionFeatures.java` assume that the KV cache has the **same number of heads** as queries. This fails for Grouped Query Attention (GQA) where `kvHeads < heads`.
+
+**Current validation** (line 54-55 in AttentionFeatures.java):
+```java
+if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
+    throw new IllegalArgumentException();
+```
+
+**What happens with GQA**:
+- Qwen2.5-0.5B: 14 query heads, 2 KV heads (7:1 ratio)
+- Query shape: `(14, 64)` ← 14 heads, 64 head_size
+- Key cache shape: `(seqLen, 2, 64)` ← 2 KV heads
+- **Validation fails**: expects `keyShape.length(1) == 14` but got `2`
+
+### Root Cause
+
+The `attentionKeys()` method computes attention scores as:
+```java
+traverse(1, keys)
+    .map(v -> v.multiply(input))  // Dot product Q·K
+    .traverse(2).sum()
+```
+
+This traverses over `keys.length(1)` (number of KV heads) and expects it to match the query head count. With GQA, we need to **repeat** each KV head to serve multiple query heads.
+
+### Proposed Solution
+
+**Approach**: Make `attentionKeys()` and `attentionValues()` GQA-aware by detecting head count mismatch and expanding KV heads.
+
+#### Solution Design
+
+1. **Detect GQA**: Check if `keyShape.length(1) != heads`
+2. **Calculate expansion factor**: `headsPerKvGroup = heads / kvHeads`
+3. **Expand KV cache**: Repeat each KV head `headsPerKvGroup` times
+   - Input: `(seqLen, kvHeads, headSize)` 
+   - Output: `(seqLen, heads, headSize)`
+   - Method: Each KV head at index `i` serves query heads `[i*headsPerKvGroup ... (i+1)*headsPerKvGroup)`
+
+#### Implementation Plan
+
+**Modified `attentionKeys()` signature** (unchanged, backward compatible):
+```java
+default CellularLayer attentionKeys(TraversalPolicy inputShape,
+                                    Producer<PackedCollection<?>> keys,
+                                    ComputeRequirement... requirements)
+```
+
+**Modified logic**:
+```java
+TraversalPolicy keyShape = shape(keys); // (seqLength, kvHeads, headSize)
+int heads = inputShape.length(0);
+int headSize = inputShape.length(1);
+int kvHeads = keyShape.length(1);
+
+// GQA: Expand KV heads to match query heads
+Producer<PackedCollection<?>> expandedKeys = keys;
+if (kvHeads != heads) {
+    // Each KV head serves (heads / kvHeads) query heads
+    int headsPerKvGroup = heads / kvHeads;
+    
+    // Expand: repeat each KV head headsPerKvGroup times
+    expandedKeys = expandKeysForGQA(keys, kvHeads, headsPerKvGroup, headSize);
+}
+
+// Rest of computation uses expandedKeys which now has shape (seqLen, heads, headSize)
+```
+
+**Helper method** (to be added to AttentionFeatures):
+```java
+default Producer<PackedCollection<?>> expandKeysForGQA(
+        Producer<PackedCollection<?>> keys,
+        int kvHeads, int headsPerKvGroup, int headSize) {
+    // Implementation: 
+    // For each KV head i, repeat it headsPerKvGroup times
+    // kvHead[0] -> queryHeads[0..6]
+    // kvHead[1] -> queryHeads[7..13]
+    // etc.
+    
+    // Using AR framework operations to repeat/expand the cache
+    // TODO: Implement using traverse/reshape/repeat operations
+}
+```
+
+### Testing Strategy
+
+1. **Update Qwen3SyntheticTest**: 
+   - Change config from `heads=4, kvHeads=4` to `heads=4, kvHeads=2`
+   - Verify GQA expansion works with synthetic weights
+
+2. **Qwen3RealWeightsTest**:
+   - Should pass model construction with 14 heads / 2 KV heads
+   - Attempt token generation and fix next issue
+
+3. **Validation**:
+   - Compare attention scores with reference PyTorch implementation
+   - Ensure each query head attends to correct KV head
+
+### Alternative Approaches Considered
+
+1. ❌ **Expand KV cache before calling attentionKeys()**: 
+   - Would require changes in `attention()` method
+   - Less encapsulated, spreads GQA logic
+
+2. ❌ **Create separate `gqaAttentionKeys()` method**:
+   - Code duplication
+   - Against design principle of unified implementation
+
+3. ✅ **Make attentionKeys() GQA-aware** (chosen):
+   - Backward compatible (standard MHA still works)
+   - Encapsulated (GQA logic in one place)
+   - Generalizes the framework for future GQA models
+
+### References
+
+- GQA Paper: "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"
+- Qwen2.5 Architecture: Uses GQA with various head ratios depending on model size
+- Current test: Qwen2.5-0.5B-Instruct (14:2 ratio)
+

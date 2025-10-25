@@ -39,7 +39,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	default CellularLayer attentionKeys(TraversalPolicy inputShape,
 										Producer<PackedCollection<?>> keys,
 										ComputeRequirement... requirements) {
-		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
+		TraversalPolicy keyShape = shape(keys); // (seqLength, kvHeads, headSize)
 
 		if (inputShape.getDimensions() != 2 || keyShape.getDimensions() != 3)
 			throw new IllegalArgumentException();
@@ -49,20 +49,57 @@ public interface AttentionFeatures extends RotationFeatures {
 		int dim = heads * headSize;
 
 		int seqLength = keyShape.length(0);
+		int kvHeads = keyShape.length(1);
 		TraversalPolicy outputShape = shape(heads, seqLength).traverseEach();
 
-		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
-			throw new IllegalArgumentException();
+		if (keyShape.length(2) != headSize)
+			throw new IllegalArgumentException("Key head size mismatch");
+
+		// Handle Grouped Query Attention (GQA): expand KV heads to match query heads
+		if (kvHeads != heads && heads % kvHeads != 0) {
+			throw new IllegalArgumentException("heads must be divisible by kvHeads for GQA");
+		}
+
+		// Expand KV heads if needed (GQA), otherwise use keys directly
+		int headsPerKvGroup = heads / kvHeads;
+		final Producer<PackedCollection<?>> expandedKeys = (kvHeads != heads)
+				? expandKeysForGQA(keys, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
+				: keys;
 
 		// TODO  divide(c(Math.sqrt(headSize))) is better to include
 		// TODO  outside this method rather than within the layer
 		return layer("attentionKeys", inputShape, outputShape, input ->
-				traverse(1, keys).map(v -> v.multiply(input))
+				traverse(1, expandedKeys).map(v -> v.multiply(input))
 						.traverse(2).sum()
 						.divide(c(Math.sqrt(headSize)))
 						.reshape(shape(seqLength, heads))
 						.enumerate(1, 1)
 						.reshape(outputShape), requirements);
+	}
+
+	/**
+	 * Expand KV cache for Grouped Query Attention by repeating each KV head.
+	 *
+	 * Transforms (seqLength, kvHeads, headSize) to (seqLength, heads, headSize)
+	 * where each KV head is repeated (heads/kvHeads) times.
+	 *
+	 * Example for 14 heads, 2 KV heads (7:1 ratio):
+	 * - kvHead[0] -> queryHeads[0..6]
+	 * - kvHead[1] -> queryHeads[7..13]
+	 */
+	default Producer<PackedCollection<?>> expandKeysForGQA(
+			Producer<PackedCollection<?>> keys,
+			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
+		// Reshape to (seqLength * kvHeads, headSize) for traversal
+		Producer<PackedCollection<?>> flat = reshape(shape(seqLength * kvHeads, headSize), keys);
+
+		// Expand each entry by repeating headsPerKvGroup times
+		Producer<PackedCollection<?>> expanded = traverse(1, flat)
+				.expand(headsPerKvGroup, x -> x.repeat(headsPerKvGroup))
+				.reshape(shape(seqLength * kvHeads * headsPerKvGroup, headSize));
+
+		// Reshape to (seqLength, heads, headSize)
+		return reshape(shape(seqLength, heads, headSize), expanded);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
@@ -73,7 +110,7 @@ public interface AttentionFeatures extends RotationFeatures {
 	default CellularLayer attentionValues(TraversalPolicy inputShape,
 										  Producer<PackedCollection<?>> values,
 										  ComputeRequirement... requirements) {
-		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
+		TraversalPolicy valueShape = shape(values); // (seqLength, kvHeads, headSize)
 
 		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
 			throw new IllegalArgumentException();
@@ -83,19 +120,52 @@ public interface AttentionFeatures extends RotationFeatures {
 		int dim = heads * headSize;
 
 		int seqLength = inputShape.length(1);
+		int kvHeads = valueShape.length(1);
 		TraversalPolicy outputShape = shape(dim);
 
-		if (valueShape.length(1) != heads || valueShape.length(0) != seqLength)
-			throw new IllegalArgumentException();
+		if (valueShape.length(0) != seqLength)
+			throw new IllegalArgumentException("Value sequence length mismatch");
+
+		// Handle Grouped Query Attention (GQA): expand KV heads to match query heads
+		if (kvHeads != heads && heads % kvHeads != 0) {
+			throw new IllegalArgumentException("heads must be divisible by kvHeads for GQA");
+		}
+
+		// Expand KV heads if needed (GQA), otherwise use values directly
+		int headsPerKvGroup = heads / kvHeads;
+		final Producer<PackedCollection<?>> expandedValues = (kvHeads != heads)
+				? expandValuesForGQA(values, seqLength, kvHeads, heads, headSize, headsPerKvGroup)
+				: values;
 
 		return layer("attentionValues", inputShape, outputShape, input -> {
-			Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), values);
+			Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), expandedValues);
 			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
 			CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
 			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			return o.reshape(shape(dim).traverseEach());
 		}, requirements);
+	}
+
+	/**
+	 * Expand value cache for Grouped Query Attention by repeating each KV head.
+	 *
+	 * Same logic as expandKeysForGQA - transforms (seqLength, kvHeads, headSize)
+	 * to (seqLength, heads, headSize).
+	 */
+	default Producer<PackedCollection<?>> expandValuesForGQA(
+			Producer<PackedCollection<?>> values,
+			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
+		// Reshape to (seqLength * kvHeads, headSize) for traversal
+		Producer<PackedCollection<?>> flat = reshape(shape(seqLength * kvHeads, headSize), values);
+
+		// Expand each entry by repeating headsPerKvGroup times
+		Producer<PackedCollection<?>> expanded = traverse(1, flat)
+				.expand(headsPerKvGroup, x -> x.repeat(headsPerKvGroup))
+				.reshape(shape(seqLength * kvHeads * headsPerKvGroup, headSize));
+
+		// Reshape to (seqLength, heads, headSize)
+		return reshape(shape(seqLength, heads, headSize), expanded);
 	}
 
 	/**
