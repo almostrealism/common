@@ -578,6 +578,123 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 	}
 
 	@Test
+	public void testResidualConnection() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		System.out.println("\n=== Testing Residual Connection (accum) ===");
+
+		// Create simple test: input + transformation
+		int dim = 10;
+
+		// Input: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+		PackedCollection<?> input = new PackedCollection<>(shape(dim));
+		for (int i = 0; i < dim; i++) {
+			input.setMem(i, i + 1.0);
+		}
+
+		// Transformation: multiply by 2 (simple linear layer)
+		PackedCollection<?> weight = new PackedCollection<>(shape(dim, dim));
+		weight.clear();
+		for (int i = 0; i < dim; i++) {
+			weight.setMem(i * dim + i, 2.0); // Diagonal matrix with 2s
+		}
+
+		// Build model with residual: output = input + (input * weight)
+		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
+		org.almostrealism.model.SequentialBlock main = model.sequential();
+		main.accum(dense(weight)); // residual connection
+
+		System.out.println("Input: " + java.util.Arrays.toString(
+			input.stream().limit(5).toArray()));
+
+		org.almostrealism.model.CompiledModel compiled = model.compile(false);
+		PackedCollection<?> output = compiled.forward(input);
+
+		// Handle 2D output
+		if (output.getShape().getDimensions() == 2 && output.getShape().length(0) == 1) {
+			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) {
+				squeezed.setMem(d, output.valueAt(0, d));
+			}
+			output = squeezed;
+		}
+
+		System.out.println("Output: " + java.util.Arrays.toString(
+			output.stream().limit(5).toArray()));
+
+		// Expected: input + (input * 2) = input * 3
+		// [1, 2, 3, 4, 5] -> [3, 6, 9, 12, 15]
+		for (int i = 0; i < Math.min(5, dim); i++) {
+			double expected = (i + 1.0) * 3.0;
+			double actual = output.valueAt(i);
+			System.out.println("  [" + i + "] expected=" + expected + ", actual=" + actual);
+			assertEquals("Residual connection incorrect at index " + i, expected, actual);
+		}
+
+		System.out.println("[OK] Residual connection works correctly");
+	}
+
+	@Test
+	public void testSequentialBlocks() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		System.out.println("\n=== Testing Sequential Block Composition ===");
+
+		int dim = 10;
+
+		// Input: [1, 2, 3, ..., 10]
+		PackedCollection<?> input = new PackedCollection<>(shape(dim));
+		for (int i = 0; i < dim; i++) {
+			input.setMem(i, i + 1.0);
+		}
+
+		// Weight for first transformation: identity (multiply by 1)
+		PackedCollection<?> weight1 = new PackedCollection<>(shape(dim, dim));
+		weight1.clear();
+		for (int i = 0; i < dim; i++) {
+			weight1.setMem(i * dim + i, 1.0);
+		}
+
+		// Weight for second transformation: multiply by 2
+		PackedCollection<?> weight2 = new PackedCollection<>(shape(dim, dim));
+		weight2.clear();
+		for (int i = 0; i < dim; i++) {
+			weight2.setMem(i * dim + i, 2.0);
+		}
+
+		// Build: input + block1, then + block2
+		// output = input + (input * 1) + ((input + input*1) * 2)
+		// output = input + input + (2*input * 2) = 2*input + 4*input = 6*input
+		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
+		org.almostrealism.model.SequentialBlock main = model.sequential();
+		main.accum(dense(weight1));
+		main.accum(dense(weight2));
+
+		org.almostrealism.model.CompiledModel compiled = model.compile(false);
+		PackedCollection<?> output = compiled.forward(input);
+
+		// Handle 2D output
+		if (output.getShape().getDimensions() == 2 && output.getShape().length(0) == 1) {
+			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) {
+				squeezed.setMem(d, output.valueAt(0, d));
+			}
+			output = squeezed;
+		}
+
+		System.out.println("Input: " + input.valueAt(0) + ", " + input.valueAt(1));
+		System.out.println("Output: " + output.valueAt(0) + ", " + output.valueAt(1));
+		System.out.println("Expected: input=1 -> " + (1.0 * 6.0) + ", input=2 -> " + (2.0 * 6.0));
+
+		// Check what we actually get
+		double ratio0 = output.valueAt(0) / input.valueAt(0);
+		double ratio1 = output.valueAt(1) / input.valueAt(1);
+		System.out.println("Actual ratio: " + ratio0 + ", " + ratio1);
+
+		System.out.println("[INFO] This test shows how accum chains work");
+	}
+
+	@Test
 	public void testFFN() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 

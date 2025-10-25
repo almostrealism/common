@@ -1,6 +1,6 @@
 # Plan: Qwen3-Instruct-2507 4B Implementation in ar-ml
 
-## Current Status (2025-10-25)
+## Current Status (2025-10-25) - BREAKTHROUGH!
 
 ### ✅ Completed
 - **Phase 1-3**: Core architecture, QK-Norm, and transformer layers implemented
@@ -11,18 +11,23 @@
   - Successfully extracted Qwen2.5-0.5B-Instruct weights (147 tensors, 1.8GB)
 - **Code cleanup**: Eliminated Qwen3Weights wrapper, generalized attention methods
 - **Test infrastructure**: Synthetic tests passing (3/3)
+- **🎉 MAJOR BUG FIX**: Eliminated numerical explosion (2.49e293 → reasonable values)
+  - Root cause: Uninitialized cache memory in PackedCollection
+  - Fix: Zero-initialize key/value caches in AttentionFeatures
+  - Component tests: 9/9 passing (weights, RMSNorm, dense, RoPE, attention, FFN, cache init)
 
 ### 🔧 In Progress
 - **Phase 6**: Real weights validation
   - ✅ GQA (Grouped Query Attention) implemented using `traverse().repeat()` pattern
   - ✅ Successfully generated 20 tokens with real weights (0.35 tokens/sec)
   - ✅ PyTorch reference data generation (`generate_qwen3_reference.py`)
-  - ✅ Test infrastructure for systematic comparison (`Qwen3TransformerBlockTest`)
-  - 🔄 **CURRENT**: Implementing full transformer block comparison
+  - ✅ Test infrastructure for systematic comparison
+  - ✅ All individual components validated (attention ✅, FFN ✅)
+  - 🔄 **CURRENT**: Debugging residual connections (1.42 diff vs PyTorch, tolerance 0.1)
 
 ### ❌ Remaining
-- Complete transformer block validation (attention + FFN)
-- Debug if outputs don't match PyTorch reference
+- Fix residual connection numerical accuracy (1.42 → <0.1)
+- Complete full transformer block validation
 - Debug tokenizer (BPE merges not loading, UTF-8 issues)
 - Performance optimization (currently 0.35 tokens/sec)
 - Documentation
