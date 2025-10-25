@@ -84,7 +84,7 @@ public class TriangleIntersectAt extends LessThanCollection {
 
 	protected TriangleIntersectAt(CollectionProducer<PackedCollection<?>> f,
 								  AcceleratedConjunctionCollection trueValue) {
-		super(f, CollectionFeatures.getInstance().c(-Intersection.e), trueValue,
+		super(new TraversalPolicy(1), f, CollectionFeatures.getInstance().c(-Intersection.e), trueValue,
 				new GreaterThanCollection(new TraversalPolicy(1),
 						f, CollectionFeatures.getInstance().c(Intersection.e),
 						trueValue,

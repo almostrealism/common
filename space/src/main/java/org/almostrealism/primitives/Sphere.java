@@ -43,6 +43,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.function.Supplier;
 
 // TODO Add ParticleGroup implementation.
 
@@ -246,14 +247,45 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	// TODO  Make private
+	/**
+	 * Selects the closest valid intersection distance from a pair of ray-sphere intersection solutions.
+	 *
+	 * <p>This method implements the logic for choosing which of two potential intersection points
+	 * should be used as the final intersection distance. The selection follows these rules:</p>
+	 * <ol>
+	 *   <li>Return the minimum positive value from the pair</li>
+	 *   <li>If both values are negative, return -1.0 to indicate no valid intersection (miss)</li>
+	 * </ol>
+	 *
+	 * @param t A {@link Producer} of {@link Pair} containing two intersection distance solutions
+	 * @return A {@link Producer} yielding the minimum positive intersection distance, or -1.0 if no valid intersection
+	 */
 	public Producer closest(Producer<Pair<?>> t) {
-		Producer distance = new AcceleratedConjunctionScalar(
-				new LessThanScalar(l(t), r(t), l(t), r(t), false),
-				new GreaterThanScalar(l(t), scalar(0.0), l(t), new GreaterThanScalar(r(t),
-						scalar(0.0), r(t), scalar(-1.0), false), false),
-				new GreaterThanScalar(l(t), scalar(0)),
-				new GreaterThanScalar(r(t), scalar(0)));
-		return l(distance);
+		Producer leftDist = l(t);
+		Producer rightDist = r(t);
+
+		// Sentinel value - larger than any valid intersection distance
+		// This allows min() to naturally select positive values over sentinels
+		double SENTINEL = 1e10;
+
+		// Replace negative values with sentinel
+		// Positive values pass through unchanged
+		Producer leftFiltered = greaterThan((Producer) leftDist, (Producer) c(0.0),
+				(Producer) leftDist, (Producer) c(SENTINEL));
+		Producer rightFiltered = greaterThan((Producer) rightDist, (Producer) c(0.0),
+				(Producer) rightDist, (Producer) c(SENTINEL));
+
+		// Find minimum - naturally selects:
+		// - If both positive: returns smaller value
+		// - If one positive: returns positive value (sentinel is larger)
+		// - If neither positive: returns SENTINEL
+		// Use lessThan to implement min: if left < right, return left, else return right
+		Producer minDist = lessThan((Producer) leftFiltered, (Producer) rightFiltered,
+				(Producer) leftFiltered, (Producer) rightFiltered);
+
+		// Replace sentinel with -1.0 to indicate no valid intersection
+		return lessThan((Producer) minDist, (Producer) c(SENTINEL),
+				(Producer) minDist, (Producer) c(-1.0));
 	}
 
 	private CollectionProducer<Pair<?>> t(Producer<Ray> ray) {

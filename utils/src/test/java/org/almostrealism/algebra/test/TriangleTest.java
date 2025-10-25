@@ -212,7 +212,7 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection<?> distance = ev.evaluate(in, td.traverse(0));
 		assertEquals(1.0, distance.toDouble());
 
-		distance = intersectAt.get().evaluate(in, td.traverse(0));
+		distance = (PackedCollection<?>) intersectAt.get().evaluate(in, td.traverse(0));
 		assertEquals(1.0, distance.toDouble());
 	}
 

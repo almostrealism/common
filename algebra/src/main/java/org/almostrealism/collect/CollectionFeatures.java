@@ -3002,7 +3002,12 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<?> a, Producer<?> b,
 																		   Producer<T> trueValue, Producer<T> falseValue,
 																		   boolean includeEqual) {
-		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
+		return compute((shape, args) ->
+						new LessThanCollection<>(shape,
+								args.get(0), args.get(1), args.get(2), args.get(3), includeEqual),
+				null,
+				(Producer) a, (Producer) b,
+				(Producer) trueValue, (Producer) falseValue);
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> delta(Producer<T> producer, Producer<?> target) {

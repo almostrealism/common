@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,22 +16,55 @@
 
 package org.almostrealism.bool;
 
-import org.almostrealism.collect.CollectionProducerComputation;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionComparisonComputation;
 
-import java.util.function.Supplier;
+import java.util.List;
 
-@Deprecated
-public class LessThanCollection extends LessThan<PackedCollection<?>>
-		implements AcceleratedConditionalStatement<PackedCollection<?>>, CollectionProducerComputation<PackedCollection<?>> {
+public class LessThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
+	private boolean includeEqual;
+
 	public LessThanCollection(
-			Supplier leftOperand, Supplier rightOperand,
-			Supplier trueValue, Supplier falseValue,
+			TraversalPolicy shape,
+			Producer leftOperand,
+			Producer rightOperand,
+			Producer trueValue,
+			Producer falseValue) {
+		this(shape, leftOperand, rightOperand, trueValue, falseValue, false);
+	}
+
+	public LessThanCollection(
+			TraversalPolicy shape,
+			Producer<PackedCollection<?>> left, Producer<PackedCollection<?>> right,
+			Producer<PackedCollection<?>> trueValue, Producer<PackedCollection<?>> falseValue,
 			boolean includeEqual) {
-		super(1, PackedCollection.bank(new TraversalPolicy(1)),
-				leftOperand, rightOperand,
-				trueValue, falseValue,
-				includeEqual);
+		super("lessThan", shape,  left, right, trueValue, falseValue);
+		this.includeEqual = includeEqual;
+	}
+
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		if (includeEqual) {
+			return CollectionExpression.create(getShape(), index ->
+					conditional(args[1].getValueAt(index).lessThanOrEqual(args[2].getValueAt(index)),
+							args[3].getValueAt(index), args[4].getValueAt(index)));
+		} else {
+			return CollectionExpression.create(getShape(), index ->
+					conditional(args[1].getValueAt(index).lessThan(args[2].getValueAt(index)),
+							args[3].getValueAt(index), args[4].getValueAt(index)));
+		}
+	}
+
+	@Override
+	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
+		return (CollectionProducerParallelProcess)
+				lessThan((Producer) children.get(1), (Producer) children.get(2),
+						(Producer) children.get(3), (Producer) children.get(4), includeEqual);
 	}
 }
