@@ -276,9 +276,9 @@ public class Qwen3 implements AttentionFeatures {
 			PackedCollection<?> layerW3 = stateDict.get(prefix + ".mlp.up_proj.weight");
 
 			// Add complete transformer layer
-			transformer.add(qwen3Transformer(
+			transformer.add(transformer(
 					config.headCount,     // 32 query heads
-					config.kvHeadCount,   // 8 KV heads
+					config.kvHeadCount,   // 8 KV heads (GQA)
 					layerRmsAtt,          // Pre-attention norm
 					layerWk, layerWv, layerWq, layerWo,  // Attention projections
 					layerQkNormQ, layerQkNormK,           // QK-Norm weights

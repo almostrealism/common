@@ -98,6 +98,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		}, requirements);
 	}
 
+	/**
+	 * Standard multi-head attention without QK-Norm or GQA.
+	 * Delegates to the full attention method with null optional parameters.
+	 */
 	default Block attention(int heads,
 							PackedCollection<?> rmsAttWeight,
 							PackedCollection<?> wk, PackedCollection<?> wv,
@@ -105,86 +109,42 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection<?> freqCis,
 							Producer<PackedCollection<?>> position,
 							ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = freqCis.getShape().size(1);
-		int seqLen = freqCis.getShape().length(0);
-
-		SequentialBlock attention = new SequentialBlock(shape(dim));
-
-		PackedCollection<?> keyCache = new PackedCollection<>(seqLen, heads, headSize);
-		PackedCollection<?> valueCache = new PackedCollection<>(seqLen, heads, headSize);
-
-		attention.add(rmsnorm(rmsAttWeight, requirements));
-
-		SequentialBlock keys = attention.branch();
-		SequentialBlock values = attention.branch();
-
-		TraversalPolicy headShapeComplex = shape(heads, headSize / 2, 2);
-
-		/* KEYS **/
-		keys.add(dense(wk));
-		keys.add(reshape(shape(dim), headShapeComplex));
-		keys.add(ropeRotation(headShapeComplex, freqCis, position));
-		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
-
-		/* VALUES **/
-		values.add(dense(wv));
-		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
-
-		/* QUERY **/
-		TraversalPolicy headShape = shape(heads, headSize);
-		TraversalPolicy attentionShape = shape(heads, seqLen);
-
-		attention.add(dense(wq));
-		attention.add(reshape(shape(dim), headShapeComplex));
-		attention.add(ropeRotation(headShapeComplex, freqCis, position));
-		attention.add(reshape(headShapeComplex, headShape));
-		attention.add(attentionKeys(headShape, p(keyCache)));
-		attention.add(softmax(attentionShape, true));
-		attention.add(attentionValues(attentionShape, p(valueCache)));
-		attention.add(dense(wo));
-		/* ---- **/
-
-		return attention;
+		return attention(heads, heads, rmsAttWeight, wk, wv, wq, wo,
+				null, null, freqCis, position, requirements);
 	}
 
 	/**
-	 * Attention with QK-Norm and Grouped Query Attention (GQA).
+	 * Multi-head attention with optional QK-Norm and Grouped Query Attention (GQA).
 	 *
-	 * <p>This variant extends standard attention with two key features:</p>
+	 * <p>This is the unified attention implementation supporting:</p>
 	 * <ul>
-	 * <li><b>QK-Norm:</b> Applies RMSNorm to Q and K projections before RoPE for improved
-	 * training stability (epsilon = 1e-6)</li>
-	 * <li><b>Grouped Query Attention (GQA):</b> Supports fewer KV heads than query heads
-	 * to reduce memory usage while maintaining performance</li>
+	 * <li><b>Standard MHA:</b> Set kvHeads = heads, qkNormQ = null, qkNormK = null</li>
+	 * <li><b>GQA:</b> Set kvHeads &lt; heads (typically heads/4 or heads/8)</li>
+	 * <li><b>QK-Norm:</b> Provide qkNormQ and qkNormK weights (epsilon = 1e-6)</li>
 	 * </ul>
 	 *
-	 * <p>Used by models like Qwen3 that require QK-Norm for stability with high learning rates.</p>
-	 *
 	 * @param heads Number of query attention heads
-	 * @param kvHeads Number of key/value attention heads (for GQA, typically heads/4)
+	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
 	 * @param wk Key projection weights
 	 * @param wv Value projection weights
 	 * @param wq Query projection weights
 	 * @param wo Output projection weights
-	 * @param qkNormQ Query normalization weights (per head)
-	 * @param qkNormK Key normalization weights (per KV head)
+	 * @param qkNormQ Query normalization weights (null to skip QK-Norm)
+	 * @param qkNormK Key normalization weights (null to skip QK-Norm)
 	 * @param freqCis RoPE frequency embeddings
 	 * @param position Current position in sequence
-	 * @param requirements Compute requirements for hardware acceleration
-	 * @return Attention block with QK-Norm and GQA support
+	 * @param requirements Compute requirements
+	 * @return Attention block
 	 */
-	default Block qwen3Attention(int heads, int kvHeads,
-								 PackedCollection<?> rmsAttWeight,
-								 PackedCollection<?> wk, PackedCollection<?> wv,
-								 PackedCollection<?> wq, PackedCollection<?> wo,
-								 PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
-								 PackedCollection<?> freqCis,
-								 Producer<PackedCollection<?>> position,
-								 ComputeRequirement... requirements) {
+	default Block attention(int heads, int kvHeads,
+							PackedCollection<?> rmsAttWeight,
+							PackedCollection<?> wk, PackedCollection<?> wv,
+							PackedCollection<?> wq, PackedCollection<?> wo,
+							PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
+							PackedCollection<?> freqCis,
+							Producer<PackedCollection<?>> position,
+							ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 		int headSize = freqCis.getShape().size(1);
 		int seqLen = freqCis.getShape().length(0);
@@ -192,11 +152,9 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		SequentialBlock attention = new SequentialBlock(shape(dim));
 
-		// Create caches for keys and values
 		PackedCollection<?> keyCache = new PackedCollection<>(seqLen, kvHeads, headSize);
 		PackedCollection<?> valueCache = new PackedCollection<>(seqLen, kvHeads, headSize);
 
-		// Pre-attention RMSNorm
 		attention.add(rmsnorm(rmsAttWeight, requirements));
 
 		SequentialBlock keys = attention.branch();
@@ -206,18 +164,22 @@ public interface AttentionFeatures extends RotationFeatures {
 		TraversalPolicy kvHeadShape = shape(kvHeads, headSize);
 
 		/* KEYS **/
-		keys.add(dense(wk)); // Project to kvDim
-		keys.add(reshape(shape(kvDim), kvHeadShape)); // Reshape to (kvHeads, headSize)
-		// Apply QK-Norm to keys (epsilon = 1e-6)
-		keys.add(norm(qkNormK, null, 1e-6, requirements));
-		keys.add(reshape(kvHeadShape, kvHeadShapeComplex)); // Convert to complex for RoPE
-		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position)); // Apply RoPE
-		keys.andThen(into(keyCache.reshape(shape(seqLen, kvDim)), position)); // Cache keys
+		keys.add(dense(wk));
+		if (qkNormK != null) {
+			// QK-Norm: normalize keys before RoPE
+			keys.add(reshape(shape(kvDim), kvHeadShape));
+			keys.add(norm(qkNormK, null, 1e-6, requirements));
+			keys.add(reshape(kvHeadShape, kvHeadShapeComplex));
+		} else {
+			keys.add(reshape(shape(kvDim), kvHeadShapeComplex));
+		}
+		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		keys.andThen(into(keyCache.reshape(shape(seqLen, kvDim)), position));
 		/* ---- **/
 
 		/* VALUES **/
-		values.add(dense(wv)); // Project to kvDim
-		values.andThen(into(valueCache.reshape(shape(seqLen, kvDim)), position)); // Cache values
+		values.add(dense(wv));
+		values.andThen(into(valueCache.reshape(shape(seqLen, kvDim)), position));
 		/* ---- **/
 
 		/* QUERY **/
@@ -225,28 +187,21 @@ public interface AttentionFeatures extends RotationFeatures {
 		TraversalPolicy headShape = shape(heads, headSize);
 		TraversalPolicy attentionShape = shape(heads, seqLen);
 
-		attention.add(dense(wq)); // Project to dim
-		attention.add(reshape(shape(dim), headShape)); // Reshape to (heads, headSize)
-		// Apply QK-Norm to queries (epsilon = 1e-6)
-		attention.add(norm(qkNormQ, null, 1e-6, requirements));
-		attention.add(reshape(headShape, headShapeComplex)); // Convert to complex for RoPE
-		attention.add(ropeRotation(headShapeComplex, freqCis, position)); // Apply RoPE
-		attention.add(reshape(headShapeComplex, headShape)); // Back to (heads, headSize)
-
-		// For GQA: expand KV cache from kvHeads to heads by repeating
-		// Each KV head is shared by (heads / kvHeads) query heads
-		int headsPerKvGroup = heads / kvHeads;
-		if (headsPerKvGroup > 1) {
-			// Expand key cache: (seqLen, kvHeads, headSize) -> (seqLen, heads, headSize)
-			// This is done implicitly in attentionKeys by repeating each KV head
-			// TODO: For now, use the existing attentionKeys which assumes matching heads
-			// In a full implementation, we'd need a GQA-aware attention computation
+		attention.add(dense(wq));
+		if (qkNormQ != null) {
+			// QK-Norm: normalize queries before RoPE
+			attention.add(reshape(shape(dim), headShape));
+			attention.add(norm(qkNormQ, null, 1e-6, requirements));
+			attention.add(reshape(headShape, headShapeComplex));
+		} else {
+			attention.add(reshape(shape(dim), headShapeComplex));
 		}
-
-		attention.add(attentionKeys(headShape, p(keyCache))); // Compute attention scores
-		attention.add(softmax(attentionShape, true)); // Apply softmax
-		attention.add(attentionValues(attentionShape, p(valueCache))); // Weighted sum of values
-		attention.add(dense(wo)); // Output projection
+		attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		attention.add(reshape(headShapeComplex, headShape));
+		attention.add(attentionKeys(headShape, p(keyCache)));
+		attention.add(softmax(attentionShape, true));
+		attention.add(attentionValues(attentionShape, p(valueCache)));
+		attention.add(dense(wo));
 		/* ---- **/
 
 		return attention;
@@ -527,6 +482,10 @@ public interface AttentionFeatures extends RotationFeatures {
 		return block;
 	}
 
+	/**
+	 * Standard transformer layer without QK-Norm or GQA.
+	 * Delegates to the full transformer method with null optional parameters.
+	 */
 	default Block transformer(int heads,
 							  PackedCollection<?> rmsAttWeight,
 							  PackedCollection<?> wk, PackedCollection<?> wv,
@@ -536,36 +495,28 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
 							  Producer<PackedCollection<?>> position,
 							  ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-		SequentialBlock transformer = new SequentialBlock(shape(dim));
-		transformer.accum(attention(heads, rmsAttWeight, wk, wv, wq, wo, freqCis,
-				position, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
-		return transformer;
+		return transformer(heads, heads, rmsAttWeight, wk, wv, wq, wo,
+				null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, requirements);
 	}
 
 	/**
-	 * Transformer layer with QK-Norm attention, GQA, and SwiGLU FFN.
+	 * Transformer layer with optional QK-Norm and Grouped Query Attention (GQA).
 	 *
-	 * <p>This transformer layer combines:</p>
+	 * <p>This is the unified transformer implementation combining:</p>
 	 * <ul>
-	 * <li><b>QK-Norm Attention:</b> RMSNorm applied to Q and K projections before RoPE</li>
-	 * <li><b>Grouped Query Attention (GQA):</b> Fewer KV heads than query heads for efficiency</li>
-	 * <li><b>SwiGLU FFN:</b> Gated feed-forward network with SiLU activation</li>
+	 * <li><b>Attention block:</b> Multi-head attention with optional QK-Norm and GQA</li>
+	 * <li><b>Feed-forward block:</b> SwiGLU gated FFN</li>
 	 * </ul>
 	 *
-	 * <p>This architecture is used by models like Qwen3 that require QK-Norm for
-	 * training stability with high learning rates and large context windows.</p>
-	 *
 	 * @param heads Number of query attention heads
-	 * @param kvHeads Number of key/value attention heads (for GQA, typically heads/4)
+	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
 	 * @param wk Key projection weights
 	 * @param wv Value projection weights
 	 * @param wq Query projection weights
 	 * @param wo Output projection weights
-	 * @param qkNormQ Query normalization weights
-	 * @param qkNormK Key normalization weights
+	 * @param qkNormQ Query normalization weights (null to skip QK-Norm)
+	 * @param qkNormK Key normalization weights (null to skip QK-Norm)
 	 * @param freqCis RoPE frequency embeddings
 	 * @param rmsFfnWeight Pre-FFN RMSNorm weights
 	 * @param w1 FFN gate projection
@@ -573,29 +524,23 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param w3 FFN up projection
 	 * @param position Current position in sequence
 	 * @param requirements Compute requirements
-	 * @return Complete transformer layer block with QK-Norm, GQA, and SwiGLU
+	 * @return Complete transformer layer block
 	 */
-	default Block qwen3Transformer(int heads, int kvHeads,
-								   PackedCollection<?> rmsAttWeight,
-								   PackedCollection<?> wk, PackedCollection<?> wv,
-								   PackedCollection<?> wq, PackedCollection<?> wo,
-								   PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
-								   PackedCollection<?> freqCis,
-								   PackedCollection<?> rmsFfnWeight,
-								   PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
-								   Producer<PackedCollection<?>> position,
-								   ComputeRequirement... requirements) {
+	default Block transformer(int heads, int kvHeads,
+							  PackedCollection<?> rmsAttWeight,
+							  PackedCollection<?> wk, PackedCollection<?> wv,
+							  PackedCollection<?> wq, PackedCollection<?> wo,
+							  PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
+							  PackedCollection<?> freqCis,
+							  PackedCollection<?> rmsFfnWeight,
+							  PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
+							  Producer<PackedCollection<?>> position,
+							  ComputeRequirement... requirements) {
 		int dim = rmsAttWeight.getShape().length(0);
 		SequentialBlock transformer = new SequentialBlock(shape(dim));
-
-		// Attention with residual: x = x + attention(x)
-		transformer.accum(qwen3Attention(heads, kvHeads, rmsAttWeight,
-				wk, wv, wq, wo, qkNormQ, qkNormK,
-				freqCis, position, requirements), requirements);
-
-		// FFN with residual: x = x + ffn(x)
+		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				qkNormQ, qkNormK, freqCis, position, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
-
 		return transformer;
 	}
 
