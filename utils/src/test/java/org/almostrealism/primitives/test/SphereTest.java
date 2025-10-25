@@ -37,7 +37,7 @@ public class SphereTest implements TestFeatures {
 		// Test that dot products work for a single ray in batch mode
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6));
+		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
 		// Test oDoto (origin dot origin) = 0^2 + 0^2 + 3^2 = 9
@@ -102,7 +102,7 @@ public class SphereTest implements TestFeatures {
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 		Producer<Scalar> d = s.discriminant(ray);
 
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6));
+		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection<?> result = new PackedCollection<>(shape(1, 1).traverse(1));
@@ -126,7 +126,7 @@ public class SphereTest implements TestFeatures {
 		Producer<Scalar> d = s.discriminant(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6), 2);
+		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
 		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
 		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center)
 		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side)
@@ -170,6 +170,149 @@ public class SphereTest implements TestFeatures {
 	}
 
 	@Test
+	public void intersectionSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test full intersection (not just discriminant) with 3 rays to isolate batch issue
+		Sphere s = new Sphere();
+		s.setSize(0.5);
+
+		Producer<Ray> ray = v(shape(-1, 6), 0);
+		ShadableIntersection f = s.intersectAt(ray);
+
+		// Create 3 rays: 2 that hit, 1 that misses
+		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center) - should get distance ~2.5
+		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center) - should get distance ~2.5
+		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side) - should get distance -1.0
+
+		// Get the distance for each ray
+		PackedCollection<?> distances = new PackedCollection<>(shape(3, 1).traverse(1));
+		f.getDistance().get().into(distances.each()).evaluate(rays);
+
+		System.out.println("Small batch intersection test:");
+		System.out.println("  Ray 0 (hit): " + distances.valueAt(0, 0) + " (expected ~2.5)");
+		System.out.println("  Ray 1 (hit): " + distances.valueAt(1, 0) + " (expected ~2.5)");
+		System.out.println("  Ray 2 (miss): " + distances.valueAt(2, 0) + " (expected -1.0)");
+
+		// Ray 0 and 1 should have positive distances
+		Assert.assertTrue("Ray 0 should hit", distances.valueAt(0, 0) > 0.0);
+		Assert.assertTrue("Ray 1 should hit", distances.valueAt(1, 0) > 0.0);
+		// Ray 2 should miss
+		Assert.assertEquals(-1.0, distances.valueAt(2, 0), 0.01);
+	}
+
+	@Test
+	public void discriminantSqrtSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test sqrt(discriminant) with 3 rays
+		Sphere s = new Sphere();
+		s.setSize(0.5);
+
+		Producer<Ray> ray = v(shape(-1, 6), 0);
+		Producer<Scalar> dSqrt = s.discriminantSqrt(ray);
+
+		// Create 3 rays: 2 that hit, 1 that misses
+		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (discriminant = 1.0, sqrt = 1.0)
+		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (discriminant = 0.98, sqrt = 0.99)
+		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (discriminant = -49, sqrt = NaN)
+
+		PackedCollection<?> sqrtVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		dSqrt.get().into(sqrtVals.each()).evaluate(rays);
+
+		System.out.println("Discriminant sqrt test:");
+		System.out.println("  Ray 0: " + sqrtVals.valueAt(0, 0) + " (expected ~1.0)");
+		System.out.println("  Ray 1: " + sqrtVals.valueAt(1, 0) + " (expected ~0.99)");
+		System.out.println("  Ray 2: " + sqrtVals.valueAt(2, 0) + " (expected NaN)");
+
+		Assert.assertEquals(1.0, sqrtVals.valueAt(0, 0), 0.01);
+		Assert.assertTrue("Ray 1 sqrt should be close to 0.99", sqrtVals.valueAt(1, 0) > 0.95 && sqrtVals.valueAt(1, 0) < 1.0);
+	}
+
+	@Test
+	public void tCalculationSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test the t(ray) calculation that computes both intersection distances
+		Sphere s = new Sphere();
+		s.setSize(0.5);
+
+		Producer<Ray> ray = v(shape(-1, 6), 0);
+
+		// Access the private t() method via reflection or test discriminantSqrt and arithmetic
+		Producer<Scalar> dS = s.discriminantSqrt(ray);
+		Producer<Scalar> minusODotD = oDotd(ray).minus();
+		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
+
+		// Create a single ray that hits
+		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
+		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off)
+		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses
+
+		// Test discriminantSqrt
+		PackedCollection<?> dSqrtVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		dS.get().into(dSqrtVals.each()).evaluate(rays);
+
+		// Test -oDotd
+		PackedCollection<?> minusODotDVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		minusODotD.get().into(minusODotDVals.each()).evaluate(rays);
+
+		// Test 1/dDotd
+		PackedCollection<?> dDotDInvVals = new PackedCollection<>(shape(3, 1).traverse(1));
+		dDotDInv.get().into(dDotDInvVals.each()).evaluate(rays);
+
+		System.out.println("t() calculation components:");
+		System.out.println("  sqrt(discriminant): " + dSqrtVals.valueAt(0, 0) + ", " + dSqrtVals.valueAt(1, 0) + ", " + dSqrtVals.valueAt(2, 0));
+		System.out.println("  -oDotd: " + minusODotDVals.valueAt(0, 0) + ", " + minusODotDVals.valueAt(1, 0) + ", " + minusODotDVals.valueAt(2, 0));
+		System.out.println("  1/dDotd: " + dDotDInvVals.valueAt(0, 0) + ", " + dDotDInvVals.valueAt(1, 0) + ", " + dDotDInvVals.valueAt(2, 0));
+
+		// Expected values for ray 0:
+		// sqrt(discriminant) = 1.0
+		// -oDotd = -(-3) = 3.0
+		// 1/dDotd = 1/1 = 1.0
+		// t = (3 ± 1) / 1 = {4, 2}
+		Assert.assertEquals(1.0, dSqrtVals.valueAt(0, 0), 0.01);
+		Assert.assertEquals(3.0, minusODotDVals.valueAt(0, 0), 0.01);
+		Assert.assertEquals(1.0, dDotDInvVals.valueAt(0, 0), 0.01);
+	}
+
+	@Test
+	public void pairCreationSmallBatch() {
+		if (skipGeometryIssues) return;
+
+		// Test creating a Pair from batch producers
+		Producer<Ray> ray = v(shape(-1, 6), 0);
+
+		// Simple test: create a pair of (-oDotd, oDotd) for 3 rays
+		Producer minusODotD = oDotd(ray).minus();
+		Producer plusODotD = oDotd(ray);
+
+		Producer testPair = pair(minusODotD, plusODotD);
+
+		PackedCollection<?> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // oDotd = -3
+		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // oDotd = -3
+		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // oDotd = -15
+
+		// Evaluate the pair
+		PackedCollection<?> pairResult = new PackedCollection<>(shape(3, 2).traverse(1));
+		testPair.get().into(pairResult.each()).evaluate(rays);
+
+		System.out.println("Pair creation test:");
+		System.out.println("  Ray 0: left=" + pairResult.valueAt(0, 0) + ", right=" + pairResult.valueAt(0, 1) + " (expected 3.0, -3.0)");
+		System.out.println("  Ray 1: left=" + pairResult.valueAt(1, 0) + ", right=" + pairResult.valueAt(1, 1) + " (expected 3.0, -3.0)");
+		System.out.println("  Ray 2: left=" + pairResult.valueAt(2, 0) + ", right=" + pairResult.valueAt(2, 1) + " (expected 15.0, -15.0)");
+
+		Assert.assertEquals(3.0, pairResult.valueAt(0, 0), 0.01);
+		Assert.assertEquals(-3.0, pairResult.valueAt(0, 1), 0.01);
+		Assert.assertEquals(3.0, pairResult.valueAt(1, 0), 0.01);
+		Assert.assertEquals(-3.0, pairResult.valueAt(1, 1), 0.01);
+	}
+
+	@Test
 	public void discriminantKernel() {
 		if (skipGeometryIssues) return;
 
@@ -181,14 +324,14 @@ public class SphereTest implements TestFeatures {
 		Sphere s = new Sphere();
 		s.setSize(0.5);
 
-		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
+		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6).traverse(2));
 		for (int x = 0; x < w; x++) {
 			for (int y = 0; y < h; y++) {
 				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1), 2);
+		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1).traverse(2));
 
 		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
 		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
@@ -216,7 +359,7 @@ public class SphereTest implements TestFeatures {
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
 		// Ray from (0, 0, 3) pointing towards sphere at origin
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6));
+		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
 		singleRay.setMem(0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(1, 1).traverse(1));
@@ -241,14 +384,14 @@ public class SphereTest implements TestFeatures {
 
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
-		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
+		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6).traverse(2));
 		for (int x = 0; x < w; x++) {
 			for (int y = 0; y < h; y++) {
 				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1), 2);
+		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1).traverse(2));
 
 		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination.each()).evaluate(rays);
