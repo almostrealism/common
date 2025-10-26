@@ -53,6 +53,7 @@ public class Qwen3 implements AttentionFeatures {
 
 	private AutoregressiveModel model;
 	private OperationProfile profile;
+	private org.almostrealism.model.CompiledModel compiledModel;
 
 	/**
 	 * Main entry point for running Qwen3 from command line.
@@ -218,6 +219,27 @@ public class Qwen3 implements AttentionFeatures {
 	}
 
 	/**
+	 * For testing: Get the autoregressive model to access internals.
+	 */
+	public AutoregressiveModel getAutoregressiveModel() {
+		return model;
+	}
+
+	/**
+	 * For testing: Get the token embeddings.
+	 */
+	public PackedCollection<?> getTokenEmbeddings() {
+		return stateDict.get("model.embed_tokens.weight");
+	}
+
+	/**
+	 * For testing: Get the compiled model to inspect raw logits.
+	 */
+	public org.almostrealism.model.CompiledModel getCompiledModel() {
+		return compiledModel;
+	}
+
+	/**
 	 * Build the Qwen3 transformer model.
 	 *
 	 * This creates the full transformer stack with:
@@ -301,9 +323,12 @@ public class Qwen3 implements AttentionFeatures {
 		// Output logits projection (shared with token embeddings)
 		transformer.add(dense(wcls));
 
+		// Compile the transformer and store for testing
+		this.compiledModel = transformer.compile(false, profile);
+
 		// Wrap in autoregressive model with token embeddings
 		return AutoregressiveModel.of(
-				transformer.compile(false, profile),
+				compiledModel,
 				step -> position.setMem((double) step),
 				t -> tokenEmbeddings.range(shape(config.dim), t * config.dim));
 	}

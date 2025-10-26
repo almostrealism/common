@@ -1,5 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.ml.tokenization.ByteLevelBPETokenizer;
+import org.almostrealism.ml.tokenization.RegexPreTokenizer;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -10,46 +13,37 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * Byte-level BPE tokenizer for Qwen3 models.
+ * Qwen3 byte-level BPE tokenizer implementation.
  *
- * Qwen3 uses a byte-level BPE tokenizer with 151,669 tokens.
- * This implementation supports:
- * - Byte-level encoding (all bytes 0-255 are represented)
- * - BPE merges for subword tokenization
- * - Special tokens (BOS, EOS, PAD, etc.)
+ * Extends {@link ByteLevelBPETokenizer} with Qwen3-specific configuration:
+ * - Uses regex pre-tokenization (GPT-2 pattern)
+ * - 151,669 vocabulary size
+ * - Special tokens: BOS=151643, EOS=151645
  *
  * Binary format:
  * - int32: vocab_size
- * - int32: num_merges
  * - For each token (vocab_size entries):
  *   - float32: score
  *   - int32: token_length
  *   - byte[]: token_bytes (UTF-8 encoded)
- * - For each merge (num_merges entries):
- *   - int32: token1_id
- *   - int32: token2_id
- *   - int32: merged_id
+ *
+ * BPE merges are loaded from merges.txt in HuggingFace format.
  */
-public class Qwen3Tokenizer {
+public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 	// Special token IDs (Qwen3 defaults)
-	public static final int BOS_TOKEN = 151643;  // <|im_start|>
+	public static final int BOS_TOKEN = 151643;  // <|endoftext|>
 	public static final int EOS_TOKEN = 151645;  // <|im_end|>
 	public static final int PAD_TOKEN = 151643;  // Same as BOS
+	public static final int UNK_TOKEN = 128244;  // <unk>
 
-	private final int vocabSize;
-	private final String[] vocab;
 	private final float[] vocabScores;
-	private final Map<String, Integer> vocabMap;
 
-	// BPE merges: maps (token1_id, token2_id) -> merged_id
-	private final Map<Long, Integer> merges;
+	// Merge priority tracking (lower = higher priority)
+	private final Map<String, Integer> mergePriorities;
 
 	/**
 	 * Load tokenizer from binary file.
@@ -58,6 +52,8 @@ public class Qwen3Tokenizer {
 	 * @throws IOException If file cannot be read
 	 */
 	public Qwen3Tokenizer(String tokenizerPath) throws IOException {
+		super(new RegexPreTokenizer());
+
 		Path path = Paths.get(tokenizerPath);
 
 		try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
@@ -65,7 +61,7 @@ public class Qwen3Tokenizer {
 			bb.order(ByteOrder.LITTLE_ENDIAN);
 
 			// Read vocab size
-			this.vocabSize = bb.getInt();
+			int vocabSize = bb.getInt();
 			this.vocab = new String[vocabSize];
 			this.vocabScores = new float[vocabSize];
 			this.vocabMap = new HashMap<>(vocabSize);
@@ -80,32 +76,20 @@ public class Qwen3Tokenizer {
 				vocabMap.put(vocab[i], i);
 			}
 
-			// Read merges if available in .bin file
-			this.merges = new HashMap<>();
-			if (bb.remaining() >= 4) {
-				int numMerges = bb.getInt();
-				for (int i = 0; i < numMerges; i++) {
-					int token1 = bb.getInt();
-					int token2 = bb.getInt();
-					int merged = bb.getInt();
-					merges.put(packPair(token1, token2), merged);
-				}
-				System.out.println("Loaded " + numMerges + " BPE merges from .bin file");
-			}
+			System.out.println("Loaded Qwen3 tokenizer: " + vocabSize + " tokens");
 		}
 
-		// If no merges in .bin file, try to load from merges.txt
-		if (merges.isEmpty()) {
-			Path parentDir = path.getParent();
-			if (parentDir != null) {
-				Path mergesFile = parentDir.resolve("merges.txt");
-				if (java.nio.file.Files.exists(mergesFile)) {
-					loadMergesFromFile(mergesFile);
-				}
+		// Load BPE merges from merges.txt
+		this.bpeMerges = new HashMap<>();
+		this.mergePriorities = new HashMap<>();
+
+		Path parentDir = path.getParent();
+		if (parentDir != null) {
+			Path mergesFile = parentDir.resolve("merges.txt");
+			if (Files.exists(mergesFile)) {
+				loadMergesFromFile(mergesFile);
 			}
 		}
-
-		System.out.println("Loaded Qwen3 tokenizer: " + vocabSize + " tokens");
 	}
 
 	/**
@@ -115,9 +99,12 @@ public class Qwen3Tokenizer {
 	 * #version: 0.2
 	 * token1 token2
 	 * ...
+	 *
+	 * Priority is determined by order in file (earlier = higher priority).
 	 */
 	private void loadMergesFromFile(Path mergesFile) throws IOException {
 		int loadedCount = 0;
+		int priority = 0;
 
 		try (BufferedReader reader = Files.newBufferedReader(mergesFile, StandardCharsets.UTF_8)) {
 			String line;
@@ -133,57 +120,83 @@ public class Qwen3Tokenizer {
 					continue;
 				}
 
-				String token1Str = parts[0];
-				String token2Str = parts[1];
+				String token1 = parts[0];
+				String token2 = parts[1];
 
-				// Look up token IDs
-				Integer token1Id = vocabMap.get(token1Str);
-				Integer token2Id = vocabMap.get(token2Str);
-
-				if (token1Id == null || token2Id == null) {
-					// Tokens not in vocabulary - skip this merge
+				// Verify tokens exist in vocabulary
+				if (!vocabMap.containsKey(token1) || !vocabMap.containsKey(token2)) {
+					priority++;
 					continue;
 				}
 
 				// The merged token is token1 + token2 concatenated
-				String mergedStr = token1Str + token2Str;
-				Integer mergedId = vocabMap.get(mergedStr);
+				String merged = token1 + token2;
 
-				if (mergedId == null) {
-					// Merged token not in vocabulary - skip
+				if (!vocabMap.containsKey(merged)) {
+					priority++;
 					continue;
 				}
 
-				// Add merge rule: (token1_id, token2_id) -> merged_id
-				merges.put(packPair(token1Id, token2Id), mergedId);
+				// Add merge rule: "token1 token2" -> "merged"
+				String pairKey = token1 + " " + token2;
+				bpeMerges.put(pairKey, merged);
+				mergePriorities.put(pairKey, priority);
+
 				loadedCount++;
+				priority++;
 			}
 		}
 
-		System.out.println("Loaded " + loadedCount + " BPE merges");
+		System.out.println("Loaded " + loadedCount + " BPE merges from merges.txt");
 	}
 
 	/**
 	 * Constructor for testing with explicit vocab.
 	 */
 	public Qwen3Tokenizer(String[] vocab, float[] vocabScores) {
-		this.vocabSize = vocab.length;
+		super(new RegexPreTokenizer());
+
 		this.vocab = vocab;
 		this.vocabScores = vocabScores;
-		this.vocabMap = new HashMap<>(vocabSize);
-		for (int i = 0; i < vocabSize; i++) {
+		this.vocabMap = new HashMap<>(vocab.length);
+
+		for (int i = 0; i < vocab.length; i++) {
 			vocabMap.put(vocab[i], i);
 		}
-		this.merges = new HashMap<>();
+
+		this.bpeMerges = new HashMap<>();
+		this.mergePriorities = new HashMap<>();
 	}
 
-	public int getVocabSize() {
-		return vocabSize;
+	// Special token methods
+
+	@Override
+	protected int getBOSToken() {
+		return BOS_TOKEN;
 	}
 
-	public String[] getVocab() {
-		return vocab;
+	@Override
+	protected int getEOSToken() {
+		return EOS_TOKEN;
 	}
+
+	@Override
+	protected int getPADToken() {
+		return PAD_TOKEN;
+	}
+
+	@Override
+	protected int getUNKToken() {
+		return UNK_TOKEN;
+	}
+
+	@Override
+	protected int getMergePriority(String pair) {
+		Integer priority = mergePriorities.get(pair);
+		return priority != null ? priority : Integer.MAX_VALUE;
+	}
+
+	// Getters
 
 	public float[] getVocabScores() {
 		return vocabScores;
@@ -196,7 +209,7 @@ public class Qwen3Tokenizer {
 	 * @return Array of token IDs
 	 */
 	public int[] encode(String text) {
-		return encode(text, true, true);
+		return encode(text, true);
 	}
 
 	/**
@@ -208,163 +221,31 @@ public class Qwen3Tokenizer {
 	 * @return Array of token IDs
 	 */
 	public int[] encode(String text, boolean addBos, boolean addEos) {
-		List<Integer> tokens = new ArrayList<>();
+		// Use base class encode, then add/remove special tokens as needed
+		boolean addSpecialTokens = addBos || addEos;
+		int[] baseTokens = super.encode(text, addSpecialTokens);
 
-		if (addBos) {
-			tokens.add(BOS_TOKEN);
-		}
-
-		// Convert text to GPT-2 byte encoding, then tokenize
-		String gpt2Encoded = encodeGPT2Bytes(text);
-
-		// Start with character-level tokens
-		List<Integer> charTokens = new ArrayList<>();
-		for (int i = 0; i < gpt2Encoded.length(); i++) {
-			char c = gpt2Encoded.charAt(i);
-			String charStr = String.valueOf(c);
-
-			// Look up single character token
-			Integer tokenId = vocabMap.get(charStr);
-			if (tokenId == null) {
-				// Unknown character - use UNK token
-				System.err.println("Warning: Unknown character: " + c + " (U+" +
-						Integer.toHexString(c).toUpperCase() + ")");
-				tokenId = 0;  // UNK token
+		if (addSpecialTokens) {
+			// Base class adds both BOS and EOS - adjust if needed
+			if (!addBos && baseTokens.length > 0 && baseTokens[0] == BOS_TOKEN) {
+				// Remove BOS
+				int[] result = new int[baseTokens.length - 1];
+				System.arraycopy(baseTokens, 1, result, 0, result.length);
+				baseTokens = result;
 			}
-			charTokens.add(tokenId);
-		}
-
-		// Apply BPE merges
-		tokens.addAll(applyBPEMerges(charTokens));
-
-		if (addEos) {
-			tokens.add(EOS_TOKEN);
-		}
-
-		// Convert to array
-		int[] result = new int[tokens.size()];
-		for (int i = 0; i < tokens.size(); i++) {
-			result[i] = tokens.get(i);
-		}
-
-		return result;
-	}
-
-	/**
-	 * Encode UTF-8 text to GPT-2 byte-level representation.
-	 *
-	 * Converts spaces to Ġ, newlines to Ċ, etc.
-	 */
-	private String encodeGPT2Bytes(String text) {
-		// Use Unicode escapes to avoid encoding issues
-		// space -> U+0120 (Ġ)
-		// newline -> U+010A (Ċ)
-		// tab -> U+0109 (ĉ)
-		return text.replace(" ", "\u0120")
-				   .replace("\n", "\u010A")
-				   .replace("\t", "\u0109");
-	}
-
-	/**
-	 * Apply BPE merge rules to a sequence of tokens.
-	 */
-	private List<Integer> applyBPEMerges(List<Integer> tokens) {
-		if (tokens.size() <= 1 || merges.isEmpty()) {
-			return tokens;
-		}
-
-		// Make a mutable copy
-		List<Integer> working = new ArrayList<>(tokens);
-
-		// Iteratively apply merges
-		boolean changed = true;
-		while (changed) {
-			changed = false;
-			float bestScore = -1e10f;
-			int bestIdx = -1;
-			Integer bestMerged = null;
-
-			// Find the best merge
-			for (int i = 0; i < working.size() - 1; i++) {
-				int token1 = working.get(i);
-				int token2 = working.get(i + 1);
-
-				Integer mergedId = merges.get(packPair(token1, token2));
-				if (mergedId != null && vocabScores[mergedId] > bestScore) {
-					bestScore = vocabScores[mergedId];
-					bestIdx = i;
-					bestMerged = mergedId;
-				}
-			}
-
-			// Apply the best merge if found
-			if (bestIdx != -1 && bestMerged != null) {
-				working.set(bestIdx, bestMerged);
-				working.remove(bestIdx + 1);
-				changed = true;
+			if (!addEos && baseTokens.length > 0 && baseTokens[baseTokens.length - 1] == EOS_TOKEN) {
+				// Remove EOS
+				int[] result = new int[baseTokens.length - 1];
+				System.arraycopy(baseTokens, 0, result, 0, result.length);
+				baseTokens = result;
 			}
 		}
 
-		return working;
+		return baseTokens;
 	}
 
 	/**
-	 * Decode token IDs back to text.
-	 *
-	 * @param tokens Array of token IDs
-	 * @return Decoded text
-	 */
-	public String decode(int[] tokens) {
-		StringBuilder result = new StringBuilder();
-
-		for (int tokenId : tokens) {
-			// Skip special tokens
-			if (tokenId == BOS_TOKEN || tokenId == EOS_TOKEN || tokenId == PAD_TOKEN) {
-				continue;
-			}
-
-			if (tokenId >= 0 && tokenId < vocabSize) {
-				String token = vocab[tokenId];
-
-				// Handle GPT-2 style byte encoding
-				// Ġ (U+0120) represents a space at the start of a token
-				// Convert GPT-2 byte encoding back to UTF-8
-				String decoded = decodeGPT2Bytes(token);
-				result.append(decoded);
-			}
-		}
-
-		return result.toString();
-	}
-
-	/**
-	 * Decode GPT-2 byte-level BPE encoding back to UTF-8.
-	 *
-	 * GPT-2 uses a specific byte encoding where certain Unicode characters
-	 * represent individual bytes. For example:
-	 * - Ġ (U+0120) -> space (0x20)
-	 * - Ċ (U+010A) -> newline (0x0A)
-	 * - etc.
-	 */
-	private String decodeGPT2Bytes(String token) {
-		// Use Unicode escapes to avoid encoding issues
-		// U+0120 (Ġ) -> space
-		// U+010A (Ċ) -> newline
-		// U+0109 (ĉ) -> tab
-		return token.replace("\u0120", " ")
-					.replace("\u010A", "\n")
-					.replace("\u0109", "\t");
-	}
-
-	/**
-	 * Pack two token IDs into a long for use as a map key.
-	 */
-	private static long packPair(int token1, int token2) {
-		return ((long) token1 << 32) | (token2 & 0xFFFFFFFFL);
-	}
-
-	/**
-	 * Simple encode method compatible with BPE.encode signature.
+	 * Simple encode method compatible with legacy BPE.encode signature.
 	 */
 	public static int encode(String text, String[] vocab, float[] vocabScores,
 							 int vocabSize, int[] outputTokens) {
@@ -383,11 +264,12 @@ public class Qwen3Tokenizer {
 
 	/**
 	 * Create a simple test tokenizer with ASCII characters.
+	 * For testing purposes only.
 	 */
 	public static Qwen3Tokenizer createTestTokenizer() {
 		// Create a simple vocab with ASCII characters and some common subwords
-		List<String> vocabList = new ArrayList<>();
-		List<Float> scoresList = new ArrayList<>();
+		java.util.List<String> vocabList = new java.util.ArrayList<>();
+		java.util.List<Float> scoresList = new java.util.ArrayList<>();
 
 		// Add byte-level tokens (256)
 		for (int i = 0; i < 256; i++) {
@@ -397,9 +279,9 @@ public class Qwen3Tokenizer {
 
 		// Add common words and subwords
 		String[] commonTokens = {
-				" ", "the", "a", "an", "and", "or", "is", "in", "to", "of",
-				"Hello", "World", "!", "?", ".", ",", "\n",
-				"Once", "upon", "time", "there", "was"
+			" ", "the", "a", "an", "and", "or", "is", "in", "to", "of",
+			"Hello", "World", "!", "?", ".", ",", "\n",
+			"Once", "upon", "time", "there", "was"
 		};
 		for (int i = 0; i < commonTokens.length; i++) {
 			vocabList.add(commonTokens[i]);
@@ -413,30 +295,5 @@ public class Qwen3Tokenizer {
 		}
 
 		return new Qwen3Tokenizer(vocab, scores);
-	}
-
-	/**
-	 * Test the tokenizer with sample text.
-	 */
-	public static void main(String[] args) {
-		System.out.println("Testing Qwen3Tokenizer...");
-
-		// Create test tokenizer
-		Qwen3Tokenizer tokenizer = createTestTokenizer();
-
-		// Test encoding
-		String text = "Hello World!";
-		int[] tokens = tokenizer.encode(text, false, false);
-
-		System.out.println("Input: " + text);
-		System.out.println("Tokens: " + Arrays.toString(tokens));
-
-		// Test decoding
-		String decoded = tokenizer.decode(tokens);
-		System.out.println("Decoded: " + decoded);
-
-		// Test with BOS/EOS
-		tokens = tokenizer.encode(text, true, true);
-		System.out.println("With special tokens: " + Arrays.toString(tokens));
 	}
 }
