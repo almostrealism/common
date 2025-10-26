@@ -101,6 +101,64 @@ export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=<TestName>
 ```
 
+### Test Output Logging
+
+**IMPORTANT**: Use `Console` and `OutputFeatures` to log test output to files for later review.
+
+**Pattern**:
+```java
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+public class MyTest implements ConsoleFeatures {
+    @Test
+    public void myTest() throws Exception {
+        // Set up file logging BEFORE any output
+        String logFile = "/workspace/project/common/ml/test_output/my_test_results.txt";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        // Use Console methods instead of System.err/System.out
+        log("=== My Test ===");
+        log("Result: " + someValue);
+
+        // Output goes to BOTH console AND file
+    }
+}
+```
+
+**Benefits**:
+- Test output is saved to files for later review
+- No need to capture stdout/stderr with bash redirects
+- Output is available even if test crashes
+- Easy to compare outputs across multiple test runs
+
+**Best Practices**:
+- Create `/workspace/project/common/ml/test_output/` directory for test logs
+- Use descriptive file names: `<TestName>_<date>.txt` or `<TestName>_results.txt`
+- Add file logging setup at the START of each test method
+- Use `log()` instead of `System.err.println()` for important results
+- Keep log files in gitignore (test outputs are transient)
+
+**Example Test with File Logging**:
+```java
+@Test
+public void compareLogits() throws Exception {
+    // Setup file logging
+    String logFile = "/workspace/project/common/ml/test_output/logits_comparison.txt";
+    Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+    log("\n=== Logits Comparison Test ===\n");
+
+    // ... test logic ...
+
+    log(String.format("Mean Absolute Difference: %.6f", meanDiff));
+    log(String.format("RMSE: %.6f", rmse));
+
+    log("\nResults saved to: " + logFile);
+}
+```
+
 ### Test Types
 
 1. **Synthetic Tests**: Validate architecture with random weights

@@ -157,10 +157,6 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return (CollectionProducer) repeat(repeat, this).consolidate();
 	}
 
-	default <V extends PackedCollection<?>> CollectionProducerComputation<V> expand(int repeat, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return expand(repeat, this, mapper);
-	}
-
 	default <V extends PackedCollection<?>> CollectionProducer<V> add(Producer<V> value) {
 		return add((Producer) this, value);
 	}

@@ -1950,12 +1950,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return map(shape(1), collection, (Function) mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(
-			int repeat, Producer<?> collection,
-			Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducer<?>> mapper) {
-		return map(shape(collection).item().prependDimension(repeat), collection, mapper);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducer<T> cumulativeProduct(Producer<T> input, boolean pad) {
 		return func(shape(input), inputs -> args -> {
 			PackedCollection<?> in = inputs[0];

@@ -119,7 +119,7 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		CollectionProducer<PackedCollection<?>> v = c(p(values)).reshape(shape(seqLength, dim))
 														.enumerate(1, 1)
 														.reshape(shape(heads, headSize, seqLength));
-		CollectionProducer<PackedCollection<?>> a = c(p(att)).traverse(1).expand(headSize, x -> x.repeat(headSize));
+		CollectionProducer<PackedCollection<?>> a = c(p(att)).traverse(1).repeat(headSize);
 		CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum().reshape(finalShape);
 
 		OperationProfile profiles = new OperationProfile();

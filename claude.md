@@ -254,6 +254,45 @@ mvn test
 - **Synthetic tests**: Validate architecture with random weights
 - **Validation tests**: Compare against reference implementations
 
+### Test Output Logging
+
+**IMPORTANT**: Use `Console` and `OutputFeatures` (from `ar-io` module) to log test output to files for later review.
+
+**Pattern**:
+```java
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
+
+public class MyTest implements ConsoleFeatures {
+    @Test
+    public void myTest() throws Exception {
+        // Set up file logging BEFORE any output
+        String logFile = "/workspace/project/common/<module>/test_output/my_test_results.txt";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        // Use Console methods instead of System.err/System.out
+        log("=== My Test ===");
+        log("Result: " + someValue);
+
+        // Output goes to BOTH console AND file
+    }
+}
+```
+
+**Benefits**:
+- Test output is saved to files for later review
+- No need to capture stdout/stderr with bash redirects
+- Output is available even if test crashes
+- Easy to compare outputs across multiple test runs
+
+**Best Practices**:
+- Create test_output directories in each module for test logs
+- Use descriptive file names: `<TestName>_results.txt`
+- Add file logging setup at the START of each test method
+- Use `log()` instead of `System.err.println()` for important results
+- Keep log files in gitignore (test outputs are transient)
+
 ---
 
 ## Questions or Issues?

@@ -137,7 +137,7 @@ public interface AttentionFeatures extends RotationFeatures {
 			Producer<PackedCollection<?>> v = reshape(shape(seqLength, dim), expandedValues);
 			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
 
-			CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
+			CollectionProducer<PackedCollection<?>> a = traverse(1, input).repeat(headSize);
 			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
 			return o.reshape(shape(dim).traverseEach());
 		}, requirements);

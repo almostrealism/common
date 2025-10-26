@@ -19,11 +19,9 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -105,9 +103,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 		System.out.println(Arrays.toString(scale.toArray(0, 5)));
 
 		verboseLog(() -> {
-			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).expand(10, v -> v.repeat(10));
+			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).repeat(10);
 
-			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
+			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).repeat(5);
 
 			Evaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
 			PackedCollection<?> destination = ev.evaluate();
@@ -310,7 +308,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		Supplier<CollectionProducer<PackedCollection<?>>> product =
 				() -> traverse(1, p(input))
-						.expand(w, v -> v.repeat(w).each().multiply(p(filter)))
+						.repeat(w)
+						.multiply(p(filter))
 						.traverse()
 						.reduce(v -> v.sum());
 
@@ -574,8 +573,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
-						.expand(2, v ->
-								v.repeat(2).each().multiply(p(filter)));
+						.repeat(2)
+						.multiply(p(filter));
 				System.out.println(conv.getShape());
 
 				PackedCollection<?> output = conv.get().evaluate();
@@ -639,7 +638,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.expand(n, v -> v.repeat(n).each().multiply(cp(filter).each()))
+					.repeat(n)
+					.multiply(cp(filter))
 					.traverse()
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());
@@ -715,7 +715,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
+					.repeat(n)
+					.multiply(p(filter))
 					.traverse()
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());

@@ -1634,7 +1634,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 						.enumerate(1, size, 1)
 						.enumerate(1, size, 1)
 						.traverse(2)
-						.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+						.repeat(filterCount)
+						.multiply(p(filters))
 						.traverse()
 						.reduce(v -> v.sum());
 
@@ -1657,7 +1658,8 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.enumerate(1, size, 1)
 				.enumerate(1, size, 1)
 				.traverse(2)
-				.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+				.repeat(filterCount)
+				.multiply(cp(filters))
 				.traverse()
 				.reduce(v -> v.sum());
 

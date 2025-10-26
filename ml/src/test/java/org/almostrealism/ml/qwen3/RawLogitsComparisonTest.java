@@ -1,6 +1,9 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
@@ -23,8 +26,10 @@ import java.util.*;
  * 4. Providing detailed statistics about divergence
  *
  * Purpose: Identify if the bug is in final projection or all logits.
+ *
+ * Output: Results are logged to /workspace/project/common/ml/test_output/raw_logits_comparison.txt
  */
-public class RawLogitsComparisonTest implements AttentionFeatures {
+public class RawLogitsComparisonTest implements AttentionFeatures, ConsoleFeatures {
 
     private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
     private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
@@ -32,11 +37,15 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
 
     @Test
     public void compareRawLogits() throws Exception {
-        System.err.println("\n=== Raw Logits Comparison Test ===\n");
+        // Setup file logging
+        String logFile = "/workspace/project/common/ml/test_output/raw_logits_comparison.txt";
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        log("\n=== Raw Logits Comparison Test ===\n");
 
         // Load PyTorch reference logits
         float[] pytorchLogits = loadPyTorchLogits();
-        System.err.println("Loaded PyTorch reference: " + pytorchLogits.length + " logits\n");
+        log("Loaded PyTorch reference: " + pytorchLogits.length + " logits\n");
 
         // Load AR model
         Qwen3Config config = new Qwen3Config(
@@ -56,13 +65,15 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
         Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
         // Run single forward pass manually
-        System.err.println("Running forward pass for token 9707 ('Hello') at position 0...\n");
+        log("Running forward pass for token 9707 ('Hello') at position 0...\n");
         float[] arLogits = runSingleForwardPass(model, 9707, 0);
 
-        System.err.println("Extracted AR logits: " + arLogits.length + " values\n");
+        log("Extracted AR logits: " + arLogits.length + " values\n");
 
         // Compare logits
         compareLogits(pytorchLogits, arLogits, tokenizer);
+
+        log("\nResults saved to: " + logFile);
     }
 
     /**
@@ -111,8 +122,8 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
         float[] logits = new float[vocabSize];
 
         // Output shape should be (vocabSize,) or (1, vocabSize)
-        System.err.println("Output shape: " + output.getShape());
-        System.err.println("Output mem length: " + output.getMemLength());
+        log("Output shape: " + output.getShape());
+        log("Output mem length: " + output.getMemLength());
 
         // Extract directly from memory
         for (int i = 0; i < Math.min(vocabSize, output.getMemLength()); i++) {
@@ -147,9 +158,9 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
      */
     private void compareLogits(float[] pytorchLogits, float[] arLogits, Qwen3Tokenizer tokenizer) {
         if (pytorchLogits.length != arLogits.length) {
-            System.err.println("ERROR: Vocab size mismatch!");
-            System.err.println("  PyTorch: " + pytorchLogits.length);
-            System.err.println("  AR: " + arLogits.length);
+            log("ERROR: Vocab size mismatch!");
+            log("  PyTorch: " + pytorchLogits.length);
+            log("  AR: " + arLogits.length);
             return;
         }
 
@@ -175,23 +186,23 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
         double meanAbsDiff = sumAbsDiff / vocabSize;
         double rmse = Math.sqrt(sumSqDiff / vocabSize);
 
-        System.err.println("=== Logits Comparison Statistics ===");
-        System.err.println(String.format("Mean Absolute Difference: %.6f", meanAbsDiff));
-        System.err.println(String.format("RMSE: %.6f", rmse));
-        System.err.println(String.format("Max Absolute Difference: %.6f at token %d", maxAbsDiff, maxDiffToken));
-        System.err.println();
+        log("=== Logits Comparison Statistics ===");
+        log(String.format("Mean Absolute Difference: %.6f", meanAbsDiff));
+        log(String.format("RMSE: %.6f", rmse));
+        log(String.format("Max Absolute Difference: %.6f at token %d", maxAbsDiff, maxDiffToken));
+        log("");
 
         // Show top-K comparison
-        System.err.println("=== Top 10 Predictions Comparison ===");
-        System.err.println(String.format("%-6s %-10s %-15s %-15s %-10s",
+        log("=== Top 10 Predictions Comparison ===");
+        log(String.format("%-6s %-10s %-15s %-15s %-10s",
             "Rank", "Token", "PyTorch Logit", "AR Logit", "Diff"));
-        System.err.println("-".repeat(70));
+        log("-".repeat(70));
 
         int[] pytorchTopK = getTopK(pytorchLogits, 10);
         int[] arTopK = getTopK(arLogits, 10);
 
         // Show PyTorch top 10
-        System.err.println("\nPyTorch Top 10:");
+        log("\nPyTorch Top 10:");
         for (int i = 0; i < 10; i++) {
             int token = pytorchTopK[i];
             String tokenStr = tokenizer.decode(new int[]{token}).replace("\n", "\\n");
@@ -199,12 +210,12 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
             float arLogit = arLogits[token];
             int arRank = getRank(arLogits, token);
 
-            System.err.println(String.format("%-6d %-10d %-15.4f %-15.4f %-10.4f (AR rank: %d) \"%s\"",
+            log(String.format("%-6d %-10d %-15.4f %-15.4f %-10.4f (AR rank: %d) \"%s\"",
                 i+1, token, ptLogit, arLogit, ptLogit - arLogit, arRank, tokenStr));
         }
 
         // Show AR top 10
-        System.err.println("\nAR Top 10:");
+        log("\nAR Top 10:");
         for (int i = 0; i < 10; i++) {
             int token = arTopK[i];
             String tokenStr = tokenizer.decode(new int[]{token}).replace("\n", "\\n");
@@ -212,12 +223,12 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
             float arLogit = arLogits[token];
             int ptRank = getRank(pytorchLogits, token);
 
-            System.err.println(String.format("%-6d %-10d %-15.4f %-15.4f %-10.4f (PT rank: %d) \"%s\"",
+            log(String.format("%-6d %-10d %-15.4f %-15.4f %-10.4f (PT rank: %d) \"%s\"",
                 i+1, token, ptLogit, arLogit, ptLogit - arLogit, ptRank, tokenStr));
         }
 
         // Show specific tokens of interest
-        System.err.println("\n=== Specific Tokens Analysis ===");
+        log("\n=== Specific Tokens Analysis ===");
         int[] tokensOfInterest = {271, 198, 49, 27};  // \n\n, \n, R, <
         for (int token : tokensOfInterest) {
             String tokenStr = tokenizer.decode(new int[]{token}).replace("\n", "\\n");
@@ -226,10 +237,10 @@ public class RawLogitsComparisonTest implements AttentionFeatures {
             int ptRank = getRank(pytorchLogits, token);
             int arRank = getRank(arLogits, token);
 
-            System.err.println(String.format("Token %d \"%s\":", token, tokenStr));
-            System.err.println(String.format("  PyTorch: logit=%.4f, rank=%d", ptLogit, ptRank));
-            System.err.println(String.format("  AR:      logit=%.4f, rank=%d", arLogit, arRank));
-            System.err.println(String.format("  Diff:    %.4f", ptLogit - arLogit));
+            log(String.format("Token %d \"%s\":", token, tokenStr));
+            log(String.format("  PyTorch: logit=%.4f, rank=%d", ptLogit, ptRank));
+            log(String.format("  AR:      logit=%.4f, rank=%d", arLogit, arRank));
+            log(String.format("  Diff:    %.4f", ptLogit - arLogit));
         }
     }
 

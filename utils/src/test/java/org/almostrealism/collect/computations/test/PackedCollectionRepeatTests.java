@@ -95,7 +95,7 @@ public class PackedCollectionRepeatTests implements TestFeatures {
 		v.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			PackedCollection<?> out = c(p(v)).traverseEach().expand(d, x -> x.repeat(d)).get().evaluate();
+			PackedCollection<?> out = c(p(v)).traverseEach().repeat(d).get().evaluate();
 
 			for (int x = 0; x < w; x++) {
 				for (int y = 0; y < h; y++) {
