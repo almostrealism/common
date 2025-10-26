@@ -62,7 +62,11 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	public TransformMatrix(MemoryData delegate, int delegateOffset) {
-		this(true, delegate, delegateOffset);
+		this(false, delegate, delegateOffset);
+
+		// Check if the delegate contains an identity matrix
+		this.isIdentity = isIdentityMatrix();
+		this.inverted = false;
 	}
 
 	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
@@ -71,6 +75,18 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		if (identity) {
 			setMatrix(TransformMatrix.identity);
 		}
+	}
+
+	private boolean isIdentityMatrix() {
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				double expected = (i == j) ? 1.0 : 0.0;
+				if (Math.abs(toDouble(i * 4 + j) - expected) > 1e-10) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**
