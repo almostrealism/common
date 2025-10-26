@@ -1,139 +1,156 @@
-# Qwen2.5-0.5B Implementation Plan
+# Qwen2.5-0.5B Implementation Plan - REVISED
 
-**Status**: BLOCKED - Model generates wrong tokens, root cause under investigation
+**Status**: Bug narrowed to final processing or layer stacking
 
-See [ASSESSMENT.md](ASSESSMENT.md) for detailed current state analysis.
-
----
-
-## Problem
-
-Model generates token 27 instead of expected token 271 for input "Hello" (token 9707).
+See [ASSESSMENT.md](ASSESSMENT.md) for detailed analysis.
 
 ---
 
-## Known Facts
+## Problem Statement
 
-✅ **Working**:
-- Embeddings match PyTorch perfectly (RMSE: 0.000000)
-- Model compiles and runs end-to-end
-- Tokenizer correctly encodes/decodes
-- All 291 weight tensors load correctly
+✅ **What Works**:
+- Embeddings: Perfect match with PyTorch
+- Single transformer block: Nearly perfect (1e-6 error)
+- All individual components (GQA, RoPE, attention, FFN, residuals)
 
-❌ **Broken**:
-- Transformer layers produce incorrect outputs
-- Error amplifies through layers (layer 1: tiny error → layer 2: 56x worse)
+❌ **What Fails**:
+- Full 24-layer model generates token 27 instead of expected token 271
 
-❓ **Unknown**:
-- Exact location of bug in transformer architecture
-- Whether GQA `.repeat()` implementation is correct
-- Whether RoPE/QK-Norm/residual connections have issues
+❓ **Root Cause**:
+- Either final processing (model.norm + lm_head) OR layer stacking
 
 ---
 
 ## Immediate Next Actions
 
-### 1. Test GQA Expansion (**PRIORITY 1**)
+### 1. Test Final RMSNorm in Isolation (**PRIORITY 1**)
 
-**Hypothesis**: The `.repeat()` method may not correctly expand KV heads.
+**Test**: Apply model.norm to PyTorch's hidden_states[24] and compare:
+1. Load `after_layer_22.bin` (closest we have to final layer)
+2. Load model.norm weights
+3. Apply RMSNorm in AR
+4. Compare with reference
 
-**Test**:
-```java
-// Verify that traverse(2, keys).repeat(7)
-// correctly expands (seqLen, 2, headSize) → (seqLen, 14, headSize)
-```
+**If this fails**: RMSNorm bug
+**If this passes**: Bug is in lm_head or layer stacking
 
-**Why**: Recent commit removed `.expand()` and replaced with `.repeat()`. This is the most recent architectural change.
+### 2. Test lm_head Projection (**PRIORITY 2**)
 
-### 2. Component Isolation Tests (**PRIORITY 2**)
+**Test**: Apply lm_head to a known vector:
+1. Use PyTorch's normalized output
+2. Apply AR's dense(lm_head)
+3. Compare logits
 
-Since full layer tests crash, test components separately:
+**If this fails**: lm_head dense layer bug
+**If this passes**: Bug must be in layer stacking
 
-1. **RoPE rotation**: Verify Q/K get correct rotations for position 0
-2. **QK-Norm**: Verify normalization produces expected values
-3. **Attention scores**: Verify Q·K^T / sqrt(d) produces expected matrix
-4. **Softmax**: Verify attention weights sum to 1
-5. **FFN (SwiGLU)**: Verify gate/up/down projections
+### 3. Trace Layer-by-Layer Error Growth (**PRIORITY 3**)
 
-### 3. Reduce Model Size (**PRIORITY 3**)
+Since we can't compile layer tests, use the actual Qwen3 model with instrumentation:
+1. Modify Qwen3.java to save intermediate outputs
+2. Run inference
+3. Compare with PyTorch references at layers 1, 5, 10, 22
 
-Modify `LayerOutputComparisonTest` to use smaller config:
-```java
-Qwen3Config testConfig = new Qwen3Config(
-    896,      // dim - keep same
-    4864,     // hiddenDim - keep same
-    1,        // layerCount - REDUCE from 24
-    14,       // headCount
-    2,        // kvHeadCount
-    151936,   // vocabSize
-    10,       // seqLen - REDUCE from 32768
-    true,     // sharedWeights
-    1000000.0 // ropeTheta
-);
-```
-
-This may allow layer tests to compile.
+This will show if/where error compounds.
 
 ---
 
-## Investigation Strategy
+## Test Strategy
 
-### Phase 1: Verify GQA Expansion (Est: 30 min)
+### Phase 1: Isolate Final Components (Est: 1 hour)
 
-Create unit test for `expandKeysForGQA`:
-1. Create mock keys tensor: (seqLen=3, kvHeads=2, headSize=4)
-2. Call `expandKeysForGQA` with heads=14
-3. Verify output shape: (seqLen=3, heads=14, headSize=4)
-4. Verify each KV head repeated 7 times
-5. Verify values preserved correctly
+```java
+// Test model.norm in isolation
+@Test
+public void testFinalNorm() {
+    // Load after_layer_22.bin as input
+    // Load model.norm.weight
+    // Apply rmsnorm
+    // Compare with after_final_norm.bin (need to generate)
+}
 
-**If this fails**: GQA expansion is the root cause.
-**If this passes**: Bug is elsewhere in attention mechanism.
+// Test lm_head in isolation
+@Test
+public void testLmHead() {
+    // Load normalized output
+    // Load lm_head.weight
+    // Apply dense projection
+    // Compare with final_logits.bin
+}
+```
 
-### Phase 2: Component-Level Debugging (Est: 2 hours)
+### Phase 2: Instrument Full Model (Est: 30 min)
 
-Test each transformer component in isolation with known inputs/outputs.
+Add hooks to Qwen3.java to capture outputs:
+```java
+// After transformer stack (before model.norm)
+PackedCollection<?> beforeNorm = ...;
+saveForInspection("before_norm.bin", beforeNorm);
 
-### Phase 3: Numerical Precision Analysis (Est: 1 hour)
+// After model.norm
+PackedCollection<?> afterNorm = ...;
+saveForInspection("after_norm.bin", afterNorm);
 
-Check if float precision differences cause divergence.
+// Compare with PyTorch at each step
+```
+
+### Phase 3: Generate Missing References (Est: 15 min)
+
+Update `generate_layer_outputs.py`:
+```python
+# Save after last transformer layer
+hidden_last = hidden_states[24]  # After layer 23
+save_tensor(hidden_last, "after_layer_23.bin")
+
+# Save after model.norm
+normalized = model.model.norm(hidden_last)
+save_tensor(normalized, "after_final_norm.bin")
+
+# Already have final_logits.bin
+```
 
 ---
 
-## Long-term Plan (After Bug Fix)
+## Success Criteria
 
-1. **Phase 7**: Full validation with all 24 layers
-2. **Phase 8**: Multi-token generation
-3. **Phase 9**: Performance optimization
-4. **Phase 10**: Larger Qwen models (4B, 8B)
+**Phase 1 Success**: Identify which component (model.norm or lm_head) has the bug
+**Phase 2 Success**: See where error starts/compounds in layer stack
+**Phase 3 Success**: Have complete reference data for all pipeline stages
+
+---
+
+## Debugging Checklist
+
+- [ ] Test model.norm with known input/output
+- [ ] Test lm_head with known input/output
+- [ ] Generate missing PyTorch references
+- [ ] Instrument Qwen3.java for intermediate outputs
+- [ ] Compare layer-by-layer progression
+- [ ] Identify exact location of divergence
 
 ---
 
 ## Files
 
-- **ASSESSMENT.md**: Detailed analysis of current state
-- **LayerOutputComparisonTest.java**: Layer-by-layer testing (currently crashes)
-- **Qwen3LogitsTest.java**: End-to-end test showing the mismatch
-- **AttentionFeatures.java**: Core attention implementation with GQA
-- **Qwen3.java**: Main model class
+- **ASSESSMENT.md**: Detailed analysis with test results
+- **Qwen3TransformerBlockTest.java**: Single block test (✅ passes)
+- **Qwen3.java**: Full model (needs instrumentation)
+- **generate_layer_outputs.py**: Reference data generator (needs updates)
 
 ---
 
 ## Commands
 
 ```bash
-# Run embeddings test (passes)
-mvn test -Dtest=LayerOutputComparisonTest#compareAfterEmbeddings
-
-# Run end-to-end test (fails - wrong token)
-mvn test -Dtest=Qwen3LogitsTest
-
-# Run layer tests (crashes)
-mvn test -Dtest=LayerOutputComparisonTest
-```
-
-**Note**: Always set environment variables:
-```bash
 export AR_HARDWARE_LIBS=/home/developer/.libs/
 export AR_HARDWARE_DRIVER=native
+
+# Verify transformer block still passes
+mvn test -Dtest=Qwen3TransformerBlockTest
+
+# Run end-to-end test
+mvn test -Dtest=Qwen3LogitsTest
+
+# Generate updated PyTorch references
+python generate_layer_outputs.py
 ```
