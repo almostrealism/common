@@ -1,10 +1,12 @@
 package org.almostrealism.ml.qwen3;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -78,7 +80,7 @@ public class Qwen3Tokenizer {
 				vocabMap.put(vocab[i], i);
 			}
 
-			// Read merges if available
+			// Read merges if available in .bin file
 			this.merges = new HashMap<>();
 			if (bb.remaining() >= 4) {
 				int numMerges = bb.getInt();
@@ -88,11 +90,77 @@ public class Qwen3Tokenizer {
 					int merged = bb.getInt();
 					merges.put(packPair(token1, token2), merged);
 				}
-				System.out.println("Loaded " + numMerges + " BPE merges");
+				System.out.println("Loaded " + numMerges + " BPE merges from .bin file");
+			}
+		}
+
+		// If no merges in .bin file, try to load from merges.txt
+		if (merges.isEmpty()) {
+			Path parentDir = path.getParent();
+			if (parentDir != null) {
+				Path mergesFile = parentDir.resolve("merges.txt");
+				if (java.nio.file.Files.exists(mergesFile)) {
+					loadMergesFromFile(mergesFile);
+				}
 			}
 		}
 
 		System.out.println("Loaded Qwen3 tokenizer: " + vocabSize + " tokens");
+	}
+
+	/**
+	 * Load BPE merges from merges.txt file (HuggingFace format).
+	 *
+	 * Format:
+	 * #version: 0.2
+	 * token1 token2
+	 * ...
+	 */
+	private void loadMergesFromFile(Path mergesFile) throws IOException {
+		int loadedCount = 0;
+
+		try (BufferedReader reader = Files.newBufferedReader(mergesFile, StandardCharsets.UTF_8)) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				// Skip header and empty lines
+				if (line.startsWith("#") || line.trim().isEmpty()) {
+					continue;
+				}
+
+				// Parse merge: "token1 token2"
+				String[] parts = line.split(" ", 2);
+				if (parts.length != 2) {
+					continue;
+				}
+
+				String token1Str = parts[0];
+				String token2Str = parts[1];
+
+				// Look up token IDs
+				Integer token1Id = vocabMap.get(token1Str);
+				Integer token2Id = vocabMap.get(token2Str);
+
+				if (token1Id == null || token2Id == null) {
+					// Tokens not in vocabulary - skip this merge
+					continue;
+				}
+
+				// The merged token is token1 + token2 concatenated
+				String mergedStr = token1Str + token2Str;
+				Integer mergedId = vocabMap.get(mergedStr);
+
+				if (mergedId == null) {
+					// Merged token not in vocabulary - skip
+					continue;
+				}
+
+				// Add merge rule: (token1_id, token2_id) -> merged_id
+				merges.put(packPair(token1Id, token2Id), mergedId);
+				loadedCount++;
+			}
+		}
+
+		System.out.println("Loaded " + loadedCount + " BPE merges");
 	}
 
 	/**
@@ -146,32 +214,28 @@ public class Qwen3Tokenizer {
 			tokens.add(BOS_TOKEN);
 		}
 
-		// Convert to UTF-8 bytes
-		byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+		// Convert text to GPT-2 byte encoding, then tokenize
+		String gpt2Encoded = encodeGPT2Bytes(text);
 
-		// Start with byte-level tokens
-		List<Integer> byteTokens = new ArrayList<>();
-		for (byte b : bytes) {
-			// Byte-level BPE: first 256 tokens are individual bytes
-			int unsigned = b & 0xFF;
-			String byteStr = String.format("<0x%02X>", unsigned);
+		// Start with character-level tokens
+		List<Integer> charTokens = new ArrayList<>();
+		for (int i = 0; i < gpt2Encoded.length(); i++) {
+			char c = gpt2Encoded.charAt(i);
+			String charStr = String.valueOf(c);
 
-			// Try to find the byte token
-			Integer tokenId = vocabMap.get(byteStr);
+			// Look up single character token
+			Integer tokenId = vocabMap.get(charStr);
 			if (tokenId == null) {
-				// Fallback: try the byte as a character
-				tokenId = vocabMap.get(String.valueOf((char) unsigned));
-				if (tokenId == null) {
-					// Unknown token - use a fallback
-					System.err.println("Warning: Unknown byte token: " + byteStr);
-					tokenId = 0;  // UNK token
-				}
+				// Unknown character - use UNK token
+				System.err.println("Warning: Unknown character: " + c + " (U+" +
+						Integer.toHexString(c).toUpperCase() + ")");
+				tokenId = 0;  // UNK token
 			}
-			byteTokens.add(tokenId);
+			charTokens.add(tokenId);
 		}
 
 		// Apply BPE merges
-		tokens.addAll(applyBPEMerges(byteTokens));
+		tokens.addAll(applyBPEMerges(charTokens));
 
 		if (addEos) {
 			tokens.add(EOS_TOKEN);
@@ -184,6 +248,21 @@ public class Qwen3Tokenizer {
 		}
 
 		return result;
+	}
+
+	/**
+	 * Encode UTF-8 text to GPT-2 byte-level representation.
+	 *
+	 * Converts spaces to Ġ, newlines to Ċ, etc.
+	 */
+	private String encodeGPT2Bytes(String text) {
+		// Use Unicode escapes to avoid encoding issues
+		// space -> U+0120 (Ġ)
+		// newline -> U+010A (Ċ)
+		// tab -> U+0109 (ĉ)
+		return text.replace(" ", "\u0120")
+				   .replace("\n", "\u010A")
+				   .replace("\t", "\u0109");
 	}
 
 	/**
@@ -247,23 +326,34 @@ public class Qwen3Tokenizer {
 			if (tokenId >= 0 && tokenId < vocabSize) {
 				String token = vocab[tokenId];
 
-				// Handle byte-level tokens
-				if (token.startsWith("<0x") && token.endsWith(">")) {
-					// Decode hex byte
-					String hex = token.substring(3, token.length() - 1);
-					try {
-						int byteVal = Integer.parseInt(hex, 16);
-						result.append((char) byteVal);
-					} catch (NumberFormatException e) {
-						result.append(token);
-					}
-				} else {
-					result.append(token);
-				}
+				// Handle GPT-2 style byte encoding
+				// Ġ (U+0120) represents a space at the start of a token
+				// Convert GPT-2 byte encoding back to UTF-8
+				String decoded = decodeGPT2Bytes(token);
+				result.append(decoded);
 			}
 		}
 
 		return result.toString();
+	}
+
+	/**
+	 * Decode GPT-2 byte-level BPE encoding back to UTF-8.
+	 *
+	 * GPT-2 uses a specific byte encoding where certain Unicode characters
+	 * represent individual bytes. For example:
+	 * - Ġ (U+0120) -> space (0x20)
+	 * - Ċ (U+010A) -> newline (0x0A)
+	 * - etc.
+	 */
+	private String decodeGPT2Bytes(String token) {
+		// Use Unicode escapes to avoid encoding issues
+		// U+0120 (Ġ) -> space
+		// U+010A (Ċ) -> newline
+		// U+0109 (ĉ) -> tab
+		return token.replace("\u0120", " ")
+					.replace("\u010A", "\n")
+					.replace("\u0109", "\t");
 	}
 
 	/**

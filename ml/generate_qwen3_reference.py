@@ -108,6 +108,64 @@ def generate_qwen3_transformer_block_reference(output_dir):
     print(f"Input shape: {input_tensor.shape}")
     print(f"Output shape: {output_tensor.shape}")
 
+    # ALSO compute intermediate outputs step-by-step for debugging
+    print("\nComputing intermediate outputs step-by-step...")
+    with torch.no_grad():
+        # Step 1: Input normalization
+        residual = input_tensor
+        hidden_states = transformer_layer.input_layernorm(input_tensor)
+        print(f"  After input norm: sum={hidden_states.sum():.6f}, max={hidden_states.abs().max():.6f}")
+
+        # Step 1a: Q/K/V projections (for debugging)
+        q_proj = transformer_layer.self_attn.q_proj(hidden_states)
+        k_proj = transformer_layer.self_attn.k_proj(hidden_states)
+        v_proj = transformer_layer.self_attn.v_proj(hidden_states)
+        print(f"  After Q projection: sum={q_proj.sum():.6f}, max={q_proj.abs().max():.6f}")
+        print(f"  After K projection: sum={k_proj.sum():.6f}, max={k_proj.abs().max():.6f}")
+        print(f"  After V projection: sum={v_proj.sum():.6f}, max={v_proj.abs().max():.6f}")
+
+        # Step 2: Attention
+        attn_output = transformer_layer.self_attn(
+            hidden_states,
+            attention_mask=None,
+            position_embeddings=position_embeddings,
+        )[0]  # Get just the output, not the cache
+        print(f"  After attention: sum={attn_output.sum():.6f}, max={attn_output.abs().max():.6f}")
+
+        # Step 3: Attention residual
+        hidden_states = residual + attn_output
+        print(f"  After attn residual: sum={hidden_states.sum():.6f}, max={hidden_states.abs().max():.6f}")
+
+        # Step 4: FFN normalization
+        residual = hidden_states
+        hidden_states = transformer_layer.post_attention_layernorm(hidden_states)
+        print(f"  After FFN norm: sum={hidden_states.sum():.6f}, max={hidden_states.abs().max():.6f}")
+
+        # Step 5: FFN
+        ffn_output = transformer_layer.mlp(hidden_states)
+        print(f"  After FFN: sum={ffn_output.sum():.6f}, max={ffn_output.abs().max():.6f}")
+
+        # Step 6: FFN residual
+        final_output = residual + ffn_output
+        print(f"  After FFN residual: sum={final_output.sum():.6f}, max={final_output.abs().max():.6f}")
+
+        # Verify this matches the full layer output
+        diff = (final_output - output_tensor).abs().max()
+        print(f"  Difference from layer output: {diff:.10f}")
+
+        # Save intermediate outputs
+        intermediate_outputs = {
+            'after_input_norm': transformer_layer.input_layernorm(input_tensor),
+            'after_q_proj': q_proj,
+            'after_k_proj': k_proj,
+            'after_v_proj': v_proj,
+            'after_attention': attn_output,
+            'after_attention_residual': residual + attn_output,
+            'after_ffn_norm': transformer_layer.post_attention_layernorm(residual + attn_output),
+            'after_ffn': ffn_output,
+            'after_ffn_residual': final_output,
+        }
+
     # Extract weights from the transformer layer
     state_dict = transformer_layer.state_dict()
 
@@ -123,6 +181,17 @@ def generate_qwen3_transformer_block_reference(output_dir):
         'input': input_tensor,
         'expected_output': output_tensor,
 
+        # Intermediate outputs for debugging
+        'intermediate.after_input_norm': intermediate_outputs['after_input_norm'],
+        'intermediate.after_q_proj': intermediate_outputs['after_q_proj'],
+        'intermediate.after_k_proj': intermediate_outputs['after_k_proj'],
+        'intermediate.after_v_proj': intermediate_outputs['after_v_proj'],
+        'intermediate.after_attention': intermediate_outputs['after_attention'],
+        'intermediate.after_attention_residual': intermediate_outputs['after_attention_residual'],
+        'intermediate.after_ffn_norm': intermediate_outputs['after_ffn_norm'],
+        'intermediate.after_ffn': intermediate_outputs['after_ffn'],
+        'intermediate.after_ffn_residual': intermediate_outputs['after_ffn_residual'],
+
         # Position IDs and embeddings
         'position_ids': position_ids.float(),
         'position_cos': cos,
@@ -133,6 +202,11 @@ def generate_qwen3_transformer_block_reference(output_dir):
         'self_attn.k_proj.weight': state_dict['self_attn.k_proj.weight'],
         'self_attn.v_proj.weight': state_dict['self_attn.v_proj.weight'],
         'self_attn.o_proj.weight': state_dict['self_attn.o_proj.weight'],
+
+        # Attention biases
+        'self_attn.q_proj.bias': state_dict['self_attn.q_proj.bias'],
+        'self_attn.k_proj.bias': state_dict['self_attn.k_proj.bias'],
+        'self_attn.v_proj.bias': state_dict['self_attn.v_proj.bias'],
 
         # Optional: QK-Norm weights (only in certain versions)
         # Note: Qwen2.5-0.5B-Instruct doesn't have QK-Norm, only biases

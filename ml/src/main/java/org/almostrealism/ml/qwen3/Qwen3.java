@@ -266,6 +266,11 @@ public class Qwen3 implements AttentionFeatures {
 			PackedCollection<?> layerWv = stateDict.get(prefix + ".self_attn.v_proj.weight");
 			PackedCollection<?> layerWo = stateDict.get(prefix + ".self_attn.o_proj.weight");
 
+			// Attention biases (Qwen2.5 has biases for Q/K/V but not O)
+			PackedCollection<?> layerBq = stateDict.get(prefix + ".self_attn.q_proj.bias");
+			PackedCollection<?> layerBk = stateDict.get(prefix + ".self_attn.k_proj.bias");
+			PackedCollection<?> layerBv = stateDict.get(prefix + ".self_attn.v_proj.bias");
+
 			// QK-Norm weights
 			PackedCollection<?> layerQkNormQ = stateDict.get(prefix + ".self_attn.q_norm.weight");
 			PackedCollection<?> layerQkNormK = stateDict.get(prefix + ".self_attn.k_norm.weight");
@@ -281,6 +286,7 @@ public class Qwen3 implements AttentionFeatures {
 					config.kvHeadCount,   // 8 KV heads (GQA)
 					layerRmsAtt,          // Pre-attention norm
 					layerWk, layerWv, layerWq, layerWo,  // Attention projections
+					layerBk, layerBv, layerBq,  // Attention biases
 					layerQkNormQ, layerQkNormK,           // QK-Norm weights
 					freqCis,              // RoPE frequencies
 					layerRmsFfn,          // Pre-FFN norm

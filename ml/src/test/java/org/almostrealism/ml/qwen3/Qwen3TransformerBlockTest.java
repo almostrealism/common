@@ -68,6 +68,11 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
 		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
 
+		// Load attention biases (Q/K/V have biases, O does not)
+		PackedCollection<?> bq = referenceData.get("self_attn.q_proj.bias");
+		PackedCollection<?> bk = referenceData.get("self_attn.k_proj.bias");
+		PackedCollection<?> bv = referenceData.get("self_attn.v_proj.bias");
+
 		// Load normalization weights (1D, no transpose needed)
 		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
 		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
@@ -111,6 +116,7 @@ public class Qwen3TransformerBlockTest implements AttentionFeatures, LayerFeatur
 		main.add(transformer(heads, kvHeads,
 				attnNorm,              // Attention pre-norm
 				wk, wv, wq, wo,       // Attention weights
+				bk, bv, bq,            // Attention biases (K, V, Q)
 				null, null,            // No QK-Norm in this model
 				freqCis,               // RoPE frequencies
 				ffnNorm,               // FFN pre-norm

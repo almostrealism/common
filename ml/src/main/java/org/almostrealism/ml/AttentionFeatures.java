@@ -171,7 +171,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							Producer<PackedCollection<?>> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, heads, rmsAttWeight, wk, wv, wq, wo,
-				null, null, freqCis, position, requirements);
+				null, null, null, null, null, freqCis, position, requirements);
 	}
 
 	/**
@@ -191,6 +191,9 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * @param wv Value projection weights
 	 * @param wq Query projection weights
 	 * @param wo Output projection weights
+	 * @param bk Key projection bias (null if not used)
+	 * @param bv Value projection bias (null if not used)
+	 * @param bq Query projection bias (null if not used)
 	 * @param qkNormQ Query normalization weights (null to skip QK-Norm)
 	 * @param qkNormK Key normalization weights (null to skip QK-Norm)
 	 * @param freqCis RoPE frequency embeddings
@@ -202,6 +205,8 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection<?> rmsAttWeight,
 							PackedCollection<?> wk, PackedCollection<?> wv,
 							PackedCollection<?> wq, PackedCollection<?> wo,
+							PackedCollection<?> bk, PackedCollection<?> bv,
+							PackedCollection<?> bq,
 							PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
 							PackedCollection<?> freqCis,
 							Producer<PackedCollection<?>> position,
@@ -229,7 +234,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		TraversalPolicy kvHeadShape = shape(kvHeads, headSize);
 
 		/* KEYS **/
-		keys.add(dense(wk));
+		keys.add(bk != null ? dense(wk, bk) : dense(wk));
 		if (qkNormK != null) {
 			// QK-Norm: normalize keys before RoPE
 			keys.add(reshape(shape(kvDim), kvHeadShape));
@@ -243,7 +248,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* ---- **/
 
 		/* VALUES **/
-		values.add(dense(wv));
+		values.add(bv != null ? dense(wv, bv) : dense(wv));
 		values.andThen(into(valueCache.reshape(shape(seqLen, kvDim)), position));
 		/* ---- **/
 
@@ -252,7 +257,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		TraversalPolicy headShape = shape(heads, headSize);
 		TraversalPolicy attentionShape = shape(heads, seqLen);
 
-		attention.add(dense(wq));
+		attention.add(bq != null ? dense(wq, bq) : dense(wq));
 		if (qkNormQ != null) {
 			// QK-Norm: normalize queries before RoPE
 			attention.add(reshape(shape(dim), headShape));
@@ -561,7 +566,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  Producer<PackedCollection<?>> position,
 							  ComputeRequirement... requirements) {
 		return transformer(heads, heads, rmsAttWeight, wk, wv, wq, wo,
-				null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, requirements);
+				null, null, null, null, null, freqCis, rmsFfnWeight, w1, w2, w3, position, requirements);
 	}
 
 	/**
@@ -595,6 +600,8 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection<?> rmsAttWeight,
 							  PackedCollection<?> wk, PackedCollection<?> wv,
 							  PackedCollection<?> wq, PackedCollection<?> wo,
+							  PackedCollection<?> bk, PackedCollection<?> bv,
+							  PackedCollection<?> bq,
 							  PackedCollection<?> qkNormQ, PackedCollection<?> qkNormK,
 							  PackedCollection<?> freqCis,
 							  PackedCollection<?> rmsFfnWeight,
@@ -604,7 +611,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		int dim = rmsAttWeight.getShape().length(0);
 		SequentialBlock transformer = new SequentialBlock(shape(dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				qkNormQ, qkNormK, freqCis, position, requirements), requirements);
+				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, requirements), requirements);
 		return transformer;
 	}

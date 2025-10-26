@@ -445,7 +445,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 
 		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
 		model.add(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
-			null, null, freqCis, p(position)));
+			null, null, null, null, null, freqCis, p(position)));
 
 		System.out.println("Compiling attention block...");
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
@@ -618,7 +618,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		org.almostrealism.model.Model model = new org.almostrealism.model.Model(shape(dim));
 		org.almostrealism.model.SequentialBlock main = model.sequential();
 		main.accum(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
-				null, null, freqCis, p(position)));
+				null, null, null, null, null, freqCis, p(position)));
 
 		System.out.println("Compiling attention with residual...");
 		org.almostrealism.model.CompiledModel compiled = model.compile(false);
@@ -672,6 +672,9 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		PackedCollection<?> wk = referenceData.get("self_attn.k_proj.weight");
 		PackedCollection<?> wv = referenceData.get("self_attn.v_proj.weight");
 		PackedCollection<?> wo = referenceData.get("self_attn.o_proj.weight");
+		PackedCollection<?> bq = referenceData.get("self_attn.q_proj.bias");
+		PackedCollection<?> bk = referenceData.get("self_attn.k_proj.bias");
+		PackedCollection<?> bv = referenceData.get("self_attn.v_proj.bias");
 		PackedCollection<?> ffnNorm = referenceData.get("post_attention_layernorm.weight");
 		PackedCollection<?> wGate = referenceData.get("mlp.gate_proj.weight");
 		PackedCollection<?> wUp = referenceData.get("mlp.up_proj.weight");
@@ -697,7 +700,7 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("\n--- STEP 2: Attention (no residual) ---");
 		org.almostrealism.model.Model attnModel = new org.almostrealism.model.Model(shape(dim));
 		attnModel.add(attention(heads, kvHeads, attnNorm, wk, wv, wq, wo,
-				null, null, freqCis, p(position)));
+				bk, bv, bq, null, null, freqCis, p(position)));
 		org.almostrealism.model.CompiledModel attnCompiled = attnModel.compile(false);
 		PackedCollection<?> attnOut = attnCompiled.forward(firstToken);
 		if (attnOut.getShape().getDimensions() == 2) {
@@ -757,6 +760,264 @@ public class Qwen3ComponentTest implements AttentionFeatures, LayerFeatures, Tes
 		System.out.println("Max difference: " + maxDiff);
 
 		System.out.println("\n[INFO] This test shows where the difference accumulates");
+		referenceData.destroy();
+	}
+
+	@Test
+	public void testPyTorchIntermediates() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing PyTorch Intermediate Values ===");
+
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+
+		// Load PyTorch intermediate outputs
+		System.out.println("\n--- PyTorch Intermediate Outputs ---");
+
+		String[] intermediateKeys = {
+			"intermediate.after_input_norm",
+			"intermediate.after_attention",
+			"intermediate.after_attention_residual",
+			"intermediate.after_ffn_norm",
+			"intermediate.after_ffn",
+			"intermediate.after_ffn_residual"
+		};
+
+		for (String key : intermediateKeys) {
+			try {
+				PackedCollection<?> tensor = referenceData.get(key);
+				if (tensor != null) {
+					// Extract first token (batch=0, position=0)
+					PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+					for (int d = 0; d < dim; d++) {
+						firstToken.setMem(d, tensor.valueAt(0, 0, d));
+					}
+
+					double sum = firstToken.doubleStream().sum();
+					double maxAbs = firstToken.doubleStream().map(Math::abs).max().orElse(0);
+
+					System.out.println(key + ":");
+					System.out.println("  sum=" + sum + ", max=" + maxAbs);
+				}
+			} catch (Exception e) {
+				System.out.println(key + ": NOT FOUND");
+			}
+		}
+
+		// Also check input and expected output
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> expectedOutput = referenceData.get("expected_output");
+
+		PackedCollection<?> inputFirstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			inputFirstToken.setMem(d, input.valueAt(0, 0, d));
+		}
+		System.out.println("\ninput (first token):");
+		System.out.println("  sum=" + inputFirstToken.doubleStream().sum() +
+				", max=" + inputFirstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			expectedFirstToken.setMem(d, expectedOutput.valueAt(0, 0, d));
+		}
+		System.out.println("\nexpected_output (first token):");
+		System.out.println("  sum=" + expectedFirstToken.doubleStream().sum() +
+				", max=" + expectedFirstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		System.out.println("\n[INFO] This shows PyTorch intermediate values");
+		referenceData.destroy();
+	}
+
+	@Test
+	public void testInputNormalization() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing Input Normalization ===");
+
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection<?> expectedAfterNorm = referenceData.get("intermediate.after_input_norm");
+
+		// Extract first token
+		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			firstToken.setMem(d, input.valueAt(0, 0, d));
+		}
+
+		System.out.println("\n--- Input (first token) ---");
+		System.out.println("sum=" + firstToken.doubleStream().sum() +
+				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Apply RMSNorm
+		org.almostrealism.model.Model normModel = new org.almostrealism.model.Model(shape(dim));
+		normModel.add(rmsnorm(attnNorm));
+		org.almostrealism.model.CompiledModel normCompiled = normModel.compile(false);
+		PackedCollection<?> normOut = normCompiled.forward(firstToken);
+
+		// Handle potential shape mismatch
+		if (normOut.getShape().getDimensions() == 2) {
+			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) squeezed.setMem(d, normOut.valueAt(0, d));
+			normOut = squeezed;
+		}
+
+		System.out.println("\n--- AR After Normalization ---");
+		System.out.println("sum=" + normOut.doubleStream().sum() +
+				", max=" + normOut.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Extract PyTorch expected
+		PackedCollection<?> expectedFirstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			expectedFirstToken.setMem(d, expectedAfterNorm.valueAt(0, 0, d));
+		}
+
+		System.out.println("\n--- PyTorch After Normalization ---");
+		System.out.println("sum=" + expectedFirstToken.doubleStream().sum() +
+				", max=" + expectedFirstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Compare
+		double maxDiff = 0;
+		for (int d = 0; d < dim; d++) {
+			double diff = Math.abs(normOut.valueAt(d) - expectedFirstToken.valueAt(d));
+			if (diff > maxDiff) maxDiff = diff;
+		}
+		System.out.println("\nMax difference: " + maxDiff);
+
+		System.out.println("\n[INFO] Testing if normalization matches PyTorch");
+		referenceData.destroy();
+	}
+
+	@Test
+	public void testQueryProjection() throws Exception {
+		if (testProfileIs(TestUtils.PIPELINE)) return;
+
+		String referenceDir = "/workspace/project/common/ml/qwen3_reference/qwen3_transformer_block";
+		System.out.println("\n=== Testing Query Projection ===");
+
+		StateDictionary referenceData = new StateDictionary(referenceDir);
+		PackedCollection<?> testConfig = referenceData.get("test_config");
+		int dim = (int) testConfig.valueAt(2);
+		int heads = (int) testConfig.valueAt(4);
+		int headSize = dim / heads;
+
+		// Load test data
+		PackedCollection<?> input = referenceData.get("input");
+		PackedCollection<?> attnNorm = referenceData.get("input_layernorm.weight");
+		PackedCollection<?> wq = referenceData.get("self_attn.q_proj.weight");
+		PackedCollection<?> qBias = referenceData.get("self_attn.q_proj.bias");
+
+		// Extract first token
+		PackedCollection<?> firstToken = new PackedCollection<>(shape(dim));
+		for (int d = 0; d < dim; d++) {
+			firstToken.setMem(d, input.valueAt(0, 0, d));
+		}
+
+		System.out.println("\n--- Input (first token) ---");
+		System.out.println("sum=" + firstToken.doubleStream().sum() +
+				", max=" + firstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Apply normalization
+		org.almostrealism.model.Model normModel = new org.almostrealism.model.Model(shape(dim));
+		normModel.add(rmsnorm(attnNorm));
+		org.almostrealism.model.CompiledModel normCompiled = normModel.compile(false);
+		PackedCollection<?> normalized = normCompiled.forward(firstToken);
+		if (normalized.getShape().getDimensions() == 2) {
+			PackedCollection<?> squeezed = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) squeezed.setMem(d, normalized.valueAt(0, d));
+			normalized = squeezed;
+		}
+
+		System.out.println("\n--- After Normalization ---");
+		System.out.println("sum=" + normalized.doubleStream().sum() +
+				", max=" + normalized.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Check weight matrix shape
+		System.out.println("\n--- Weight Matrix Info ---");
+		System.out.println("wq shape: " + wq.getShape());
+		System.out.println("wq dims: " + wq.getShape().getDimensions());
+		if (wq.getShape().getDimensions() == 2) {
+			System.out.println("wq size: " + wq.getShape().length(0) + " x " + wq.getShape().length(1));
+		}
+
+		// Compute Q projection manually using PyTorch convention: Q = input @ W^T + bias
+		// PyTorch Linear layer has weights of shape (out_features, in_features)
+		// and computes: output = input @ weight.T + bias
+		PackedCollection<?> qOut = new PackedCollection<>(shape(dim));
+		for (int out = 0; out < dim; out++) {
+			double sum = 0;
+			for (int in = 0; in < dim; in++) {
+				// PyTorch style: input[in] * weight[out][in]
+				sum += normalized.valueAt(in) * wq.valueAt(out, in);
+			}
+			if (qBias != null) {
+				sum += qBias.valueAt(out);
+			}
+			qOut.setMem(out, sum);
+		}
+
+		System.out.println("\n--- Q Projection (PyTorch style: input @ W^T + bias) ---");
+		System.out.println("sum=" + qOut.doubleStream().sum() +
+				", max=" + qOut.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Also try transposed version in case AR uses different convention
+		PackedCollection<?> qOutTransposed = new PackedCollection<>(shape(dim));
+		for (int out = 0; out < dim; out++) {
+			double sum = 0;
+			for (int in = 0; in < dim; in++) {
+				// Transposed: input[in] * weight[in][out]
+				sum += normalized.valueAt(in) * wq.valueAt(in, out);
+			}
+			if (qBias != null) {
+				sum += qBias.valueAt(out);
+			}
+			qOutTransposed.setMem(out, sum);
+		}
+
+		System.out.println("\n--- Q Projection (Transposed: input @ W + bias) ---");
+		System.out.println("sum=" + qOutTransposed.doubleStream().sum() +
+				", max=" + qOutTransposed.doubleStream().map(Math::abs).max().orElse(0));
+
+		// Load PyTorch's Q projection and extract first token
+		try {
+			PackedCollection<?> pytorchQ = referenceData.get("intermediate.after_q_proj");
+			PackedCollection<?> pytorchQFirstToken = new PackedCollection<>(shape(dim));
+			for (int d = 0; d < dim; d++) {
+				pytorchQFirstToken.setMem(d, pytorchQ.valueAt(0, 0, d));
+			}
+			System.out.println("\n--- PyTorch Q Projection (first token) ---");
+			System.out.println("sum=" + pytorchQFirstToken.doubleStream().sum() +
+					", max=" + pytorchQFirstToken.doubleStream().map(Math::abs).max().orElse(0));
+
+			// Compare differences
+			double diffPyTorchStyle = 0;
+			double diffTransposed = 0;
+			for (int d = 0; d < dim; d++) {
+				double expected = pytorchQFirstToken.valueAt(d);
+				diffPyTorchStyle = Math.max(diffPyTorchStyle, Math.abs(qOut.valueAt(d) - expected));
+				diffTransposed = Math.max(diffTransposed, Math.abs(qOutTransposed.valueAt(d) - expected));
+			}
+			System.out.println("\nMax difference (PyTorch style): " + diffPyTorchStyle);
+			System.out.println("Max difference (Transposed): " + diffTransposed);
+
+			if (diffPyTorchStyle < diffTransposed) {
+				System.out.println("\n[RESULT] PyTorch style (input @ W^T + bias) matches better");
+			} else {
+				System.out.println("\n[RESULT] Transposed (input @ W + bias) matches better");
+			}
+		} catch (Exception e) {
+			System.out.println("\n[WARNING] Could not load PyTorch Q projection: " + e.getMessage());
+		}
+
+		System.out.println("\n[INFO] Checking which weight convention AR uses");
 		referenceData.destroy();
 	}
 
