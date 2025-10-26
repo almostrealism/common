@@ -238,8 +238,8 @@ See [PLAN.md](./PLAN.md) for the complete implementation plan for Qwen3-Instruct
 - ✅ StateDictionary weight loading
 - ✅ Tokenizer implementation
 - ✅ Synthetic tests passing
-- ⚠️ GQA (heads != kvHeads) not yet implemented
-- ⚠️ Validation with real weights pending
+- ✅ GQA (Grouped Query Attention) implemented and tested
+- ⚠️ Full 24-layer model validation pending (single transformer block validated)
 
 ## References
 
