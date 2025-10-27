@@ -9,21 +9,46 @@ See [ASSESSMENT.md](ASSESSMENT.md) for detailed analysis.
 ## Problem Statement
 
 ✅ **What Works**:
-- Embeddings: Perfect match with PyTorch
+- Embeddings: Perfect match with PyTorch (0.000000 error)
 - Single transformer block: Nearly perfect (1e-6 error)
 - All individual components (GQA, RoPE, attention, FFN, residuals)
+- 1 transformer layer in full model: Good (0.001 RMSE)
 
 ❌ **What Fails**:
 - Full 24-layer model generates token 27 instead of expected token 271
+- 2 transformer layers: Error compounds 56x (0.001 → 0.061 RMSE)
 
-❓ **Root Cause**:
-- Either final processing (model.norm + lm_head) OR layer stacking
+✅ **ROOT CAUSE IDENTIFIED - MISSING CAUSAL MASKING**:
+- **Attention reads FULL KV cache at every position** (AttentionFeatures.java:271-273)
+- At position 0: Attends to 1 valid entry + 32,767 zeros
+- Zero-padding effect: Attention weights shrink by **192x** (0.8668 → 0.0045)
+- Error compounds across layers: 56x from layer 1 to layer 2, catastrophic at layer 24
+- **Fix**: Implement causal masking to only attend to positions 0..p at position p
+- **Proof**: CausalMaskingTest#compareZeroPaddingEffect demonstrates 86% attention weight distortion
 
 ---
 
 ## Immediate Next Actions
 
-### 1. Test Final RMSNorm in Isolation (**PRIORITY 1**)
+### 1. Implement Causal Masking (**PRIORITY 1** - ROOT CAUSE IDENTIFIED)
+
+**Bug**: `AttentionFeatures.java` lines 271-273 read full KV cache regardless of position
+
+**Current Code**:
+```java
+attention.add(attentionKeys(headShape, p(keyCache)));  // Reads ALL positions!
+attention.add(softmax(attentionShape, true));
+attention.add(attentionValues(attentionShape, p(valueCache)));
+```
+
+**Required Fix**:
+At position `p`, slice cache to only include positions `0..p`:
+- Option A: Slice cache before attention: `cache.range(0, (p+1) * cacheStride)`
+- Option B: Add causal mask to attention scores before softmax: `scores + mask` where `mask[i,j] = -inf if j > p`
+
+**Impact**: Should reduce error from 56x compounding to near-zero
+
+### 2. Test Final RMSNorm in Isolation (**PRIORITY 2**)
 
 **Test**: Apply model.norm to PyTorch's hidden_states[24] and compare:
 1. Load `after_layer_22.bin` (closest we have to final layer)
@@ -34,7 +59,7 @@ See [ASSESSMENT.md](ASSESSMENT.md) for detailed analysis.
 **If this fails**: RMSNorm bug
 **If this passes**: Bug is in lm_head or layer stacking
 
-### 2. Test lm_head Projection (**PRIORITY 2**)
+### 3. Test lm_head Projection (**PRIORITY 3**)
 
 **Test**: Apply lm_head to a known vector:
 1. Use PyTorch's normalized output
@@ -44,7 +69,7 @@ See [ASSESSMENT.md](ASSESSMENT.md) for detailed analysis.
 **If this fails**: lm_head dense layer bug
 **If this passes**: Bug must be in layer stacking
 
-### 3. Trace Layer-by-Layer Error Growth (**PRIORITY 3**)
+### 4. Trace Layer-by-Layer Error Growth (**PRIORITY 4** - PARTIALLY COMPLETE)
 
 Since we can't compile layer tests, use the actual Qwen3 model with instrumentation:
 1. Modify Qwen3.java to save intermediate outputs

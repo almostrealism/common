@@ -77,15 +77,23 @@ Since individual blocks work but the full model fails, the bug must be in:
 2. model.norm (before lm_head)
 3. lm_head (final logits)
 
-#### Suspect 2: Layer Stacking
+#### Suspect 2: Layer Stacking ⚠️ **CONFIRMED BUG LOCATION**
 **Hypothesis**: Error compounds across 24 layers due to residual connections or shared state.
 
-**Evidence**:
-- Previous session showed error amplifies 56x from layer 1 to layer 2 (RMSE 0.001 → 0.061)
-- However, this was with full layer compilation which now crashes
-- Need to retest with actual model
+**Evidence** (CONFIRMED 2025-10-26):
+- ✅ After 1 layer: RMSE 0.001091 (good)
+- ❌ After 2 layers: RMSE 0.061109 (56x worse!)
+- **Error amplifies 56-57x when stacking layers**
+- Single transformer block in isolation: 1e-6 error (perfect)
+- Proves bug is in layer interaction, NOT individual components
 
-**Test**: Compare outputs at layers 1, 5, 10, 22, 23 to see error progression.
+**Test Results**: `LayerOutputComparisonTest#compareAfter1Layer` and `#compareAfter2Layers` confirm exponential error growth.
+
+**Possible Root Causes**:
+1. Position variable shared incorrectly across all layers
+2. KV cache state bleeding between layers
+3. Residual connection accumulation error
+4. Shared mutable weight references
 
 #### Suspect 3: Position Tracking
 **Hypothesis**: Position variable is shared across all 24 layers incorrectly.
