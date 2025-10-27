@@ -31,33 +31,6 @@ import java.util.function.Function;
 
 public interface AttentionFeatures extends RotationFeatures {
 
-	/**
-	 * Creates a causal attention mask for position 0.
-	 * This mask allows attention to position 0 and masks all future positions.
-	 *
-	 * The mask is designed to be added to attention scores before softmax.
-	 * Masked positions receive -10000.0, which becomes ~0 probability after softmax.
-	 *
-	 * @param heads Number of attention heads
-	 * @param seqLen Sequence length (total cache size)
-	 * @return Mask of shape (heads, seqLen) where position 0 = 0.0, positions 1+ = -10000.0
-	 */
-	default PackedCollection<?> createCausalMaskPosition0(int heads, int seqLen) {
-		PackedCollection<?> mask = new PackedCollection<>(shape(heads, seqLen));
-
-		for (int h = 0; h < heads; h++) {
-			// Position 0: no mask (0.0 allows attention)
-			mask.setMem(h * seqLen, 0.0);
-
-			// Positions 1+: large negative value masks future positions
-			for (int s = 1; s < seqLen; s++) {
-				mask.setMem(h * seqLen + s, -10000.0);
-			}
-		}
-
-		return mask;
-	}
-
 	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection<?>> keys,
 																   ComputeRequirement... requirements) {
 		return inputShape -> attentionKeys(inputShape, keys, requirements);
@@ -297,9 +270,14 @@ public interface AttentionFeatures extends RotationFeatures {
 		attention.add(reshape(headShapeComplex, headShape));
 		attention.add(attentionKeys(headShape, p(keyCache)));
 
-		// Add causal mask (position 0 only for now)
-		PackedCollection<?> causalMask = createCausalMaskPosition0(heads, seqLen);
-		attention.add("causal_mask", input -> add(input, p(causalMask)));
+		// Add dynamic causal mask: mask[i] = -10000 if i > position, else 0
+		// This prevents attention from seeing future positions in the KV cache
+		CollectionProducer<?> indices = integers(0, seqLen);
+		CollectionProducer<PackedCollection<?>> maskRow =
+			greaterThan(indices, position, c(-10000.0), c(0.0), false);
+		// Reshape to (1, seqLen) and repeat for all heads -> (heads, seqLen)
+		CollectionProducer<PackedCollection<?>> causalMask = maskRow.reshape(1, seqLen).repeat(heads);
+		attention.add("causal_mask", input -> add(input, causalMask));
 
 		attention.add(softmax(attentionShape, true));
 		attention.add(attentionValues(attentionShape, p(valueCache)));
