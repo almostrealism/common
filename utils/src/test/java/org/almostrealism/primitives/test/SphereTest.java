@@ -62,8 +62,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionTests() {
-		Sphere.enableTransform = false; // TODO  This should not be required
-
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
 		PackedCollection<?> distance = f.getDistance().get().evaluate();
