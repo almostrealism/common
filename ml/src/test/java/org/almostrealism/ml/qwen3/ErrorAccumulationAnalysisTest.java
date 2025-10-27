@@ -55,7 +55,7 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
         Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
         log("\n=== Error Accumulation Analysis ===\n");
-        log("Testing layers 1, 2, 5, 10, 23 to measure error growth\n");
+        log("Testing all 24 layers to measure error growth per layer\n");
 
         Qwen3Config config = new Qwen3Config(
             896,      // dim
@@ -89,9 +89,9 @@ public class ErrorAccumulationAnalysisTest implements AttentionFeatures, Console
         // Storage for all layer statistics
         List<LayerStats> allStats = new ArrayList<>();
 
-        // Test layer counts that have reference files
-        // Reference files available: after_layer_0, 1, 4, 9, 22
-        int[] layersToTest = {1, 2, 5, 10, 23};
+        // Test all 24 layers to get accurate per-layer growth measurements
+        int[] layersToTest = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
 
         for (int numLayers : layersToTest) {
             log(String.format("\n--- Testing %d layer(s) ---", numLayers));

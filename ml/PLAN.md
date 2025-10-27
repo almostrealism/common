@@ -1,171 +1,200 @@
-# Qwen2.5-0.5B Implementation Plan - REVISED
+# Qwen2.5-0.5B Implementation Plan - UPDATED
 
-**Status**: Bug narrowed to final processing or layer stacking
+**Status**: Critical bugs identified at layers 2→3, 22→23, and 23→24
 
-See [ASSESSMENT.md](ASSESSMENT.md) for detailed analysis.
-
----
-
-## Problem Statement
-
-✅ **What Works**:
-- Embeddings: Perfect match with PyTorch (0.000000 error)
-- Single transformer block: Nearly perfect (1e-6 error)
-- All individual components (GQA, RoPE, attention, FFN, residuals)
-- 1 transformer layer in full model: Good (0.001 RMSE)
-
-❌ **What Fails**:
-- Full 24-layer model generates token 27 instead of expected token 271
-- 2 transformer layers: Error compounds 56x (0.001 → 0.061 RMSE)
-
-✅ **ROOT CAUSE IDENTIFIED & FIXED - CAUSAL MASKING IMPLEMENTED**:
-- **Problem**: Attention was reading FULL KV cache at every position (AttentionFeatures.java:298-305)
-- At position 0: Attended to 1 valid entry + 32,767 zeros
-- Zero-padding effect: Attention weights shrink by **192x** (0.8668 → 0.0045)
-- Error compounds across layers: 56x from layer 1 to layer 2, catastrophic at layer 24
-- **Solution**: Dynamic Producer-based causal mask using `greaterThan(integers(0, seqLen), position, c(-10000.0), c(0.0), false)`
-- **Status**: Implemented and tested - mask correctly adapts to runtime position
+See [ASSESSMENT.md](ASSESSMENT.md) for initial analysis.
 
 ---
 
-## Immediate Next Actions
+## Key Findings from Error Accumulation Analysis
 
-### 1. ✅ Causal Masking Implemented - Validate Integration
+### ✅ **Good News**: Core implementation works correctly
+- **Layers 3-22**: Show excellent error growth (0.88x-1.17x per layer)
+- This proves the fundamental attention/FFN/normalization logic is correct
+- Most of the model maintains numerical stability
 
-**Implementation**: Dynamic Producer-based mask in `AttentionFeatures.java:298-305`
+### ❌ **Critical Issues**: Specific layer transitions fail catastrophically
 
-**Code**:
-```java
-// Generate causal mask that adapts to runtime position
-CollectionProducer<?> indices = integers(0, seqLen);
-CollectionProducer<PackedCollection<?>> causalMask =
-    greaterThan(indices, position, c(-10000.0), c(0.0), false);
-causalMask = causalMask.reshape(1, seqLen).repeat(heads);
+| Layer Transition | Error Growth | Status | Notes |
+|-----------------|--------------|--------|--------|
+| 1→2 | 1.675x | ✅ Normal | Expected numerical precision |
+| **2→3** | **15.010x** | ❌ BUG | Massive jump from 0.001 to 0.020 |
+| 3→22 | ~1.05x avg | ✅ Excellent | 19 layers with stable growth |
+| **22→23** | **3.813x** | ⚠️ Issue | Jump from 0.044 to 0.169 |
+| **23→24** | **20.187x** | ❌ CRITICAL | Catastrophic: 0.169 to 3.406 |
 
-attention.add(attentionKeys(headShape, p(keyCache)));
-attention.add("causal_mask", input -> add(input, causalMask));  // ADD MASK HERE
-attention.add(softmax(attentionShape, true));
-attention.add(attentionValues(attentionShape, p(valueCache)));
-```
-
-**Next Steps**:
-- Integrate dynamic mask into AttentionFeatures.java
-- Run Qwen3TransformerBlockTest to ensure no regression
-- Run Qwen3LogitsTest to validate fix (should generate token 271)
-
-### 2. Test Final RMSNorm in Isolation (**PRIORITY 2**)
-
-**Test**: Apply model.norm to PyTorch's hidden_states[24] and compare:
-1. Load `after_layer_22.bin` (closest we have to final layer)
-2. Load model.norm weights
-3. Apply RMSNorm in AR
-4. Compare with reference
-
-**If this fails**: RMSNorm bug
-**If this passes**: Bug is in lm_head or layer stacking
-
-### 3. Test lm_head Projection (**PRIORITY 3**)
-
-**Test**: Apply lm_head to a known vector:
-1. Use PyTorch's normalized output
-2. Apply AR's dense(lm_head)
-3. Compare logits
-
-**If this fails**: lm_head dense layer bug
-**If this passes**: Bug must be in layer stacking
-
-### 4. Trace Layer-by-Layer Error Growth (**PRIORITY 4** - PARTIALLY COMPLETE)
-
-Since we can't compile layer tests, use the actual Qwen3 model with instrumentation:
-1. Modify Qwen3.java to save intermediate outputs
-2. Run inference
-3. Compare with PyTorch references at layers 1, 5, 10, 22
-
-This will show if/where error compounds.
+### PyTorch Reference Also Shows Anomalies
+- Layer 2: Std deviation jumps 100x (0.33 → 26.6)
+- Layer 21→22: Std drops 30x (55.7 → 1.9)
+- Suggests layers 2, 21-24 may have special operations
 
 ---
 
-## Test Strategy
+## Investigation Plan: What's Special About These Layers?
 
-### Phase 1: Isolate Final Components (Est: 1 hour)
+### Phase 1: Layer Configuration Analysis
+
+Create **LayerConfigurationTest.java** to detect differences:
 
 ```java
-// Test model.norm in isolation
 @Test
-public void testFinalNorm() {
-    // Load after_layer_22.bin as input
-    // Load model.norm.weight
-    // Apply rmsnorm
-    // Compare with after_final_norm.bin (need to generate)
+public void analyzeLayerDifferences() {
+    // Check each layer's weights for:
+    // 1. Different weight shapes
+    // 2. Missing/extra weights
+    // 3. Weight magnitude differences
+    // 4. Bias presence/absence patterns
+
+    for (int layer = 0; layer < 24; layer++) {
+        analyzeLayer(layer);
+    }
 }
 
-// Test lm_head in isolation
-@Test
-public void testLmHead() {
-    // Load normalized output
-    // Load lm_head.weight
-    // Apply dense projection
-    // Compare with final_logits.bin
+private void analyzeLayer(int layer) {
+    String prefix = "model.layers." + layer;
+
+    // Check for special weights
+    boolean hasQKNorm = stateDict.has(prefix + ".self_attn.q_norm.weight");
+    boolean hasBiasQ = stateDict.has(prefix + ".self_attn.q_proj.bias");
+
+    // Check weight magnitudes
+    double qWeightStd = computeStd(stateDict.get(prefix + ".self_attn.q_proj.weight"));
+
+    // Flag anomalies
+    if (layer == 2 || layer == 22 || layer == 23) {
+        log("Layer " + layer + " analysis:");
+        log("  Has QK-Norm: " + hasQKNorm);
+        log("  Has Q bias: " + hasBiasQ);
+        log("  Q weight std: " + qWeightStd);
+    }
 }
 ```
 
-### Phase 2: Instrument Full Model (Est: 30 min)
+### Phase 2: Operation-Level Debugging
 
-Add hooks to Qwen3.java to capture outputs:
+Create **LayerOperationDebugTest.java** to trace operations:
+
 ```java
-// After transformer stack (before model.norm)
-PackedCollection<?> beforeNorm = ...;
-saveForInspection("before_norm.bin", beforeNorm);
+@Test
+public void debugProblematicLayers() {
+    // Test layers 2, 22, 23 in isolation
+    testLayerInIsolation(2);   // Where first jump occurs
+    testLayerInIsolation(22);  // Before final jump
+    testLayerInIsolation(23);  // Catastrophic layer
+}
 
-// After model.norm
-PackedCollection<?> afterNorm = ...;
-saveForInspection("after_norm.bin", afterNorm);
+private void testLayerInIsolation(int layerIdx) {
+    // Load input from previous layer
+    PackedCollection<?> input = loadReference("after_layer_" + (layerIdx-1) + ".bin");
 
-// Compare with PyTorch at each step
+    // Run ONLY this layer
+    Model singleLayer = buildSingleLayer(layerIdx);
+    PackedCollection<?> output = singleLayer.forward(input);
+
+    // Compare with reference
+    PackedCollection<?> expected = loadReference("after_layer_" + layerIdx + ".bin");
+
+    // Detailed comparison
+    compareWithBreakdown(output, expected);
+}
 ```
 
-### Phase 3: Generate Missing References (Est: 15 min)
+### Phase 3: Component-Level Testing
 
-Update `generate_layer_outputs.py`:
-```python
-# Save after last transformer layer
-hidden_last = hidden_states[24]  # After layer 23
-save_tensor(hidden_last, "after_layer_23.bin")
+Create **ComponentIsolationTest.java** to test each part:
 
-# Save after model.norm
-normalized = model.model.norm(hidden_last)
-save_tensor(normalized, "after_final_norm.bin")
+```java
+@Test
+public void testLayer2Components() {
+    // Break down layer 2 into components:
+    // 1. Input layernorm
+    // 2. Attention (Q/K/V proj, RoPE, softmax, output)
+    // 3. Residual connection
+    // 4. Post-attention layernorm
+    // 5. FFN (gate, up, down)
+    // 6. Final residual
 
-# Already have final_logits.bin
+    PackedCollection<?> input = loadReference("after_layer_1.bin");
+
+    // Test each component separately
+    testInputNorm(2, input);
+    testAttention(2, input);
+    testFFN(2, input);
+}
 ```
+
+### Phase 4: Differential Testing
+
+Create **DifferentialAnalysisTest.java** to find exact divergence:
+
+```java
+@Test
+public void findExactDivergencePoint() {
+    // For problematic layers, save intermediate outputs:
+    // - After input norm
+    // - After Q/K/V projection
+    // - After RoPE
+    // - After attention scores
+    // - After softmax
+    // - After attention output
+    // - After residual
+    // - After FFN norm
+    // - After FFN
+    // - After final residual
+
+    instrumentLayer(2);
+    instrumentLayer(22);
+    instrumentLayer(23);
+}
+```
+
+---
+
+## Diagnostic Test Suite
+
+### 1. **WeightAnalysisTest** - Check for weight anomalies
+- Compare weight statistics across all layers
+- Flag layers with unusual patterns
+- Check for missing/extra weights
+
+### 2. **LayerIsolationTest** - Test problematic layers alone
+- Test layers 2, 22, 23 in complete isolation
+- Compare with PyTorch references
+- Identify which layer is actually broken
+
+### 3. **ComponentBreakdownTest** - Test sub-components
+- Break each problematic layer into parts
+- Test normalization, attention, FFN separately
+- Find exact operation that fails
+
+### 4. **InstrumentedModelTest** - Full model with logging
+- Add detailed logging at every step
+- Save intermediate outputs
+- Compare with PyTorch at each checkpoint
+
+### 5. **NumericalStabilityTest** - Check for overflow/underflow
+- Monitor value ranges through layers
+- Check for NaN/Inf
+- Verify numerical bounds
+
+---
+
+## Immediate Actions
+
+1. **Create diagnostic test suite** (30 min)
+2. **Run weight analysis** to check for configuration differences (10 min)
+3. **Test layer 2 in isolation** since it's the first failure point (20 min)
+4. **Instrument the model** to capture intermediate outputs (20 min)
+5. **Compare with PyTorch** at each step to find divergence (30 min)
 
 ---
 
 ## Success Criteria
 
-**Phase 1 Success**: Identify which component (model.norm or lm_head) has the bug
-**Phase 2 Success**: See where error starts/compounds in layer stack
-**Phase 3 Success**: Have complete reference data for all pipeline stages
-
----
-
-## Debugging Checklist
-
-- [ ] Test model.norm with known input/output
-- [ ] Test lm_head with known input/output
-- [ ] Generate missing PyTorch references
-- [ ] Instrument Qwen3.java for intermediate outputs
-- [ ] Compare layer-by-layer progression
-- [ ] Identify exact location of divergence
-
----
-
-## Files
-
-- **ASSESSMENT.md**: Detailed analysis with test results
-- **Qwen3TransformerBlockTest.java**: Single block test (✅ passes)
-- **Qwen3.java**: Full model (needs instrumentation)
-- **generate_layer_outputs.py**: Reference data generator (needs updates)
+- [ ] Identify what makes layers 2, 22, 23 special
+- [ ] Fix the specific bugs causing 15x, 3.8x, and 20x error jumps
+- [ ] Achieve < 1.2x error growth per layer across all 24 layers
+- [ ] Generate correct token (271 instead of 27)
 
 ---
 
@@ -175,12 +204,11 @@ save_tensor(normalized, "after_final_norm.bin")
 export AR_HARDWARE_LIBS=/home/developer/.libs/
 export AR_HARDWARE_DRIVER=native
 
-# Verify transformer block still passes
-mvn test -Dtest=Qwen3TransformerBlockTest
+# Run diagnostic tests
+mvn test -pl ml -Dtest=LayerConfigurationTest
+mvn test -pl ml -Dtest=LayerIsolationTest
+mvn test -pl ml -Dtest=ComponentBreakdownTest
 
-# Run end-to-end test
-mvn test -Dtest=Qwen3LogitsTest
-
-# Generate updated PyTorch references
-python generate_layer_outputs.py
+# Run full error accumulation analysis
+mvn test -pl ml -Dtest=ErrorAccumulationAnalysisTest
 ```

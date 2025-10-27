@@ -47,8 +47,8 @@ def main():
     for i in range(1, len(hidden_states)):
         print(f"  {i}: After layer {i-1}")
 
-    # Save outputs after specific layers
-    layers_to_save = [0, 1, 2, 5, 10, 23]  # After embeddings, layer 0, layer 1, etc.
+    # Save outputs after all layers
+    layers_to_save = list(range(len(hidden_states)))  # All layers: embeddings, 0-23
 
     for layer_idx in layers_to_save:
         if layer_idx >= len(hidden_states):
