@@ -255,7 +255,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		/* QUERY **/
 		TraversalPolicy headShapeComplex = shape(heads, headSize / 2, 2);
 		TraversalPolicy headShape = shape(heads, headSize);
-		TraversalPolicy attentionShape = shape(heads, seqLen);
+		TraversalPolicy attentionShape = shape(heads, seqLen).traverseEach(); // (heads, 1, seqLen)
 
 		attention.add(bq != null ? dense(wq, bq) : dense(wq));
 		if (qkNormQ != null) {
@@ -275,9 +275,13 @@ public interface AttentionFeatures extends RotationFeatures {
 		CollectionProducer<?> indices = integers(0, seqLen);
 		CollectionProducer<PackedCollection<?>> maskRow =
 			greaterThan(indices, position, c(-10000.0), c(0.0), false);
-		// Reshape to (1, seqLen) and repeat for all heads -> (heads, seqLen)
-		CollectionProducer<PackedCollection<?>> causalMask = maskRow.reshape(1, seqLen).repeat(heads);
-		attention.add("causal_mask", input -> add(input, causalMask));
+		// Reshape to (1, 1, seqLen) and repeat for all heads -> (heads, 1, seqLen)
+		CollectionProducer<PackedCollection<?>> causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
+
+		// Create a block to add the causal mask to the attention scores
+		attention.add(layer("causal_mask", attentionShape, attentionShape,
+		                   input -> add(input, causalMask),
+		                   requirements));
 
 		attention.add(softmax(attentionShape, true));
 		attention.add(attentionValues(attentionShape, p(valueCache)));
