@@ -88,9 +88,7 @@ public abstract class OperationAdapter<T> implements
 	@Override
 	public void destroy() {
 		if (getInputs() != null) {
-			getInputs().stream().map(in -> in instanceof Destroyable ? (Destroyable) in : null)
-					.filter(Objects::nonNull)
-					.forEach(Destroyable::destroy);
+			getInputs().forEach(Destroyable::destroy);
 		}
 
 		resetArguments();

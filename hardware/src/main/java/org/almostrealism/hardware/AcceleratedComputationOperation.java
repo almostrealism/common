@@ -312,5 +312,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
 		}
+
+		if (compiler != null) {
+			compiler.destroy();
+			compiler = null;
+		}
 	}
 }

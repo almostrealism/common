@@ -16,6 +16,7 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
@@ -36,7 +37,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class CompiledModel implements CodeFeatures {
+public class CompiledModel implements Destroyable, CodeFeatures {
 	private List<TraversalPolicy> inputShapes;
 	private TraversalPolicy outputShape;
 
@@ -91,6 +92,12 @@ public class CompiledModel implements CodeFeatures {
 
 	public void reset() {
 		setup.run();
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(forward);
+		Destroyable.destroy(backward);
 	}
 
 	public static CompiledModel compile(Model model) {

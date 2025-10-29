@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.streams.StreamingEvaluable;
@@ -32,7 +33,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class DestinationEvaluable<T extends MemoryBank> implements
-		Evaluable<T>, StreamingEvaluable<T>, Runnable, ConsoleFeatures {
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
 	private Evaluable<T> operation;
 	private MemoryBank destination;
 
@@ -138,6 +139,11 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		} else {
 			throw new NullPointerException();
 		}
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(operation);
 	}
 
 	@Override

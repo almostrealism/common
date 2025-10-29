@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.io.Describable;
@@ -23,7 +24,7 @@ import org.almostrealism.io.Describable;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-public interface Component extends Describable {
+public interface Component extends Destroyable, Describable {
 
 	TraversalPolicy getOutputShape();
 

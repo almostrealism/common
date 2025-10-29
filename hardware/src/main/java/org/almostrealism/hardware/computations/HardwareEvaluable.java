@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
@@ -48,7 +49,7 @@ import java.util.function.UnaryOperator;
  * @author  Michael Murray
  */
 public class HardwareEvaluable<T> implements
-		Evaluable<T>, StreamingEvaluable<T>, Runnable, ArgumentList<T> {
+		Evaluable<T>, StreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
 	private Supplier<Evaluable<T>> ev;
 	private Evaluable<T> destination;
 	private Evaluable<T> shortCircuit;
@@ -74,7 +75,7 @@ public class HardwareEvaluable<T> implements
 		this.destination = destination;
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
-		this.kernel = new DefaultContextSpecific<>(() -> ev.get());
+		this.kernel = new DefaultContextSpecific<>(() -> ev.get(), Destroyable::destroy);
 		this.executor = executor;
 	}
 
@@ -190,5 +191,10 @@ public class HardwareEvaluable<T> implements
 		}
 
 		return Collections.emptyList();
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(kernel);
 	}
 }

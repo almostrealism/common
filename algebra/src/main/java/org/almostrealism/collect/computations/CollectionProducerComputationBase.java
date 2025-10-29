@@ -19,8 +19,8 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -772,7 +772,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * 
 	 * @see RepeatedProducerComputationAdapter
 	 * @see CollectionProducerComputationAdapter#toRepeated()
-	 * @see RelativeTraversableProducerComputation#toRepeated()
 	 */
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		throw new UnsupportedOperationException();
@@ -792,6 +791,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		super.destroy();
 		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
+		Destroyable.destroy(evaluable);
+		this.evaluable = null;
 	}
 
 	/**

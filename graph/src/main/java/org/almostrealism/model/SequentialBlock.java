@@ -377,4 +377,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 		return propagate;
 	}
+
+	@Override
+	public void destroy() {
+		if (blocks != null) {
+			blocks.forEach(Block::destroy);
+			blocks = null;
+		}
+	}
 }

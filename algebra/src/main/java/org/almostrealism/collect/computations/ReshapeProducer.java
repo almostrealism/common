@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
@@ -617,6 +618,9 @@ public class ReshapeProducer<T extends Shape<T>>
 		});
 		return hev;
 	}
+
+	@Override
+	public void destroy() { Destroyable.destroy(producer); }
 
 	@Override
 	public String signature() {
