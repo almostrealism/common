@@ -644,8 +644,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = CollectionExpression.traverse(
-					getArgumentForInput(getInputs().get(i)), index, getMemLength());
+			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
 		}
 		return vars;
 	}

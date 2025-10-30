@@ -23,7 +23,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.ComparisonExpression;
 import io.almostrealism.collect.IndexOfPositionExpression;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,13 +32,11 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerFeatures;
-import io.almostrealism.relation.ProducerSubstitution;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
@@ -1026,10 +1023,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> sizeOf(Producer<PackedCollection<?>> collection) {
 		return new DefaultTraversableExpressionComputation<>("sizeOf", shape(1),
 				(args) -> CollectionExpression.create(shape(1),
-						index -> {
-							TraversableExpression value = RelativeTraversableExpression.getExpression(args[1]);
-							return ((ArrayVariable) value).length();
-						}), collection);
+						index -> ((ArrayVariable) args[1]).length()), collection);
 	}
 
 	/**

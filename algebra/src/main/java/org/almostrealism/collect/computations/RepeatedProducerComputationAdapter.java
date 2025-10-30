@@ -89,7 +89,6 @@ import java.util.function.Supplier;
  * @see RepeatedProducerComputation
  * @see TraversableExpression  
  * @see CollectionProducerComputationAdapter#toRepeated()
- * @see RelativeTraversableProducerComputation#toRepeated()
  * @see TraversalPolicy
  * 
  * @author Michael Murray

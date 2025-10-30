@@ -58,9 +58,6 @@ Always run `mvn` commands from the root of the repository.
 ### RepeatedProducerComputationAdapter
 - Implements Adapter pattern to convert TraversableExpression operations into RepeatedProducerComputation format
 - Simplified destination addressing using localIndex directly
-- Primary usage through toRepeated() methods in:
-  - CollectionProducerComputationAdapter.toRepeated()
-  - RelativeTraversableProducerComputation.toRepeated()
 
 ### ConstantRepeatedProducerComputation
 - Extends RepeatedProducerComputation with fixed iteration counts

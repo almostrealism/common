@@ -26,7 +26,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface CollectionExpression<T> extends TraversableExpression<Double>, Shape<T>, Describable {
-	boolean enableRelativeExpression = false;
 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
@@ -76,16 +75,5 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
-	}
-
-	static TraversableExpression traverse(Object o, Expression index, int memLength) {
-		TraversableExpression exp = TraversableExpression.traverse(o);
-		if (exp == null) return null;
-
-		if (enableRelativeExpression && exp instanceof CollectionVariable) {
-			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, index, memLength);
-		} else {
-			return exp;
-		}
 	}
 }

@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputableProcessContext;
@@ -210,8 +209,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable var = (CollectionVariable)
-				RelativeTraversableExpression.getExpression(args[0]);
+		CollectionVariable var = (CollectionVariable) args[0];
 
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		Expression currentValue = var.reference(k.multiply(var.length()));

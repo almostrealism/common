@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
@@ -287,11 +286,10 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 *         the specified local index position
 	 * 
 	 * @see io.almostrealism.collect.CollectionVariable#reference(io.almostrealism.expression.Expression)
-	 * @see io.almostrealism.collect.RelativeTraversableExpression
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable variable = (CollectionVariable) RelativeTraversableExpression.getExpression(args[0]);
+		CollectionVariable variable = (CollectionVariable) args[0];
 		Expression currentValue = variable.reference(
 				new KernelIndex().multiply(variable.length())); // TODO Should this be globalIndex instead of KernelIndex?
 		return expression.apply(args, currentValue).getValueAt(localIndex);
