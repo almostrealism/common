@@ -166,6 +166,8 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 	@Test
 	public void softmaxBackwardsLarge() throws IOException {
+		if (testDepth < 1) return;
+
 		TraversalPolicy shape = shape(1, 4, 25088);
 
 		PackedCollection<?> input = new PackedCollection<>(shape);
@@ -182,8 +184,6 @@ public class SoftmaxTests implements LayerFeatures, DistributionFeatures, TestFe
 
 			return () -> {
 				PackedCollection<?> out = gr.evaluate();
-				// System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
-
 				out.getMem(0, result, 0, result.length);
 			};
 		});

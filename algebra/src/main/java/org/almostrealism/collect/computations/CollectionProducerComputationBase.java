@@ -644,8 +644,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = CollectionExpression.traverse(getArgumentForInput(getInputs().get(i)),
-					size -> index.toInt().divide(e(getMemLength())).multiply(size));
+			vars[i] = CollectionExpression.traverse(
+					getArgumentForInput(getInputs().get(i)), index, getMemLength());
 		}
 		return vars;
 	}
@@ -772,7 +772,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * 
 	 * @see RepeatedProducerComputationAdapter
 	 * @see CollectionProducerComputationAdapter#toRepeated()
-	 * @see RelativeTraversableProducerComputation#toRepeated()
 	 */
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		throw new UnsupportedOperationException();

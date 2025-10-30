@@ -946,13 +946,15 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
 		TraversalPolicy shape = shape(1);
+		long size = shape(supplier).getSizeLong();
 		return new DefaultTraversableExpressionComputation<>("valueAtIndexRelative", shape,
 				args -> {
 					if (args[1] == null) {
 						throw new UnsupportedOperationException();
 					}
 
-					return CollectionExpression.create(shape, idx -> args[1].getValueRelative(e(index)));
+					return CollectionExpression.create(shape, idx ->
+							args[1].getValueAt(idx.multiply(size).add(index)));
 				},
 				supplier);
 	}
@@ -1025,7 +1027,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DefaultTraversableExpressionComputation<>("sizeOf", shape(1),
 				(args) -> CollectionExpression.create(shape(1),
 						index -> {
-							TraversableExpression value = ((RelativeTraversableExpression) args[1]).getExpression();
+							TraversableExpression value = RelativeTraversableExpression.getExpression(args[1]);
 							return ((ArrayVariable) value).length();
 						}), collection);
 	}
@@ -2776,8 +2778,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new TraversableRepeatedProducerComputation<>("indexOfMax", shape.replace(shape(1)), size,
 				(args, index) -> e(0),
 				(args, currentIndex) -> index ->
-						conditional(args[1].getValueRelative(index)
-										.greaterThan(args[1].getValueRelative(currentIndex)),
+						conditional(args[1].getValueAt(kernel().multiply(size).add(index))
+										.greaterThan(args[1].getValueAt(kernel().multiply(size).add(currentIndex))),
 								index, currentIndex),
 				(Supplier) input);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -187,7 +186,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 				log("Generating values for aggregation " + getShape().toStringDetail());
 
 			for (int i = 0; i < count; i++) {
-				value = expression.apply(value, args[1].getValueRelative(e(i)));
+				value = expression.apply(value, args[1].getValueAt(index.multiply(count).add(e(i))));
 
 				if (enableLogging)
 					log("Added value " + i + "/" + count + " (" + value.countNodes() + " total nodes)");
@@ -212,11 +211,11 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		CollectionVariable var = (CollectionVariable)
-				((RelativeTraversableExpression) args[0]).getExpression();
+				RelativeTraversableExpression.getExpression(args[0]);
 
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		Expression currentValue = var.reference(k.multiply(var.length()));
-		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
+		return expression.apply(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
 	}
 
 	@Override

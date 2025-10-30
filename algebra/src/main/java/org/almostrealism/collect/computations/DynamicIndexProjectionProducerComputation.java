@@ -167,7 +167,8 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 			TraversableExpression<Double> var = getTraversableArguments(index)[1];
 			if (var == null) return null;
 
-			return var.getValueRelative(projectIndex(var, index));
+			Expression offset = index.divide(getMemLength()).multiply(shape(var).getSizeLong());
+			return var.getValueAt(offset.add(projectIndex(var, index)));
 		}
 
 		return super.getValueAt(index);

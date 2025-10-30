@@ -18,18 +18,24 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import org.almostrealism.io.Describable;
 
 import java.util.function.Function;
-import java.util.function.LongFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface CollectionExpression<T> extends TraversableExpression<Double>, Shape<T>, Describable {
+	boolean enableRelativeExpression = false;
 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	default Expression<Double> getValueRelative(Expression index) {
+		return getValueAt(new KernelIndex().multiply(getShape().getSize()).add(index.toInt()));
 	}
 
 	default Stream<Expression<Double>> stream() {
@@ -45,13 +51,6 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 	default Expression<Double> max() { return toList().max(); }
 
 	default ExpressionList<Double> exp() { return toList().exp(); }
-
-	@Deprecated
-	default ExpressionList<Double> multiply(CollectionVariable<?> operands) {
-		ExpressionList<Double> a = stream().collect(ExpressionList.collector());
-		ExpressionList<Double> b = operands.stream().collect(ExpressionList.collector());
-		return a.multiply(b);
-	}
 
 	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
@@ -79,14 +78,12 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 		return new DefaultCollectionExpression(shape, valueAt);
 	}
 
-	static TraversableExpression traverse(Object o, LongFunction<Expression<?>> offset) {
+	static TraversableExpression traverse(Object o, Expression index, int memLength) {
 		TraversableExpression exp = TraversableExpression.traverse(o);
 		if (exp == null) return null;
 
-		if (exp instanceof Shape) {
-			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, offset);
-		} else if (exp instanceof CollectionExpression) {
-			return new RelativeTraversableExpression(((CollectionExpression) exp).getShape(), exp, offset);
+		if (enableRelativeExpression && exp instanceof CollectionVariable) {
+			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, index, memLength);
 		} else {
 			return exp;
 		}

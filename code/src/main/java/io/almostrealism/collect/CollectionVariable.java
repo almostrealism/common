@@ -128,6 +128,11 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		return super.getValueRelative(index);
+	}
+
+	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		Supplier producer = getProducer();
 

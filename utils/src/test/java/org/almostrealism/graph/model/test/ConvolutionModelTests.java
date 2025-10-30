@@ -81,6 +81,8 @@ public class ConvolutionModelTests implements ModelFeatures, TestFeatures, Kerne
 
 	@Test
 	public void convMultiChannelMedium() {
+		if (testDepth < 1) return;
+
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
@@ -292,7 +291,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable variable = (CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression();
+		CollectionVariable variable = (CollectionVariable) RelativeTraversableExpression.getExpression(args[0]);
 		Expression currentValue = variable.reference(
 				new KernelIndex().multiply(variable.length())); // TODO Should this be globalIndex instead of KernelIndex?
 		return expression.apply(args, currentValue).getValueAt(localIndex);

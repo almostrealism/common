@@ -18,29 +18,21 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
-
-import java.util.Set;
-import java.util.function.LongFunction;
-import java.util.function.Supplier;
+import io.almostrealism.kernel.KernelIndex;
 
 public class RelativeTraversableExpression<T> implements TraversableExpression<T>, Shape<T> {
 	private final TraversalPolicy shape;
 	private final TraversableExpression<T> expression;
-	private final Supplier<Expression<?>> offset;
+	private final Expression index;
+	private final int memLength;
 
-	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression,
-										 LongFunction<Expression<?>> offset) {
-		this(shape, expression, () -> offset.apply(shape.getSizeLong()));
-	}
-
-	public RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression, Expression offset) {
-		this(shape, expression, () -> offset);
-	}
-
-	protected RelativeTraversableExpression(TraversalPolicy shape, TraversableExpression<T> expression, Supplier<Expression<?>> offset) {
+	protected RelativeTraversableExpression(TraversalPolicy shape,
+											TraversableExpression<T> expression,
+											Expression index, int memLength) {
 		this.shape = shape;
 		this.expression = expression;
-		this.offset = offset;
+		this.index = index;
+		this.memLength = memLength;
 	}
 
 	@Override
@@ -82,8 +74,18 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 	}
 
 	@Override
-	public Expression<T> getValueRelative(Expression index) {
-		return expression.getValueAt(offset.get().add(index));
+	public Expression<T> getValueRelative(Expression localIndex) {
+		Expression offset = index.toInt().divide(memLength).multiply(shape.getSizeLong());
+		Expression result = expression.getValueAt(offset.add(localIndex));
+		Expression standard = expression.getValueRelative(localIndex);
+
+		if (memLength != shape.getSize() && index instanceof KernelIndex == false
+		 		&& !result.getExpression(Expression.defaultLanguage())
+				.equals(standard.getExpression(Expression.defaultLanguage()))) {
+			expression.getValueRelative(localIndex);
+		}
+
+		return result;
 	}
 
 	@Override
@@ -93,4 +95,12 @@ public class RelativeTraversableExpression<T> implements TraversableExpression<T
 
 	@Override
 	public boolean isTraversable() { return expression.isTraversable(); }
+
+	public static TraversableExpression getExpression(TraversableExpression expression) {
+		while (expression instanceof RelativeTraversableExpression) {
+			expression = ((RelativeTraversableExpression) expression).getExpression();
+		}
+
+		return expression;
+	}
 }
