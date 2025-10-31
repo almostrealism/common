@@ -355,55 +355,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	/**
-	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
-	 * This will be the shape of the computation result.
-	 * This method handles the complex logic of adjusting shapes based on whether
-	 * the computation has a fixed count and the relationship between the kernel
-	 * length and the expected output count.
-	 * 
-	 * <p>The shape calculation follows these rules:</p>
-	 * <ul>
-	 *   <li>For fixed-count computations, returns the original shape</li>
-	 *   <li>When kernel length equals target count, returns the original shape</li>
-	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
-	 * </ul>
-	 * 
-	 * @param len The length of the kernel execution context
-	 * @return The appropriate traversal policy for the given length
-	 * @see #isFixedCount()
-	 * @see TraversalPolicy#prependDimension(int)
-	 */
-	protected TraversalPolicy shapeForLength(int len) {
-		TraversalPolicy shape;
-
-		if (isFixedCount()) {
-			shape = getShape();
-		} else {
-			int targetCount = getCount();
-
-			int count = len / targetCount;
-
-			// When kernel length is less than, or identical to the output count, an
-			// assumption is made that the intended shape is the original shape.
-			// This is a bit of a hack, but it's by far the simplest solution
-			// available
-			if (count == 0 || len == targetCount) {
-				// It is not necessary to prepend a (usually) unnecessary dimension
-				shape = getShape();
-			} else {
-				shape = getShape().prependDimension(count);
-			}
-
-			if (enableDestinationLogging) {
-				log("shapeForLength(" + len +
-						"): " + shape + "[" + shape.getTraversalAxis() + "]");
-			}
-		}
-
-		return shape;
-	}
-
-	/**
 	 * Adjusts the destination buffer to match the required length and shape.
 	 * This method handles intelligent memory management by reusing existing buffers
 	 * when possible and allocating new ones only when necessary.
@@ -420,7 +371,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @param len The required length for the destination buffer
 	 * @return Adjusted memory bank, or null if length is invalid
 	 * @throws IllegalArgumentException if len is null
-	 * @see #shapeForLength(int)
+	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
 	 */
 	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
@@ -430,7 +381,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			return null;
 		}
 
-		TraversalPolicy shape = shapeForLength(len);
+		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
+				getShape(), getCount(), isFixedCount(), len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {

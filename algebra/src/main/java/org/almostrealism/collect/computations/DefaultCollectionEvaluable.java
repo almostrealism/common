@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -174,13 +175,8 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 *   <li>Otherwise, performs manual shape calculation based on the computation characteristics</li>
 	 * </ul>
 	 * 
-	 * <p>For manual shape calculation, the method:</p>
-	 * <ol>
-	 *   <li>Determines if the computation has a fixed count using {@link Countable#isFixedCount(Countable)}</li>
-	 *   <li>For variable count computations, calculates the batch dimension by dividing length by shape count</li>
-	 *   <li>Applies heuristics to determine whether to prepend a batch dimension to the original shape</li>
-	 *   <li>Creates a new {@link PackedCollection} with the calculated shape</li>
-	 * </ol>
+	 * <p>For manual shape calculation, the method delegates to
+	 * {@link CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)}
 	 * 
 	 * @param len the total length/size of the destination collection to create.
 	 *            This represents the total number of elements the collection should accommodate
@@ -189,10 +185,6 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 *         for the specified length
 	 * 
 	 * @throws IllegalArgumentException if len is negative or if shape calculations result in invalid dimensions
-	 * 
-	 * @see #enableDestinationFactory
-	 * @see #destinationFactory
-	 * @see TraversalPolicy#prependDimension(int)
 	 */
 	@Override
 	public T createDestination(int len) {
@@ -200,29 +192,11 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 			return destinationFactory.apply(len);
 		}
 
-		// TODO  This duplicates code in CollectionProducerComputationBase::shapeForLength
-		// TODO  It should be removed
-		TraversalPolicy shape;
-
-		if (Countable.isFixedCount(getComputation())) {
-			shape = this.shape;
-		} else {
-			int count = len / this.shape.getCount();
-
-			// When kernel length is less than, or identical to the output count, an
-			// assumption is made that the intended shape is the original shape.
-			// The same assumption is made if the kernel length is not a multiple of
-			// the output count.
-			// This is a bit of a hack, but it's by far the simplest solution
-			// available
-			if (count == 0 || len == this.shape.getCount() || len % this.shape.getCount() != 0) {
-				// It is not necessary to prepend a (usually) unnecessary dimension
-				shape = this.shape;
-			} else {
-				shape = this.shape.prependDimension(count);
-			}
-		}
-
+		TraversalPolicy shape =
+				CollectionProducerComputation.shapeForLength(this.shape,
+						this.shape.getCount(),
+						Countable.isFixedCount(getComputation()),
+						len);
 		return (T) new PackedCollection<>(shape);
 	}
 
