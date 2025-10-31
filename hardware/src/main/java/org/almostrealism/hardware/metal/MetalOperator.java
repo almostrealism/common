@@ -20,7 +20,6 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
@@ -54,7 +53,7 @@ public class MetalOperator extends HardwareOperator {
 	}
 
 	@Override
-	public String getName() { return name; }
+	public String getName() { return name +  "(execution " + getId() + ")"; }
 
 	@Override
 	protected String getHardwareName() { return "MTL"; }

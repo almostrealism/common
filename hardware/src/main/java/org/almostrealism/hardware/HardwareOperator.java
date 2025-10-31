@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,19 +24,15 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationTimingListener;
-import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.kernel.KernelWork;
-import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
 	public static boolean enableLog;
@@ -57,8 +53,15 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static long cpuOpCount, gpuOpCount;
 	public static long cpuOpTime, gpuOpTime;
 
-	private long globalWorkSize = 1;
-	private long globalWorkOffset;
+	protected static long idCount;
+
+	private volatile long globalWorkSize = 1;
+	private volatile long globalWorkOffset;
+	private long id;
+
+	public HardwareOperator() {
+		this.id = idCount++;
+	}
 
 	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
@@ -69,6 +72,8 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public long getGlobalWorkOffset() { return globalWorkOffset; }
 	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
+
+	protected long getId() { return id; }
 
 	public abstract boolean isGPU();
 
