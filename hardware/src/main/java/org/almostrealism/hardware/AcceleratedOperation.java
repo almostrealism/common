@@ -190,17 +190,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				this::createAggregatedInput);
 	}
 
+	protected synchronized void createDetailsFactory() {
+		if (detailsFactory != null) return;
+
+		detailsFactory = new ProcessDetailsFactory<>(
+				isKernel(), isFixedCount(), getCount(),
+				getArgumentVariables(), getOutputArgumentIndex(),
+				this::createMemoryReplacementManager,
+				getComputeContext()::runLater);
+
+		if (evaluator != null) {
+			detailsFactory.setEvaluator(evaluator);
+		}
+	}
+
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
-			detailsFactory = new ProcessDetailsFactory<>(
-					isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputArgumentIndex(),
-					this::createMemoryReplacementManager,
-					getComputeContext()::runLater);
-
-			if (evaluator != null) {
-				detailsFactory.setEvaluator(evaluator);
-			}
+			createDetailsFactory();
 		}
 
 		return detailsFactory;
