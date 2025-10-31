@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,13 +20,16 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.profile.RunData;
-import org.jocl.*;
+import org.jocl.CL;
+import org.jocl.CLException;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_event;
+import org.jocl.cl_kernel;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -141,15 +144,6 @@ public class CLOperator extends HardwareOperator {
 				}
 
 				for (int i = 0; i < argCount; i++) {
-					if (data[i] != argCache[i]) {
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{data[i].getAtomicMemLength()}));
-					} else {
-						index++;
-					}
-				}
-
-				for (int i = 0; i < argCount; i++) {
 					argCache[i] = data[i];
 				}
 			} catch (CLException e) {
@@ -159,7 +153,7 @@ public class CLOperator extends HardwareOperator {
 			}
 
 			try {
-				if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
+				if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel start");
 
 				cl_event event = new cl_event();
 
@@ -176,20 +170,19 @@ public class CLOperator extends HardwareOperator {
 							null, 0, null, event);
 				}
 
-				if (!Hardware.isAsync()) context.processEvent(event, profile);
+				context.processEvent(event, profile);
 
-				if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
-				// return Hardware.isAsync() ? new CLSemaphore(context, event, profile) : null;
+				if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
+
+				// TODO  This should return a semaphore
+				// return new CLSemaphore(context, event, profile);
 			} catch (CLException e) {
-				// TODO  This should use the exception processor also, but theres no way to pass the message details
+				// TODO  This should use the exception processor also,
+				// TODO  but theres no way to pass the message details
 				throw new HardwareException(e.getMessage() + " for function " + name +
 						" (total bytes = " + totalSize + ")", e);
 			}
 		});
-
-		if (Hardware.isAsync()) {
-			throw new UnsupportedOperationException("Temporarily unavailable due to profile implementation");
-		}
 
 		return null;
 	}

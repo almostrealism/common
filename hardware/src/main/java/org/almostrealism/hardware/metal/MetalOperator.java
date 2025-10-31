@@ -176,17 +176,14 @@ public class MetalOperator extends HardwareOperator {
 			});
 		});
 
-		if (Hardware.isAsync()) {
-			// TODO  Return a Semaphore using the Future
-			throw new UnsupportedOperationException();
-		} else {
-			try {
-				run.get();
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			} catch (ExecutionException  e) {
-				throw new RuntimeException(e);
-			}
+		try {
+			// TODO  This should actually return a Semaphore rather than
+			// TODO  blocking until the process is over
+			run.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException  e) {
+			throw new RuntimeException(e);
 		}
 
 		return null;

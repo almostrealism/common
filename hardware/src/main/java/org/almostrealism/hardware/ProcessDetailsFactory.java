@@ -42,11 +42,17 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
-	public static boolean enableAsync = false;
+	// TODO  Should be switched and removed
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableArgumentReferenceKernelSize = true;
+
+	// TODO  Should be removed?
 	public static boolean enableOutputCount = true;
-	public static boolean enableConstantCache = true;
+
+	public static boolean enableAsync =
+			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
+	public static boolean enableConstantCache =
+			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 

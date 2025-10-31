@@ -63,8 +63,6 @@ public final class Hardware {
 
 	protected static final int MEMORY_SCALE;
 
-	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
-
 	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
 
 	private static final Hardware local;
@@ -590,6 +588,4 @@ public final class Hardware {
 				return false;
 		}
 	}
-
-	public static boolean isAsync() { return enableAsync; }
 }

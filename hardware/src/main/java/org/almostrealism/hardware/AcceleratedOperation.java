@@ -168,7 +168,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			AcceleratedProcessDetails process = apply(null, new Object[0]);
-			if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+			waitFor(process.getSemaphore());
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();

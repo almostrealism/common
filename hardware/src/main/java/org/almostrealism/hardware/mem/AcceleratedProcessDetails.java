@@ -22,6 +22,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,8 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class AcceleratedProcessDetails implements ConsoleFeatures {
-	public static boolean enableAsyncListeners = false;
+	public static boolean enableAsyncListeners =
+			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 
 	private boolean enableAggregation = true;
 
