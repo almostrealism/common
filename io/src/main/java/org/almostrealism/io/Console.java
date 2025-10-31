@@ -28,7 +28,7 @@ import java.util.function.UnaryOperator;
 
 public class Console {
 	public static Console root = new Console();
-	public static boolean systemOutEnabled = true;
+	public static boolean systemOutEnabled = SystemUtils.isEnabled("AR_IO_SYSOUT").orElse(true);
 
 	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
