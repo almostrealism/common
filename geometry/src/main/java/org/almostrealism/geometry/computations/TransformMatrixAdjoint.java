@@ -22,24 +22,20 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
-import io.almostrealism.scope.Repeated;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.compute.Process;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
-import java.util.function.Supplier;
 import java.util.List;
 
 public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection<?>, TransformMatrix> {
 	private int varIdx = 0;
 
 	public TransformMatrixAdjoint(Producer<TransformMatrix> input) {
-		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Supplier) input);
+		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Producer) input);
 		setPostprocessor(TransformMatrix.postprocessor());
 	}
 

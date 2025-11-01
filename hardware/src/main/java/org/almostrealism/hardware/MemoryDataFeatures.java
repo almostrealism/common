@@ -27,8 +27,8 @@ public interface MemoryDataFeatures {
 	boolean enableAssignmentCopy = false;
 
 	default <T extends MemoryData> Assignment<T> a(int memLength,
-												   Supplier<Evaluable<? extends T>> result,
-												   Supplier<Evaluable<? extends T>> value) {
+												   Producer<T> result,
+												   Producer<T> value) {
 		return new Assignment<>(memLength, result, value);
 	}
 

@@ -20,19 +20,18 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.MinimumValue;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class CollectionMaxComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
-	public CollectionMaxComputation(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	public CollectionMaxComputation(Producer<PackedCollection<?>> input) {
 		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
-	protected CollectionMaxComputation(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection<?>> input) {
 		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new MinimumValue(),
 				(out, arg) -> Max.of(out, arg),
@@ -41,7 +40,7 @@ public class CollectionMaxComputation<T extends PackedCollection<?>> extends Agg
 
 	@Override
 	public CollectionMaxComputation<T> generate(List<Process<?, ?>> children) {
-		return new CollectionMaxComputation(children.get(1));
+		return new CollectionMaxComputation((Producer) children.get(1));
 	}
 
 	@Override

@@ -211,7 +211,7 @@ public class DynamicIndexProjectionProducerComputation<T extends PackedCollectio
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),
 										(idx) -> args[1].getValueAt(projectIndex(args, idx))),
-							target, getInputs().stream().skip(1).toArray(Supplier[]::new));
+							target, getInputs().stream().skip(1).toArray(Producer[]::new));
 			return delta;
 		} else {
 			TraversalPolicy outShape = getShape();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProducerCache;
-import org.almostrealism.hardware.instructions.ExecutionKey;
-import org.almostrealism.hardware.instructions.InstructionSetManager;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -48,10 +46,6 @@ public class AcceleratedOperationContainer<T extends MemoryData>
 
 	public void clearSubstitutions() {
 		this.substitutions.remove();
-	}
-
-	public <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager() {
-		return operation.getInstructionSetManager();
 	}
 
 	@Override

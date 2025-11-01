@@ -33,7 +33,7 @@ public class DiagonalMatrixComputation<T extends PackedCollection<?>> extends Ma
 	}
 
 	public DiagonalMatrixComputation(String name, TraversalPolicy shape, Producer<T> values) {
-		super(name, shape, values);
+		super(name, shape, (Producer) values);
 	}
 
 	@Override

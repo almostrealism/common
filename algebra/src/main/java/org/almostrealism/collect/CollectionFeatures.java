@@ -970,7 +970,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 																			   Producer<PackedCollection<?>> index) {
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation<>("valueAtIndex", shape,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
-				(Supplier) collection, index);
+				(Producer) collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
@@ -2039,7 +2039,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 			Function<List<String>, String> description, Producer<T>... arguments) {
 		return compute((shape, args) -> new DefaultTraversableExpressionComputation(
 				name, largestTotalSize(args), deltaStrategy, true, expression.apply(shape),
-				args.toArray(Supplier[]::new)), description, arguments);
+				args.toArray(Producer[]::new)), description, arguments);
 	}
 
 	default <T extends PackedCollection<?>, P extends Producer<T>> CollectionProducer<T> compute(
@@ -2469,44 +2469,42 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * Negates all elements in a collection (unary minus operation).
 	 * This operation multiplies every element by -1, effectively flipping
 	 * the sign of all values in the collection.
-	 * 
+	 *
 	 * @param <T> the type of {@link PackedCollection}
-	 * @param a the collection to negate
+	 * @param a   the collection to negate
 	 * @return a {@link CollectionProducerComputationBase} that generates the negated collection
-	 * 
+	 *
 	 *
 	 * <pre>{@code
 	 * // Negate a vector
 	 * CollectionProducer<PackedCollection<?>> vector = c(1.0, -2.0, 3.0, -4.0);
 	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negated = minus(vector);
 	 * // Result: Producer that generates [-1.0, 2.0, -3.0, 4.0]
-	 * 
+	 *
 	 * // Negate a constant (optimized case)
 	 * CollectionProducer<PackedCollection<?>> constant = constant(5.0);
 	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedConstant = minus(constant);
 	 * // Result: Producer that generates [-5.0]
-	 * 
+	 *
 	 * // Negate a matrix
 	 * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
 	 * CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> negatedMatrix = minus(matrix);
 	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
 	 * }</pre>
 	 */
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase minus(Producer<T> a) {
 		TraversalPolicy shape = shape(a);
 		int w = shape.length(0);
 
 		if (shape.getTotalSizeLong() == 1 && a.isConstant() && Countable.isFixedCount(a)) {
 			return new AtomicConstantComputation<>(-a.get().evaluate().toDouble());
 		} else if (Algebraic.isIdentity(w, a)) {
-			return (CollectionProducerComputationBase)
-					new ScalarMatrixComputation<>(shape, c(-1))
-						.setDescription(args -> "-" + DescribableParent.description(a));
+			return new ScalarMatrixComputation<>(shape, c(-1))
+				.setDescription(args -> "-" + DescribableParent.description(a));
 		}
 
-		return (CollectionProducerComputationBase)
-				new CollectionMinusComputation<>(shape, a)
-						.setDescription(args -> "-" + args.get(0));
+		return new CollectionMinusComputation<>(shape, (Producer) a)
+				.setDescription((Function<List<String>, String>) args -> "-" + args.get(0));
 	}
 
 	/**
@@ -2598,17 +2596,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+			Producer<PackedCollection<?>> value) {
 		return new CollectionExponentialComputation<>(shape(value), false, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+			Producer<PackedCollection<?>> value) {
 		return new CollectionExponentialComputation<>(shape(value), true, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> log(
-			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+			Producer<PackedCollection<?>> value) {
 		return new CollectionLogarithmComputation<>(shape(value), value);
 	}
 
@@ -2622,10 +2620,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DefaultTraversableExpressionComputation<>(
 				"floor", shape,
 				args -> new UniformCollectionExpression("floor", shape, in -> Floor.of(in[0]), args[1]),
-				(Supplier) value);
+				(Producer) value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Producer<PackedCollection<?>> a, Producer<PackedCollection<?>> b) {
 		TraversalPolicy shape;
 
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -2640,7 +2638,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(
+						Producer<PackedCollection<?>> a, Producer<PackedCollection<?>> b) {
 		TraversalPolicy shape;
 
 		if (shape(a).getSize() == shape(b).getSize()) {
@@ -2667,7 +2666,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						mod(shape, args[1], args[2]), a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Producer<PackedCollection<?>> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
 	}
 
@@ -2699,7 +2698,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DefaultTraversableExpressionComputation<>(
 				"abs", shape, DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
 				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
-				(Supplier) value);
+				(Producer) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> magnitude(Producer<T> vector) {
@@ -2775,7 +2774,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 						conditional(args[1].getValueAt(kernel().multiply(size).add(index))
 										.greaterThan(args[1].getValueAt(kernel().multiply(size).add(currentIndex))),
 								index, currentIndex),
-				(Supplier) input);
+				(Producer) input);
 	}
 
 	/**
@@ -2986,8 +2985,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				args -> new ComparisonExpression("greaterThan", shape,
 						(l, r) -> greater(l, r, includeEqual),
 						args[1], args[2], args[3], args[4]),
-				(Supplier) a, (Supplier) b,
-				(Supplier) trueValue, (Supplier) falseValue);
+				(Producer) a, (Producer) b,
+				(Producer) trueValue, (Producer) falseValue);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> lessThan(Producer<T> a, Producer<T> b,

@@ -22,14 +22,13 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A specialized {@link RepeatedProducerComputation} that implements {@link TraversableExpression}
@@ -178,7 +177,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
 												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												  Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
@@ -369,6 +368,6 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new TraversableRepeatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

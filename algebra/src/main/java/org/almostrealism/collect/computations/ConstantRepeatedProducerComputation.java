@@ -185,7 +185,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											   Producer<PackedCollection<?>>... args) {
 		this(name, shape, 1, count, initial, expression, args);
 	}
 
@@ -239,8 +239,10 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
-											   Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
-		super(name, shape, size, initial, (args, index) -> index.lessThan(new IntegerConstant(count)), expression, inputs);
+											   Producer<PackedCollection<?>>... inputs) {
+		super(name, shape, size, initial,
+				(args, index) ->
+						index.lessThan(new IntegerConstant(count)), expression, inputs);
 		this.count = count;
 	}
 
@@ -311,7 +313,7 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
 				count, (args, localIndex) -> getExpression(args, null, localIndex), target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 	}
 
 	/**
@@ -364,6 +366,6 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 		return new ConstantRepeatedProducerComputation<>(
 				getName(), getShape(), getMemLength(), count,
 				initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

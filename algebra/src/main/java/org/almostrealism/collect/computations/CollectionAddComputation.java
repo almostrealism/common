@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,25 +19,23 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class CollectionAddComputation<T extends PackedCollection<?>> extends TransitiveDeltaExpressionComputation<T> {
 
-	public CollectionAddComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
+	public CollectionAddComputation(TraversalPolicy shape, Producer<PackedCollection<?>>... arguments) {
 		this("add", shape, arguments);
 	}
 
 	protected CollectionAddComputation(String name, TraversalPolicy shape,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+									   Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, arguments);
 	}
 

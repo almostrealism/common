@@ -187,12 +187,12 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 * @throws IllegalArgumentException if the output shape has a total size of zero or less
 	 * @throws NullPointerException if any argument supplier is null
 	 * 
-	 * @see CollectionProducerComputationBase#CollectionProducerComputationBase(String, TraversalPolicy, Supplier[])
+	 * @see CollectionProducerComputationBase#CollectionProducerComputationBase(String, TraversalPolicy, Producer[])
 	 * @see TraversalPolicy#getTotalSizeLong()
 	 */
 	@SafeVarargs
 	public CollectionProducerComputationAdapter(String name, TraversalPolicy outputShape,
-												Supplier<Evaluable<? extends I>>... arguments) {
+												Producer<I>... arguments) {
 		super(name, outputShape, arguments);
 	}
 
@@ -535,7 +535,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-				(Supplier) this)
+				(Producer) this)
 				.setDescription((Function<List<String>, String>) args -> "delta(" + description(args) + ")");
 		return delta;
 	}
@@ -590,7 +590,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	@Override
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		RepeatedProducerComputationAdapter result = new RepeatedProducerComputationAdapter<>(getShape(), this,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 		result.addDependentLifecycle(this);
 		return result;
 	}

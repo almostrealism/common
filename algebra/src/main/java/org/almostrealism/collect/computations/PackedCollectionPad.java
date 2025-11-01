@@ -121,7 +121,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	 */
 	public PackedCollectionPad(TraversalPolicy shape, TraversalPolicy position,
 							   Producer<?> input) {
-		super("pad", shape, (Supplier) input);
+		super("pad", shape, (Producer) input);
 		this.inputShape = shape(input);
 		this.position = position;
 		init();

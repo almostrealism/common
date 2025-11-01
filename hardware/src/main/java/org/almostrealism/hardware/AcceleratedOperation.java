@@ -305,7 +305,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (!process.isEmpty())
 			return true;
 
-		return argumentMap != null && !argumentMap.getReplacementMap().isEmpty();
+		return argumentMap != null && argumentMap.hasReplacements();
 	}
 
 	public boolean isKernel() { return kernel; }

@@ -92,7 +92,7 @@ public interface VectorFeatures extends ScalarFeatures {
 				Product.of(args[1].getValueRelative(e(0)), args[2].getValueRelative(e(0))),
 				Product.of(args[1].getValueRelative(e(1)), args[2].getValueRelative(e(1))),
 				Product.of(args[1].getValueRelative(e(2)), args[2].getValueRelative(e(2)))
-				)), a, b);
+				)), (Producer) a, (Producer) b);
 	}
 
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
@@ -115,7 +115,7 @@ public interface VectorFeatures extends ScalarFeatures {
 					Expression result = conditional(p.eq(1), y, x);
 					result = conditional(p.eq(2), z, result);
 					return result;
-				}), a, b);
+				}), (Producer) a, (Producer) b);
 	}
 
 	@Deprecated

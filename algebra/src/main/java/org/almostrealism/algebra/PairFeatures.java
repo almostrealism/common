@@ -71,7 +71,7 @@ public interface PairFeatures extends CollectionFeatures {
 		return new DefaultTraversableExpressionComputation<>("multiplyComplex", shape,
 				(Function<TraversableExpression[], CollectionExpression>)
 						args -> new ComplexProductExpression(shape, args[1], args[2]),
-				(Supplier) a, (Supplier) b).setPostprocessor(ComplexNumber.complexPostprocessor());
+				(Producer) a, (Producer) b).setPostprocessor(ComplexNumber.complexPostprocessor());
 	}
 
 	default CollectionProducer<Pair<?>> complexFromParts(Producer<PackedCollection<?>> real,

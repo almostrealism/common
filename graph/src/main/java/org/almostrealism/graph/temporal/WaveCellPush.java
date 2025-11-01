@@ -18,7 +18,6 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.code.ScopeInputManager;
@@ -27,7 +26,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
 
@@ -38,13 +36,13 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 		super(data, wave, frame, output);
 	}
 
-	private WaveCellPush(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	private WaveCellPush(Producer... arguments) {
 		super(arguments);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new WaveCellPush(children.toArray(Supplier[]::new));
+		return new WaveCellPush(children.toArray(Producer[]::new));
 	}
 
 	@Override

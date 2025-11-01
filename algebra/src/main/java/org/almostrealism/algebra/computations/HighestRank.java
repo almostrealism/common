@@ -30,13 +30,11 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
-import java.util.function.Supplier;
-
 public class HighestRank extends CollectionProducerComputationBase<PackedCollection<Scalar>, Pair<?>> {
 	private int varIdx = 0;
 
 	public HighestRank(Producer<PackedCollection<Scalar>> distances, Producer<Pair<?>> conf) {
-		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Supplier) conf);
+		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Producer) conf);
 		setPostprocessor(Pair.postprocessor());
 	}
 

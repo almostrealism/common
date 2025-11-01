@@ -29,7 +29,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
@@ -41,7 +40,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 public class AggregatedProducerComputation<T extends PackedCollection<?>> extends TraversableRepeatedProducerComputation<T> {
 	public static boolean enableTransitiveDelta = true;
@@ -63,7 +61,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
-										 Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+										 Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
@@ -249,7 +247,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 			delta = delta.enumerate(1, count).traverse(2);
 			return new AggregatedProducerComputation<>(getName(), shape(delta).replace(shape(1)),
-						count, initial, expression, (Supplier) delta)
+						count, initial, expression, (Producer) delta)
 					.setReplaceLoop(isReplaceLoop())
 					.reshape(getShape().append(shape(target)));
 		} else {
@@ -257,7 +255,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
 				TraversableDeltaComputation<T> traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-						getInputs().stream().skip(1).toArray(Supplier[]::new));
+						getInputs().stream().skip(1).toArray(Producer[]::new));
 				traversable.addDependentLifecycle(this);
 				((ConstantRepeatedDeltaComputation) delta).setFallback(traversable);
 			}
@@ -270,7 +268,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	public AggregatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		AggregatedProducerComputation<T> c = new AggregatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 		c.setReplaceLoop(replaceLoop);
 		return c;
 	}

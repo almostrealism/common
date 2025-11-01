@@ -21,7 +21,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Logarithm;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -30,23 +29,17 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class CollectionLogarithmComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	public static boolean enableCustomDelta = true;
 
 	public CollectionLogarithmComputation(TraversalPolicy shape,
-											Producer<? extends PackedCollection<?>> input) {
-		this(shape, (Supplier) input);
-	}
-
-	public CollectionLogarithmComputation(TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+										  Producer<PackedCollection<?>> input) {
 		this("log", shape, input);
 	}
 
 	protected CollectionLogarithmComputation(String name, TraversalPolicy shape,
-											   Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+											   Producer<PackedCollection<?>> input) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, input);
 	}
 
@@ -58,7 +51,7 @@ public class CollectionLogarithmComputation<T extends PackedCollection<?>> exten
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return new CollectionLogarithmComputation<>(getName(), getShape(),
-				(Supplier) children.get(1))
+				(Producer) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())

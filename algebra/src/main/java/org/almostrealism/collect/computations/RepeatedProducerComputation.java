@@ -19,12 +19,12 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.kernel.DefaultIndex;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
@@ -136,14 +136,14 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	 *                   arguments and current index, returns computed expression
 	 * @param args Variable number of input {@link Supplier}s providing evaluable collections
 	 * 
-	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Supplier[])
+	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
 	public RepeatedProducerComputation(String name, TraversalPolicy shape,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+									   Producer<PackedCollection<?>>... args) {
 		this(name, shape, 1, initial, condition, expression, args);
 	}
 
@@ -172,8 +172,8 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(name, shape, (Supplier[]) args);
+									   Producer<PackedCollection<?>>... args) {
+		super(name, shape, (Producer[]) args);
 		this.initial = initial;
 		this.condition = condition;
 		this.expression = expression;
@@ -373,6 +373,6 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 		return new RepeatedProducerComputation<>(
 				null, getShape(), getMemLength(),
 				initial, condition, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

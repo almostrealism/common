@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.HybridScope;
@@ -35,7 +34,6 @@ import org.almostrealism.time.CursorPair;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection<?>> {
 	private double wavelength;
@@ -45,14 +43,14 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		this.wavelength = 1.0 / frequency;
 	}
 
-	private AcceleratedTimeSeriesPurge(double wavelength, Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	private AcceleratedTimeSeriesPurge(double wavelength, Producer<PackedCollection<?>>... arguments) {
 		super(arguments);
 		this.wavelength = wavelength;
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Supplier[]::new));
+		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Producer[]::new));
 	}
 
 	@Override

@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Computable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -29,7 +28,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class TransitiveDeltaExpressionComputation<T extends PackedCollection<?>>
@@ -37,7 +35,7 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 	public static final boolean enableAtomicKernel = true;
 
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
-									   			   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												   Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
 	}
 

@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -32,33 +31,22 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class CollectionExponentialComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	private final boolean ignoreZero;
 
 	public CollectionExponentialComputation(TraversalPolicy shape,
-											Producer<? extends PackedCollection<?>> input) {
-		this(shape, false, (Supplier) input);
-	}
-
-	public CollectionExponentialComputation(TraversalPolicy shape, boolean ignoreZero,
-										 	Producer<? extends PackedCollection<?>> input) {
-		this(shape, ignoreZero, (Supplier) input);
-	}
-
-	public CollectionExponentialComputation(TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+											Producer<PackedCollection<?>> input) {
 		this(shape, false, input);
 	}
 
 	public CollectionExponentialComputation(TraversalPolicy shape, boolean ignoreZero,
-										 	Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+											Producer<PackedCollection<?>> input) {
 		this(ignoreZero ? "expIgnoreZero" : "exp", shape, ignoreZero, input);
 	}
 
 	protected CollectionExponentialComputation(String name, TraversalPolicy shape, boolean ignoreZero,
-											Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+											   Producer<PackedCollection<?>> input) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, input);
 		this.ignoreZero = ignoreZero;
 	}
@@ -81,7 +69,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return new CollectionExponentialComputation<>(getName(), getShape(), isIgnoreZero(),
-				(Supplier) children.get(1))
+				(Producer) children.get(1))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -102,7 +90,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 		CollectionProducer<T> d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		CollectionProducer<T> scale = isIgnoreZero() ? expIgnoreZero((Supplier) input) : exp((Supplier) input);
+		CollectionProducer<T> scale = isIgnoreZero() ? expIgnoreZero((Producer) input) : exp((Producer) input);
 		scale = scale.flatten();
 
 		return expandAndMultiply(scale, d).reshape(shape);

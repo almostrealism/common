@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -28,12 +28,13 @@ public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<
 	}
 
 	@Override
-	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends PackedCollection<?>>> out, Supplier<Evaluable<? extends PackedCollection<?>>> in) {
+	protected Supplier<Runnable> assign(Producer<PackedCollection<?>> out,
+										Producer<PackedCollection<?>> in) {
 		return a(1, out, in);
 	}
 
 	@Override
-	public Supplier<Runnable> reset(Supplier<Evaluable<? extends PackedCollection<?>>> out) {
+	public Supplier<Runnable> reset(Producer<PackedCollection<?>> out) {
 		return a(1, out, c(0));
 	}
 }

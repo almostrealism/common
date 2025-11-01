@@ -32,6 +32,12 @@ public class DynamicProducer<T> implements Producer<T> {
 	public Evaluable<T> get() { return getFunction()::apply; }
 
 	protected Function<Object[], T> getFunction() {
+		if (function == null) {
+			return args -> {
+				throw new UnsupportedOperationException();
+			};
+		}
+
 		return function;
 	}
 }

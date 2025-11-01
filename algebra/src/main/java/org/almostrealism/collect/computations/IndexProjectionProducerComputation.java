@@ -223,7 +223,7 @@ public class IndexProjectionProducerComputation<T extends PackedCollection<?>>
 												 UnaryOperator<Expression<?>> indexProjection,
 												 Producer<?> collection,
 												 Producer<?>... inputs) {
-		super(name, shape, CollectionUtils.include(new Supplier[0], (Supplier) collection, (Supplier[]) inputs));
+		super(name, shape, CollectionUtils.include(new Producer[0], (Producer) collection, (Producer[]) inputs));
 		this.indexProjection = indexProjection;
 	}
 

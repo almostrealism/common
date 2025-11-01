@@ -32,14 +32,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
-import java.util.function.Supplier;
 import java.util.List;
 
 public class TransformMatrixDeterminant extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
     private int varIdx = 0;
 
     public TransformMatrixDeterminant(Producer<TransformMatrix> input) {
-        super("transformMatrixDeterminant", new TraversalPolicy(1), (Supplier) input);
+        super("transformMatrixDeterminant", new TraversalPolicy(1), (Producer) input);
     }
 
     @Override

@@ -17,14 +17,11 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
@@ -135,7 +132,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * during computation execution. Primarily used for debugging memory management issues.
 	 * 
 	 * @see #destinationLog(Runnable)
-	 * @see #shapeForLength(int)
+	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
 	 */
 	public static boolean enableDestinationLogging = false;
 
@@ -188,12 +185,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @throws IllegalArgumentException if the output shape has a total size of zero or less
 	 * @throws NullPointerException if any argument supplier is null
 	 * 
-	 * @see #validateArgs(Supplier[])
+	 * @see #validateArgs(Producer[])
 	 * @see TraversalPolicy#getTotalSizeLong()
 	 */
 	@SafeVarargs
 	public CollectionProducerComputationBase(String name, TraversalPolicy outputShape,
-											 Supplier<Evaluable<? extends I>>... arguments) {
+											 Producer<I>... arguments) {
 		this();
 
 		if (outputShape.getTotalSizeLong() <= 0) {
@@ -202,7 +199,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		this.name = name;
 		this.shape = outputShape.withOrder(null);
-		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestinationProducer<>(this, this::adjustDestination), arguments));
+
+		List<Producer<I>> inputs = new ArrayList<>();
+		inputs.add(new MemoryDataDestinationProducer<>(this, this::adjustDestination));
+		inputs.addAll(List.of(arguments));
+		setInputs(inputs);
+
 		init();
 	}
 
@@ -373,7 +375,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @throws IllegalArgumentException if len is null
 	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
 	 */
-	protected MemoryBank<?> adjustDestination(MemoryBank<?> existing, Integer len) {
+	protected MemoryBank<I> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
 			throw new IllegalArgumentException();
 		} else if (len <= 0) {
@@ -391,7 +393,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		if (((PackedCollection<?>) existing).getShape().equals(shape))
-			return existing;
+			return (MemoryBank) existing;
 
 		return ((PackedCollection) existing).range(shape);
 	}
@@ -801,7 +803,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * @return The same array of suppliers after validation
 	 * @throws NullPointerException if any supplier is null
 	 */
-	public static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public static Producer[] validateArgs(Producer<PackedCollection<?>>... args) {
 		Stream.of(args).forEach(Objects::requireNonNull);
 		return args;
 	}

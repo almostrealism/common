@@ -18,7 +18,6 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
@@ -27,19 +26,16 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
@@ -47,13 +43,13 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		super("timeSeriesValueAt", new TraversalPolicy(1).traverse(0), new Producer[] { series, cursors });
 	}
 
-	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	private AcceleratedTimeSeriesValueAt(Producer<PackedCollection<?>>... arguments) {
 		super("timeSeriesValueAt", new TraversalPolicy(1).traverse(0), arguments);
 	}
 
 	@Override
 	public CollectionProducerParallelProcess<PackedCollection<?>> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
+		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Producer[]::new));
 	}
 
 	@Override

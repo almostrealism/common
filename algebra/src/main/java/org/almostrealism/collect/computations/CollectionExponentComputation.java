@@ -172,33 +172,11 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 *             Must produce {@link PackedCollection} instances compatible with the shape.
 	 * @param exponent The {@link Producer} providing the exponent values.
 	 *                 Can be a scalar (broadcasted) or collection matching base dimensions.
-	 * 
-	 * @see #CollectionExponentComputation(TraversalPolicy, Supplier, Supplier)
 	 */
 	public CollectionExponentComputation(TraversalPolicy shape,
 										 Producer<? extends PackedCollection<?>> base,
 										 Producer<? extends PackedCollection<?>> exponent) {
-		this("pow", shape, (Supplier) base, (Supplier) exponent);
-	}
-
-	/**
-	 * Creates a new {@link CollectionExponentComputation} for element-wise exponentiation using {@link Supplier} inputs.
-	 * This constructor provides more explicit control over the evaluation lifecycle and is typically used
-	 * when integrating with the computation framework's evaluation strategies.
-	 * 
-	 * <p>The suppliers are evaluated lazily, allowing for deferred computation and optimization
-	 * opportunities within the broader computation graph.
-	 * 
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param base The {@link Supplier} providing {@link Evaluable} instances that produce base values
-	 * @param exponent The {@link Supplier} providing {@link Evaluable} instances that produce exponent values
-	 * 
-	 * @see #CollectionExponentComputation(TraversalPolicy, Producer, Producer)
-	 */
-	public CollectionExponentComputation(TraversalPolicy shape,
-										 Supplier<Evaluable<? extends PackedCollection<?>>> base,
-										 Supplier<Evaluable<? extends PackedCollection<?>>> exponent) {
-		this("pow", shape, base, exponent);
+		this("pow", shape, (Producer) base, (Producer) exponent);
 	}
 
 	/**
@@ -215,8 +193,8 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	 * @param exponent The {@link Supplier} providing {@link Evaluable} instances that produce exponent values
 	 */
 	protected CollectionExponentComputation(String name, TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>> base,
-											Supplier<Evaluable<? extends PackedCollection<?>>> exponent) {
+											Producer<PackedCollection<?>> base,
+											Producer<PackedCollection<?>> exponent) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, base, exponent);
 	}
 
@@ -274,7 +252,7 @@ public class CollectionExponentComputation<T extends PackedCollection<?>> extend
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return new CollectionExponentComputation<>(getName(), getShape(),
-				(Supplier) children.get(1), (Supplier) children.get(2))
+				(Producer) children.get(1), (Producer) children.get(2))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())

@@ -35,8 +35,6 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public static boolean enableAsyncListeners =
 			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 
-	private boolean enableAggregation = true;
-
 	private Object[] originalArguments;
 	private Object[] arguments;
 	private int kernelSize;
@@ -77,7 +75,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		if (!isReady()) return;
 
 		if (arguments == null) {
-			arguments = enableAggregation ? replacementManager.processArguments(originalArguments) : originalArguments;
+			arguments = replacementManager.processArguments(originalArguments);
 		}
 
 		Runnable notice = () -> {
