@@ -379,7 +379,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (len == null) {
 			throw new IllegalArgumentException();
 		} else if (len <= 0) {
-			existing.getRootDelegate().destroy();
+			if (existing != null) {
+				existing.getRootDelegate().destroy();
+			}
+
 			return null;
 		}
 

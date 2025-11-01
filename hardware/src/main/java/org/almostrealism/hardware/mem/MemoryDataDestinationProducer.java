@@ -79,13 +79,11 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 
 	@Override
 	public Evaluable<T> get() {
-		Evaluable<T> e = super.get();
-
 		return new MemoryDataDestination<>(size -> {
 			if (enableThreadLocalProvider) {
 				return provider.getValue().apply(size);
 			} else {
-				return e.createDestination(size);
+				return getDestinationFactory().apply(size);
 			}
 		});
 	}
