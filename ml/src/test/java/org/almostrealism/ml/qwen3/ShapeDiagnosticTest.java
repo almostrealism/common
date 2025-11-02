@@ -1,18 +1,14 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.shape.TraversalPolicy;
-import org.almostrealism.graph.Model;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.Model;
 import org.junit.Test;
-
-import static org.almostrealism.collect.shape.TraversalPolicy.shape;
-import static org.almostrealism.graph.Receptor.p;
 
 /**
  * Diagnoses the shape transformation issue causing errors at layer boundaries.

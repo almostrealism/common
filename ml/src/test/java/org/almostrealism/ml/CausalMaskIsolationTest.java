@@ -4,7 +4,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Model;
-import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.junit.Test;
 

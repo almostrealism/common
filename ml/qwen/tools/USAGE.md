@@ -28,7 +28,7 @@ pip install torch transformers
 
 ```bash
 # Extract from Hugging Face model
-python /workspace/project/common/ml/extract_qwen3_weights.py \
+python extract_qwen3_weights.py \
     Qwen/Qwen3-Instruct-2507-4B \
     ./qwen3_weights
 

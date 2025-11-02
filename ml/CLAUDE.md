@@ -115,7 +115,7 @@ public class MyTest implements ConsoleFeatures {
     @Test
     public void myTest() throws Exception {
         // Set up file logging BEFORE any output
-        String logFile = "/workspace/project/common/ml/test_output/my_test_results.txt";
+        String logFile = "/workspace/project/common/ml/results/my_test.out";
         Console.root().addListener(OutputFeatures.fileOutput(logFile));
 
         // Use Console methods instead of System.err/System.out
@@ -134,8 +134,8 @@ public class MyTest implements ConsoleFeatures {
 - Easy to compare outputs across multiple test runs
 
 **Best Practices**:
-- Create `/workspace/project/common/ml/test_output/` directory for test logs
-- Use descriptive file names: `<TestName>_<date>.txt` or `<TestName>_results.txt`
+- Create `common/ml/results/` directory for test logs
+- Use descriptive file names: `<TestName>_<date>.out` or `<TestName>.out`
 - Add file logging setup at the START of each test method
 - Use `log()` instead of `System.err.println()` for important results
 - Keep log files in gitignore (test outputs are transient)
@@ -227,22 +227,7 @@ rmsnorm(weights, epsilon, requirements);
 norm(weights, bias, epsilon, requirements);  // Handles RMSNorm, LayerNorm, QK-Norm
 ```
 
-## Qwen3 Implementation
-
-See [PLAN.md](./PLAN.md) for the complete implementation plan for Qwen3-Instruct-2507 4B.
-
-### Current Status
-
-- ✅ Core architecture implemented
-- ✅ QK-Norm integrated into generalized attention
-- ✅ StateDictionary weight loading
-- ✅ Tokenizer implementation
-- ✅ Synthetic tests passing
-- ✅ GQA (Grouped Query Attention) implemented and tested
-- ⚠️ Full 24-layer model validation pending (single transformer block validated)
-
 ## References
 
 - [Common AR Guidelines](../claude.md) - General framework patterns
-- [Qwen3 Technical Report](../qwen3/Qwen3_Technical_Report.pdf)
 - [AR Framework Documentation](../../README.md)
