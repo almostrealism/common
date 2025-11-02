@@ -206,7 +206,7 @@ public class TriangleTest implements TestFeatures {
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
 				Input.value(shape(-1, 6), 0));
 
-		GreaterThanCollection gts = (GreaterThanCollection) (Supplier) intersectAt.getInputs().get(4);
+		GreaterThanCollection gts = (GreaterThanCollection) intersectAt.getInputs().get(4);
 		Evaluable<Scalar> ev = gts.get();
 
 		PackedCollection<?> distance = ev.evaluate(in, td.traverse(0));

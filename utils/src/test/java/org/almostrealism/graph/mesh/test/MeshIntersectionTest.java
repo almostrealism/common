@@ -201,7 +201,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectAt2() {
-		double distance = ((Scalar) intersection().get().evaluate(
+		double distance = ((PackedCollection) intersection().get().evaluate(
 				data2.get(0).traverse(0), origin2.get().evaluate(), direction2.get().evaluate())).toDouble();
 		System.out.println("distance = " + distance);
 		assertEquals(1.0, distance);

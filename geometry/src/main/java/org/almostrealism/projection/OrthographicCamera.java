@@ -130,10 +130,6 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	 * Sets the projection width of this OrthographicCamera object to the specified projection width.
 	 */
 	public void setProjectionWidth(double projectionX) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: Projection width being set to " + projectionX);
-//		}
-		
 		this.projectionDimensions.setX(projectionX);
 	}
 	
@@ -153,14 +149,6 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 		this.u = this.upDirection.crossProduct(this.w);
 		this.u.divideBy(this.u.length());
 		this.v = this.w.crossProduct(this.u);
-	}
-
-	/** Manual cross product calculation to avoid native code compilation during construction. */
-	private Vector manualCrossProduct(Vector a, Vector b) {
-		double x = a.getY() * b.getZ() - a.getZ() * b.getY();
-		double y = a.getZ() * b.getX() - a.getX() * b.getZ();
-		double z = a.getX() * b.getY() - a.getY() * b.getX();
-		return new Vector(x, y, z);
 	}
 	
 	@Override

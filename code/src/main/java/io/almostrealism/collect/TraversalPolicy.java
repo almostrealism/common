@@ -50,10 +50,10 @@ import java.util.stream.Stream;
  * <p><b>Fixed vs Variable Count:</b></p>
  * <p>A {@link TraversalPolicy} can be either <i>fixed-count</i> or <i>variable-count</i>:</p>
  * <ul>
- *   <li><b>Fixed-count ({@code fixed=true}, default):</b> The dimensions are predetermined
+ *   <li><b>Fixed-count (default):</b> The dimensions are predetermined
  *       and do not change. Created via {@code new TraversalPolicy(dims)} or
  *       {@code new TraversalPolicy(true, dims)}.</li>
- *   <li><b>Variable-count ({@code fixed=false}):</b> The dimensions can adapt to runtime
+ *   <li><b>Variable-count:</b> The dimensions can adapt to runtime
  *       inputs, particularly the size of arguments passed to {@link io.almostrealism.relation.Evaluable#evaluate}.
  *   </li>
  * </ul>

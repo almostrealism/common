@@ -44,8 +44,9 @@ import java.util.function.Supplier;
 
 /**
  * {@link PassThroughProducer} represents an input argument being passed through
- * a computation without transformation. It serves as a reference to a specific
- * argument index with a defined {@link TraversalPolicy} shape.
+ * a computation via the arguments to {@link Evaluable#evaluate(Object...)}.
+ * It serves as a reference to a specific argument index and specifies the expected
+ * {@link TraversalPolicy} for that argument.
  *
  * <p><b>Fixed vs Variable Count:</b></p>
  * <p>The behavior of {@link PassThroughProducer} with respect to {@link #isFixedCount()}
@@ -53,7 +54,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li><b>Fixed count ({@code new TraversalPolicy(memLength)}):</b> The shape has a
  *       predetermined size. This is suitable for arguments with a known, unchanging size.
- *       Example: {@code Input.value(3, 0)} creates a pass-through for a 3-element vector.</li>
+ *       Example: {@code Input.value(new TraversalPolicy(3), 0)} creates a pass-through for a 3-element vector.</li>
  *   <li><b>Variable count ({@code new TraversalPolicy(false, false, memLength)}):</b>
  *       The shape can adapt to the actual size of runtime arguments. This is essential
  *       for operations that process variable-sized inputs. Example:
@@ -64,8 +65,8 @@ import java.util.function.Supplier;
  * <p><b>Kernel Execution Implications:</b></p>
  * <p>When a {@link PassThroughProducer} with a fixed count is used in a kernel,
  * the output size must either be 1 (scalar) or exactly match the operation's count.
- * This is enforced in {@link ProcessDetailsFactory#init}. If the output size doesn't
- * match, an {@link IllegalArgumentException} is thrown.</p>
+ * If the output size doesn't match, an {@link IllegalArgumentException} is thrown
+ * at evaluation time.</p>
  *
  * <p>Variable-count {@link PassThroughProducer}s allow the kernel size to be determined
  * from the output size at runtime, providing flexibility for operations that process
