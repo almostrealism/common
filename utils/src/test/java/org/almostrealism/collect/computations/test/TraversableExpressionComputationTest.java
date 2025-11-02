@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -30,11 +28,10 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Test class demonstrating usage patterns for {@link TraversableExpressionComputation}
+ * Test class demonstrating usage patterns for {@link org.almostrealism.collect.computations.TraversableExpressionComputation}
  * and its concrete implementation {@link DefaultTraversableExpressionComputation}.
  * 
  * <p>This class provides practical examples of how to create and use traversable
@@ -59,13 +56,17 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 	protected <T extends PackedCollection<?>> DefaultTraversableExpressionComputation<T> pairSum(Producer a) {
 		TraversalPolicy shape = shape(a).replace(shape(1));
 
-		return new DefaultTraversableExpressionComputation<>(null, shape,
+		return new DefaultTraversableExpressionComputation<>("pairSum", shape,
 				(Function<TraversableExpression[], CollectionExpression>)
 						(args) ->
 								DefaultCollectionExpression.create(shape,
-										idx ->
-												Sum.of(args[1].getValueRelative(new IntegerConstant(0)),
-										args[1].getValueRelative(new IntegerConstant(1)))), a);
+										idx -> {
+											log(shape);
+											return Sum.of(
+													args[1].getValueAt(idx.multiply(2)),
+													args[1].getValueAt(idx.multiply(2).add(1)));
+										}
+								), a);
 	}
 
 	/**
@@ -87,6 +88,7 @@ public class TraversableExpressionComputationTest implements TestFeatures {
 
 		DefaultTraversableExpressionComputation<?> sum = pairSum(p(input.traverse(1)));
 		PackedCollection<?> out = sum.get().evaluate();
+		out.print();
 
 		for (int i = 0; i < r; i++) {
 			double expected = input.valueAt(i, 0) + input.valueAt(i, 1);

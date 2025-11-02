@@ -28,6 +28,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -52,7 +53,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 	private final int memLength;
 
-	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+	public Assignment(int memLength, Producer<T> result, Producer<T> value) {
 		super(result, value);
 		this.memLength = memLength;
 		init();
@@ -112,7 +113,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			if (len > 1) index = index.multiply(len).add(i);
 
 			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
-			Expression<Double> value = exp == null ? getArgument(1).valueAt(index) : exp.getValueAt(index);
+			Expression<Double> value = exp == null ? getArgument(1).reference(index) : exp.getValueAt(index);
 			if (value == null) {
 				throw new UnsupportedOperationException();
 			}
@@ -204,7 +205,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		Assignment result = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+		Assignment result = new Assignment<>(memLength, (Producer) children.get(0), (Producer) children.get(1));
 
 		if (getMetadata().getShortDescription() != null) {
 			result.getMetadata().setShortDescription(getMetadata().getShortDescription());

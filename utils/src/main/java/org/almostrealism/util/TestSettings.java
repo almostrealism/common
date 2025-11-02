@@ -23,7 +23,7 @@ public interface TestSettings {
 
 	boolean skipLongTests = TestUtils.getSkipLongTests();
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
-	boolean skipGeometryIssues = TestUtils.getTestDepth() < 3;
+	boolean skipGeometryIssues = false;
 	boolean trainingTests = TestUtils.getTrainTests();
 	boolean verboseLogs = TestUtils.getVerboseLogs();
 

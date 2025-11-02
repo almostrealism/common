@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.graph.computations;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.HybridScope;
@@ -34,18 +33,17 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
 	protected HybridScope scope;
 	private int len;
 
 	public TimeCellReset(Producer<Pair<?>> time, PackedCollection<?> resets) {
-		super((Supplier) time, () -> new Provider<>(resets));
+		super((Producer) time, () -> new Provider<>(resets));
 		len = resets.getMemLength();
 	}
 
-	private TimeCellReset(int len, Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	private TimeCellReset(int len, Producer<PackedCollection<?>>... arguments) {
 		super(arguments);
 		this.len = len;
 	}
@@ -55,7 +53,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new TimeCellReset(len, children.toArray(Supplier[]::new));
+		return new TimeCellReset(len, children.toArray(Producer[]::new));
 	}
 
 	@Override
@@ -73,7 +71,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 			if (i > 0) exp.accept(" else ");
 
 			Expression<Boolean> condition = getResets().valueAt(1).greaterThan(e(0.0));
-			condition = condition.and(getTime().referenceRelative(1).eq(getResets().valueAt(i)));
+			condition = condition.and(getTime().reference(e(1)).eq(getResets().valueAt(i)));
 
 //			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
 			exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -265,8 +265,11 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
-	public Vector crossProduct(Vector vector) {
-		return crossProduct(v(this), v(vector)).get().evaluate();
+	public Vector crossProduct(Vector v) {
+		double x = getY() * v.getZ() - getZ() * v.getY();
+		double y = getZ() * v.getX() - getX() * v.getZ();
+		double z = getX() * v.getY() - getY() * v.getX();
+		return new Vector(x, y, z);
 	}
 
 	public float[] toFloat() {
@@ -275,7 +278,6 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	}
 
 	public void normalize() {
-		// TODO  This should leverage a reusable Evaluable that takes an argument
 		normalize(cp(this)).into(this).evaluate();
 	}
 

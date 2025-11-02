@@ -23,13 +23,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
-import org.almostrealism.geometry.computations.TransformMatrixDeterminant;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
@@ -61,14 +58,32 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		this(true, null, 0);
 	}
 
-	protected TransformMatrix(MemoryData delegate, int delegateOffset) {
-		this(true, delegate, delegateOffset);
+	public TransformMatrix(MemoryData delegate, int delegateOffset) {
+		this(false, delegate, delegateOffset);
+
+		// Check if the delegate contains an identity matrix
+		this.isIdentity = isIdentityMatrix();
+		this.inverted = false;
 	}
 
 	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
-		super(new TraversalPolicy(16), 0);
-		setDelegate(delegate, delegateOffset);
-		initMem(identity);
+		super(new TraversalPolicy(16), 0, delegate, delegateOffset);
+
+		if (identity) {
+			setMatrix(TransformMatrix.identity);
+		}
+	}
+
+	private boolean isIdentityMatrix() {
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				double expected = (i == j) ? 1.0 : 0.0;
+				if (Math.abs(toDouble(i * 4 + j) - expected) > 1e-10) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -77,15 +92,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 */
 	public TransformMatrix(double matrix[][]) {
 		super(new TraversalPolicy(16), 0);
-		initMem(false);
 		this.setMatrix(matrix);
-	}
-
-	private void initMem(boolean identity) {
-		init();
-		if (identity) {
-			setMatrix(TransformMatrix.identity);
-		}
 	}
 
 	/**
@@ -165,8 +172,8 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * @see  org.almostrealism.algebra.MatrixFeatures#matmul
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return matmul(cp(this).reshape(4, 4),
-				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate();
+		return new TransformMatrix(matmul(cp(this).reshape(4, 4),
+				      cp(matrix).reshape(4, 4)).into(new TransformMatrix()).evaluate(), 0);
 	}
 
 	@Override
@@ -277,35 +284,58 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		return this.inverseMatrix;
 	}
 
-	public void rigidInversion() {
-		throw new RuntimeException("TODO  Implement rigidInversion with CL");
-		/*
-		double t = matrix[0][1];
-		matrix[0][1] = matrix[1][0];
-		matrix[1][0] = t;
+	/**
+	 * Computes the determinant of this {@link TransformMatrix}.
+	 */
+	public double determinant() {
+		double[] m = this.toArray();
 
-		t = matrix[0][2];
-		matrix[0][2] = matrix[2][0];
-		matrix[2][0] = t;
+		// Using cofactor expansion along the first row
+		// det = a00*M00 - a01*M01 + a02*M02 - a03*M03
+		// where Mij is the minor (determinant of 3x3 submatrix)
 
-		t = matrix[1][2];
-		matrix[1][2] = matrix[2][1];
-		matrix[2][1] = t;
+		// Helper function to get 3x3 determinant
+		// Minor M00 (exclude row 0, col 0)
+		double m00 = det3x3(
+			m[5], m[6], m[7],    // row 1, cols 1,2,3
+			m[9], m[10], m[11],  // row 2, cols 1,2,3
+			m[13], m[14], m[15]  // row 3, cols 1,2,3
+		);
 
-		Vector negTrans = new Vector(-matrix[0][3], -matrix[1][3], -matrix[2][3]);
-		Vector trans = transformAsOffset(negTrans);
-		matrix[0][3] = trans.getX();
-		matrix[1][3] = trans.getY();
-		matrix[2][3] = trans.getZ();
-		*/
+		// Minor M01 (exclude row 0, col 1)
+		double m01 = det3x3(
+			m[4], m[6], m[7],    // row 1, cols 0,2,3
+			m[8], m[10], m[11],  // row 2, cols 0,2,3
+			m[12], m[14], m[15]  // row 3, cols 0,2,3
+		);
+
+		// Minor M02 (exclude row 0, col 2)
+		double m02 = det3x3(
+			m[4], m[5], m[7],    // row 1, cols 0,1,3
+			m[8], m[9], m[11],   // row 2, cols 0,1,3
+			m[12], m[13], m[15]  // row 3, cols 0,1,3
+		);
+
+		// Minor M03 (exclude row 0, col 3)
+		double m03 = det3x3(
+			m[4], m[5], m[6],    // row 1, cols 0,1,2
+			m[8], m[9], m[10],   // row 2, cols 0,1,2
+			m[12], m[13], m[14]  // row 3, cols 0,1,2
+		);
+
+		// Compute determinant with alternating signs
+		return m[0] * m00 - m[1] * m01 + m[2] * m02 - m[3] * m03;
 	}
 
 	/**
-	 * Computes the determinant of the matrix represented by this TransformMatrix object and
-	 * returns the result as a double value.
+	 * Helper method to compute 3x3 determinant.
 	 */
-	public double determinant() {
-		return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
+	private double det3x3(double a00, double a01, double a02,
+	                     double a10, double a11, double a12,
+	                     double a20, double a21, double a22) {
+		return a00 * (a11 * a22 - a12 * a21)
+		     - a01 * (a10 * a22 - a12 * a20)
+		     + a02 * (a10 * a21 - a11 * a20);
 	}
 
 	/**
@@ -357,12 +387,6 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 				"[ " + m[3][0] + ", " + m[3][1] + ", " + m[3][2] + ", " + m[3][3] + " ]";
 
 		return data;
-	}
-
-	public static Producer<TransformMatrix> blank() {
-		return new DynamicProducerForMemoryData<>(args ->
-				new TransformMatrix(false, null, 0),
-				i -> new PackedCollection<>(i, 16));
 	}
 
 	public static PackedCollection<TransformMatrix> bank(int count) {

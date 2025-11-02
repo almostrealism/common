@@ -173,24 +173,24 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 							Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
 							Expression kPlusTripleQuarterN2 = kPlusTripleQuarterN.multiply(2);
 
-							Expression ar = input.valueAt(k2);
-							Expression ai = input.valueAt(k2.add(1));
-							Expression br = input.valueAt(kPlusQuarterN2);
-							Expression bi = input.valueAt(kPlusQuarterN2.add(1));
-							Expression cr = input.valueAt(kPlusHalfN2);
-							Expression ci = input.valueAt(kPlusHalfN2.add(1));
-							Expression dr = input.valueAt(kPlusTripleQuarterN2);
-							Expression di = input.valueAt(kPlusTripleQuarterN2.add(1));
+							Expression ar = input.reference(k2);
+							Expression ai = input.reference(k2.add(1));
+							Expression br = input.reference(kPlusQuarterN2);
+							Expression bi = input.reference(kPlusQuarterN2.add(1));
+							Expression cr = input.reference(kPlusHalfN2);
+							Expression ci = input.reference(kPlusHalfN2.add(1));
+							Expression dr = input.reference(kPlusTripleQuarterN2);
+							Expression di = input.reference(kPlusTripleQuarterN2.add(1));
 
 							Expression arPlusCr = ar.add(cr);
 							Expression aiPlusCi = ai.add(ci);
 							Expression brPlusDr = br.add(dr);
 							Expression biPlusDi = bi.add(di);
 
-							body.assign(radix2.valueAt(k2), arPlusCr);
-							body.assign(radix2.valueAt(k2.add(1)), aiPlusCi);
-							body.assign(radix2.valueAt(kPlusQuarterN2), brPlusDr);
-							body.assign(radix2.valueAt(kPlusQuarterN2.add(1)), biPlusDi);
+							body.assign(radix2.reference(k2), arPlusCr);
+							body.assign(radix2.reference(k2.add(1)), aiPlusCi);
+							body.assign(radix2.reference(kPlusQuarterN2), brPlusDr);
+							body.assign(radix2.reference(kPlusQuarterN2.add(1)), biPlusDi);
 
 							Expression bMinusD_r = br.subtract(dr);
 							Expression bMinusD_i = bi.subtract(di);
@@ -214,12 +214,12 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 							Expression aMinusCPlusItsI = aMinusC_i.add(imaginaryTimesSubI);
 
 							Expression radix4Part1Exp[] = complexProduct(aMinusCMinusItsR, aMinusCMinusItsI, omegaR, omegaI);
-							body.assign(radix4Part1.valueAt(k2), radix4Part1Exp[0]);
-							body.assign(radix4Part1.valueAt(k2.add(1)), radix4Part1Exp[1]);
+							body.assign(radix4Part1.reference(k2), radix4Part1Exp[0]);
+							body.assign(radix4Part1.reference(k2.add(1)), radix4Part1Exp[1]);
 
 							Expression radix4Part2Exp[] = complexProduct(aMinusCPlusItsR, aMinusCPlusItsI, omegaToPowerOf3R, omegaToPowerOf3I);
-							body.assign(radix4Part2.valueAt(k2), radix4Part2Exp[0]);
-							body.assign(radix4Part2.valueAt(k2.add(1)), radix4Part2Exp[1]);
+							body.assign(radix4Part2.reference(k2), radix4Part2Exp[0]);
+							body.assign(radix4Part2.reference(k2.add(1)), radix4Part2Exp[1]);
 
 							loop.add(body);
 						}
@@ -247,26 +247,26 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 
 							Scope first = new Scope<>();
 							{
-								first.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)).divide(len));
-								first.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN)).divide(len));
-								first.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).add(1)).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK).divide(len));
-								first.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)).divide(len));
+								first.assign(output.reference(doubleK.multiply(2)), radix2FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(doubleK.multiply(2).add(1)), radix2FFT.reference(doubleK.add(1)).divide(len));
+								first.assign(output.reference(quadrupleK.add(1).multiply(2)), radix4Part1FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.reference(doubleK.add(1)).divide(len));
+								first.assign(output.reference(doubleK.add(halfN).multiply(2)), radix2FFT.reference(k.add(quarterN)).divide(len));
+								first.assign(output.reference(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.reference(k.add(quarterN).add(1)).divide(len));
+								first.assign(output.reference(quadrupleK.add(3).multiply(2)), radix4Part2FFT.reference(doubleK).divide(len));
+								first.assign(output.reference(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.reference(doubleK.add(1)).divide(len));
 							}
 
 							Scope alt = new Scope<>();
 							{
-								alt.assign(output.valueAt(doubleK.multiply(2)), radix2FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(doubleK.multiply(2).add(1)), radix2FFT.valueAt(doubleK.add(1)));
-								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2)), radix4Part1FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.valueAt(doubleK.add(1)));
-								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2)), radix2FFT.valueAt(k.add(quarterN).multiply(2)));
-								alt.assign(output.valueAt(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.valueAt(k.add(quarterN).multiply(2).add(1)));
-								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2)), radix4Part2FFT.valueAt(doubleK));
-								alt.assign(output.valueAt(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.valueAt(doubleK.add(1)));
+								alt.assign(output.reference(doubleK.multiply(2)), radix2FFT.reference(doubleK));
+								alt.assign(output.reference(doubleK.multiply(2).add(1)), radix2FFT.reference(doubleK.add(1)));
+								alt.assign(output.reference(quadrupleK.add(1).multiply(2)), radix4Part1FFT.reference(doubleK));
+								alt.assign(output.reference(quadrupleK.add(1).multiply(2).add(1)), radix4Part1FFT.reference(doubleK.add(1)));
+								alt.assign(output.reference(doubleK.add(halfN).multiply(2)), radix2FFT.reference(k.add(quarterN).multiply(2)));
+								alt.assign(output.reference(doubleK.add(halfN).multiply(2).add(1)), radix2FFT.reference(k.add(quarterN).multiply(2).add(1)));
+								alt.assign(output.reference(quadrupleK.add(3).multiply(2)), radix4Part2FFT.reference(doubleK));
+								alt.assign(output.reference(quadrupleK.add(3).multiply(2).add(1)), radix4Part2FFT.reference(doubleK.add(1)));
 							}
 
 							body.addCase(inverseTransform.ref().greaterThan(e(0)).and(isFirstSplit.greaterThan(e(0))), first, alt);
@@ -301,7 +301,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				InstanceReference i = Variable.integer("i").ref();
 				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
-					inOut.assign(output.valueAt(i), input.valueAt(i));
+					inOut.assign(output.reference(i), input.reference(i));
 					inOutLoop.add(inOut);
 				}
 
@@ -413,15 +413,15 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					Expression k2 = k.multiply(2);
 					Expression kPlusHalfN2 = kPlusHalfN.multiply(2);
 
-					body.assign(even.valueAt(k2), input.valueAt(k2).add(input.valueAt(kPlusHalfN2)));
-					body.assign(even.valueAt(k2.add(1)), input.valueAt(k2.add(1)).add(input.valueAt(kPlusHalfN2.add(1))));
+					body.assign(even.reference(k2), input.reference(k2).add(input.reference(kPlusHalfN2)));
+					body.assign(even.reference(k2.add(1)), input.reference(k2.add(1)).add(input.reference(kPlusHalfN2.add(1))));
 
-					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.valueAt(k2).subtract(input.valueAt(kPlusHalfN2)));
-					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.valueAt(k2.add(1)).subtract(input.valueAt(kPlusHalfN2.add(1))));
+					Expression inKMinusInKPlusHalfNr = body.declareDouble("inKMinusInKPlusHalfNr_" + varIdx++, input.reference(k2).subtract(input.reference(kPlusHalfN2)));
+					Expression inKMinusInKPlusHalfNi = body.declareDouble("inKMinusInKPlusHalfNi_" + varIdx++, input.reference(k2.add(1)).subtract(input.reference(kPlusHalfN2.add(1))));
 
 					Expression oddExp[] = complexProduct(inKMinusInKPlusHalfNr, inKMinusInKPlusHalfNi, omegaR, omegaI);
-					body.assign(odd.valueAt(k2), oddExp[0]);
-					body.assign(odd.valueAt(k2.add(1)), oddExp[1]);
+					body.assign(odd.reference(k2), oddExp[0]);
+					body.assign(odd.reference(k2.add(1)), oddExp[1]);
 
 					evenOdd.add(body);
 				}
@@ -442,25 +442,25 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 					Expression doubleK = body.declareInteger("doubleK_" + varIdx++, k.multiply(2));
 
 					Scope first = new Scope<>(); {
-						first.assign(output.valueAt(doubleK.multiply(2)),
-										evenFft.valueAt(k2).divide(len));
-						first.assign(output.valueAt(doubleK.multiply(2).add(1)),
-										evenFft.valueAt(k2.add(1)).divide(len));
-						first.assign(output.valueAt(doubleK.add(1).multiply(2)),
-										oddFft.valueAt(k2).divide(len));
-						first.assign(output.valueAt(doubleK.add(1).multiply(2).add(1)),
-										oddFft.valueAt(k2.add(1)).divide(len));
+						first.assign(output.reference(doubleK.multiply(2)),
+										evenFft.reference(k2).divide(len));
+						first.assign(output.reference(doubleK.multiply(2).add(1)),
+										evenFft.reference(k2.add(1)).divide(len));
+						first.assign(output.reference(doubleK.add(1).multiply(2)),
+										oddFft.reference(k2).divide(len));
+						first.assign(output.reference(doubleK.add(1).multiply(2).add(1)),
+										oddFft.reference(k2.add(1)).divide(len));
 					}
 
 					Scope alt = new Scope<>(); {
-						alt.assign(output.valueAt(doubleK.multiply(2)),
-								evenFft.valueAt(k2));
-						alt.assign(output.valueAt(doubleK.multiply(2).add(1)),
-								evenFft.valueAt(k2.add(1)));
-						alt.assign(output.valueAt(doubleK.add(1).multiply(2)),
-								oddFft.valueAt(k2));
-						alt.assign(output.valueAt(doubleK.add(1).multiply(2).add(1)),
-								oddFft.valueAt(k2.add(1)));
+						alt.assign(output.reference(doubleK.multiply(2)),
+								evenFft.reference(k2));
+						alt.assign(output.reference(doubleK.multiply(2).add(1)),
+								evenFft.reference(k2.add(1)));
+						alt.assign(output.reference(doubleK.add(1).multiply(2)),
+								oddFft.reference(k2));
+						alt.assign(output.reference(doubleK.add(1).multiply(2).add(1)),
+								oddFft.reference(k2.add(1)));
 					}
 
 					body.addCase(inverseTransform.ref().greaterThan(e(0))
@@ -477,7 +477,7 @@ public class FourierTransform extends CollectionProducerComputationBase<PackedCo
 				InstanceReference i = Variable.integer("i" + varIdx++).ref();
 				Repeated inOutLoop = new Repeated<>(i.getReferent(), (i.lessThan(len.multiply(2))));
 				Scope<?> inOut = new Scope<>(); {
-					inOut.assign(output.valueAt(i), input.valueAt(i));
+					inOut.assign(output.reference(i), input.reference(i));
 					inOutLoop.add(inOut);
 				}
 

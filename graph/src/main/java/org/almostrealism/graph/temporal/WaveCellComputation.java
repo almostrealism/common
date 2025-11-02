@@ -51,7 +51,7 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 				data.getAmplitude());
 	}
 
-	protected WaveCellComputation(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	protected WaveCellComputation(Producer... arguments) {
 		super(arguments);
 	}
 

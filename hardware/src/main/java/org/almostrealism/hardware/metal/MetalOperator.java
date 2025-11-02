@@ -20,7 +20,6 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.Semaphore;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
@@ -54,7 +53,7 @@ public class MetalOperator extends HardwareOperator {
 	}
 
 	@Override
-	public String getName() { return name; }
+	public String getName() { return name +  "(execution " + getId() + ")"; }
 
 	@Override
 	protected String getHardwareName() { return "MTL"; }
@@ -176,17 +175,14 @@ public class MetalOperator extends HardwareOperator {
 			});
 		});
 
-		if (Hardware.isAsync()) {
-			// TODO  Return a Semaphore using the Future
-			throw new UnsupportedOperationException();
-		} else {
-			try {
-				run.get();
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			} catch (ExecutionException  e) {
-				throw new RuntimeException(e);
-			}
+		try {
+			// TODO  This should actually return a Semaphore rather than
+			// TODO  blocking until the process is over
+			run.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException  e) {
+			throw new RuntimeException(e);
 		}
 
 		return null;

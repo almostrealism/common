@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 
@@ -89,7 +90,6 @@ import java.util.function.Supplier;
  * @see RepeatedProducerComputation
  * @see TraversableExpression  
  * @see CollectionProducerComputationAdapter#toRepeated()
- * @see RelativeTraversableProducerComputation#toRepeated()
  * @see TraversalPolicy
  * 
  * @author Michael Murray
@@ -121,12 +121,12 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	 * 
 	 * @see TraversalPolicy
 	 * @see TraversableExpression#getValueAt(Expression)
-	 * @see RepeatedProducerComputation#RepeatedProducerComputation(String, TraversalPolicy, BiFunction, BiFunction, BiFunction, Supplier[])
+	 * @see RepeatedProducerComputation#RepeatedProducerComputation(String, TraversalPolicy, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
-											  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+											  Producer<PackedCollection<?>>... arguments) {
 		super(null, shape,
 				(args, index) ->
 						new DoubleConstant(0.0),
@@ -170,6 +170,7 @@ public class RepeatedProducerComputationAdapter<T extends PackedCollection<?>> e
 	 */
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		return ((ArrayVariable) getOutputVariable()).valueAt(localIndex);
+		ArrayVariable out = (ArrayVariable) getOutputVariable();
+		return out.reference(globalIndex.multiply(out.length()).add(localIndex));
 	}
 }

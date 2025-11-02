@@ -23,7 +23,6 @@ import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -40,7 +39,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -63,7 +61,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducer<?>> mapper) {
-		super(null, shape, (Supplier) collection);
+		super("map", shape, (Producer) collection);
 		this.inputShape = shape(collection);
 		this.mapper = mapper;
 
@@ -176,7 +174,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		if (!enableChainDelta || !(AlgebraFeatures.deepMatch(getInputs().get(1), target))) {
 			return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 					args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
-					(Supplier) this).addDependentLifecycle(this);
+					(Producer) this).addDependentLifecycle(this);
 		}
 
 		TraversalPolicy outShape = getShape();
@@ -194,7 +192,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		TraversableDeltaComputation<T> deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)),
-				stub, (Supplier) new PackedCollectionMap<>(getShape(), stub, mapper));
+				stub, (Producer) new PackedCollectionMap<>(getShape(), stub, mapper));
 		Producer deltaIn = ((CollectionProducer<PackedCollection<?>>) getInputs().get(1))
 							.delta(target).reshape(shape(inSize, targetSize));
 		if (deltaIn instanceof ScopeLifecycle) deltaOut.addDependentLifecycle((ScopeLifecycle) deltaIn);
@@ -240,7 +238,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	private static class ItemComputation<T extends PackedCollection<?>> extends DefaultTraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
-							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+							   Producer<PackedCollection<?>>... args) {
 			super("mapItem", shape, expression, args);
 		}
 

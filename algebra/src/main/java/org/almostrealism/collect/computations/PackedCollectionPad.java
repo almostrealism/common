@@ -98,6 +98,8 @@ import java.util.function.Supplier;
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
 public class PackedCollectionPad<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
+	public static boolean enableConditionSimplify = true;
+
 	/** The shape/dimensions of the input collection being padded */
 	private TraversalPolicy inputShape;
 	
@@ -121,7 +123,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	 */
 	public PackedCollectionPad(TraversalPolicy shape, TraversalPolicy position,
 							   Producer<?> input) {
-		super("pad", shape, (Supplier) input);
+		super("pad", shape, (Producer) input);
 		this.inputShape = shape(input);
 		this.position = position;
 		init();
@@ -155,7 +157,14 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return DefaultCollectionExpression.create(getShape(), idx -> {
-			Expression<?> superPos[] = getShape().position(idx);
+			// Separate the index into batch and local components to support batch processing
+			// This allows the pad operation to "repeat" the pattern for each batch element
+			// following the same approach as PackedCollectionEnumerate
+			long blockSize = getShape().getTotalSizeLong();
+			Expression<?> batchIdx = idx.divide(blockSize);
+			Expression<?> localIdx = idx.imod(blockSize);
+
+			Expression<?> superPos[] = getShape().position(localIdx);
 			Expression<?> innerPos[] = new Expression[superPos.length];
 			List<Expression<?>> conditions = new ArrayList<>();
 
@@ -180,14 +189,23 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 			}
 
 			Expression<Boolean> cond = Conjunction.of(conditions);
+			if (enableConditionSimplify) {
+				cond = (Expression) cond.simplify();
+			}
+
 			if (!cond.booleanValue().orElse(Boolean.TRUE)) {
 				// If conditions are definitely false,
 				// there is no need to obtain the value
 				return e(0.0);
 			}
 
+			// Compute the input index accounting for both the local position and batch offset
+			// For batch inputs, each batch element repeats the pad pattern
+			Expression<?> inputIdx = inputShape.index(innerPos).add(
+					batchIdx.multiply(inputShape.getTotalSizeLong()));
+
 			// Get the value from the input collection at the computed indices
-			Expression<?> out = args[1].getValueAt(inputShape.index(innerPos));
+			Expression<?> out = args[1].getValueAt(inputIdx);
 
 			// Return input value if all conditions are met, otherwise return 0
 			return conditional(cond, out, e(0.0));

@@ -37,7 +37,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	private final IntFunction<MemoryBank<T>> destination;
 
 	public DynamicProducerForMemoryData(Supplier<T> supplier) {
-		this(args -> supplier.get());
+		this((Object args[]) -> supplier.get());
 	}
 
 	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> destination) {
@@ -46,6 +46,10 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 
 	public DynamicProducerForMemoryData(Function<Object[], T> function) {
 		this(function, null);
+	}
+
+	protected DynamicProducerForMemoryData(IntFunction<MemoryBank<T>> destination) {
+		this((Function<Object[], T>) null, destination);
 	}
 
 	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> destination) {

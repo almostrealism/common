@@ -47,7 +47,19 @@ import java.util.stream.Stream;
  * a position in the output space (the space of the collection) into an
  * index in the input space (the natural order of elements) and vice versa.
  *
+ * <p><b>Fixed vs Variable Count:</b></p>
+ * <p>A {@link TraversalPolicy} can be either <i>fixed-count</i> or <i>variable-count</i>:</p>
+ * <ul>
+ *   <li><b>Fixed-count (default):</b> The dimensions are predetermined
+ *       and do not change. Created via {@code new TraversalPolicy(dims)} or
+ *       {@code new TraversalPolicy(true, dims)}.</li>
+ *   <li><b>Variable-count:</b> The dimensions can adapt to runtime
+ *       inputs, particularly the size of arguments passed to {@link io.almostrealism.relation.Evaluable#evaluate}.
+ *   </li>
+ * </ul>
+ *
  * @author  Michael Murray
+ * @see Countable#isFixedCount()
  */
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
 	public static boolean enableStrictSizes = true;
@@ -87,6 +99,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	private int traversalAxis;
 
+	/** @see #isFixedCount() */
 	private boolean fixed;
 
 	public TraversalPolicy(int... dims) {
@@ -839,6 +852,11 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return getTraversalAxis() != axis ? traverse(axis) : this;
 	}
 
+	/**
+	 * Returns {@code true} if this {@link TraversalPolicy} has a fixed count,
+	 * {@code false} if it has a variable count that may not be known until
+	 * it is used in computation.
+	 */
 	@Override
 	public boolean isFixedCount() { return fixed; }
 

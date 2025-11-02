@@ -22,12 +22,11 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -36,7 +35,6 @@ import io.almostrealism.uml.Signature;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T>
@@ -77,7 +75,7 @@ public abstract class ComputationBase<I, O, T>
 
 	@Override
 	public boolean isFixedCount() {
-		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return false;
 
 		return inputs.stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
@@ -141,7 +139,7 @@ public abstract class ComputationBase<I, O, T>
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
-		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
+		List<Producer<I>> inputs = getInputs();
 		if (inputs == null) return null;
 
 		return inputs.stream()

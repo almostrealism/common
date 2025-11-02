@@ -43,14 +43,14 @@ public abstract class ComputableBase<I, T> implements
 
 	private String function;
 
-	private List<Supplier<Evaluable<? extends I>>> inputs;
+	private List<Producer<I>> inputs;
 	private List<Argument<? extends I>> arguments;
 
 	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
 
 	@SafeVarargs
-	public ComputableBase(Supplier<Evaluable<? extends I>>... input) {
+	public ComputableBase(Producer<I>... input) {
 		setInputs(input);
 	}
 
@@ -69,10 +69,10 @@ public abstract class ComputableBase<I, T> implements
 	public String getName() { return OperationAdapter.operationName(null, getClass(), getFunctionName()); }
 
 	@SafeVarargs
-	protected final void setInputs(Supplier<Evaluable<? extends I>>... input) { setInputs(Arrays.asList(input)); }
-	protected void setInputs(List<Supplier<Evaluable<? extends I>>> inputs) { this.inputs = inputs; }
+	protected final void setInputs(Producer<I>... input) { setInputs(Arrays.asList(input)); }
+	protected void setInputs(List<Producer<I>> inputs) { this.inputs = inputs; }
 
-	public List<Supplier<Evaluable<? extends I>>> getInputs() { return inputs; }
+	public List<Producer<I>> getInputs() { return inputs; }
 
 	protected void setArguments(List<Argument<? extends I>> arguments) {
 		this.arguments = arguments;

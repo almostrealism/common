@@ -26,10 +26,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.HardwareFeatures;
-
-import java.util.function.Supplier;
 
 /**
  * A {@link TraversableExpressionComputation} provides a framework for computations that operate on
@@ -126,7 +123,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	 */
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											Producer<PackedCollection<?>>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, args);
 	}
 
@@ -148,7 +145,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
 											MultiTermDeltaStrategy deltaStrategy,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+											Producer<PackedCollection<?>>... args) {
 		super(name, shape, validateArgs(args));
 		this.deltaStrategy = deltaStrategy;
 
@@ -250,7 +247,7 @@ public abstract class TraversableExpressionComputation<T extends PackedCollectio
 		delta = TraversableDeltaComputation.create(
 				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new));
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 		return delta;
 	}
 

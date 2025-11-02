@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	protected TraversableDeltaComputation(String name, TraversalPolicy shape,
 										  Function<TraversableExpression[], CollectionExpression> expression,
 										  Producer<?> target,
-										  Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+										  Producer<PackedCollection<?>>... args) {
 		super(name, shape, validateArgs(args));
 		this.expression = expression;
 		this.target = target;
@@ -135,7 +135,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
 		TraversableDeltaComputation<T> result =
 				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getName(), getShape(), expression, target,
-					children.stream().skip(1).toArray(Supplier[]::new))
+					children.stream().skip(1).toArray(Producer[]::new))
 					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 		getDependentLifecycles().forEach(result::addDependentLifecycle);
 		return result;
@@ -168,7 +168,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 			String name, TraversalPolicy deltaShape, TraversalPolicy targetShape,
 			Function<TraversableExpression[], CollectionExpression> expression,
 			Producer<?> target,
-			Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+			Producer<PackedCollection<?>>... args) {
 		return new TraversableDeltaComputation<>(name, deltaShape.append(targetShape), expression, target, args);
 	}
 }

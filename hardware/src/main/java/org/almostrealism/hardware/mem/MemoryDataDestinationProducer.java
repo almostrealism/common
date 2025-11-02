@@ -46,7 +46,7 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	}
 
 	public MemoryDataDestinationProducer(Countable process, IntFunction<MemoryBank<T>> destination, boolean provider) {
-		super(args -> { throw new UnsupportedOperationException(); }, destination);
+		super(destination);
 		this.process = process;
 		if (enableThreadLocalProvider && provider) {
 			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
@@ -55,7 +55,7 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 	}
 
 	public MemoryDataDestinationProducer(Countable process, BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> destination) {
-		super(args -> { throw new UnsupportedOperationException(); }, i -> destination.apply(null, i));
+		super((IntFunction<MemoryBank<T>>)  i -> destination.apply(null, i));
 		this.process = process;
 		if (enableThreadLocalProvider) {
 			this.provider = new ThreadLocalContextSpecific<>(
@@ -79,13 +79,11 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 
 	@Override
 	public Evaluable<T> get() {
-		Evaluable<T> e = super.get();
-
 		return new MemoryDataDestination<>(size -> {
 			if (enableThreadLocalProvider) {
 				return provider.getValue().apply(size);
 			} else {
-				return e.createDestination(size);
+				return getDestinationFactory().apply(size);
 			}
 		});
 	}

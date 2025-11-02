@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -33,7 +32,6 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class WeightedSumComputation <T extends PackedCollection<?>>
 		extends TraversableExpressionComputation<T> {
@@ -48,8 +46,8 @@ public class WeightedSumComputation <T extends PackedCollection<?>>
 								  TraversalPolicy weightPositions,
 								  TraversalPolicy inputGroupShape,
 								  TraversalPolicy weightGroupShape,
-								  Supplier<Evaluable<? extends PackedCollection<?>>> input,
-								  Supplier<Evaluable<? extends PackedCollection<?>>> weights) {
+								  Producer<PackedCollection<?>> input,
+								  Producer<PackedCollection<?>> weights) {
 		super("weightedSum", resultShape.traverseEach(), input, weights);
 		this.resultShape = resultShape;
 		this.inputPositions = inputPositions;
@@ -105,13 +103,13 @@ public class WeightedSumComputation <T extends PackedCollection<?>>
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
-					(Supplier) getInputs().get(2));
+					(Producer) getInputs().get(2));
 		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
 			return new DefaultTraversableExpressionComputation<>("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),
-					(Supplier) getInputs().get(1));
+					(Producer) getInputs().get(1));
 		}
 
 		return super.delta(target);

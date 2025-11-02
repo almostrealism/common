@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,14 +19,12 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A computation that performs element-wise negation (unary minus) of a collection.
@@ -161,54 +159,11 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * // Result: [-1.0, 2.0, -3.0]
 	 * }</pre>
 	 * 
-	 * @see #CollectionMinusComputation(TraversalPolicy, Supplier[])
+	 * @see #CollectionMinusComputation(TraversalPolicy, Producer[])
 	 * @see TraversalPolicy
 	 * @see Producer
 	 */
-	public CollectionMinusComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
-		this("minus", shape, arguments);
-	}
-
-	/**
-	 * Creates a new CollectionMinusComputation with the specified shape and evaluable suppliers.
-	 * This constructor is used when working with {@link Supplier} instances that provide
-	 * {@link Evaluable} computations.
-	 * 
-	 * <p>This constructor is particularly useful in computational graph construction where
-	 * you need to defer the actual evaluation of input collections until computation time.
-	 * It automatically assigns the operation name as "minus".</p>
-	 * 
-	 * @param shape The {@link TraversalPolicy} defining the dimensional structure of the computation.
-	 *              This specifies how the collection elements will be accessed and processed.
-	 *              Must be compatible with the shape of collections provided by the suppliers.
-	 * @param arguments Variable number of suppliers that provide {@link Evaluable} instances.
-	 *                  Each supplier should produce an evaluable that returns a {@link PackedCollection}
-	 *                  to be negated. In typical usage, exactly one supplier is provided.
-	 * 
-	 * @throws IllegalArgumentException if the shape is null or incompatible with the supplier arguments
-	 * 
-	 * <p><strong>Usage Example:</strong></p>
-	 * <pre>{@code
-	 * // Create a supplier for deferred evaluation
-	 * Supplier<Evaluable<PackedCollection<?>>> supplier = () -> 
-	 *     () -> new PackedCollection<>(shape(2)).fill(pos -> Math.random());
-	 * 
-	 * // Create minus computation with deferred evaluation
-	 * TraversalPolicy shape = new TraversalPolicy(2);
-	 * CollectionMinusComputation<PackedCollection<?>> computation = 
-	 *     new CollectionMinusComputation<>(shape, supplier);
-	 * 
-	 * // Evaluation occurs when get() is called
-	 * PackedCollection<?> result = computation.get().evaluate();
-	 * // Result: negated version of the randomly generated collection
-	 * }</pre>
-	 * 
-	 * @see #CollectionMinusComputation(TraversalPolicy, Producer[])
-	 * @see Supplier
-	 * @see Evaluable
-	 */
-	public CollectionMinusComputation(TraversalPolicy shape,
-									Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+	public CollectionMinusComputation(TraversalPolicy shape, Producer<PackedCollection<?>>... arguments) {
 		this("minus", shape, arguments);
 	}
 
@@ -228,9 +183,7 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * @param shape The {@link TraversalPolicy} defining how the computation will traverse
 	 *              and process the collection elements. Must be compatible with the
 	 *              input collections provided by the suppliers.
-	 * @param arguments Variable number of suppliers providing {@link Evaluable} instances
-	 *                  that produce {@link PackedCollection} objects to be negated.
-	 *                  Standard usage expects exactly one supplier.
+	 * @param arguments Variable number of {@link PackedCollection} {@link Producer}s
 	 * 
 	 * @throws IllegalArgumentException if name is null, shape is null, or arguments are incompatible
 	 * 
@@ -248,10 +201,10 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * System.out.println(computation.getMetadata().getName()); // "debug_negate"
 	 * }</pre>
 	 * 
-	 * @see TransitiveDeltaExpressionComputation#TransitiveDeltaExpressionComputation(String, TraversalPolicy, Supplier[])
+	 * @see TransitiveDeltaExpressionComputation#TransitiveDeltaExpressionComputation(String, TraversalPolicy, Producer[])
 	 */
 	protected CollectionMinusComputation(String name, TraversalPolicy shape,
-									   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+										 Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, arguments);
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,9 +61,9 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		return super.push(null);
 	}
 
-	protected abstract Supplier<Runnable> assign(Supplier<Evaluable<? extends T>> out, Supplier<Evaluable<? extends T>> in);
+	protected abstract Supplier<Runnable> assign(Producer<T> out, Producer<T> in);
 
-	protected abstract Supplier<Runnable> reset(Supplier<Evaluable<? extends T>> out);
+	protected abstract Supplier<Runnable> reset(Producer<T> out);
 
 	@Override
 	public Supplier<Runnable> setup() {

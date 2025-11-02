@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
@@ -474,5 +475,98 @@ public class CollectionMathTests implements TestFeatures {
 		for (int i = 0; i < size; i++) {
 			Assert.assertEquals(aOrig.valueAt(i) + b.valueAt(i), a.valueAt(i), 1e-5);
 		}
+	}
+
+	@Test
+	public void lessThanSingleValue() {
+		// Test lessThan with single scalar values
+		Producer<PackedCollection<?>> a = c(5.0);
+		Producer<PackedCollection<?>> b = c(10.0);
+
+		// if a < b, return a, else return b
+		Producer<PackedCollection<?>> result = lessThan(a, b, a, b);
+
+		try (PackedCollection<?> value = result.get().evaluate()) {
+			System.out.println("lessThan single: " + value.toDouble() + " (expected 5.0)");
+			Assert.assertEquals(5.0, value.toDouble(), 0.001);
+		}
+	}
+
+	@Test
+	public void lessThanSmallBatch() {
+		// Test lessThan with a small batch of 3 elements
+		PackedCollection<?> valuesA = new PackedCollection<>(shape(3, 1).traverse(1));
+		valuesA.setMem(0, 2.0);  // a[0] = 2.0
+		valuesA.setMem(1, 8.0);  // a[1] = 8.0
+		valuesA.setMem(2, 5.0);  // a[2] = 5.0
+
+		PackedCollection<?> valuesB = new PackedCollection<>(shape(3, 1).traverse(1));
+		valuesB.setMem(0, 7.0);  // b[0] = 7.0
+		valuesB.setMem(1, 3.0);  // b[1] = 3.0
+		valuesB.setMem(2, 5.0);  // b[2] = 5.0
+
+		Producer a = v(shape(-1, 1), 0);
+		Producer b = v(shape(-1, 1), 1);
+
+		// if a < b, return a, else return b (essentially min(a, b))
+		Producer result = lessThan(a, b, a, b);
+
+		PackedCollection<?> resultData = new PackedCollection<>(shape(3, 1).traverse(1));
+
+		// Create input with both valuesA and valuesB side by side
+		PackedCollection<?> input = new PackedCollection<>(shape(3, 2).traverse(1));
+		for (int i = 0; i < 3; i++) {
+			input.setMem(i * 2, valuesA.valueAt(i, 0), valuesB.valueAt(i, 0));
+		}
+
+		result.get().into(resultData.each()).evaluate(input);
+
+		System.out.println("lessThan small batch:");
+		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
+		System.out.println("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
+		System.out.println("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
+
+		Assert.assertEquals(2.0, resultData.valueAt(0, 0), 0.001);
+		Assert.assertEquals(3.0, resultData.valueAt(1, 0), 0.001);
+		Assert.assertEquals(5.0, resultData.valueAt(2, 0), 0.001);
+	}
+
+	@Test
+	public void lessThanLargeBatch() {
+		// Test lessThan with 256 elements to check for batch size limits
+		int batchSize = 256;
+		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, 2).traverse(1));
+
+		// Fill with test data: a[i] = i, b[i] = 255 - i
+		// Expected: min(i, 255-i)
+		for (int i = 0; i < batchSize; i++) {
+			double v = i;
+			input.setMem(i * 2, v, 255 - v);
+		}
+
+		Producer a = v(shape(-1, 1), 0);
+		Producer b = v(shape(-1, 1), 1);
+
+		// if a < b, return a, else return b
+		Producer result = lessThan(a, b, a, b);
+
+		PackedCollection<?> resultData = new PackedCollection<>(shape(batchSize, 1).traverse(1));
+		result.get().into(resultData.each()).evaluate(input);
+
+		System.out.println("lessThan large batch (size=" + batchSize + "):");
+		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
+		System.out.println("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
+		System.out.println("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
+		System.out.println("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
+		System.out.println("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
+		System.out.println("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
+
+		// Check key values
+		Assert.assertEquals(0.0, resultData.valueAt(0, 0), 0.001);
+		Assert.assertEquals(100.0, resultData.valueAt(100, 0), 0.001);
+		Assert.assertEquals(127.0, resultData.valueAt(127, 0), 0.001);
+		Assert.assertEquals(127.0, resultData.valueAt(128, 0), 0.001);  // crossover point
+		Assert.assertEquals(55.0, resultData.valueAt(200, 0), 0.001);
+		Assert.assertEquals(0.0, resultData.valueAt(255, 0), 0.001);
 	}
 }

@@ -106,7 +106,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 										throw new IllegalArgumentException();
 									}
 								}),
-				(Supplier) vector, (Supplier) matrix);
+				(Producer) vector, (Producer) matrix);
 		c.setPostprocessor(Vector.postprocessor());
 		return c;
 	}

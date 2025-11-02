@@ -134,7 +134,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 						resultShape,
 						inputPositions, weightPositions,
 						inputGroupShape, weightGroupShape,
-						(Supplier) input, (Supplier) weights);
+						(Producer) input, (Producer) weights);
 	}
 
 	static <T> List<Producer<T>> matchingInputs(Producer<T> producer, Producer<?> target) {
