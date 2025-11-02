@@ -315,7 +315,67 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
+		// TEMPORARY FIX: Direct determinant calculation to bypass buggy TransformMatrixDeterminant
+		// TODO: Fix TransformMatrixDeterminant and revert this change
+		return determinantDirect();
+		// Original (buggy) implementation:
+		// return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
+	}
+
+	/**
+	 * Direct calculation of 4x4 matrix determinant using cofactor expansion.
+	 * This is a temporary workaround for the bug in TransformMatrixDeterminant
+	 * which always returns 1.0.
+	 */
+	private double determinantDirect() {
+		double[] m = this.toArray();
+
+		// Using cofactor expansion along the first row
+		// det = a00*M00 - a01*M01 + a02*M02 - a03*M03
+		// where Mij is the minor (determinant of 3x3 submatrix)
+
+		// Helper function to get 3x3 determinant
+		// Minor M00 (exclude row 0, col 0)
+		double m00 = det3x3(
+			m[5], m[6], m[7],    // row 1, cols 1,2,3
+			m[9], m[10], m[11],  // row 2, cols 1,2,3
+			m[13], m[14], m[15]  // row 3, cols 1,2,3
+		);
+
+		// Minor M01 (exclude row 0, col 1)
+		double m01 = det3x3(
+			m[4], m[6], m[7],    // row 1, cols 0,2,3
+			m[8], m[10], m[11],  // row 2, cols 0,2,3
+			m[12], m[14], m[15]  // row 3, cols 0,2,3
+		);
+
+		// Minor M02 (exclude row 0, col 2)
+		double m02 = det3x3(
+			m[4], m[5], m[7],    // row 1, cols 0,1,3
+			m[8], m[9], m[11],   // row 2, cols 0,1,3
+			m[12], m[13], m[15]  // row 3, cols 0,1,3
+		);
+
+		// Minor M03 (exclude row 0, col 3)
+		double m03 = det3x3(
+			m[4], m[5], m[6],    // row 1, cols 0,1,2
+			m[8], m[9], m[10],   // row 2, cols 0,1,2
+			m[12], m[13], m[14]  // row 3, cols 0,1,2
+		);
+
+		// Compute determinant with alternating signs
+		return m[0] * m00 - m[1] * m01 + m[2] * m02 - m[3] * m03;
+	}
+
+	/**
+	 * Helper method to compute 3x3 determinant.
+	 */
+	private double det3x3(double a00, double a01, double a02,
+	                     double a10, double a11, double a12,
+	                     double a20, double a21, double a22) {
+		return a00 * (a11 * a22 - a12 * a21)
+		     - a01 * (a10 * a22 - a12 * a20)
+		     + a02 * (a10 * a21 - a11 * a20);
 	}
 
 	/**
