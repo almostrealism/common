@@ -85,10 +85,7 @@ public interface VectorFeatures extends ScalarFeatures {
 		return c(v, 2);
 	}
 
-	@Deprecated
 	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
-		// Use general tensor operations: multiply element-wise, then sum
-		// Works correctly with both single vectors and batches via traversal
 		return multiply((Producer) a, (Producer) b).sum();
 	}
 
@@ -112,7 +109,7 @@ public interface VectorFeatures extends ScalarFeatures {
 					Expression result = conditional(p.eq(1), y, x);
 					result = conditional(p.eq(2), z, result);
 					return result;
-				}), a, b);
+				}), (Producer) a, (Producer) b);
 	}
 
 	@Deprecated

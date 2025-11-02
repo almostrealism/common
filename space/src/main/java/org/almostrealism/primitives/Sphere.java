@@ -22,9 +22,6 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
@@ -43,7 +40,6 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.function.Supplier;
 
 // TODO Add ParticleGroup implementation.
 

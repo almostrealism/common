@@ -23,13 +23,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.TransformMatrixAdjoint;
-import org.almostrealism.geometry.computations.TransformMatrixDeterminant;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
@@ -287,47 +284,10 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		return this.inverseMatrix;
 	}
 
-	public void rigidInversion() {
-		throw new RuntimeException("TODO  Implement rigidInversion with CL");
-		/*
-		double t = matrix[0][1];
-		matrix[0][1] = matrix[1][0];
-		matrix[1][0] = t;
-
-		t = matrix[0][2];
-		matrix[0][2] = matrix[2][0];
-		matrix[2][0] = t;
-
-		t = matrix[1][2];
-		matrix[1][2] = matrix[2][1];
-		matrix[2][1] = t;
-
-		Vector negTrans = new Vector(-matrix[0][3], -matrix[1][3], -matrix[2][3]);
-		Vector trans = transformAsOffset(negTrans);
-		matrix[0][3] = trans.getX();
-		matrix[1][3] = trans.getY();
-		matrix[2][3] = trans.getZ();
-		*/
-	}
-
 	/**
-	 * Computes the determinant of the matrix represented by this TransformMatrix object and
-	 * returns the result as a double value.
+	 * Computes the determinant of this {@link TransformMatrix}.
 	 */
 	public double determinant() {
-		// TEMPORARY FIX: Direct determinant calculation to bypass buggy TransformMatrixDeterminant
-		// TODO: Fix TransformMatrixDeterminant and revert this change
-		return determinantDirect();
-		// Original (buggy) implementation:
-		// return new TransformMatrixDeterminant(v(this)).get().evaluate().toDouble(0);
-	}
-
-	/**
-	 * Direct calculation of 4x4 matrix determinant using cofactor expansion.
-	 * This is a temporary workaround for the bug in TransformMatrixDeterminant
-	 * which always returns 1.0.
-	 */
-	private double determinantDirect() {
 		double[] m = this.toArray();
 
 		// Using cofactor expansion along the first row

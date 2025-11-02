@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,10 +101,6 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	 * This method automatically updates the camera coordinate system vectors.
 	 */
 	public void setViewingDirection(Vector viewDirection) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA (" + this.toString() + "): Viewing direction vector being set to " + viewDirection.toString());
-//		}
-		
 		this.viewDirection = viewDirection;
 		
 		this.updateUVW();
@@ -115,10 +111,6 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	 * This method automatically updates the camera coordinate system vectors.
 	 */
 	public void setUpDirection(Vector upDirection) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: Up direction vector being set to " + upDirection.toString());
-//		}
-		
 		this.upDirection = upDirection;
 		
 		this.updateUVW();
@@ -149,10 +141,6 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	 * Sets the projection height of this {@link OrthographicCamera} to the specified height.
 	 */
 	public void setProjectionHeight(double projectionY) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: Projection height being set to " + projectionY);
-//		}
-		
 		this.projectionDimensions.setY(projectionY);
 	}
 
@@ -161,20 +149,10 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 
 	/** Updates the orthonormal vectors used to describe camera space for this {@link OrthographicCamera}. */
 	public void updateUVW() {
-		// Calculate camera space vectors using simple math (not Producer-based)
-		// to avoid native compilation during camera construction
 		this.w = this.viewDirection.divide(this.viewDirection.length()).minus();
-
-		// Manual cross product: upDirection x w
-		this.u = manualCrossProduct(this.upDirection, this.w);
+		this.u = this.upDirection.crossProduct(this.w);
 		this.u.divideBy(this.u.length());
-
-		// Manual cross product: w x u
-		this.v = manualCrossProduct(this.w, this.u);
-
-//		if (Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
-//		}
+		this.v = this.w.crossProduct(this.u);
 	}
 
 	/** Manual cross product calculation to avoid native code compilation during construction. */
@@ -223,39 +201,13 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	    return new TransformMatrix(matrix);
 	}
 
-	/**
-	 * @see org.almostrealism.geometry.Camera#rayAt(io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)
-	 */
+	/** @see Camera#rayAt(Producer, Producer) */
 	@Override
 	public Producer<Ray> rayAt(Producer<Pair<?>> pos, Producer<Pair<?>> sd) {
 		Producer<Pair<?>> p = divide(pos, sd).subtract(pair(0.5, 0.5)).multiply(v(getProjectionDimensions()));
 		Producer<Vector> xy = vector(l(p), r(p), c(0.0));
 		Producer<Vector> o = getRotationMatrix().getInverse().transform(xy, TransformMatrix.TRANSFORM_AS_LOCATION);
 		return ray(o, v(viewDirection));
-
-//		return new Producer<Ray>() {
-//			@Override
-//			public Evaluable<Ray> get() {
-//				return args -> {
-//					Pair p = pos.get().evaluate(args);
-//					Pair screenDim = sd.get().evaluate(args);
-//
-//					double x = getProjectionWidth() * ((p.getX() / screenDim.getX()) - 0.5);
-//					double y = getProjectionHeight() * ((p.getY() / screenDim.getY()) - 0.5);
-//
-//					Vector o = getRotationMatrix().getInverse().transform(vector(x, y, 0.0),
-//							TransformMatrix.TRANSFORM_AS_LOCATION).get().evaluate();
-//
-//					return new Ray(o, viewDirection);
-//				};
-//			}
-//
-//			@Override
-//			public void compact() {
-//				pos.compact();
-//				sd.compact();
-//			}
-//		};
 	}
 
 	@Override

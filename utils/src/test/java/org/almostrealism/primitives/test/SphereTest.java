@@ -719,15 +719,16 @@ public class SphereTest implements TestFeatures {
 	@Test
 	public void lessThanSingleValue() {
 		// Test lessThan with single scalar values
-		Producer<Scalar> a = c(5.0);
-		Producer<Scalar> b = c(10.0);
+		Producer<PackedCollection<?>> a = c(5.0);
+		Producer<PackedCollection<?>> b = c(10.0);
 
 		// if a < b, return a, else return b
-		Producer result = lessThan((Producer) a, (Producer) b, (Producer) a, (Producer) b);
+		Producer<PackedCollection<?>> result = lessThan(a, b, a, b);
 
-		Scalar value = (Scalar) result.get().evaluate();
-		System.out.println("lessThan single: " + value.getValue() + " (expected 5.0)");
-		Assert.assertEquals(5.0, value.getValue(), 0.001);
+		try (PackedCollection<?> value = result.get().evaluate()) {
+			System.out.println("lessThan single: " + value.getValue() + " (expected 5.0)");
+			Assert.assertEquals(5.0, value.toDouble(), 0.001);
+		}
 	}
 
 	@Test

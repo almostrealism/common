@@ -55,21 +55,10 @@ import java.util.stream.Stream;
  *       {@code new TraversalPolicy(true, dims)}.</li>
  *   <li><b>Variable-count ({@code fixed=false}):</b> The dimensions can adapt to runtime
  *       inputs, particularly the size of arguments passed to {@link io.almostrealism.relation.Evaluable#evaluate}.
- *       Created via {@code new TraversalPolicy(false, false, dims)} where the first
- *       {@code false} is {@code tolerateZero} and the second is {@code fixed}.</li>
+ *   </li>
  * </ul>
  *
- * <p><b>Usage Pattern:</b></p>
- * <pre>{@code
- * // Fixed-count: Always processes exactly 100 elements
- * TraversalPolicy fixed = new TraversalPolicy(100);
- *
- * // Variable-count: Processes N elements where N is determined at runtime
- * TraversalPolicy variable = new TraversalPolicy(false, false, 1);
- * }</pre>
- *
  * @author  Michael Murray
- * @see org.almostrealism.hardware.PassThroughProducer
  * @see Countable#isFixedCount()
  */
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures {
@@ -110,14 +99,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	private int traversalAxis;
 
-	/**
-	 * Determines whether this {@link TraversalPolicy} has a fixed count
-	 * (predetermined dimensions) or variable count (dimensions that can
-	 * adapt to runtime input sizes). See class-level documentation for
-	 * usage patterns.
-	 *
-	 * @see #isFixedCount()
-	 */
+	/** @see #isFixedCount() */
 	private boolean fixed;
 
 	public TraversalPolicy(int... dims) {
@@ -872,9 +854,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns {@code true} if this {@link TraversalPolicy} has a fixed count,
-	 * {@code false} if it has a variable count that adapts to runtime inputs.
-	 *
-	 * @return the value of the {@code fixed} field set during construction
+	 * {@code false} if it has a variable count that may not be known until
+	 * it is used in computation.
 	 */
 	@Override
 	public boolean isFixedCount() { return fixed; }

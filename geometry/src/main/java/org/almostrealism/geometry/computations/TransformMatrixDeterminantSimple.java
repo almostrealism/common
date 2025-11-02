@@ -29,7 +29,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
-import java.util.function.Supplier;
 import java.util.List;
 
 /**
@@ -40,7 +39,7 @@ import java.util.List;
 public class TransformMatrixDeterminantSimple extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 
     public TransformMatrixDeterminantSimple(Producer<TransformMatrix> input) {
-        super("transformMatrixDeterminantSimple", new TraversalPolicy(1), (Supplier) input);
+        super("transformMatrixDeterminantSimple", new TraversalPolicy(1), (Producer) input);
     }
 
     @Override
