@@ -487,7 +487,7 @@ public class CollectionMathTests implements TestFeatures {
 		Producer<PackedCollection<?>> result = lessThan(a, b, a, b);
 
 		try (PackedCollection<?> value = result.get().evaluate()) {
-			System.out.println("lessThan single: " + value.getValue() + " (expected 5.0)");
+			System.out.println("lessThan single: " + value.toDouble() + " (expected 5.0)");
 			Assert.assertEquals(5.0, value.toDouble(), 0.001);
 		}
 	}
@@ -540,7 +540,8 @@ public class CollectionMathTests implements TestFeatures {
 		// Fill with test data: a[i] = i, b[i] = 255 - i
 		// Expected: min(i, 255-i)
 		for (int i = 0; i < batchSize; i++) {
-			input.setMem(i * 2, (double) i, (double) (255 - i));
+			double v = i;
+			input.setMem(i * 2, v, 255 - v);
 		}
 
 		Producer a = v(shape(-1, 1), 0);

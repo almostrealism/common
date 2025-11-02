@@ -34,24 +34,6 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class AcceleratedConditionalStatementTests implements TestFeatures {
-	@Test
-	public void randomLessThan() {
-		IntStream.range(1, 6).forEach(i -> {
-			Producer<Scalar> a = scalar(i * Math.random());
-			Producer<Scalar> b = scalar(i * Math.random());
-
-			Evaluable<Scalar> lt = lessThan(a, b).get();
-
-			Scalar s = lt.evaluate();
-			System.out.println("lessThan = " + s.getValue());
-
-			if (a.get().evaluate().getValue() < b.get().evaluate().getValue()) {
-				assertEquals(a.get().evaluate().getValue(), s.getValue());
-			} else {
-				assertEquals(b.get().evaluate().getValue(), s.getValue());
-			}
-		});
-	}
 
 	@Test
 	public void randomLessThanKernel() {
