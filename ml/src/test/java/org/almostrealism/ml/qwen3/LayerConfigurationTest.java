@@ -298,14 +298,14 @@ public class LayerConfigurationTest implements ConsoleFeatures {
             writer.println();
             writer.println("## Weight Statistics Comparison");
             writer.println();
-            writer.println("### Attention Weights (Mean ± Std)");
+            writer.println("### Attention Weights (Mean +/- Std)");
             writer.println();
             writer.println("| Layer | Q Weight | K Weight | V Weight | O Weight |");
             writer.println("|-------|----------|----------|----------|----------|");
 
             for (LayerConfig config : configs) {
                 if (config.isProblematic || config.layerIndex == 0 || config.layerIndex == 1) {
-                    writer.printf("| **%d** | %.4f±%.4f | %.4f±%.4f | %.4f±%.4f | %.4f±%.4f |%n",
+                    writer.printf("| **%d** | %.4f+/-%.4f | %.4f+/-%.4f | %.4f+/-%.4f | %.4f+/-%.4f |%n",
                         config.layerIndex,
                         config.qWeightMean, config.qWeightStd,
                         config.kWeightMean, config.kWeightStd,
@@ -315,14 +315,14 @@ public class LayerConfigurationTest implements ConsoleFeatures {
             }
 
             writer.println();
-            writer.println("### FFN Weights (Mean ± Std)");
+            writer.println("### FFN Weights (Mean +/- Std)");
             writer.println();
             writer.println("| Layer | Gate Weight | Up Weight | Down Weight |");
             writer.println("|-------|-------------|-----------|-------------|");
 
             for (LayerConfig config : configs) {
                 if (config.isProblematic || config.layerIndex == 0 || config.layerIndex == 1) {
-                    writer.printf("| **%d** | %.4f±%.4f | %.4f±%.4f | %.4f±%.4f |%n",
+                    writer.printf("| **%d** | %.4f+/-%.4f | %.4f+/-%.4f | %.4f+/-%.4f |%n",
                         config.layerIndex,
                         config.gateWeightMean, config.gateWeightStd,
                         config.upWeightMean, config.upWeightStd,
