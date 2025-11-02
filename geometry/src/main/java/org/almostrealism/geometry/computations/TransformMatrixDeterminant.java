@@ -32,14 +32,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.geometry.TransformMatrix;
 
-import java.util.function.Supplier;
 import java.util.List;
 
 public class TransformMatrixDeterminant extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
     private int varIdx = 0;
 
     public TransformMatrixDeterminant(Producer<TransformMatrix> input) {
-        super("transformMatrixDeterminant", new TraversalPolicy(1), (Supplier) input);
+        super("transformMatrixDeterminant", new TraversalPolicy(1), (Producer) input);
     }
 
     @Override
@@ -67,7 +66,7 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
         
         Scope<?> diagBody = new Scope<>();
         {
-            diagBody.assign(det, det.multiply(upperTriangle.valueAt(i.multiply(4).add(i))));
+            diagBody.assign(det, det.multiply(upperTriangle.reference(i.multiply(4).add(i))));
             diagLoop.add(diagBody);
         }
         
@@ -110,20 +109,20 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
                 handlePivot(rowBody, result, determinantFactor, col);
                 
                 // Gaussian elimination step
-                Expression<Double> pivot = result.valueAt(col.multiply(4).add(col));
+                Expression<Double> pivot = result.reference(col.multiply(4).add(col));
                 
                 Scope<?> eliminationStep = new Scope<>();
                 {
                     Expression<Double> factor = eliminationStep.declareDouble("factor_" + varIdx++,
-                        result.valueAt(row.multiply(4).add(col)).divide(pivot).multiply(e(-1.0)));
+                        result.reference(row.multiply(4).add(col)).divide(pivot).multiply(e(-1.0)));
                     
                     InstanceReference i = Variable.integer("i_elim_" + varIdx++).ref();
                     Repeated elimLoop = new Repeated<>(i.getReferent(), i.greaterThanOrEqual(col).and(i.lessThan(e(4))));
                     
                     Scope<?> elimBody = new Scope<>();
                     {
-                        Expression<Double> currentValue = result.valueAt(row.multiply(4).add(i));
-                        Expression<Double> pivotRowValue = result.valueAt(col.multiply(4).add(i));
+                        Expression<Double> currentValue = result.reference(row.multiply(4).add(i));
+                        Expression<Double> pivotRowValue = result.reference(col.multiply(4).add(i));
                         elimBody.assign(currentValue, factor.multiply(pivotRowValue).add(currentValue));
                         elimLoop.add(elimBody);
                     }
@@ -146,7 +145,7 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
                              Expression<Double> determinantFactor,
                             InstanceReference col) {
         // Handle the case where the diagonal element is zero by swapping rows
-        Expression<Double> pivot = matrix.valueAt(col.multiply(4).add(col));
+        Expression<Double> pivot = matrix.reference(col.multiply(4).add(col));
         
         // Find a non-zero element in the same column below the current row
         Expression v = scope.declareInteger("v_" + varIdx++, e(1));
@@ -176,9 +175,9 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
                 
                 Scope<?> swapBody = new Scope<>();
                 {
-                    Expression<Double> temp = swapBody.declareDouble("temp_" + varIdx++, matrix.valueAt(col.multiply(4).add(c)));
-                    swapBody.assign(matrix.valueAt(col.multiply(4).add(c)), matrix.valueAt(colPlusV.multiply(4).add(c)));
-                    swapBody.assign(matrix.valueAt(colPlusV.multiply(4).add(c)), temp);
+                    Expression<Double> temp = swapBody.declareDouble("temp_" + varIdx++, matrix.reference(col.multiply(4).add(c)));
+                    swapBody.assign(matrix.reference(col.multiply(4).add(c)), matrix.reference(colPlusV.multiply(4).add(c)));
+                    swapBody.assign(matrix.reference(colPlusV.multiply(4).add(c)), temp);
                     swapLoop.add(swapBody);
                 }
                 
@@ -194,7 +193,7 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
             }
             
             whileBody.addCase(colPlusV.greaterThanOrEqual(e(4)), (Scope) noPivotFound);
-            whileBody.addCase(matrix.valueAt(colPlusV.multiply(4).add(col)).neq(e(0.0)),
+            whileBody.addCase(matrix.reference(colPlusV.multiply(4).add(col)).neq(e(0.0)),
 								(Scope) swapRows, (Scope) continueSearch);
             whileLoop.add(whileBody);
         }
@@ -208,7 +207,7 @@ public class TransformMatrixDeterminant extends CollectionProducerComputationBas
         
         Scope<?> copyBody = new Scope<>();
         {
-            copyBody.assign(dest.valueAt(i), src.valueAt(i));
+            copyBody.assign(dest.reference(i), src.reference(i));
             copyLoop.add(copyBody);
         }
         

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,22 +16,25 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.code.Array;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import org.almostrealism.io.Describable;
 
 import java.util.function.Function;
-import java.util.function.LongFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface CollectionExpression<T> extends TraversableExpression<Double>, Shape<T>, Describable {
-	boolean enableArrayTraversal = false;
 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	default Expression<Double> getValueRelative(Expression index) {
+		return getValueAt(new KernelIndex().multiply(getShape().getSize()).add(index.toInt()));
 	}
 
 	default Stream<Expression<Double>> stream() {
@@ -47,13 +50,6 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 	default Expression<Double> max() { return toList().max(); }
 
 	default ExpressionList<Double> exp() { return toList().exp(); }
-
-	@Deprecated
-	default ExpressionList<Double> multiply(CollectionVariable<?> operands) {
-		ExpressionList<Double> a = stream().collect(ExpressionList.collector());
-		ExpressionList<Double> b = operands.stream().collect(ExpressionList.collector());
-		return a.multiply(b);
-	}
 
 	default CollectionExpression delta(CollectionExpression target) {
 		throw new UnsupportedOperationException();
@@ -79,34 +75,5 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<?>> valueAt) {
 		return new DefaultCollectionExpression(shape, valueAt);
-	}
-
-	static TraversableExpression traverse(Object o, LongFunction<Expression<?>> offset) {
-		TraversableExpression exp = TraversableExpression.traverse(o);
-		if (exp == null) {
-			if (enableArrayTraversal && o instanceof Array) {
-				return new TraversableExpression() {
-					@Override
-					public Expression getValue(Expression[] pos) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
-					public Expression getValueAt(Expression index) {
-						return ((Array) o).valueAt(index);
-					}
-				};
-			}
-
-			return null;
-		}
-
-		if (exp instanceof Shape) {
-			return new RelativeTraversableExpression(((Shape) exp).getShape(), exp, offset);
-		} else if (exp instanceof CollectionExpression) {
-			return new RelativeTraversableExpression(((CollectionExpression) exp).getShape(), exp, offset);
-		} else {
-			return exp;
-		}
 	}
 }

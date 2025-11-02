@@ -80,7 +80,7 @@ public interface TriangleFeatures extends VectorFeatures {
 				(Function<TraversableExpression[], CollectionExpression>) args ->
 						new IndexProjectionExpression(shape(3),
 							idx -> e(index * 3).add(idx.imod(3)), args[1]),
-						(Supplier) points)
+						(Producer) points)
 				.setPostprocessor(Vector.postprocessor());
 	}
 

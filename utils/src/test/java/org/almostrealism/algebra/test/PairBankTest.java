@@ -20,7 +20,30 @@ public class PairBankTest implements TestFeatures {
 	}
 
 	@Test
-	public void concat() {
+	public void concat1() {
+		Producer<PackedCollection<?>> l = v(shape(-1, 1), 0);
+		Producer<PackedCollection<?>> r = v(shape(-1, 1), 1);
+
+		CollectionProducer<PackedCollection<?>> concat = concat(shape(2), l, r);
+
+		PackedCollection<?> left = new PackedCollection<>(shape(4, 1));
+		left.setMem(1.0, 2.0, 3.0, 4.0);
+
+		PackedCollection<?> right = new PackedCollection<>(shape(4, 1));
+		right.setMem(5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+
+		concat.get().into(destination.traverse(1))
+				.evaluate(left.traverse(1), right.traverse(1));
+		destination.traverse(1).print();
+
+		assertEquals(3.0, destination.valueAt(2, 0));
+		assertEquals(7.0, destination.valueAt(2, 1));
+	}
+
+	@Test
+	public void concat2() {
 		Producer<PackedCollection<?>> in = v(shape(-1, 4, 1), 0);
 
 		CollectionProducer<PackedCollection<?>> concat = concat(shape(4, 2), in, in);

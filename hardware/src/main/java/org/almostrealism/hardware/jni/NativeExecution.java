@@ -22,7 +22,6 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -34,7 +33,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class NativeExecution extends HardwareOperator {
 	public static boolean enableExecutor = true;
@@ -55,7 +53,7 @@ public class NativeExecution extends HardwareOperator {
 	protected String getHardwareName() { return "JNI"; }
 
 	@Override
-	public String getName() { return getClass().getSimpleName(); }
+	public String getName() { return inst.getFunctionName() + "(execution " + getId() + ")"; }
 
 	@Override
 	public OperationMetadata getMetadata() { return inst.getMetadata(); }

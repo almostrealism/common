@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
 public abstract class MatrixExpressionComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	@SafeVarargs
 	public MatrixExpressionComputation(String name, TraversalPolicy shape,
-									   Producer<? extends PackedCollection<?>>... args) {
+									   Producer<PackedCollection<?>>... args) {
 		super(name, shape, args);
 	}
 }

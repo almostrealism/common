@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
@@ -27,22 +26,17 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class CollectionProductComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 
-	public CollectionProductComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>>... arguments) {
-		this("multiply", shape, arguments);
-	}
-
 	public CollectionProductComputation(TraversalPolicy shape,
-										Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+										Producer<PackedCollection<?>>... arguments) {
 		this("multiply", shape, arguments);
 	}
 
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
-										   Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+										   Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
 	}
 
@@ -54,7 +48,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (CollectionProductComputation<T>) new CollectionProductComputation(getName(), getShape(),
-				children.stream().skip(1).toArray(Supplier[]::new))
+				children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())

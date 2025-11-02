@@ -429,12 +429,6 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 		return data;
 	}
 
-	public static Producer<TransformMatrix> blank() {
-		return new DynamicProducerForMemoryData<>(args ->
-				new TransformMatrix(false, null, 0),
-				i -> new PackedCollection<>(i, 16));
-	}
-
 	public static PackedCollection<TransformMatrix> bank(int count) {
 		return new PackedCollection<>(new TraversalPolicy(count, 16), 1, delegateSpec ->
 				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));

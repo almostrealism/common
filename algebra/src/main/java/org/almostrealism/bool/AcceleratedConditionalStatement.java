@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,21 +20,16 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OutputSupport;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
 
 import java.util.List;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 
 public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport {
 	Expression getCondition();
 
-	List<Supplier<Evaluable<? extends MemoryData>>> getInputs();
 	List<Argument<? extends MemoryData>> getArguments();
 	List<ExpressionAssignment<?>> getVariables();
 

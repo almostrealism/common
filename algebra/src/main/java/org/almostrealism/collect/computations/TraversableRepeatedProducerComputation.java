@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,17 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.RelativeTraversableExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A specialized {@link RepeatedProducerComputation} that implements {@link TraversableExpression}
@@ -179,7 +177,7 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
 												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
-												  Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+												  Producer<PackedCollection<?>>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
@@ -286,12 +284,13 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 * @return An {@link Expression} representing the computation result for
 	 *         the specified local index position
 	 * 
-	 * @see io.almostrealism.collect.CollectionVariable#referenceRelative(io.almostrealism.expression.IntegerConstant)
-	 * @see io.almostrealism.collect.RelativeTraversableExpression
+	 * @see io.almostrealism.collect.CollectionVariable#reference(io.almostrealism.expression.Expression)
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression()).referenceRelative(new IntegerConstant(0));
+		CollectionVariable variable = (CollectionVariable) args[0];
+		Expression currentValue = variable.reference(
+				new KernelIndex().multiply(variable.length())); // TODO Should this be globalIndex instead of KernelIndex?
 		return expression.apply(args, currentValue).getValueAt(localIndex);
 	}
 
@@ -369,6 +368,6 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	public TraversableRepeatedProducerComputation<T> generate(List<Process<?, ?>> children) {
 		return new TraversableRepeatedProducerComputation<>(getName(), getShape(),
 				count, initial, expression,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 }

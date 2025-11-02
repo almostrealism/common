@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.scope.HybridScope;
@@ -30,20 +29,19 @@ import org.almostrealism.time.TemporalScalar;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
-		super(new Supplier[] { series, addition } );
+		super(new Producer[] { series, addition } );
 	}
 
-	private AcceleratedTimeSeriesAdd(Supplier<Evaluable<? extends AcceleratedTimeSeries>>... arguments) {
+	private AcceleratedTimeSeriesAdd(Producer... arguments) {
 		super(arguments);
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesAdd(children.toArray(Supplier[]::new));
+		return new AcceleratedTimeSeriesAdd(children.toArray(Producer[]::new));
 	}
 
 	@Override

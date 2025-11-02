@@ -19,19 +19,18 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public class CollectionSumComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
-	public CollectionSumComputation(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	public CollectionSumComputation(Producer<PackedCollection<?>> input) {
 		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
-	protected CollectionSumComputation(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	protected CollectionSumComputation(TraversalPolicy shape, Producer<PackedCollection<?>> input) {
 		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new DoubleConstant(0.0),
 				(out, arg) -> out.add(arg),
@@ -41,7 +40,7 @@ public class CollectionSumComputation<T extends PackedCollection<?>> extends Agg
 
 	@Override
 	public CollectionSumComputation<T> generate(List<Process<?, ?>> children) {
-		return new CollectionSumComputation(children.get(1));
+		return new CollectionSumComputation((Producer) children.get(1));
 	}
 
 	@Override

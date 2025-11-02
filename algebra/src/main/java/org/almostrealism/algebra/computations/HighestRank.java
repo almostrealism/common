@@ -30,13 +30,11 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
-import java.util.function.Supplier;
-
 public class HighestRank extends CollectionProducerComputationBase<PackedCollection<Scalar>, Pair<?>> {
 	private int varIdx = 0;
 
 	public HighestRank(Producer<PackedCollection<Scalar>> distances, Producer<Pair<?>> conf) {
-		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Supplier) conf);
+		super("highestRank", CollectionFeatures.getInstance().shape(distances), distances, (Producer) conf);
 		setPostprocessor(Pair.postprocessor());
 	}
 
@@ -61,7 +59,7 @@ public class HighestRank extends CollectionProducerComputationBase<PackedCollect
 		Repeated loop = new Repeated<>(i, i.ref().lessThan(count));
 		Scope<?> loopBody = new Scope<>(); {
 			Expression<Double> value = loopBody.declareDouble(varName("value"),
-									distances.valueAt(i.ref().multiply(2)));
+									distances.reference(i.ref().multiply(2)));
 
 			Scope updateClosest = new Scope<>();
 			updateClosest.assign(closest, value);

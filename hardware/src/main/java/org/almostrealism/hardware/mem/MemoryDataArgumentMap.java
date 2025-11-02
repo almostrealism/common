@@ -86,10 +86,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	public OperationList getPrepareData() { return replacementMap == null ? null : replacementMap.getPreprocess(); }
-	public OperationList getPostprocessData() { return replacementMap == null ? null : replacementMap.getPostprocess(); }
+	public OperationList getPrepareData() { return replacementMap == null ? new OperationList() : replacementMap.getPreprocess(); }
+	public OperationList getPostprocessData() { return replacementMap == null ? new OperationList() : replacementMap.getPostprocess(); }
 
 	public MemoryDataReplacementMap getReplacementMap() { return replacementMap; }
+
+	public boolean hasReplacements() { return replacementMap != null && !replacementMap.isEmpty(); }
 
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {

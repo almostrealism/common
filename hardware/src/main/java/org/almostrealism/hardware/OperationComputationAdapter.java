@@ -18,15 +18,12 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public abstract class OperationComputationAdapter<T>
@@ -34,7 +31,7 @@ public abstract class OperationComputationAdapter<T>
 		implements OperationComputation<Void>, ComputerFeatures {
 
 	@SafeVarargs
-	public OperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
+	public OperationComputationAdapter(Producer<T>... inputArgs) {
 		this.setInputs(inputArgs);
 		init();
 	}

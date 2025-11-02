@@ -105,24 +105,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Producer<? extends PackedCollection<?>>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
-	}
-
-	/**
-	 * Constructs a DefaultTraversableExpressionComputation with default delta strategy.
-	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} for automatic differentiation.
-	 * 
-	 * @param name The name of this computation for debugging and identification
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param expression A function that transforms input {@link TraversableExpression} arrays
-	 *                   into a {@link CollectionExpression} representing the computation logic
-	 * @param args Variable number of {@link Supplier}s of {@link Evaluable} input collections
-	 */
-	@SafeVarargs
-	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
-												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+												   Producer<PackedCollection<?>>... args) {
 		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
 	}
 
@@ -144,7 +127,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 												   MultiTermDeltaStrategy deltaStrategy,
 												   boolean generateSignature,
 												   Function<TraversableExpression[], CollectionExpression> expression,
-												   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+												   Producer<PackedCollection<?>>... args) {
 		super(name, shape, deltaStrategy, validateArgs(args));
 		this.expression = expression;
 		this.generateSignature = generateSignature;
@@ -206,7 +189,7 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (DefaultTraversableExpressionComputation<T>) new DefaultTraversableExpressionComputation(getName(), getShape(),
 						getDeltaStrategy(), generateSignature, expression,
-					children.stream().skip(1).toArray(Supplier[]::new))
+					children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())

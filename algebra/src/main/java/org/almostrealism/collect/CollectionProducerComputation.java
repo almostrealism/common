@@ -196,6 +196,50 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 
+	/**
+	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
+	 * This will be the shape of the computation result.
+	 * This method handles the complex logic of adjusting shapes based on whether
+	 * the computation has a fixed count and the relationship between the kernel
+	 * length and the expected output count.
+	 *
+	 * <p>The shape calculation follows these rules:</p>
+	 * <ul>
+	 *   <li>For fixed-count computations, returns the original shape</li>
+	 *   <li>When kernel length equals target count, returns the original shape</li>
+	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
+	 * </ul>
+	 *
+	 * @param len The length of the kernel execution context
+	 * @return The appropriate traversal policy for the given length
+	 * @see #isFixedCount()
+	 * @see TraversalPolicy#prependDimension(int)
+	 */
+	static TraversalPolicy shapeForLength(TraversalPolicy computationShape,
+										  int computationCount,
+										  boolean fixedCount, int len) {
+		TraversalPolicy shape;
+
+		if (fixedCount) {
+			shape = computationShape;
+		} else {
+			int count = len / computationCount;
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == computationCount) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = computationShape;
+			} else {
+				shape = computationShape.prependDimension(count);
+			}
+		}
+
+		return shape;
+	}
+
 	class IsolatedProcess<T extends PackedCollection<?>> extends DelegatedCollectionProducer<T> {
 
 		public IsolatedProcess(CollectionProducer<T> op) {

@@ -26,7 +26,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
 
@@ -123,29 +122,12 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	@Override
 	public Expression<T> valueAt(Expression<?> exp) {
 		if (destroyed) throw new UnsupportedOperationException();
-		return referenceRelative(exp);
+		return reference(exp);
 	}
 
 	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
-	}
-
-	@Deprecated
-	public Expression<T> referenceRelative(int pos) {
-		if (destroyed) throw new UnsupportedOperationException();
-		return referenceRelative(new IntegerConstant(pos));
-	}
-
-	@Deprecated
-	public Expression<T> referenceRelative(Expression<?> pos) {
-		if (getDelegate() != null) {
-			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
-		} else if (!(getProducer() instanceof Countable)) {
-			return reference(pos);
-		} else {
-			return reference(new KernelIndex().multiply(length()).add(pos.toInt()));
-		}
 	}
 
 	public Expression<T> reference(Expression<?> pos) {

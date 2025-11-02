@@ -47,15 +47,15 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Producer<?> target,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(deltaShape, targetShape, 1, count, expression, target, args);
+											Producer<PackedCollection<?>>... inputs) {
+		this(deltaShape, targetShape, 1, count, expression, target, inputs);
 	}
 
 	@SafeVarargs
 	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int size, int count,
 											BiFunction<TraversableExpression[], Expression, Expression> expression,
 											Producer<?> target,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... inputs) {
+											Producer<PackedCollection<?>>... inputs) {
 		super(null, deltaShape.append(targetShape), size, count, null, null, inputs);
 		this.deltaShape	= deltaShape;
 		this.targetShape = targetShape;
@@ -115,14 +115,14 @@ public class ConstantRepeatedDeltaComputation<T extends PackedCollection<?>> ext
 				deltaShape, targetShape,
 				getMemLength(), count,
 				expression, target,
-				children.stream().skip(1).toArray(Supplier[]::new));
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 
 	public static <T extends PackedCollection<?>> ConstantRepeatedDeltaComputation<T> create(
 			TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
 			BiFunction<TraversableExpression[], Expression, Expression> expression,
 			Producer<?> target,
-			Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+			Producer<PackedCollection<?>>... arguments) {
 		return new ConstantRepeatedDeltaComputation<>(
 				deltaShape, targetShape, count, expression,
 				target, arguments);

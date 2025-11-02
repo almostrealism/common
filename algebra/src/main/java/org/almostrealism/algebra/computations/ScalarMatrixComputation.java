@@ -32,11 +32,12 @@ import java.util.List;
 import java.util.Optional;
 
 public class ScalarMatrixComputation<T extends PackedCollection<?>> extends MatrixExpressionComputation<T> {
-	public ScalarMatrixComputation(TraversalPolicy shape, Producer<? extends PackedCollection<?>> scalar) {
+	public ScalarMatrixComputation(TraversalPolicy shape, Producer<PackedCollection<?>> scalar) {
 		this("scalarMatrix", shape, scalar);
 	}
 
-	public ScalarMatrixComputation(String name, TraversalPolicy shape, Producer<? extends PackedCollection<?>> scalar) {
+	public ScalarMatrixComputation(String name, TraversalPolicy shape,
+								   Producer<PackedCollection<?>> scalar) {
 		super(name, shape, scalar);
 
 		if (shape.getTotalSizeLong() == 1) {

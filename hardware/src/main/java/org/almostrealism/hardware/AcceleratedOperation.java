@@ -168,7 +168,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			AcceleratedProcessDetails process = apply(null, new Object[0]);
-			if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+			waitFor(process.getSemaphore());
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
@@ -190,17 +190,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				this::createAggregatedInput);
 	}
 
+	protected synchronized void createDetailsFactory() {
+		if (detailsFactory != null) return;
+
+		detailsFactory = new ProcessDetailsFactory<>(
+				isKernel(), isFixedCount(), getCount(),
+				getArgumentVariables(), getOutputArgumentIndex(),
+				this::createMemoryReplacementManager,
+				getComputeContext()::runLater);
+
+		if (evaluator != null) {
+			detailsFactory.setEvaluator(evaluator);
+		}
+	}
+
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
-			detailsFactory = new ProcessDetailsFactory<>(
-					isKernel(), isFixedCount(), getCount(),
-					getArgumentVariables(), getOutputArgumentIndex(),
-					this::createMemoryReplacementManager,
-					getComputeContext()::runLater);
-
-			if (evaluator != null) {
-				detailsFactory.setEvaluator(evaluator);
-			}
+			createDetailsFactory();
 		}
 
 		return detailsFactory;
@@ -299,7 +305,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (!process.isEmpty())
 			return true;
 
-		return argumentMap != null && !argumentMap.getReplacementMap().isEmpty();
+		return argumentMap != null && argumentMap.hasReplacements();
 	}
 
 	public boolean isKernel() { return kernel; }

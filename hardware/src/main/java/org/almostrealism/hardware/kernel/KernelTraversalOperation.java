@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.kernel;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -35,7 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class KernelTraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
-		implements MemoryDataComputation<T>, HardwareFeatures {
+		implements MemoryDataComputation<T>, ExpressionFeatures {
 	private List<Expression> expressions;
 	private MemoryDataDestinationProducer destination;
 
@@ -63,7 +64,7 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(output.referenceRelative(i).assign(expressions.get(i)));
+			scope.getVariables().add(output.reference(e(i)).assign(expressions.get(i)));
 		}
 
 		return scope;
