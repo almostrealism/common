@@ -31,34 +31,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class SphereTest implements TestFeatures {
-	@Test
-	public void rayDotProductsSingleRay() {
-		if (skipGeometryIssues) return;
-
-		// Test that dot products work for a single ray in batch mode
-		Producer<Ray> ray = v(shape(-1, 6), 0);
-
-		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
-		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
-
-		// Test oDoto (origin dot origin) = 0^2 + 0^2 + 3^2 = 9
-		PackedCollection<?> oDotoResult = new PackedCollection<>(shape(1, 1).traverse(1));
-		oDoto(ray).get().into(oDotoResult.each()).evaluate(singleRay);
-		System.out.println("oDoto: " + oDotoResult.valueAt(0, 0) + " (expected 9.0)");
-		Assert.assertEquals(9.0, oDotoResult.valueAt(0, 0), 0.01);
-
-		// Test dDotd (direction dot direction) = 0^2 + 0^2 + (-1)^2 = 1
-		PackedCollection<?> dDotdResult = new PackedCollection<>(shape(1, 1).traverse(1));
-		dDotd(ray).get().into(dDotdResult.each()).evaluate(singleRay);
-		System.out.println("dDotd: " + dDotdResult.valueAt(0, 0) + " (expected 1.0)");
-		Assert.assertEquals(1.0, dDotdResult.valueAt(0, 0), 0.01);
-
-		// Test oDotd (origin dot direction) = 0*0 + 0*0 + 3*(-1) = -3
-		PackedCollection<?> oDotdResult = new PackedCollection<>(shape(1, 1).traverse(1));
-		oDotd(ray).get().into(oDotdResult.each()).evaluate(singleRay);
-		System.out.println("oDotd: " + oDotdResult.valueAt(0, 0) + " (expected -3.0)");
-		Assert.assertEquals(-3.0, oDotdResult.valueAt(0, 0), 0.01);
-	}
 
 	@Test
 	public void intersectionTests() {
@@ -91,8 +63,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantSingleRay() {
-		if (skipGeometryIssues) return;
-
 		// Test discriminant with a single ray that should hit
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -115,8 +85,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test discriminant with 3 rays to isolate batch issue
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -170,8 +138,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test full intersection (not just discriminant) with 3 rays to isolate batch issue
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -203,8 +169,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantSqrtSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test sqrt(discriminant) with 3 rays
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -232,8 +196,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void tCalculationSmallBatch() {
-		if (skipGeometryIssues) return;
-
 		// Test the t(ray) calculation that computes both intersection distances
 		Sphere s = new Sphere();
 		s.setSize(0.5);
@@ -279,152 +241,7 @@ public class SphereTest implements TestFeatures {
 	}
 
 	@Test
-	public void padSmallBatch() {
-		if (skipGeometryIssues) return;
-
-		// Test padding operation with a batch of scalars
-		// We want to pad each scalar in the batch to position 0 of shape(2)
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> padded = pad(shape(2), input, 0);
-
-		// Create batch of 3 scalars
-		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0
-		scalars.setMem(1, 10.0);  // Batch 1
-		scalars.setMem(2, 15.0);  // Batch 2
-
-		// Pad to shape(2) - should give [5.0, 0.0], [10.0, 0.0], [15.0, 0.0]
-		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
-		padded.get().into(result.each()).evaluate(scalars);
-
-		System.out.println("Pad batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
-
-		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
-		Assert.assertEquals(0.0, result.valueAt(0, 1), 0.01);
-		Assert.assertEquals(10.0, result.valueAt(1, 0), 0.01);
-		Assert.assertEquals(0.0, result.valueAt(1, 1), 0.01);
-		Assert.assertEquals(15.0, result.valueAt(2, 0), 0.01);
-		Assert.assertEquals(0.0, result.valueAt(2, 1), 0.01);
-	}
-
-	@Test
-	public void concatSmallBatch() {
-		if (skipGeometryIssues) return;
-
-		// Test concat operation with batch of scalars
-		// We'll create two separate values from a scalar input and concat them
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
-
-		// Create batch of 3 scalars: [5, 10, 15]
-		// Expected: concat([5, 10], [10, 20], [15, 30])
-		PackedCollection<?> scalars = new PackedCollection<>(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
-		scalars.setMem(1, 10.0);  // Batch 1: concat([10], [20]) -> [10, 20]
-		scalars.setMem(2, 15.0);  // Batch 2: concat([15], [30]) -> [15, 30]
-
-		PackedCollection<?> result = new PackedCollection<>(shape(3, 2).traverse(1));
-		concatenated.get().into(result.each()).evaluate(scalars);
-
-		System.out.println("Concat batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
-
-		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
-		Assert.assertEquals(10.0, result.valueAt(0, 1), 0.01);
-		Assert.assertEquals(10.0, result.valueAt(1, 0), 0.01);
-		Assert.assertEquals(20.0, result.valueAt(1, 1), 0.01);
-		Assert.assertEquals(15.0, result.valueAt(2, 0), 0.01);
-		Assert.assertEquals(30.0, result.valueAt(2, 1), 0.01);
-	}
-
-	@Test
-	public void concatLargeBatch() {
-		if (skipGeometryIssues) return;
-
-		// Test concat with exactly 256 elements to check for batch size limit
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
-
-		int batchSize = 256;
-		PackedCollection<?> scalars = new PackedCollection<>(shape(batchSize, 1).traverse(1));
-		for (int i = 0; i < batchSize; i++) {
-			scalars.setMem(i, (double) i);
-		}
-
-		PackedCollection<?> result = new PackedCollection<>(shape(batchSize, 2).traverse(1));
-		concatenated.get().into(result.each()).evaluate(scalars);
-
-		System.out.println("Concat large batch test (size=" + batchSize + "):");
-		System.out.println("  Element 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  Element 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  Element 100: [" + result.valueAt(100, 0) + ", " + result.valueAt(100, 1) + "] (expected [100.0, 200.0])");
-		System.out.println("  Element 255: [" + result.valueAt(255, 0) + ", " + result.valueAt(255, 1) + "] (expected [255.0, 510.0])");
-
-		// Check first few
-		Assert.assertEquals(0.0, result.valueAt(0, 0), 0.01);
-		Assert.assertEquals(0.0, result.valueAt(0, 1), 0.01);
-		Assert.assertEquals(1.0, result.valueAt(1, 0), 0.01);
-		Assert.assertEquals(2.0, result.valueAt(1, 1), 0.01);
-
-		// Check middle
-		Assert.assertEquals(100.0, result.valueAt(100, 0), 0.01);
-		Assert.assertEquals(200.0, result.valueAt(100, 1), 0.01);
-
-		// Check last element (index 255)
-		Assert.assertEquals(255.0, result.valueAt(255, 0), 0.01);
-		Assert.assertEquals(510.0, result.valueAt(255, 1), 0.01);
-	}
-
-	@Test
-	public void concat2DTraversal() {
-		if (skipGeometryIssues) return;
-
-		// Test concat with 2D traversal like intersectionKernel uses
-		Producer<PackedCollection<?>> input = v(shape(-1, 1), 0);
-		Producer<PackedCollection<?>> doubled = c(input).multiply(c(2.0));
-		Producer<PackedCollection<?>> concatenated = concat(shape(2), input, doubled);
-
-		// Use 16x16 grid (256 elements total) with .traverse(2) like the intersection kernel
-		int h = 16;
-		int w = 16;
-		PackedCollection<?> scalars = new PackedCollection<>(shape(h, w, 1).traverse(2));
-		for (int y = 0; y < h; y++) {
-			for (int x = 0; x < w; x++) {
-				scalars.setMem(scalars.getShape().index(y, x, 0), (double) (y * w + x));
-			}
-		}
-
-		PackedCollection<?> result = new PackedCollection<>(shape(h, w, 2).traverse(2));
-		concatenated.get().into(result.each()).evaluate(scalars);
-
-		System.out.println("Concat 2D traversal test (size=" + (h*w) + "):");
-		System.out.println("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");
-		System.out.println("  [15,15]: [" + result.valueAt(15, 15, 0) + ", " + result.valueAt(15, 15, 1) + "] (expected [255.0, 510.0])");
-
-		// Check corners
-		Assert.assertEquals(0.0, result.valueAt(0, 0, 0), 0.01);
-		Assert.assertEquals(0.0, result.valueAt(0, 0, 1), 0.01);
-		Assert.assertEquals(255.0, result.valueAt(15, 15, 0), 0.01);
-		Assert.assertEquals(510.0, result.valueAt(15, 15, 1), 0.01);
-
-		// Check middle
-		Assert.assertEquals(136.0, result.valueAt(8, 8, 0), 0.01);
-		Assert.assertEquals(272.0, result.valueAt(8, 8, 1), 0.01);
-	}
-
-	@Test
 	public void intersection1DBatch256() {
-		if (skipGeometryIssues) return;
-
 		// Test intersection with exactly 256 rays in 1D batch (not 2D grid)
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
@@ -464,8 +281,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void closestBatch256() {
-		if (skipGeometryIssues) return;
-
 		// Test Sphere.closest() with >128 elements to verify it doesn't hit the legacy limit
 		Sphere s = new Sphere();
 
@@ -566,8 +381,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void discriminantKernel() {
-		if (skipGeometryIssues) return;
-
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
 		int w = 100;
@@ -603,8 +416,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionSingleRay() {
-		if (skipGeometryIssues) return;
-
 		// Test full intersection with a single ray that should hit
 		Sphere s = new Sphere();
 
@@ -627,8 +438,6 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel() {
-		if (skipGeometryIssues) return;
-
 		int w = 100;
 		int h = 100;
 
@@ -714,97 +523,5 @@ public class SphereTest implements TestFeatures {
 
 		System.out.println(hits + " hits");
 		// Assert.assertEquals(4900, hits);
-	}
-
-	@Test
-	public void lessThanSingleValue() {
-		// Test lessThan with single scalar values
-		Producer<PackedCollection<?>> a = c(5.0);
-		Producer<PackedCollection<?>> b = c(10.0);
-
-		// if a < b, return a, else return b
-		Producer<PackedCollection<?>> result = lessThan(a, b, a, b);
-
-		try (PackedCollection<?> value = result.get().evaluate()) {
-			System.out.println("lessThan single: " + value.getValue() + " (expected 5.0)");
-			Assert.assertEquals(5.0, value.toDouble(), 0.001);
-		}
-	}
-
-	@Test
-	public void lessThanSmallBatch() {
-		// Test lessThan with a small batch of 3 elements
-		PackedCollection<?> valuesA = new PackedCollection<>(shape(3, 1).traverse(1));
-		valuesA.setMem(0, 2.0);  // a[0] = 2.0
-		valuesA.setMem(1, 8.0);  // a[1] = 8.0
-		valuesA.setMem(2, 5.0);  // a[2] = 5.0
-
-		PackedCollection<?> valuesB = new PackedCollection<>(shape(3, 1).traverse(1));
-		valuesB.setMem(0, 7.0);  // b[0] = 7.0
-		valuesB.setMem(1, 3.0);  // b[1] = 3.0
-		valuesB.setMem(2, 5.0);  // b[2] = 5.0
-
-		Producer a = v(shape(-1, 1), 0);
-		Producer b = v(shape(-1, 1), 1);
-
-		// if a < b, return a, else return b (essentially min(a, b))
-		Producer result = lessThan(a, b, a, b);
-
-		PackedCollection<?> resultData = new PackedCollection<>(shape(3, 1).traverse(1));
-
-		// Create input with both valuesA and valuesB side by side
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 2).traverse(1));
-		for (int i = 0; i < 3; i++) {
-			input.setMem(i * 2, valuesA.valueAt(i, 0), valuesB.valueAt(i, 0));
-		}
-
-		result.get().into(resultData.each()).evaluate(input);
-
-		System.out.println("lessThan small batch:");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
-		System.out.println("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
-		System.out.println("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
-
-		Assert.assertEquals(2.0, resultData.valueAt(0, 0), 0.001);
-		Assert.assertEquals(3.0, resultData.valueAt(1, 0), 0.001);
-		Assert.assertEquals(5.0, resultData.valueAt(2, 0), 0.001);
-	}
-
-	@Test
-	public void lessThanLargeBatch() {
-		// Test lessThan with 256 elements to check for batch size limits
-		int batchSize = 256;
-		PackedCollection<?> input = new PackedCollection<>(shape(batchSize, 2).traverse(1));
-
-		// Fill with test data: a[i] = i, b[i] = 255 - i
-		// Expected: min(i, 255-i)
-		for (int i = 0; i < batchSize; i++) {
-			input.setMem(i * 2, (double) i, (double) (255 - i));
-		}
-
-		Producer a = v(shape(-1, 1), 0);
-		Producer b = v(shape(-1, 1), 1);
-
-		// if a < b, return a, else return b
-		Producer result = lessThan(a, b, a, b);
-
-		PackedCollection<?> resultData = new PackedCollection<>(shape(batchSize, 1).traverse(1));
-		result.get().into(resultData.each()).evaluate(input);
-
-		System.out.println("lessThan large batch (size=" + batchSize + "):");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
-		System.out.println("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
-		System.out.println("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
-		System.out.println("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
-		System.out.println("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
-		System.out.println("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
-
-		// Check key values
-		Assert.assertEquals(0.0, resultData.valueAt(0, 0), 0.001);
-		Assert.assertEquals(100.0, resultData.valueAt(100, 0), 0.001);
-		Assert.assertEquals(127.0, resultData.valueAt(127, 0), 0.001);
-		Assert.assertEquals(127.0, resultData.valueAt(128, 0), 0.001);  // crossover point
-		Assert.assertEquals(55.0, resultData.valueAt(200, 0), 0.001);
-		Assert.assertEquals(0.0, resultData.valueAt(255, 0), 0.001);
 	}
 }

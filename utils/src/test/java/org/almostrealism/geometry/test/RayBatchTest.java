@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.primitives.test;
+package org.almostrealism.geometry.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;

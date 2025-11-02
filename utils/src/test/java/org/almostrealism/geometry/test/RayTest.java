@@ -24,6 +24,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class RayTest implements TestFeatures {
@@ -208,5 +209,32 @@ public class RayTest implements TestFeatures {
 		assertEquals(9.0, result.valueAt(0, 0));
 		assertEquals(1.0, result.valueAt(1, 0));
 		assertEquals(14.0, result.valueAt(2, 0));
+	}
+
+	@Test
+	public void rayDotProductsSingleRay() {
+		// Test that dot products work for a single ray in batch mode
+		Producer<Ray> ray = v(shape(-1, 6), 0);
+
+		PackedCollection<?> singleRay = new PackedCollection<>(shape(1, 6).traverse(1));
+		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
+
+		// Test oDoto (origin dot origin) = 0^2 + 0^2 + 3^2 = 9
+		PackedCollection<?> oDotoResult = new PackedCollection<>(shape(1, 1).traverse(1));
+		oDoto(ray).get().into(oDotoResult.each()).evaluate(singleRay);
+		System.out.println("oDoto: " + oDotoResult.valueAt(0, 0) + " (expected 9.0)");
+		Assert.assertEquals(9.0, oDotoResult.valueAt(0, 0), 0.01);
+
+		// Test dDotd (direction dot direction) = 0^2 + 0^2 + (-1)^2 = 1
+		PackedCollection<?> dDotdResult = new PackedCollection<>(shape(1, 1).traverse(1));
+		dDotd(ray).get().into(dDotdResult.each()).evaluate(singleRay);
+		System.out.println("dDotd: " + dDotdResult.valueAt(0, 0) + " (expected 1.0)");
+		Assert.assertEquals(1.0, dDotdResult.valueAt(0, 0), 0.01);
+
+		// Test oDotd (origin dot direction) = 0*0 + 0*0 + 3*(-1) = -3
+		PackedCollection<?> oDotdResult = new PackedCollection<>(shape(1, 1).traverse(1));
+		oDotd(ray).get().into(oDotdResult.each()).evaluate(singleRay);
+		System.out.println("oDotd: " + oDotdResult.valueAt(0, 0) + " (expected -3.0)");
+		Assert.assertEquals(-3.0, oDotdResult.valueAt(0, 0), 0.01);
 	}
 }
