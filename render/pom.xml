@@ -17,5 +17,17 @@
 			<artifactId>ar-space</artifactId>
 			<version>0.72</version>
 		</dependency>
+
+		<dependency>
+			<groupId>org.almostrealism</groupId>
+			<artifactId>ar-utils</artifactId>
+			<version>0.72</version>
+		</dependency>
+
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 </project>
