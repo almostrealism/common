@@ -46,6 +46,7 @@
 		<module>ml-script</module>
 		<module>llvm</module>
 		<module>tools</module>
+		<module>render</module>
 	</modules>
 
 	<packaging>pom</packaging>
