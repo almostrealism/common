@@ -314,7 +314,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void destroy() {
 		super.destroy();
 
-		argumentMap.destroy();
+		if (argumentMap != null) {
+			argumentMap.destroy();
+		}
 	}
 
 	@Override

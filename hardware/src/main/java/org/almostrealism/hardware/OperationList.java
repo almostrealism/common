@@ -328,9 +328,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public void destroy() {
-		stream().map(o -> o instanceof Destroyable ? (Destroyable) o : null)
-				.filter(Objects::nonNull)
-				.forEach(Destroyable::destroy);
+		forEach(Destroyable::destroy);
 	}
 
 	@Override
@@ -439,7 +437,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	public static class Runner implements Runnable, OperationInfo, ConsoleFeatures {
+	public static class Runner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
@@ -487,6 +485,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		@Override
 		public String describe() {
 			return getMetadata().getShortDescription();
+		}
+
+		@Override
+		public void destroy() {
+			if (run == null) return;
+
+			run.forEach(Destroyable::destroy);
+			run = null;
 		}
 
 		@Override

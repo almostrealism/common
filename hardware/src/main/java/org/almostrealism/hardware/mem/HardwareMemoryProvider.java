@@ -195,9 +195,22 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			destroying = true;
 
 			if (allocated != null) {
-				List<NativeRef<T>> stillAllocated = new ArrayList<>(allocated.values());
+				List<NativeRef<T>> stillAllocated = new ArrayList<>();
+
+				w: while (true) {
+					try {
+						stillAllocated.clear();
+						allocated.values().forEach(stillAllocated::add);
+						break w;
+					} catch (Exception e) {
+						// start over and try again if the allocated map was
+						// modified while attempting to capture its contents
+						warn(e.getClass().getSimpleName() + " - " + e.getMessage());
+					}
+				}
+
 				stillAllocated.stream()
-						.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
+						.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
 						.limit(10)
 						.forEach(ref -> {
 							warn(ref + " was not deallocated");

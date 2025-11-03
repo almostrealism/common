@@ -16,6 +16,7 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
@@ -36,7 +37,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Model implements Setup, CodeFeatures {
+public class Model implements Setup, Destroyable, CodeFeatures {
 	private SequentialBlock blocks;
 	private List<Block> inputs;
 
@@ -145,5 +146,18 @@ public class Model implements Setup, CodeFeatures {
 
 	public CompiledModel compile(boolean backprop, boolean returnGradient, OperationProfile profile) {
 		return CompiledModel.compile(this, backprop, returnGradient, profile);
+	}
+
+	@Override
+	public void destroy() {
+		if (blocks != null) {
+			blocks.destroy();
+			blocks = null;
+		}
+
+		if (inputs != null) {
+			inputs.forEach(Block::destroy);
+			inputs = null;
+		}
 	}
 }

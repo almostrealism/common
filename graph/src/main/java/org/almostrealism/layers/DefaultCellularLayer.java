@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -204,6 +205,26 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public void setParameterUpdate(ParameterUpdate<PackedCollection<?>> update) {
 		if (forward instanceof Learning) ((Learning) forward).setParameterUpdate(update);
 		if (backward instanceof Learning) ((Learning) backward).setParameterUpdate(update);
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(forward);
+		Destroyable.destroy(backward);
+		Destroyable.destroy(input);
+		Destroyable.destroy(output);
+		Destroyable.destroy(setup);
+
+		if (weights != null) {
+			weights.forEach(PackedCollection::destroy);
+			weights = null;
+		}
+
+		forward = null;
+		backward = null;
+		input = null;
+		output = null;
+		entry = null;
 	}
 
 	@Override
