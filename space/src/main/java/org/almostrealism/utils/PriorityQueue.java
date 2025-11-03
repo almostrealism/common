@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.utils;
 
 import java.util.SortedSet;
 import java.util.TreeSet;

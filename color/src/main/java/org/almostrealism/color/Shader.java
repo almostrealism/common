@@ -24,9 +24,9 @@ import org.almostrealism.geometry.DiscreteField;
  */
 public interface Shader<C extends LightingContext> {
 	/**
-	 * Returns a {@link ColorEvaluable} object that represents the
-	 * shaded color calculated using the values of the specified
-	 * {@link ShaderContext} object.
+	 * Returns a {@link Producer} that generates the
+	 * shaded color calculated using the values of the
+	 * specified {@link LightingContext parameters}.
 	 */
 	Producer<RGB> shade(C parameters, DiscreteField normals);
 }
