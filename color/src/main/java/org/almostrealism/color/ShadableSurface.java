@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package org.almostrealism.space;
+package org.almostrealism.color;
 
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.color.ShadableCurve;
 import io.almostrealism.uml.ModelEntity;
-import io.almostrealism.relation.Evaluable;
 
 /**
  * The {@link ShadableSurface} interface is implemented by any 3d object which may be

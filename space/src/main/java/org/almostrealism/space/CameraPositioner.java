@@ -16,6 +16,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.projection.PinholeCamera;
 
 /**

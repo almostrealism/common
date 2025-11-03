@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.Intersection;

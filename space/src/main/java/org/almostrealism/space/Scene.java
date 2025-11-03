@@ -21,6 +21,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
+import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.geometry.Camera;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;

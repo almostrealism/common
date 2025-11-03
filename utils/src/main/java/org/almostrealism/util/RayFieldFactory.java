@@ -20,7 +20,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.RayField;
-import org.almostrealism.space.BoundingSolid;
+import org.almostrealism.geometry.BoundingSolid;
 
 import java.util.*;
 

@@ -21,6 +21,7 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Stack;
 
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Producer;

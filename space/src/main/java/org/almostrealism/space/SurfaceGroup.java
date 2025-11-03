@@ -27,6 +27,7 @@ import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;

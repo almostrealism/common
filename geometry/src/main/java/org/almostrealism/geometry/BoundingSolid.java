@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.space;
-
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Positioned;
+package org.almostrealism.geometry;
 
 /**
  * Represents a 3D bounding solid.

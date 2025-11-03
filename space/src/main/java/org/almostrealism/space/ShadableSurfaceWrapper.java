@@ -16,6 +16,8 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.color.ShadableSurface;
+
 /**
  * A {@link ShadableSurfaceWrapper} implementation stores/wraps a Surface.
  * 

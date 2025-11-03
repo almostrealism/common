@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
 
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;

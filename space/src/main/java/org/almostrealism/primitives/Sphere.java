@@ -31,7 +31,7 @@ import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
-import org.almostrealism.space.BoundingSolid;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.space.DistanceEstimator;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.geometry.ShadableIntersection;
