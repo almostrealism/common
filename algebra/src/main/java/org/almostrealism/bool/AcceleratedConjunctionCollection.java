@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class AcceleratedConjunctionCollection extends AcceleratedConjunctionAdapter<PackedCollection<?>>
 		implements AcceleratedConditionalStatement<PackedCollection<?>>,
 						CollectionProducerComputation<PackedCollection<?>> {

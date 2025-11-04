@@ -44,6 +44,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Deprecated
 public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Supplier<Evaluable<?>> trueValue, falseValue;

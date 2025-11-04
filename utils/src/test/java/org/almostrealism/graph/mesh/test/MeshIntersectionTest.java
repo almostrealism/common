@@ -126,26 +126,12 @@ public class MeshIntersectionTest implements TestFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().toDouble());
 
-		HardwareEvaluable<Vector> ho = (HardwareEvaluable) h.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
-
-		HardwareEvaluable<Scalar> fo = (HardwareEvaluable) f.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
-
-		HardwareEvaluable<PackedCollection<?>> uo = (HardwareEvaluable<PackedCollection<?>>) u.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
-
-		HardwareEvaluable<PackedCollection<?>> vo = (HardwareEvaluable<PackedCollection<?>>) v.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
-
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
 				scalarGreaterThan((Producer) u, scalar(0.0), true),
 				scalarLessThan((Producer) u, scalar(1.0), true),
 				scalarGreaterThan((Producer) v, scalar(0.0), true),
 				scalarLessThan((Producer) add(u, v), scalar(1.0), true));
-		ArgumentList<Scalar> evs = (ArgumentList) acs.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 
 	@Test

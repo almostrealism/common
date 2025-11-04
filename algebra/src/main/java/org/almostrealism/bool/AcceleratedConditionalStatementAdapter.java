@@ -42,7 +42,7 @@ import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-// TODO  This should extend CollectionProducerComputationBase
+@Deprecated
 public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCollection<?>>
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,

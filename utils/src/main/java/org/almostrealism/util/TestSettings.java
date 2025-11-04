@@ -19,7 +19,6 @@ package org.almostrealism.util;
 import java.util.Objects;
 
 public interface TestSettings {
-	boolean enableArgumentCountAssertions = false;
 
 	boolean skipLongTests = TestUtils.getSkipLongTests();
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();

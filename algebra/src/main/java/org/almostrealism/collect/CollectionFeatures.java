@@ -45,6 +45,7 @@ import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.bool.CollectionConjunctionComputation;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
@@ -2997,6 +2998,94 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 				null,
 				(Producer) a, (Producer) b,
 				(Producer) trueValue, (Producer) falseValue);
+	}
+
+	/**
+	 * Performs element-wise greater-than comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a > b, 0.0 otherwise
+	 */
+	default CollectionProducer<PackedCollection<?>> greaterThan(Producer<?> a, Producer<?> b) {
+		return greaterThan(a, b, c(1.0), c(0.0));
+	}
+
+	/**
+	 * Performs element-wise greater-than-or-equal comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a >= b, 0.0 otherwise
+	 */
+	default CollectionProducer<PackedCollection<?>> greaterThanOrEqual(Producer<?> a, Producer<?> b) {
+		return greaterThan(a, b, c(1.0), c(0.0), true);
+	}
+
+	/**
+	 * Performs element-wise less-than comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a < b, 0.0 otherwise
+	 */
+	default CollectionProducer<PackedCollection<?>> lessThan(Producer<?> a, Producer<?> b) {
+		return lessThan(a, b, c(1.0), c(0.0), false);
+	}
+
+	/**
+	 * Performs element-wise less-than-or-equal comparison between two collections, returning 1.0 for true
+	 * and 0.0 for false. This is a convenience method for generating binary comparison values
+	 * suitable for logical operations.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a <= b, 0.0 otherwise
+	 */
+	default CollectionProducer<PackedCollection<?>> lessThanOrEqual(Producer<?> a, Producer<?> b) {
+		return lessThan(a, b, c(1.0), c(0.0), true);
+	}
+
+	/**
+	 * Performs element-wise logical AND operation on two collections with custom return values.
+	 * Returns trueValue if both operands are non-zero (considered true), otherwise returns falseValue.
+	 * This is useful for combining multiple conditions with custom result values.
+	 *
+	 * @param <T> the type of {@link PackedCollection} to produce
+	 * @param a the first operand (non-zero = true)
+	 * @param b the second operand (non-zero = true)
+	 * @param trueValue the value to return when both a AND b are non-zero
+	 * @param falseValue the value to return otherwise
+	 * @return a {@link CollectionProducer} that generates the logical AND result
+	 */
+	default <T extends PackedCollection<?>> CollectionProducer<T> and(
+			Producer<?> a, Producer<?> b,
+			Producer<T> trueValue, Producer<T> falseValue) {
+		return compute((shape, args) ->
+						new CollectionConjunctionComputation<>(shape,
+								args.get(0), args.get(1), args.get(2), args.get(3)),
+				null,
+				(Producer) a, (Producer) b,
+				(Producer) trueValue, (Producer) falseValue);
+	}
+
+	/**
+	 * Performs element-wise logical AND operation on two collections, returning 1.0 for true
+	 * and 0.0 for false. Returns 1.0 if both operands are non-zero, otherwise returns 0.0.
+	 * This is useful for chaining multiple conditions.
+	 *
+	 * @param a the first operand (non-zero = true)
+	 * @param b the second operand (non-zero = true)
+	 * @return a {@link CollectionProducer} that generates 1.0 where both operands are non-zero, 0.0 otherwise
+	 */
+	default CollectionProducer<PackedCollection<?>> and(Producer<?> a, Producer<?> b) {
+		return and(a, b, c(1.0), c(0.0));
 	}
 
 	default <T extends Shape<?>> CollectionProducer<T> delta(Producer<T> producer, Producer<?> target) {

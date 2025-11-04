@@ -346,6 +346,50 @@ public interface CollectionProducer<T extends Shape<?>> extends
 		return lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 
+	/**
+	 * Produces 1.0 if this > operand, 0.0 otherwise.
+	 */
+	default CollectionProducer<PackedCollection<?>> greaterThan(Producer<?> operand) {
+		return greaterThan(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this >= operand, 0.0 otherwise.
+	 */
+	default CollectionProducer<PackedCollection<?>> greaterThanOrEqual(Producer<?> operand) {
+		return greaterThanOrEqual(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this < operand, 0.0 otherwise.
+	 */
+	default CollectionProducer<PackedCollection<?>> lessThan(Producer<?> operand) {
+		return lessThan(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this <= operand, 0.0 otherwise.
+	 */
+	default CollectionProducer<PackedCollection<?>> lessThanOrEqual(Producer<?> operand) {
+		return lessThanOrEqual(this, operand);
+	}
+
+	/**
+	 * Produces 1.0 if this AND operand are both non-zero, 0.0 otherwise.
+	 */
+	default CollectionProducer<PackedCollection<?>> and(Producer<?> operand) {
+		return and(this, operand);
+	}
+
+	/**
+	 * Produces trueValue if this AND operand are both non-zero, otherwise returns falseValue.
+	 */
+	default <V extends PackedCollection<?>> CollectionProducer<V> and(Producer<?> operand,
+																	   Producer<V> trueValue,
+																	   Producer<V> falseValue) {
+		return and(this, operand, trueValue, falseValue);
+	}
+
 	default CollectionProducer<T> attemptDelta(Producer<?> target) {
 		return attemptDelta(this, target);
 	}
