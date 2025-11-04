@@ -23,20 +23,6 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class GreaterThanScalar extends GreaterThan<Scalar> {
-	public GreaterThanScalar(
-			Supplier leftOperand,
-			Supplier rightOperand) {
-		super(2, Scalar::scalarBank, leftOperand, rightOperand, null, null, false);
-		setPostprocessor((BiFunction) Scalar.postprocessor());
-	}
-
-	public GreaterThanScalar(
-			Supplier leftOperand,
-			Supplier rightOperand,
-			Supplier trueValue,
-			Supplier falseValue) {
-		this(leftOperand, rightOperand, trueValue, falseValue, false);
-	}
 
 	public GreaterThanScalar(
 			Supplier leftOperand,

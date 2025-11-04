@@ -20,7 +20,6 @@ import io.almostrealism.relation.Editable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.computations.GreaterThanRGB;
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import io.almostrealism.relation.Producer;
@@ -73,14 +72,12 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 
 		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
 			Producer<RGB> color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleFront));
-			front = new GreaterThanRGB(scaleFront, scalar(0),
-							color, black());
+			front = greaterThan(scaleFront, c(0), color, black());
 		}
 
 		if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
 			Producer<RGB> color = multiply(surfaceColor, lightColor).multiply(cfromScalar(scaleBack));
-			back = new GreaterThanRGB(scaleBack, scalar(0),
-							color, black());
+			back = greaterThan(scaleBack, c(0), color, black());
 		}
 
 		if (front != null && back != null) {

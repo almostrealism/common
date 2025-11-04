@@ -2929,7 +2929,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
-	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<T> a, Producer<T> b,
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThan(Producer<?> a, Producer<?> b,
 																			  Producer<T> trueValue, Producer<T> falseValue) {
 		return greaterThan(a, b, trueValue, falseValue, false);
 	}

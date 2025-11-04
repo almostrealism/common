@@ -81,11 +81,11 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 
 	private Producer<Vector> t(CollectionProducer<Vector> pqr) {
 		Producer<Vector> ft = scalarLessThan(y(pqr), x(pqr)).and(scalarLessThan(y(pqr), z(pqr)),
-				vector(x(pqr), scalar(1.0), z(pqr)),
-				vector(x(pqr), y(pqr), scalar(1.0)));
+				vector(x(pqr), c(1.0), z(pqr)),
+				vector(x(pqr), y(pqr), c(1.0)));
 
 		Producer<Vector> t = scalarLessThan(x(pqr), y(pqr)).and(scalarLessThan(y(pqr), z(pqr)),
-				vector(scalar(1.0), y(pqr), z(pqr)), ft);
+				vector(c(1.0), y(pqr), z(pqr)), ft);
 
 		return t;
 	}

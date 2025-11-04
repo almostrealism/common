@@ -23,6 +23,7 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class GreaterThan<T extends PackedCollection<?>> extends AcceleratedBinaryConditionAdapter<T> {
 	public GreaterThan(int memLength,
 					   IntFunction<MemoryBank<T>> kernelDestination,

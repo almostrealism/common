@@ -17,13 +17,10 @@
 package org.almostrealism.color.test;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.color.computations.GreaterThanRGB;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -45,11 +42,12 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void greaterThan() {
 		verboseLog(() -> {
-			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
+			Producer<PackedCollection<?>> arg0 = v(shape(1), 0);
 			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, scalar(0.0), arg1, black());
-			RGB result = greater.get().evaluate(new Scalar(0.1), new RGB(0.0, 1.0, 0.0));
+			CollectionProducer<PackedCollection<?>> greater =
+					greaterThan(arg0, c(0.0), (Producer) arg1, (Producer) black());
+			RGB result = new RGB(greater.get().evaluate(pack(0.1), new RGB(0.0, 1.0, 0.0)), 0);
 			assertEquals(0.0, result.getRed());
 			assertEquals(1.0, result.getGreen());
 			assertEquals(0.0, result.getBlue());
@@ -59,18 +57,23 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void greaterThanKernel() {
 		verboseLog(() -> {
-			Producer<Scalar> arg0 = v(shape(-1, 2), 0);
+			Producer<PackedCollection<?>> arg0 = v(shape(-1, 1), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);
-			PackedCollection<Scalar> input = Scalar.scalarBank(5);
+			PackedCollection<?> input = new PackedCollection<>(5, 1).traverse(1);
 			input.set(0, 0.0);
 			input.set(1, -1.0);
 			input.set(2, 1.0);
 			input.set(3, -0.1);
 			input.set(4, 0.1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, scalar(0.0), white(), black());
+			input.print();
+
+			CollectionProducer<PackedCollection<?>> greater =
+					greaterThan(arg0, c(0.0), (Producer) white(), black());
 			greater.get().into(result).evaluate(input);
+			result.print();
+
 			assertEquals(0.0, result.get(0).getGreen());
 			assertEquals(0.0, result.get(1).getGreen());
 			assertEquals(1.0, result.get(2).getGreen());
