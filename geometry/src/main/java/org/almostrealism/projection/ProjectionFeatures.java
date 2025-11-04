@@ -80,14 +80,11 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 	}
 
 	private Producer<Vector> t(CollectionProducer<Vector> pqr) {
-		Producer<Vector> ft = scalarLessThan(y(pqr), x(pqr)).and(scalarLessThan(y(pqr), z(pqr)),
-				vector(x(pqr), c(1.0), z(pqr)),
-				vector(x(pqr), y(pqr), c(1.0)));
-
-		Producer<Vector> t = scalarLessThan(x(pqr), y(pqr)).and(scalarLessThan(y(pqr), z(pqr)),
-				vector(c(1.0), y(pqr), z(pqr)), ft);
-
-		return t;
+		Producer<Vector> t = lessThan(y(pqr), x(pqr)).and(lessThan(y(pqr), z(pqr)),
+								vector(x(pqr), c(1.0), z(pqr)),
+								vector(x(pqr), y(pqr), c(1.0)));
+		return lessThan(x(pqr), y(pqr)).and(lessThan(y(pqr), z(pqr)),
+					vector(c(1.0), y(pqr), z(pqr)), t);
 	}
 
 	private CollectionProducer<Vector> u(CollectionProducer<Vector> w, Producer<Vector> t) {

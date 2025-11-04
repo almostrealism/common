@@ -31,7 +31,6 @@ import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -104,34 +103,6 @@ public class MeshIntersectionTest implements TestFeatures {
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().toDouble());
-	}
-
-	@Test
-	public void conjunction() {
-		System.out.println(def(data1).get().evaluate());
-
-		CollectionProducer<Vector> h = TriangleIntersectAt.h(def(data1), direction1);
-		System.out.println("h = " + h.get().evaluate());
-
-		CollectionProducer<PackedCollection<?>> f = TriangleIntersectAt.f(abc(data1), h);
-		System.out.println("f = " + f.get().evaluate().toDouble());
-
-		Producer<Vector> s = TriangleIntersectAt.s(jkl(data1), origin1);
-		System.out.println("s = " + s.get().evaluate());
-
-		Producer<PackedCollection<?>> u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().toDouble());
-
-		Producer<PackedCollection<?>> v = TriangleIntersectAt.v(direction1, f,
-							TriangleIntersectAt.q(abc(data1), s));
-		System.out.println("v = " + v.get().evaluate().toDouble());
-
-		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
-				scalar(1.0), scalar(-1.0),
-				scalarGreaterThan((Producer) u, scalar(0.0), true),
-				scalarLessThan((Producer) u, scalar(1.0), true),
-				scalarGreaterThan((Producer) v, scalar(0.0), true),
-				scalarLessThan((Producer) add(u, v), scalar(1.0), true));
 	}
 
 	@Test

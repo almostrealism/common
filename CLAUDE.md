@@ -7,26 +7,25 @@
 ### Required Environment Variables
 
 ```bash
-export AR_HARDWARE_LIBS=/home/developer/.libs/
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
 export AR_HARDWARE_DRIVER=native
 ```
 
+**Note**: `AR_HARDWARE_LIBS` can be set to **any writable directory** - the system just needs a place to generate and load hardware acceleration libraries. Common choices include `/tmp/ar_libs/`, `/home/developer/.libs/`, or any other temp directory.
+
 ### Setup Instructions
 
-1. **Create the hardware libs directory** (if not already present):
+1. **Set environment variables** before running Java code:
    ```bash
-   mkdir -p /home/developer/.libs
-   ```
-
-2. **Set environment variables** before running Java code:
-   ```bash
-   export AR_HARDWARE_LIBS=/home/developer/.libs/
+   export AR_HARDWARE_LIBS=/tmp/ar_libs/
    export AR_HARDWARE_DRIVER=native
    ```
 
-3. **For Maven tests**, always prefix test commands with the environment variables:
+   The directory will be created automatically if it doesn't exist.
+
+2. **For Maven tests**, always prefix test commands with the environment variables:
    ```bash
-   export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+   export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
    export AR_HARDWARE_DRIVER=native && \
    mvn test -pl <module>
    ```
@@ -232,17 +231,17 @@ Always set environment variables when running tests:
 
 ```bash
 # Single module
-export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml
 
 # Specific test
-export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test -pl ml -Dtest=MyTest
 
 # All modules
-export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 export AR_HARDWARE_DRIVER=native && \
 mvn test
 ```

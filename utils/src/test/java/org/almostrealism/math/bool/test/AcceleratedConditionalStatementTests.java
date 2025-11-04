@@ -19,11 +19,8 @@ package org.almostrealism.math.bool.test;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -123,19 +120,19 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<Scalar> pa = scalar(a);
-			Producer<Scalar> pb = scalar(b);
-			Producer<Scalar> pc = scalar(c);
-			Producer<Scalar> pd = scalar(d);
+			Producer<PackedCollection<?>> pa = scalar(a);
+			Producer<PackedCollection<?>> pb = scalar(b);
+			Producer<PackedCollection<?>> pc = scalar(c);
+			Producer<PackedCollection<?>> pd = scalar(d);
 
-			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);
-			LessThan lt3 = new LessThanScalar(pc, pd, lt2, scalar(-b), false);
+			CollectionProducer<PackedCollection<?>> lt1 = lessThan(pa, pb, pa, pb);
+			CollectionProducer<PackedCollection<?>> lt2 = lessThan(pb, pc, lt1, scalar(-a));
+			CollectionProducer<PackedCollection<?>> lt3 = lessThan(pc, pd, lt2, scalar(-b));
 
-			LessThan top = lt3;
+			CollectionProducer<PackedCollection<?>> top = lt3;
 
-			Scalar s = (Scalar) top.get().evaluate();
-			System.out.println(s.getValue());
+			PackedCollection<?> s = top.evaluate();
+			s.print();
 
 			if (c < d) {
 				if (b < c) {

@@ -17,20 +17,12 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.Choice;
-import org.almostrealism.bool.AcceleratedConditionalStatement;
-import org.almostrealism.bool.AcceleratedConditionalStatementVector;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.LessThanScalar;
-import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
-
-import java.util.function.Supplier;
 
 public interface ScalarFeatures extends CollectionFeatures {
 
@@ -62,40 +54,6 @@ public interface ScalarFeatures extends CollectionFeatures {
 						  Producer<PackedCollection<?>> decision,
 						  Producer<PackedCollection<?>> choices) {
 		return new Choice(resultShape, choiceCount, decision, choices);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Producer<Scalar> left,
-																	  Producer<Scalar> right,
-																	  boolean includeEqual) {
-		return scalarGreaterThan(left, right, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarGreaterThan(Supplier<Evaluable<? extends Scalar>> left,
-																	  Supplier<Evaluable<? extends Scalar>> right,
-																	  Supplier<Evaluable<? extends Scalar>> trueValue,
-																	  Supplier<Evaluable<? extends Scalar>> falseValue,
-																	  boolean includeEqual) {
-		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
-																   Supplier<Evaluable<? extends Scalar>> right,
-																   boolean includeEqual) {
-		return scalarLessThan(left, right, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatement<Scalar> scalarLessThan(Supplier<Evaluable<? extends Scalar>> left,
-																   Supplier<Evaluable<? extends Scalar>> right,
-																   Supplier<Evaluable<? extends Scalar>> trueValue,
-																   Supplier<Evaluable<? extends Scalar>> falseValue,
-																   boolean includeEqual) {
-		return new LessThanScalar(left, right, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementVector scalarLessThan(Producer<Scalar> left,
-																 Producer<Scalar> right) {
-		// TODO  This should not be Vector-specific
-		return new LessThanVector(left, right, null, null);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }
