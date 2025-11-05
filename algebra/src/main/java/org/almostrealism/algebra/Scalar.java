@@ -31,8 +31,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public static final double TWO_PI = 6.283185307179586232;
 	public static final double PI = TWO_PI * 0.5;
 
-	public Scalar() { this(true); }
-	public Scalar(boolean certain) { if (certain) setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
 
@@ -94,10 +92,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
-	}
-
-	public static Producer<Scalar> blank() {
-		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), Scalar::scalarBank);
 	}
 
 	public static DoubleFunction<Scalar> supply(IntFunction<PackedCollection<?>> supply) {

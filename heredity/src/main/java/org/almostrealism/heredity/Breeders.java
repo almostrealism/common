@@ -16,22 +16,8 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Factor;
-import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.PackedCollection;
-
 public class Breeders {
 	private Breeders() { }
-
-	private static PackedCollection<?> value(Factor<PackedCollection<?>> factor) {
-		if (factor instanceof ScaleFactor) {
-			return ((ScaleFactor) factor).getScale();
-		} else if (factor instanceof AssignableGenome.AssignableFactor) {
-			return ((AssignableGenome.AssignableFactor) factor).getValue();
-		} else {
-			return factor.getResultant(CollectionFeatures.getInstance().c(1.0)).get().evaluate();
-		}
-	}
 
 	public static double perturbation(double s1, double s2, double magnitude) {
 		double m = magnitude;

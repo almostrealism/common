@@ -46,10 +46,6 @@ public interface ScalarFeatures extends CollectionFeatures {
 		return (CollectionProducer) DefaultTraversableExpressionComputation.fixed(value, Scalar.postprocessor());
 	}
 
-	default Producer<Scalar> scalar() {
-		return Scalar.blank();
-	}
-
 	default Choice choice(int choiceCount, TraversalPolicy resultShape,
 						  Producer<PackedCollection<?>> decision,
 						  Producer<PackedCollection<?>> choices) {

@@ -25,7 +25,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
@@ -39,7 +38,7 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	private double wavelength;
 
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {
-		super(new Producer[] { series, cursors, () -> new Provider<>(new Scalar()) });
+		super(new Producer[] { series, cursors, () -> new Provider<>(new PackedCollection<>(1)) });
 		this.wavelength = 1.0 / frequency;
 	}
 

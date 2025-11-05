@@ -29,16 +29,16 @@ public class AltComputeContextsTest implements TestFeatures {
 	// TODO  @Test
 	public void clAndNative() {
 		dc(() -> {
-			Scalar result = new Scalar();
+			PackedCollection<?> result = new PackedCollection<>(1);
 
-			Producer<Scalar> sum = add(c(1.0), c(2.0));
-			Producer<Scalar> product = multiply(c(3.0), c(2.0));
+			Producer<PackedCollection<?>> sum = add(c(1.0), c(2.0));
+			Producer<PackedCollection<?>> product = multiply(c(3.0), c(2.0));
 
-			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
-			System.out.println("Result = " + result.getValue());
+			cc(() -> a(1, p(result), sum).get().run(), ComputeRequirement.CL);
+			log("Result = " + result.getValue());
 
-			cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.C);
-			System.out.println("Result = " + result.getValue());
+			cc(() -> a(1, p(result), product).get().run(), ComputeRequirement.C);
+			log("Result = " + result.getValue());
 		});
 	}
 

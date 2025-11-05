@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	private CursorPair cursors;
 	private AcceleratedTimeSeries series;
-	private Scalar value;
+	private PackedCollection<?> value;
 
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
@@ -93,7 +93,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	protected void init() {
 		cursors = cursors(5);
 		series = series();
-		value = new Scalar();
+		value = new PackedCollection<>(1);
 	}
 
 	protected Supplier<Runnable> add() {
