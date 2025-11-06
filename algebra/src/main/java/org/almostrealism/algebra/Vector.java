@@ -392,73 +392,6 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		return (output, offset) -> new Vector(output, offset);
 	}
 
-	/**
-	 * Returns null upon failure, or a set of {@link Vector}s and integers
-	 * which represent faceted (non-averaged) normals, but per-vertex.
-	 *
-	 * Performs bounds checking on indices with respect to vertex list.
-	 * Index list must represent independent triangles; indices are
-	 * taken in groups of three. If index list doesn't represent
-	 * triangles or other error occurred then returns null. ccw flag
-	 * indicates whether triangles are specified counterclockwise when
-	 * viewed from top or not.
-	 */
-	public static Normals computeFacetedNormals(Vector[] vertices,
-												int[] indices,
-												boolean ccw) {
-		if ((indices.length % 3) != 0) {
-			Console.root().features(Vector.class)
-					.warn("computeFacetedNormals - numIndices wasn't " +
-						"divisible by 3, so it can't possibly " +
-						"represent a set of triangles");
-			return null;
-		}
-
-		Vector[] outputNormals = new Vector[indices.length / 3];
-		int[] outputNormalIndices = new int[indices.length];
-
-		Vector d1;
-		Vector d2;
-		int curNormalIndex = 0;
-		for (int i = 0; i < indices.length; i += 3) {
-			int i0 = indices[i];
-			int i1 = indices[i + 1];
-			int i2 = indices[i + 2];
-			if ((i0 < 0) || (i0 >= indices.length) ||
-					(i1 < 0) || (i1 >= indices.length) ||
-					(i2 < 0) || (i2 >= indices.length)) {
-				Console.root().features(Vector.class)
-						.warn("computeFacetedNormals - " +
-						"vertex index out of bounds or no end of triangle " +
-						"index found");
-				return null;
-			}
-
-			Vector v0 = vertices[i0];
-			Vector v1 = vertices[i1];
-			Vector v2 = vertices[i2];
-			d1 = v1.subtract(v0);
-			d2 = v2.subtract(v0);
-
-			Vector n;
-
-			if (ccw) {
-				n = d1.crossProduct(d2);
-			} else {
-				n = d2.crossProduct(d1);
-			}
-
-			n.normalize();
-			outputNormals[curNormalIndex] = n;
-			outputNormalIndices[i] = curNormalIndex;
-			outputNormalIndices[i + 1] = curNormalIndex;
-			outputNormalIndices[i + 2] = curNormalIndex;
-			curNormalIndex++;
-		}
-
-		return new Normals(outputNormals, outputNormalIndices);
-	}
-
 	public static void vector3Sub(Vector dest, Vector v1, Vector v2) {
 		dest.setX(v1.getX() - v2.getX());
 		dest.setY(v1.getY() - v2.getY());
@@ -505,34 +438,6 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		a.setX(Math.max(a.getX(), b.getX()));
 		a.setY(Math.max(a.getY(), b.getY()));
 		a.setZ(Math.max(a.getZ(), b.getZ()));
-	}
-
-	public static double dot3(Vector v0, Vector v1) {
-		return (v0.getX() * v1.getX() + v0.getY() * v1.getY() + v0.getZ() * v1.getZ());
-	}
-
-	public static float dot3(Vec4f v0, Vec4f v1) {
-		return (v0.x() * v1.x() + v0.y() * v1.y() + v0.z() * v1.z());
-	}
-
-	public static float lengthSquared3(Vec4f v) {
-		return (v.x() * v.x() + v.y() * v.y() + v.z() * v.z());
-	}
-
-	public static void normalize3(Vec4f v) {
-		float norm = (float)(1.0/Math.sqrt(v.x() * v.x() + v.y() * v.y() + v.z() * v.z()));
-		v.setX(v.x() * norm);
-		v.setY(v.y() * norm);
-		v.setZ(v.z() * norm);
-	}
-
-	public static void cross3(Vector dest, Vec4f v1, Vec4f v2) {
-		float x, y;
-		x = v1.y() * v2.z() - v1.z() * v2.y();
-		y = v2.x() * v1.z() - v2.z() * v1.x();
-		dest.setZ(v1.x() * v2.y() - v1.y() * v2.x());
-		dest.setX(x);
-		dest.setY(y);
 	}
 
 	public static Vector xAxis() { return new Vector(1, 0, 0); }
