@@ -33,8 +33,6 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shadable;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Curve;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.graph.PathElement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
@@ -80,7 +78,7 @@ import java.util.function.Supplier;
  */
 // TODO  T must extend ShadableIntersection so that distance can be used as the rank
 public class LightingEngine<T extends ContinuousField> extends ProducerWithRankAdapter<RGB>
-				implements PathElement<Ray, RGB>, DimensionAware, CodeFeatures, RGBFeatures {
+				implements DimensionAware, CodeFeatures, RGBFeatures {
 	public static boolean enableShadows = false;
 
 	private T intersections;
@@ -159,9 +157,6 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 			((DimensionAware) intersections).setDimensions(width, height, ssw, ssh);
 		}
 	}
-
-	@Override
-	public Iterable<Producer<Ray>> getDependencies() { return intersections; }
 
 	public Curve<RGB> getSurface() { return surface; }
 

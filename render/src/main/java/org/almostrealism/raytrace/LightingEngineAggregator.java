@@ -27,7 +27,6 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.graph.PathElement;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
@@ -65,7 +64,7 @@ import java.util.List;
  *
  * @see LightingEngine
  */
-public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements PathElement<RGB, RGB>, DimensionAware {
+public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware {
 	public static boolean enableVerbose = false;
 
 	private PackedCollection<Pair<?>> input;
@@ -249,12 +248,5 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	@Override
 	public Evaluable<RGB> into(Object destination) {
 		return new DestinationEvaluable<>(this, (MemoryBank) destination);
-	}
-
-	@Override
-	public Iterable<Producer<RGB>> getDependencies() {
-		List<Producer<RGB>> p = new ArrayList<>();
-		p.addAll(this);
-		return p;
 	}
 }

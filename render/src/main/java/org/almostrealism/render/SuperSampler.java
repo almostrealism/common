@@ -19,15 +19,13 @@ package org.almostrealism.render;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import org.almostrealism.graph.PathElement;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-import java.util.ArrayList;
 import java.util.stream.IntStream;
 
-public class SuperSampler implements Producer<RGB>, PathElement<RGB, RGB> {
+public class SuperSampler implements Producer<RGB> {
 	protected Producer<RGB> samples[][];
 	private double scale;
 
@@ -115,18 +113,5 @@ public class SuperSampler implements Producer<RGB>, PathElement<RGB, RGB> {
 				};
 			}
 		};
-	}
-
-	@Override
-	public Iterable<Producer<RGB>> getDependencies() {
-		ArrayList<Producer<RGB>> l = new ArrayList<>();
-
-		for (int i = 0; i < samples.length; i++) {
-			for (int j = 0; j < samples[i].length; j++) {
-				l.add(samples[i][j]);
-			}
-		}
-
-		return l;
 	}
 }
