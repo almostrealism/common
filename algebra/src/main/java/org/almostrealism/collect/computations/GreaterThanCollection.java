@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.bool;
+package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
@@ -23,14 +23,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionComparisonComputation;
 
 import java.util.List;
 
-public class LessThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
+public class GreaterThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
 	private boolean includeEqual;
 
-	public LessThanCollection(
+	public GreaterThanCollection(
 			TraversalPolicy shape,
 			Producer leftOperand,
 			Producer rightOperand,
@@ -39,12 +38,12 @@ public class LessThanCollection<T extends PackedCollection<?>> extends Collectio
 		this(shape, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
-	public LessThanCollection(
+	public GreaterThanCollection(
 			TraversalPolicy shape,
 			Producer<PackedCollection<?>> left, Producer<PackedCollection<?>> right,
 			Producer<PackedCollection<?>> trueValue, Producer<PackedCollection<?>> falseValue,
 			boolean includeEqual) {
-		super("lessThan", shape,  left, right, trueValue, falseValue);
+		super("greaterThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;
 	}
 
@@ -52,11 +51,11 @@ public class LessThanCollection<T extends PackedCollection<?>> extends Collectio
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		if (includeEqual) {
 			return CollectionExpression.create(getShape(), index ->
-					conditional(args[1].getValueAt(index).lessThanOrEqual(args[2].getValueAt(index)),
+					conditional(args[1].getValueAt(index).greaterThanOrEqual(args[2].getValueAt(index)),
 							args[3].getValueAt(index), args[4].getValueAt(index)));
 		} else {
 			return CollectionExpression.create(getShape(), index ->
-					conditional(args[1].getValueAt(index).lessThan(args[2].getValueAt(index)),
+					conditional(args[1].getValueAt(index).greaterThan(args[2].getValueAt(index)),
 							args[3].getValueAt(index), args[4].getValueAt(index)));
 		}
 	}
@@ -64,7 +63,7 @@ public class LessThanCollection<T extends PackedCollection<?>> extends Collectio
 	@Override
 	public CollectionProducerParallelProcess<T> generate(List<Process<?, ?>> children) {
 		return (CollectionProducerParallelProcess)
-				lessThan((Producer) children.get(1), (Producer) children.get(2),
+				greaterThan((Producer) children.get(1), (Producer) children.get(2),
 						(Producer) children.get(3), (Producer) children.get(4), includeEqual);
 	}
 }

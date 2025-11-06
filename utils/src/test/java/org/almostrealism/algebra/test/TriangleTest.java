@@ -25,7 +25,7 @@ import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.bool.GreaterThanCollection;
+import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -39,8 +39,6 @@ import org.almostrealism.space.Triangle;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.function.Supplier;
 
 public class TriangleTest implements TestFeatures {
 	protected Triangle basicTriangle() {
