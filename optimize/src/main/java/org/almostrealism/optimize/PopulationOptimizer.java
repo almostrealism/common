@@ -149,13 +149,13 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			Iterator<Genome<G>> itr = sorted.iterator();
 
 			Genome g1;
-			Genome g2 = itr.next();
+			Genome g2 = sorted.isEmpty() ? null : itr.next();
 
 			w:
 			for (int i = 0; itr.hasNext(); i++) {
 				g1 = g2;
-				if (genomes.size() >= maxChildren || itr.hasNext() == false) break w;
 				g2 = itr.next();
+				if (genomes.size() >= maxChildren) break w;
 
 				// Combine chromosomes to produce new offspring
 				breed(genomes, g1, g2);
