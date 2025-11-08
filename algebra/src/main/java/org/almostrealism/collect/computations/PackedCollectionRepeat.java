@@ -32,6 +32,7 @@ import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.function.Supplier;
 
 /**
  * A computation that repeats elements of a {@link PackedCollection} to create larger collections
@@ -121,7 +122,7 @@ import java.util.OptionalDouble;
  * @see IndexProjectionProducerComputation
  * @see TraversalPolicy
  * @see PackedCollection#repeat(int)
- * @see CollectionFeatures#repeat(int, Producer)
+ * @see org.almostrealism.collect.CollectionFeatures#repeat(int, io.almostrealism.relation.Producer)
  * 
  * @author Michael Murray
  * @since 0.68
@@ -454,7 +455,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	 *         in additional isolation infrastructure
 	 * 
 	 * @see Process#isolate()
-	 * @see Process#isolated(Process)
+	 * @see Process#isolated(Supplier) 
 	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {

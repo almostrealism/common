@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Almost Realism Framework Documentation</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
 </head>
 <body>
     <div class="container">
@@ -46,22 +50,106 @@
             </section>
 
             <section id="architecture">
-                <h2>Architecture</h2>
-                <p>The framework is built on a layered architecture:</p>
-                <pre class="architecture-diagram">
-┌─────────────────────────────────────┐
-│   Application Layer                │  ML Models, Simulations
-├─────────────────────────────────────┤
-│   Graph Layer (Computation Graphs)  │  Neural Networks, Pipelines
-├─────────────────────────────────────┤
-│   Algebra Layer                     │  Vectors, Matrices, Tensors
-├─────────────────────────────────────┤
-│   Collection Layer (PackedCollection│  Multi-dimensional Arrays
-├─────────────────────────────────────┤
-│   Relation Layer (Producer/Evaluable│  Lazy Evaluation, Optimization
-├─────────────────────────────────────┤
-│   Hardware Layer                    │  GPU/CPU Kernel Compilation
-└─────────────────────────────────────┘</pre>
+                <h2>Architecture &amp; Module Dependencies</h2>
+                <p>Visual dependency graph showing how the 24 modules relate to each other. Click nodes to jump to module documentation.</p>
+
+                <div class="mermaid">
+graph TB
+    %% Foundation
+    uml["uml<br/>metadata & lifecycle"]
+
+    %% Core Abstractions
+    uml --> io["io<br/>logging, metrics"]
+    uml --> relation["relation<br/>Producer/Evaluable"]
+
+    %% Code Generation
+    io --> code["code<br/>code generation"]
+    relation --> code
+
+    %% Data Structures
+    code --> collect["collect<br/>PackedCollection"]
+
+    %% Hardware Layer
+    collect --> hardware["hardware<br/>GPU/CPU kernels"]
+
+    %% Mathematics
+    hardware --> algebra["algebra<br/>Vector, Matrix, Scalar"]
+
+    %% Geometry & Statistics
+    algebra --> geometry["geometry<br/>Ray, Camera, transforms"]
+    algebra --> stats["stats<br/>distributions"]
+    algebra --> economics["economics<br/>placeholder"]
+
+    %% Time & Evolution
+    geometry --> time["time<br/>temporal operations"]
+    time --> heredity["heredity<br/>genetic algorithms"]
+
+    %% Graphics & Physics
+    geometry --> color["color<br/>RGB, shaders, lights"]
+    stats --> color
+    color --> physics["physics<br/>atoms, photons, rigid bodies"]
+    time --> physics
+    hardware --> llvm["llvm<br/>LLVM/C interop"]
+
+    %% Advanced Domains
+    graphMod["graph<br/>neural network layers"]
+    geometry --> graphMod
+    heredity --> graphMod
+    heredity --> chemistry["chemistry<br/>periodic table, alloys"]
+    physics --> chemistry
+    graphMod --> spaceMod["space<br/>3D scenes, meshes"]
+    physics --> spaceMod
+
+    %% Applications
+    graphMod --> optimize["optimize<br/>training, evolution"]
+    chemistry --> utils["utils<br/>testing utilities"]
+    economics --> utils
+    optimize --> utils
+    spaceMod --> utils
+    spaceMod --> render["render<br/>ray tracing engine"]
+    utils --> render
+    io --> ml["ml<br/>transformers, LLMs"]
+    utils --> ml
+    ml --> tools["tools<br/>UI profiling"]
+
+    %% Extensions
+    ml --> mlscript["ml-script<br/>Groovy DSL"]
+
+    %% Styling
+    classDef foundation fill:#e1f5ff,stroke:#0277bd,stroke-width:3px
+    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef data fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef app fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
+    class uml foundation
+    class io,relation core
+    class code,collect,hardware data
+    class algebra,geometry,stats,economics,time math
+    class color,physics,llvm,heredity domain
+    class graphMod,chemistry,spaceMod domain
+    class optimize,render,ml,utils,tools app
+    class mlscript app
+                </div>
+
+                <div class="arch-legend">
+                    <h3>Legend</h3>
+                    <div class="legend-items">
+                        <div class="legend-item"><span class="legend-box foundation"></span> Foundation Layer</div>
+                        <div class="legend-item"><span class="legend-box core"></span> Core Abstractions</div>
+                        <div class="legend-item"><span class="legend-box data"></span> Data & Hardware</div>
+                        <div class="legend-item"><span class="legend-box math"></span> Mathematics & Geometry</div>
+                        <div class="legend-item"><span class="legend-box domain"></span> Domain Modules</div>
+                        <div class="legend-item"><span class="legend-box app"></span> Applications</div>
+                    </div>
+                </div>
+
+                <p class="arch-note">
+                    <strong>How to read this diagram:</strong> Arrows point from dependencies to dependents.
+                    For example, <code>algebra → geometry</code> means geometry depends on algebra.
+                    The graph flows from bottom (foundation) to top (applications).
+                </p>
             </section>
 
             <section id="modules">

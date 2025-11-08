@@ -310,3 +310,140 @@ footer p {
 .mt-2 { margin-top: 2rem; }
 .mb-1 { margin-bottom: 1rem; }
 .mb-2 { margin-bottom: 2rem; }
+
+/* Architecture Section */
+.arch-tier {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: linear-gradient(to right, #f8f9fa 0%, #ffffff 100%);
+    border-left: 4px solid var(--secondary-color);
+    border-radius: 8px;
+}
+
+.arch-tier h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.arch-modules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.arch-module {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.8rem 1.2rem;
+    min-width: 150px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.arch-module:hover {
+    border-color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+    transform: translateY(-2px);
+}
+
+.arch-module strong {
+    display: block;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+    margin-bottom: 0.3rem;
+}
+
+.arch-module span {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
+}
+
+.arch-note {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+/* Highlight dependencies on hover */
+.arch-module.highlight {
+    border-color: var(--accent-color);
+    background: #fff5f5;
+}
+
+.arch-module.dependency {
+    border-color: var(--success-color);
+    background: #f0fff4;
+}
+
+/* Architecture Legend */
+.arch-legend {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.arch-legend h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.legend-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-box {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 2px solid #333;
+}
+
+/* Match Mermaid classDef colors */
+.legend-box.foundation {
+    background: #e1f5ff;
+    border-color: #0277bd;
+}
+
+.legend-box.core {
+    background: #f3e5f5;
+    border-color: #7b1fa2;
+}
+
+.legend-box.data {
+    background: #fff3e0;
+    border-color: #e65100;
+}
+
+.legend-box.math {
+    background: #e8f5e9;
+    border-color: #2e7d32;
+}
+
+.legend-box.domain {
+    background: #fce4ec;
+    border-color: #c2185b;
+}
+
+.legend-box.app {
+    background: #fff9c4;
+    border-color: #f57f17;
+}

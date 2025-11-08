@@ -78,33 +78,31 @@ import java.util.stream.IntStream;
  * are not synchronized.</p>
  * 
  * @param <T> the type of {@link PackedCollection} being enumerated
- * 
- * @example
- * <p><strong>Basic 1D Sliding Window:</strong></p>
+ *
+ * <h2>Examples</h2>
+ *
+ * <h3>Basic 1D Sliding Window</h3>
  * <pre>{@code
  * // Input: [1, 2, 3, 4, 5, 6] (shape: [6])
  * // enumerate(shape(3), stride(1), input)
  * // Output: [[1,2,3], [2,3,4], [3,4,5], [4,5,6]] (shape: [4, 3])
  * }</pre>
- * 
- * @example
- * <p><strong>2D Patch Extraction:</strong></p>
+ *
+ * <h3>2D Patch Extraction</h3>
  * <pre>{@code
  * // Input: 4x4 matrix (shape: [4, 4])
  * // enumerate(shape(2, 2), stride(1, 1), input)
  * // Output: 3x3x2x2 tensor (9 patches of size 2x2)
  * }</pre>
- * 
- * @example
- * <p><strong>Strided Enumeration:</strong></p>
+ *
+ * <h3>Strided Enumeration</h3>
  * <pre>{@code
  * // Input: [1, 2, 3, 4, 5, 6, 7, 8] (shape: [8])
- * // enumerate(shape(2), stride(2), input) 
+ * // enumerate(shape(2), stride(2), input)
  * // Output: [[1,2], [3,4], [5,6], [7,8]] (shape: [4, 2])
  * }</pre>
- * 
- * @example
- * <p><strong>4D Tensor Convolution Window:</strong></p>
+ *
+ * <h3>4D Tensor Convolution Window</h3>
  * <pre>{@code
  * // Input: batch=2, channels=5, height=10, width=6 (shape: [2, 5, 10, 6])
  * // enumerate(axis=3, len=3, stride=1, input.traverse(2))
