@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial 5: Running ML Models - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Tutorial 5: Running ML Models</h1>
+            <p class="tagline">Load and run transformer models for inference</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#tutorials">All Tutorials</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Overview</h2>
+                <p>This tutorial demonstrates how to load and run machine learning models (specifically transformers) using the Almost Realism ML module. You'll learn how to:</p>
+                <ul>
+                    <li>Load model weights from HuggingFace format</li>
+                    <li>Configure hardware acceleration</li>
+                    <li>Run inference with tokenization</li>
+                    <li>Generate text autoregressively</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Understanding of PackedCollection (Tutorial 2)</li>
+                    <li>Hardware acceleration setup (Tutorial 3)</li>
+                    <li>Basic knowledge of transformer models</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Environment Setup</h2>
+                <p>Before running ML models, ensure hardware acceleration is configured:</p>
+
+                <pre><code class="language-bash">export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+
+# Verify setup
+echo $AR_HARDWARE_LIBS
+echo $AR_HARDWARE_DRIVER</code></pre>
+
+                <p>Add the ML module dependency to your project:</p>
+
+                <pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-ml&lt;/artifactId&gt;
+    &lt;version&gt;0.72&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 2: Loading Model Weights</h2>
+                <p>Use StateDictionary to load model weights exported from HuggingFace:</p>
+
+                <pre><code class="language-java">import org.almostrealism.ml.StateDictionary;
+
+// Load weights from directory containing .pb files
+String weightsPath = "/path/to/model/weights/";
+StateDictionary stateDict = new StateDictionary(weightsPath);
+
+// Verify weights loaded
+System.out.println("Loaded " + stateDict.size() + " weight tensors");</code></pre>
+
+                <p><strong>Exporting Weights from HuggingFace:</strong></p>
+                <p>Use the provided Python scripts to export model weights:</p>
+
+                <pre><code class="language-bash"># Example: Export Llama weights
+python extract_llama_weights.py \
+    meta-llama/Llama-3.2-1B \
+    ./llama_weights \
+    --bf16</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Loading a Tokenizer</h2>
+                <p>Load the tokenizer for the model:</p>
+
+                <pre><code class="language-java">import org.almostrealism.ml.llama.LlamaTokenizer;
+
+String tokenizerPath = "/path/to/tokenizer.json";
+LlamaTokenizer tokenizer = new LlamaTokenizer(tokenizerPath);
+
+// Test tokenization
+String text = "Hello, world!";
+int[] tokens = tokenizer.encode(text);
+System.out.println("Tokens: " + Arrays.toString(tokens));
+
+// Decode back
+String decoded = tokenizer.decode(tokens);
+System.out.println("Decoded: " + decoded);</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 4: Building the Model</h2>
+                <p>Instantiate a model using the weights and tokenizer:</p>
+
+                <pre><code class="language-java">import org.almostrealism.ml.llama.Llama3;
+
+// Create Llama model instance
+Llama3 model = new Llama3(weightsPath, tokenizerPath);
+
+// Model is ready for inference
+System.out.println("Model loaded successfully");</code></pre>
+
+                <p>The model automatically:</p>
+                <ul>
+                    <li>Infers configuration from weight shapes</li>
+                    <li>Builds the transformer architecture</li>
+                    <li>Compiles operations for hardware acceleration</li>
+                    <li>Prepares for autoregressive generation</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 5: Running Inference</h2>
+                <p>Generate text using the model:</p>
+
+                <pre><code class="language-java">// Simple text generation
+String prompt = "Once upon a time";
+String generated = model.generate(prompt, 50);  // Generate 50 tokens
+System.out.println(generated);
+
+// With configuration
+String result = model.generate(
+    prompt,
+    100,          // max tokens
+    0.8,          // temperature (0.0 = deterministic, 1.0 = random)
+    0.9           // top-p (nucleus sampling)
+);
+System.out.println(result);</code></pre>
+
+                <p><strong>Generation Parameters:</strong></p>
+                <ul>
+                    <li><strong>maxTokens</strong> - Maximum number of tokens to generate</li>
+                    <li><strong>temperature</strong> - Controls randomness (lower = more focused)</li>
+                    <li><strong>topP</strong> - Nucleus sampling threshold (0.0-1.0)</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 6: Batch Inference</h2>
+                <p>Process multiple prompts efficiently:</p>
+
+                <pre><code class="language-java">import java.util.List;
+import java.util.ArrayList;
+
+List&lt;String&gt; prompts = List.of(
+    "The capital of France is",
+    "Machine learning is",
+    "In the year 2050,"
+);
+
+// Generate for each prompt
+List&lt;String&gt; results = new ArrayList&lt;&gt;();
+for (String prompt : prompts) {
+    String result = model.generate(prompt, 30);
+    results.add(result);
+}
+
+// Display results
+for (int i = 0; i < prompts.size(); i++) {
+    System.out.println("Prompt: " + prompts.get(i));
+    System.out.println("Result: " + results.get(i));
+    System.out.println();
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 7: Advanced - Direct Model Access</h2>
+                <p>For more control, access the underlying autoregressive model:</p>
+
+                <pre><code class="language-java">import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.collect.PackedCollection;
+
+// Get the compiled model
+AutoregressiveModel compiledModel = model.getModel();
+
+// Encode prompt
+int[] promptTokens = tokenizer.encode("Hello");
+
+// Run inference step by step
+List&lt;Integer&gt; generatedTokens = new ArrayList&lt;&gt;();
+int[] context = promptTokens;
+
+for (int i = 0; i < 20; i++) {
+    // Forward pass
+    PackedCollection&lt;?&gt; logits = compiledModel.forward(context);
+
+    // Sample next token (greedy decoding)
+    int nextToken = argmax(logits);
+    generatedTokens.add(nextToken);
+
+    // Update context
+    context = appendToken(context, nextToken);
+
+    // Stop at end token
+    if (nextToken == tokenizer.getEosToken()) break;
+}
+
+// Decode generated tokens
+String output = tokenizer.decode(
+    generatedTokens.stream().mapToInt(i -> i).toArray()
+);
+System.out.println(output);</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Performance Monitoring</h2>
+                <p>Track inference performance:</p>
+
+                <pre><code class="language-java">import org.almostrealism.io.TimingMetric;
+
+TimingMetric inferenceTime = new TimingMetric("inference");
+
+inferenceTime.start();
+String result = model.generate("Test prompt", 100);
+inferenceTime.stop();
+
+System.out.println("Generated: " + result);
+System.out.println("Time: " + inferenceTime.getAverageMillis() + "ms");
+System.out.println("Tokens/sec: " + (100.0 / (inferenceTime.getAverageMillis() / 1000.0)));</code></pre>
+            </section>
+
+            <section>
+                <h2>Complete Example</h2>
+                <p>Putting it all together:</p>
+
+                <pre><code class="language-java">import org.almostrealism.ml.llama.Llama3;
+import org.almostrealism.io.TimingMetric;
+
+public class MLInferenceExample {
+    public static void main(String[] args) {
+        // Verify environment
+        if (System.getenv("AR_HARDWARE_LIBS") == null) {
+            System.err.println("AR_HARDWARE_LIBS not set!");
+            return;
+        }
+
+        // Load model
+        System.out.println("Loading model...");
+        Llama3 model = new Llama3(
+            "/path/to/weights/",
+            "/path/to/tokenizer.json"
+        );
+
+        // Prepare prompts
+        String[] prompts = {
+            "The future of AI is",
+            "In a world where robots",
+            "Scientists discovered"
+        };
+
+        // Generate for each prompt
+        TimingMetric timer = new TimingMetric("generation");
+
+        for (String prompt : prompts) {
+            System.out.println("\nPrompt: " + prompt);
+
+            timer.start();
+            String result = model.generate(prompt, 50, 0.7, 0.9);
+            timer.stop();
+
+            System.out.println("Result: " + result);
+            System.out.println("Time: " + timer.getLastMillis() + "ms");
+        }
+
+        System.out.println("\nAverage time: " + timer.getAverageMillis() + "ms");
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Best Practices</h2>
+                <ul>
+                    <li><strong>Model Loading</strong> - Load models once and reuse for multiple inferences</li>
+                    <li><strong>Hardware Setup</strong> - Always verify AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER are set</li>
+                    <li><strong>Temperature</strong> - Use lower values (0.1-0.5) for factual tasks, higher (0.7-1.0) for creative tasks</li>
+                    <li><strong>Context Length</strong> - Stay within model's maximum sequence length</li>
+                    <li><strong>Memory</strong> - Large models require significant memory; monitor usage</li>
+                    <li><strong>Tokenization</strong> - Always use the correct tokenizer for the model</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Common Issues</h2>
+
+                <h3>NoClassDefFoundError: PackedCollection</h3>
+                <p><strong>Cause:</strong> Hardware environment not configured</p>
+                <p><strong>Solution:</strong> Set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER before running</p>
+
+                <h3>Out of Memory</h3>
+                <p><strong>Cause:</strong> Model too large for available memory</p>
+                <p><strong>Solution:</strong> Use a smaller model or increase heap size with <code>-Xmx</code></p>
+
+                <h3>Slow Inference</h3>
+                <p><strong>Cause:</strong> Not using hardware acceleration or suboptimal driver</p>
+                <p><strong>Solution:</strong> Ensure native driver is enabled and libs directory is writable</p>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>In this tutorial, you learned how to:</p>
+                <ul>
+                    <li>✓ Set up the ML module environment</li>
+                    <li>✓ Load model weights from HuggingFace format</li>
+                    <li>✓ Initialize tokenizers</li>
+                    <li>✓ Build and run transformer models</li>
+                    <li>✓ Generate text with various parameters</li>
+                    <li>✓ Monitor inference performance</li>
+                </ul>
+
+                <h3>Next Steps</h3>
+                <ul>
+                    <li>Experiment with different models (Qwen, Mistral, etc.)</li>
+                    <li>Try fine-tuning models (see optimize module)</li>
+                    <li>Integrate models into applications</li>
+                    <li>Explore multi-modal models</li>
+                </ul>
+
+                <h3>Related Documentation</h3>
+                <ul>
+                    <li><a href="../modules/ml.html">ML Module Documentation</a></li>
+                    <li><a href="02-packedcollection-basics.html">Tutorial 2: PackedCollection</a></li>
+                    <li><a href="03-hardware-acceleration.html">Tutorial 3: Hardware Acceleration</a></li>
+                    <li><a href="../index.html#modules">All Modules</a></li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>
