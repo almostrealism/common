@@ -51,8 +51,22 @@
 
             <section id="architecture">
                 <h2>Architecture &amp; Module Dependencies</h2>
-                <p>Visual dependency graph showing how the 24 modules relate to each other. Click nodes to jump to module documentation.</p>
+                <p>The framework is organized into 4 architectural layers. Each diagram shows modules within that layer and their dependencies.</p>
 
+                <div class="arch-legend">
+                    <h3>Legend</h3>
+                    <div class="legend-items">
+                        <div class="legend-item"><span class="legend-box foundation"></span> Foundation Layer</div>
+                        <div class="legend-item"><span class="legend-box core"></span> Core Abstractions</div>
+                        <div class="legend-item"><span class="legend-box data"></span> Data & Hardware</div>
+                        <div class="legend-item"><span class="legend-box math"></span> Mathematics & Geometry</div>
+                        <div class="legend-item"><span class="legend-box domain"></span> Domain Modules</div>
+                        <div class="legend-item"><span class="legend-box app"></span> Applications</div>
+                    </div>
+                </div>
+
+                <h3>Foundation, Core &amp; Data Infrastructure</h3>
+                <p>Base layers providing metadata, logging, code generation, and hardware acceleration.</p>
                 <div class="mermaid">
 graph TB
     %% Foundation
@@ -72,6 +86,23 @@ graph TB
     %% Hardware Layer
     collect --> hardware["hardware<br/>GPU/CPU kernels"]
 
+    %% Styling
+    classDef foundation fill:#e1f5ff,stroke:#0277bd,stroke-width:3px
+    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef data fill:#fff3e0,stroke:#e65100,stroke-width:2px
+
+    class uml foundation
+    class io,relation core
+    class code,collect,hardware data
+                </div>
+
+                <h3>Mathematics &amp; Geometry Layer</h3>
+                <p>Mathematical abstractions including vectors, matrices, statistics, and temporal operations.</p>
+                <div class="mermaid">
+graph TB
+    %% Entry point from hardware
+    hardware["hardware"]
+
     %% Mathematics
     hardware --> algebra["algebra<br/>Vector, Matrix, Scalar"]
 
@@ -80,8 +111,28 @@ graph TB
     algebra --> stats["stats<br/>distributions"]
     algebra --> economics["economics<br/>placeholder"]
 
-    %% Time & Evolution
+    %% Time
     geometry --> time["time<br/>temporal operations"]
+
+    %% Styling
+    classDef data fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+
+    class hardware data
+    class algebra,geometry,stats,economics,time math
+                </div>
+
+                <h3>Domain Modules</h3>
+                <p>Domain-specific functionality for graphics, physics, chemistry, genetics, and neural networks.</p>
+                <div class="mermaid">
+graph TB
+    %% Entry points from math layer
+    geometry["geometry"]
+    stats["stats"]
+    time["time"]
+    hardware["hardware"]
+
+    %% Evolution
     time --> heredity["heredity<br/>genetic algorithms"]
 
     %% Graphics & Physics
@@ -89,66 +140,82 @@ graph TB
     stats --> color
     color --> physics["physics<br/>atoms, photons, rigid bodies"]
     time --> physics
+
+    %% LLVM
     hardware --> llvm["llvm<br/>LLVM/C interop"]
 
-    %% Advanced Domains
-    graphMod["graph<br/>neural network layers"]
-    geometry --> graphMod
+    %% Neural Networks
+    geometry --> graphMod["graph<br/>neural network layers"]
     heredity --> graphMod
+
+    %% Chemistry
     heredity --> chemistry["chemistry<br/>periodic table, alloys"]
     physics --> chemistry
+
+    %% Space/3D
     graphMod --> spaceMod["space<br/>3D scenes, meshes"]
     physics --> spaceMod
 
-    %% Applications
+    %% Styling
+    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef data fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+
+    class geometry,stats,time math
+    class hardware data
+    class color,physics,llvm,heredity,graphMod,chemistry,spaceMod domain
+                </div>
+
+                <h3>Application Layer</h3>
+                <p>High-level applications: model optimization, rendering, ML inference, and tooling.</p>
+                <div class="mermaid">
+graph TB
+    %% Entry points from domain layer
+    graphMod["graph"]
+    chemistry["chemistry"]
+    economics["economics"]
+    spaceMod["space"]
+    io["io"]
+
+    %% Optimization
     graphMod --> optimize["optimize<br/>training, evolution"]
+
+    %% Utils
     chemistry --> utils["utils<br/>testing utilities"]
     economics --> utils
     optimize --> utils
     spaceMod --> utils
+
+    %% Rendering
     spaceMod --> render["render<br/>ray tracing engine"]
     utils --> render
+
+    %% ML
     io --> ml["ml<br/>transformers, LLMs"]
     utils --> ml
+
+    %% Tools
     ml --> tools["tools<br/>UI profiling"]
 
     %% Extensions
     ml --> mlscript["ml-script<br/>Groovy DSL"]
 
     %% Styling
-    classDef foundation fill:#e1f5ff,stroke:#0277bd,stroke-width:3px
-    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef data fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     classDef app fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 
-    class uml foundation
-    class io,relation core
-    class code,collect,hardware data
-    class algebra,geometry,stats,economics,time math
-    class color,physics,llvm,heredity domain
     class graphMod,chemistry,spaceMod domain
-    class optimize,render,ml,utils,tools app
-    class mlscript app
-                </div>
-
-                <div class="arch-legend">
-                    <h3>Legend</h3>
-                    <div class="legend-items">
-                        <div class="legend-item"><span class="legend-box foundation"></span> Foundation Layer</div>
-                        <div class="legend-item"><span class="legend-box core"></span> Core Abstractions</div>
-                        <div class="legend-item"><span class="legend-box data"></span> Data & Hardware</div>
-                        <div class="legend-item"><span class="legend-box math"></span> Mathematics & Geometry</div>
-                        <div class="legend-item"><span class="legend-box domain"></span> Domain Modules</div>
-                        <div class="legend-item"><span class="legend-box app"></span> Applications</div>
-                    </div>
+    class economics math
+    class io core
+    class optimize,render,ml,utils,tools,mlscript app
                 </div>
 
                 <p class="arch-note">
-                    <strong>How to read this diagram:</strong> Arrows point from dependencies to dependents.
+                    <strong>How to read these diagrams:</strong> Arrows point from dependencies to dependents.
                     For example, <code>algebra → geometry</code> means geometry depends on algebra.
-                    The graph flows from bottom (foundation) to top (applications).
+                    Gray nodes at the top of each diagram represent entry points from the previous layer.
                 </p>
             </section>
 
@@ -259,7 +326,7 @@ graph TB
 
                     <div class="module-card">
                         <h3>Other Modules</h3>
-                        <p>code, heredity, economics, optimize, render, uml, llvm, ml-script</p>
+                        <p>code, heredity, optimize, render, uml, llvm, ml-script</p>
                         <a href="modules/all.html">View All</a>
                     </div>
                 </div>
