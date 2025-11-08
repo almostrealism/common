@@ -4,7 +4,17 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Documentation improvements." />
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Introduced ml tutorial.">
+      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/economics/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/economics/agent-memory.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/economics/economics.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/economics/pom.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/economics/src/main/resources/LICENSE" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/utils/pom.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -384,29 +394,79 @@
     <option name="showExcludedFiles" value="false" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.go.formatter.settings.were.checked": "true",
-    "RunOnceActivity.go.migrated.go.modules.settings": "true",
-    "WebServerToolWindowFactoryState": "false",
-    "go.import.settings.migrated": "true",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/michael/AlmostRealism/sandboxC/common",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "project.structure.last.edited": "Problems",
-    "project.structure.proportion": "0.0",
-    "project.structure.side.proportion": "0.0",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.migrated.go.modules.settings&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/michael/AlmostRealism/sandboxC/common&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;Problems&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.0&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.0&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RdControllerToolWindowsLayoutState" isNewUi="true">
+    <layout>
+      <window_info id="Space Code Reviews" />
+      <window_info id="Bookmarks" side_tool="true" />
+      <window_info id="Merge Requests" />
+      <window_info id="Commit_Guest" show_stripe_button="false" />
+      <window_info id="Pull Requests" />
+      <window_info id="Learn" />
+      <window_info id="Robo tasks" side_tool="true" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24107143" />
+      <window_info id="Commit" order="1" weight="0.24107143" />
+      <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
+      <window_info anchor="bottom" id="NextEditPredictionSettingsToolwindow" />
+      <window_info anchor="bottom" id="Database Changes" />
+      <window_info anchor="bottom" id="TypeScript" />
+      <window_info anchor="bottom" id="Profiler" />
+      <window_info anchor="bottom" id="Build" />
+      <window_info anchor="bottom" id="internal-profiler" />
+      <window_info anchor="bottom" id="GitHub Copilot MCP Log" />
+      <window_info anchor="bottom" id="Python Packages" />
+      <window_info anchor="bottom" id="TODO" />
+      <window_info anchor="bottom" id="File Transfer" />
+      <window_info anchor="bottom" id="HfCacheToolWindow" />
+      <window_info anchor="bottom" id="sbt-shell-toolwindow" />
+      <window_info anchor="bottom" id="Find" />
+      <window_info anchor="bottom" id="Version Control" order="0" />
+      <window_info anchor="bottom" id="Problems" order="1" />
+      <window_info anchor="bottom" id="Problems View" order="2" />
+      <window_info active="true" anchor="bottom" id="Terminal" order="3" visible="true" weight="0.33034772" />
+      <window_info anchor="bottom" id="Services" order="4" />
+      <window_info anchor="right" id="sbt" />
+      <window_info anchor="right" id="Plots" />
+      <window_info anchor="right" id="PR AI Assistant" />
+      <window_info anchor="right" id="Endpoints" />
+      <window_info anchor="right" id="make" side_tool="true" />
+      <window_info anchor="right" id="github.copilotToolWindow" />
+      <window_info anchor="right" id="BigDataToolWindow" />
+      <window_info anchor="right" id="Coverage" side_tool="true" />
+      <window_info anchor="right" id="Python Console" />
+      <window_info anchor="right" id="GitHub Copilot Chat" />
+      <window_info anchor="right" id="GitHub Coding Agent Jobs" />
+      <window_info anchor="right" id="SciView" />
+      <window_info anchor="right" id="bsp" />
+      <window_info anchor="right" content_ui="combo" id="Notifications" order="0" weight="0.25" />
+      <window_info anchor="right" id="AIAssistant" order="1" weight="0.25" />
+      <window_info anchor="right" id="Database" order="2" weight="0.25" />
+      <window_info anchor="right" id="Gradle" order="3" weight="0.25" />
+      <window_info anchor="right" id="Maven" order="4" weight="0.25" />
+    </layout>
+  </component>
   <component name="RecentsManager">
     <key name="MoveClassesOrPackagesDialog.RECENTS_KEY">
       <recent name="org.almostrealism.geometry" />
@@ -690,7 +750,8 @@
       <workItem from="1699726578901" duration="7691000" />
       <workItem from="1699756392387" duration="976000" />
       <workItem from="1702141310684" duration="175000" />
-      <workItem from="1762568823102" duration="3470000" />
+      <workItem from="1762568823102" duration="3898000" />
+      <workItem from="1762624938918" duration="2307000" />
     </task>
     <task id="LOCAL-00107" summary="Changed offset to long.">
       <created>1520820543425</created>
@@ -1035,7 +1096,7 @@
       <option name="project" value="LOCAL" />
       <updated>1541796882428</updated>
     </task>
-    <option name="localTasksCounter" value="159" />
+    <option name="localTasksCounter" value="163" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1145,10 +1206,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Many matrix operations and vector normalize converted to accelerated producers." />
-    <MESSAGE value="Hardware acceleration for a range of other functions, as well as conversion of RGB to use cl_mem." />
-    <MESSAGE value="Many minor improvements in further migration to using Producer throughout the API. Introduced RGBMultiply." />
-    <MESSAGE value="Many improvements working toward using Producer in place of Scalar." />
     <MESSAGE value="Added cast." />
     <MESSAGE value="Work around for generics issue." />
     <MESSAGE value="Corrected AbstractSurface constructor." />
@@ -1170,7 +1227,11 @@
     <MESSAGE value="Introduced some new methods in CollectionFeatures and CollectionProducer. Introduced CollectionProvider, and updated CollectionProviderProducer to use it instead of Provider. Updated NativeCompiler to create JNI extensions directory if it does not already exist. New convenience methods of MemoryData and TraversalPolicy. Updated Minus to support Integer as well as Double. Improvements to GradientPropagation, and more tests for CollectionProducer::delta and gradient descent." />
     <MESSAGE value="Updated vcs settings." />
     <MESSAGE value="Documentation improvements." />
-    <option name="LAST_COMMIT_MESSAGE" value="Documentation improvements." />
+    <MESSAGE value="More documentation." />
+    <MESSAGE value="Corrected class references in documentation." />
+    <MESSAGE value="Corrected more class references in documentation. Introduced mermaid js chart in documentation html." />
+    <MESSAGE value="Introduced ml tutorial." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced ml tutorial." />
   </component>
   <component name="VgoProject">
     <settings-migrated>true</settings-migrated>
@@ -1240,6 +1301,10 @@
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
   </component>
   <component name="antWorkspaceConfiguration">
     <option name="IS_AUTOSCROLL_TO_SOURCE" value="false" />

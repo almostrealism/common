@@ -126,12 +126,6 @@
 		</dependency>
 
 		<dependency>
-			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-io</artifactId>
-			<version>0.72</version>
-		</dependency>
-
-		<dependency>
 			<groupId>com.google.protobuf</groupId>
 			<artifactId>protobuf-java</artifactId>
 		</dependency>

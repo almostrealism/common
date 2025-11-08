@@ -31,10 +31,10 @@
         <module name="ar-ml" />
         <module name="ar-graph" />
         <module name="ar-collect" />
-        <module name="ar-economics" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="ar-economics" target="11" />
       <module name="Common" target="1.8" />
     </bytecodeTargetLevel>
   </component>
