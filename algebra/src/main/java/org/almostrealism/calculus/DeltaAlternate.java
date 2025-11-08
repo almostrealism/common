@@ -19,6 +19,67 @@ package org.almostrealism.calculus;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Interface for producers that can provide an alternative delta (gradient) computation strategy.
+ *
+ * <p>
+ * {@link DeltaAlternate} allows a producer to override the default automatic differentiation
+ * behavior by providing a custom gradient computation. This is useful for:
+ * <ul>
+ *   <li>Operations with known analytical gradients that are more efficient than automatic differentiation</li>
+ *   <li>Custom operations where the standard chain rule doesn't apply cleanly</li>
+ *   <li>Optimized gradient computations for specific mathematical functions</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Usage</h2>
+ * <p>
+ * When a producer implements this interface, the automatic differentiation system will call
+ * {@link #getDeltaAlternate()} instead of using the standard delta computation chain:
+ * </p>
+ * <pre>{@code
+ * public class CustomOperation<T extends PackedCollection<?>>
+ *         extends CollectionProducerComputationBase<T, T>
+ *         implements DeltaAlternate<T> {
+ *
+ *     @Override
+ *     public CollectionProducer<T> getDeltaAlternate() {
+ *         // Return a custom gradient computation
+ *         return efficientGradient();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Example: Exponential Function</h2>
+ * <pre>{@code
+ * // For f(x) = e^x, the derivative is also e^x
+ * // More efficient to reuse the forward computation than to apply chain rule
+ * public class ExponentialComputation extends ... implements DeltaAlternate<T> {
+ *     @Override
+ *     public CollectionProducer<T> getDeltaAlternate() {
+ *         // Gradient of e^x is e^x, so just return this computation
+ *         return this;
+ *     }
+ * }
+ * }</pre>
+ *
+ * @param <T>  the packed collection type
+ * @author  Michael Murray
+ * @see org.almostrealism.collect.CollectionProducer#delta
+ * @see DeltaFeatures
+ */
 public interface DeltaAlternate<T extends PackedCollection<?>> {
+	/**
+	 * Returns an alternative delta (gradient) computation for this producer.
+	 *
+	 * <p>
+	 * This method is called by the automatic differentiation system when it encounters
+	 * a producer that implements {@link DeltaAlternate}, allowing the producer to provide
+	 * an optimized or specialized gradient computation instead of using the standard
+	 * chain rule approach.
+	 * </p>
+	 *
+	 * @return the alternative gradient computation
+	 */
 	CollectionProducer<T> getDeltaAlternate();
 }

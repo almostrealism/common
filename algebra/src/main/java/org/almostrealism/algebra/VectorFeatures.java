@@ -32,21 +32,130 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
+/**
+ * Provides convenient factory methods for creating {@link Vector} computations and vector operations.
+ *
+ * <p>
+ * {@link VectorFeatures} extends {@link ScalarFeatures} to provide specialized methods for working
+ * with 3D vectors in the computation graph framework. This interface is designed to be mixed into
+ * classes that need to create vector computations.
+ * </p>
+ *
+ * <h2>Usage Examples</h2>
+ * <pre>{@code
+ * public class VectorComputation implements VectorFeatures {
+ *     public Producer<Vector> compute() {
+ *         // Create constant vectors
+ *         CollectionProducer<Vector> v1 = vector(1.0, 0.0, 0.0);
+ *         CollectionProducer<Vector> v2 = value(new Vector(0, 1, 0));
+ *
+ *         // Vector operations
+ *         CollectionProducer<PackedCollection<?>> dot = dotProduct(v1, v2);
+ *         CollectionProducer<Vector> cross = crossProduct(v1, v2);
+ *         CollectionProducer<Vector> normalized = normalize(v1);
+ *
+ *         // Component extraction
+ *         CollectionProducer<PackedCollection<?>> x = x(v1);
+ *         CollectionProducer<PackedCollection<?>> y = y(v1);
+ *         CollectionProducer<PackedCollection<?>> z = z(v1);
+ *
+ *         // Dynamic vector from components
+ *         return vector(x, y, z);
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Vector Construction Patterns</h2>
+ * <pre>{@code
+ * // From explicit coordinates
+ * CollectionProducer<Vector> v1 = vector(1.0, 2.0, 3.0);
+ *
+ * // From array
+ * double[] coords = {1, 2, 3};
+ * CollectionProducer<Vector> v2 = vector(coords);
+ *
+ * // From function
+ * CollectionProducer<Vector> v3 = vector(i -> i * 2.0);  // (0, 2, 4)
+ *
+ * // From existing Vector
+ * Vector existing = new Vector(1, 2, 3);
+ * CollectionProducer<Vector> v4 = v(existing);
+ *
+ * // From component producers
+ * CollectionProducer<Vector> v5 = vector(scalar(1.0), scalar(2.0), scalar(3.0));
+ *
+ * // From vector bank at index
+ * Producer<PackedCollection<?>> bank = vectorBank(10);
+ * CollectionProducer<Vector> v6 = vector(bank, 5);  // 6th vector
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see Vector
+ * @see ScalarFeatures
+ * @see CollectionProducer
+ */
 public interface VectorFeatures extends ScalarFeatures {
+	/**
+	 * Short form of {@link #value(Vector)}.
+	 *
+	 * @param value  the vector value
+	 * @return a producer for the constant vector
+	 */
 	default CollectionProducer<Vector> v(Vector value) { return value(value); }
 
+	/**
+	 * Creates a {@link CollectionProducer} that produces a constant {@link Vector} value.
+	 * This method creates a computation that returns the values from the provided {@link Vector},
+	 * effectively creating a constant computation that always returns the same values.
+	 *
+	 * @param value  the {@link Vector} containing the constant values
+	 * @return a {@link CollectionProducer} that evaluates to the specified {@link Vector}
+	 */
 	default CollectionProducer<Vector> value(Vector value) {
 		return DefaultTraversableExpressionComputation.fixed(value, Vector.postprocessor());
 	}
 
+	/**
+	 * Creates a {@link CollectionProducer} for a constant vector from explicit coordinates.
+	 *
+	 * @param x  the x coordinate
+	 * @param y  the y coordinate
+	 * @param z  the z coordinate
+	 * @return a producer for the constant vector (x, y, z)
+	 */
 	default CollectionProducer<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
+	/**
+	 * Creates a {@link CollectionProducer} for a constant vector from an array of coordinates.
+	 * The array must contain at least 3 elements.
+	 *
+	 * @param v  the coordinate array [x, y, z]
+	 * @return a producer for the constant vector
+	 * @throws ArrayIndexOutOfBoundsException if the array has fewer than 3 elements
+	 */
 	default CollectionProducer<Vector> vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
+	/**
+	 * Creates a {@link CollectionProducer} for a constant vector from a function.
+	 * The function is called with indices 0, 1, 2 to produce the x, y, z coordinates.
+	 *
+	 * @param values  function mapping index to coordinate value
+	 * @return a producer for the constant vector
+	 */
 	default CollectionProducer<Vector> vector(IntFunction<Double> values) {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 
+	/**
+	 * Creates a {@link CollectionProducer} for a dynamic vector by concatenating three component producers.
+	 * Each component producer should produce a single scalar value.
+	 *
+	 * @param x  producer for the x coordinate
+	 * @param y  producer for the y coordinate
+	 * @param z  producer for the z coordinate
+	 * @param <T>  the collection type (typically scalar-valued)
+	 * @return a producer that combines the three components into a vector
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<Vector> vector(
 												Producer<T> x,
 												Producer<T> y,
@@ -54,6 +163,14 @@ public interface VectorFeatures extends ScalarFeatures {
 		return concat(shape(3), (Producer) x, (Producer) y, (Producer) z);
 	}
 
+	/**
+	 * Creates a {@link CollectionProducer} that extracts a vector from a vector bank at the specified index.
+	 * The vector is stored in the bank as 3 consecutive values starting at position (3 * index).
+	 *
+	 * @param bank  the packed collection containing multiple vectors
+	 * @param index  the index of the vector to extract (0-based)
+	 * @return a producer for the vector at the specified index
+	 */
 	default CollectionProducer<Vector> vector(Producer<PackedCollection<?>> bank, int index) {
 		CollectionProducerComputationBase c = (CollectionProducerComputationBase)
 				c(shape(3), bank, c(3 * index, 3 * index + 1, 3 * index + 2));
@@ -61,6 +178,13 @@ public interface VectorFeatures extends ScalarFeatures {
 		return c;
 	}
 
+	/**
+	 * Wraps an arbitrary {@link Producer} as a vector producer.
+	 * This method projects the producer's values into a 3-element vector structure.
+	 *
+	 * @param value  the producer to wrap
+	 * @return a vector producer wrapping the input producer
+	 */
 	default CollectionProducer<Vector> vector(Producer<?> value) {
 		TraversableExpressionComputation c = new DefaultTraversableExpressionComputation(
 				"vector", shape(3),
@@ -71,24 +195,73 @@ public interface VectorFeatures extends ScalarFeatures {
 		return c;
 	}
 
+	/**
+	 * Creates a blank {@link Producer} for a {@link Vector}.
+	 * This is typically used as a placeholder or output destination.
+	 *
+	 * @return a blank vector producer
+	 */
 	default Producer<Vector> vector() { return Vector.blank(); }
 
+	/**
+	 * Extracts the x component (first element) from a vector producer.
+	 *
+	 * @param v  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the x component
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> x(Producer<Vector> v) {
 		return c(v, 0);
 	}
 
+	/**
+	 * Extracts the y component (second element) from a vector producer.
+	 *
+	 * @param v  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the y component
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> y(Producer<Vector> v) {
 		return c(v, 1);
 	}
 
+	/**
+	 * Extracts the z component (third element) from a vector producer.
+	 *
+	 * @param v  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the z component
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> z(Producer<Vector> v) {
 		return c(v, 2);
 	}
 
+	/**
+	 * Computes the dot product (inner product) of two vectors.
+	 * Returns a · b = a₁b₁ + a₂b₂ + a₃b₃.
+	 *
+	 * @param a  the first vector
+	 * @param b  the second vector
+	 * @return a producer for the scalar dot product
+	 */
 	default CollectionProducer<PackedCollection<?>> dotProduct(Producer<Vector> a, Producer<Vector> b) {
 		return multiply((Producer) a, (Producer) b).sum();
 	}
 
+	/**
+	 * Computes the cross product (vector product) of two vectors.
+	 * Returns a × b = (a₂b₃ - a₃b₂, a₃b₁ - a₁b₃, a₁b₂ - a₂b₁).
+	 *
+	 * <p>
+	 * The cross product produces a vector perpendicular to both input vectors,
+	 * with magnitude equal to the area of the parallelogram formed by the vectors.
+	 * The direction follows the right-hand rule.
+	 * </p>
+	 *
+	 * @param a  the first vector
+	 * @param b  the second vector
+	 * @return a producer for the cross product vector
+	 */
 	default CollectionProducer<Vector> crossProduct(Producer<Vector> a, Producer<Vector> b) {
 		return new DefaultTraversableExpressionComputation<>("crossProduct", shape(3), args ->
 				CollectionExpression.create(shape(3), idx -> {
@@ -112,27 +285,73 @@ public interface VectorFeatures extends ScalarFeatures {
 				}), (Producer) a, (Producer) b);
 	}
 
+	/**
+	 * Multiplies a vector by a scalar value.
+	 *
+	 * @param a  the vector
+	 * @param b  the scalar multiplier
+	 * @return a producer for the scaled vector
+	 * @deprecated Use standard multiplication operations from {@link org.almostrealism.collect.CollectionFeatures} instead
+	 */
 	@Deprecated
 	default CollectionProducer<Vector> scalarMultiply(Producer<Vector> a, Producer<Scalar> b) {
 		return vector(multiply(a, vector(b, b, b)));
 	}
 
+	/**
+	 * Computes the length (magnitude) of a value at a specified traversal depth.
+	 * The depth parameter determines how many dimensions to traverse before computing length.
+	 *
+	 * @param depth  the traversal depth
+	 * @param value  the value producer
+	 * @param <T>  the collection type
+	 * @return a producer for the length
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> length(int depth, Producer<T> value) {
 		return length(traverse(depth, value));
 	}
 
+	/**
+	 * Computes the length (magnitude) of a vector: ||v|| = √(v₁² + v₂² + v₃²).
+	 *
+	 * @param value  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the vector length
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> length(Producer<?> value) {
 		return sqrt(lengthSq(value));
 	}
 
+	/**
+	 * Computes the squared length (squared magnitude) of a vector: ||v||² = v₁² + v₂² + v₃².
+	 * This is more efficient than {@link #length(Producer)} when only comparisons are needed,
+	 * as it avoids the square root computation.
+	 *
+	 * @param value  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the squared vector length
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> lengthSq(Producer<?> value) {
 		return multiply((Producer) value, (Producer) value).sum();
 	}
 
+	/**
+	 * Normalizes a vector to unit length: v̂ = v / ||v||.
+	 * The resulting vector has the same direction as the input but magnitude 1.
+	 *
+	 * @param value  the vector producer
+	 * @param <T>  the collection type
+	 * @return a producer for the normalized (unit) vector
+	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> normalize(Producer<T> value) {
 		return multiply(value, length(value).pow(-1.0));
 	}
 
+	/**
+	 * Returns a singleton instance of {@link VectorFeatures}.
+	 *
+	 * @return a VectorFeatures instance
+	 */
 	static VectorFeatures getInstance() {
 		return new VectorFeatures() { };
 	}

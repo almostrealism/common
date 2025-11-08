@@ -4,12 +4,41 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Improved architecture details in docs.">
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Improved style and presentation in documentation.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/css/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/docs/css/style.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/utils.iml" beforeDir="false" afterPath="$PROJECT_DIR$/utils/utils.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/AlgebraFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/AlgebraFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ComplexNumber.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ComplexNumber.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Differentiable.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Differentiable.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/FloatingPointList.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/FloatingPointList.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Gradient.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Gradient.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/IntersectionPoint.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/IntersectionPoint.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Matrix3D.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Matrix3D.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/MatrixFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/MatrixFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Pair.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Pair.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/PairFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/PairFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ParticleGroup.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ParticleGroup.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/PolynomialTerm.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/PolynomialTerm.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Scalar.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Scalar.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ScalarFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ScalarFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Tensor.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Tensor.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/UnityVector.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/UnityVector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Vector.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Vector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/VectorFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/VectorFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/VectorMath.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/VectorMath.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ZeroVector.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/ZeroVector.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/Choice.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/Choice.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/DiagonalMatrixComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/DiagonalMatrixComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/HighestRank.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/HighestRank.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/IdentityMatrixComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/IdentityMatrixComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/MatrixExpressionComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/MatrixExpressionComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/ProducerWithRankAdapter.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/ProducerWithRankAdapter.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/ScalarMatrixComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/ScalarMatrixComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/Switch.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/Switch.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/WeightedSumComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/computations/WeightedSumComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/package-info.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaAlternate.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaAlternate.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/InputStub.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/InputStub.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -747,7 +776,7 @@
       <workItem from="1699756392387" duration="976000" />
       <workItem from="1702141310684" duration="175000" />
       <workItem from="1762568823102" duration="3898000" />
-      <workItem from="1762624938918" duration="4073000" />
+      <workItem from="1762624938918" duration="6021000" />
     </task>
     <task id="LOCAL-00107" summary="Changed offset to long.">
       <created>1520820543425</created>
@@ -1092,7 +1121,7 @@
       <option name="project" value="LOCAL" />
       <updated>1541796882428</updated>
     </task>
-    <option name="localTasksCounter" value="165" />
+    <option name="localTasksCounter" value="166" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1202,7 +1231,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Corrected AbstractSurface constructor." />
     <MESSAGE value="Improved error message when arguments to a HardwareOperator are null." />
     <MESSAGE value="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values." />
     <MESSAGE value="Corrected null handling in AcceleratedProducer." />
@@ -1227,7 +1255,8 @@
     <MESSAGE value="Introduced ml tutorial." />
     <MESSAGE value="Removed economics module and update dependencies." />
     <MESSAGE value="Improved architecture details in docs." />
-    <option name="LAST_COMMIT_MESSAGE" value="Improved architecture details in docs." />
+    <MESSAGE value="Improved style and presentation in documentation." />
+    <option name="LAST_COMMIT_MESSAGE" value="Improved style and presentation in documentation." />
   </component>
   <component name="VgoProject">
     <settings-migrated>true</settings-migrated>

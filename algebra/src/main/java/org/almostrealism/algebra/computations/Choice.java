@@ -25,9 +25,55 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
+/**
+ * A computation that selects from multiple pre-computed options based on a decision value.
+ *
+ * <p>
+ * {@link Choice} implements a dynamic selection mechanism where:
+ * <ul>
+ *   <li>A decision value (typically in range [0, 1]) determines which option to select</li>
+ *   <li>The decision value is scaled by choiceCount and floored to get an integer index</li>
+ *   <li>The corresponding option is extracted from the choices array</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Select from 3 pre-computed options based on a decision value
+ * CollectionProducer<PackedCollection<?>> decision = c(0.7);  // Will select option 2
+ * CollectionProducer<PackedCollection<?>> options = c(
+ *     shape(3, 5),  // 3 options, each of size 5
+ *     option1_data, option2_data, option3_data
+ * );
+ *
+ * Choice<PackedCollection<?>> choice = new Choice<>(
+ *     shape(5),    // Result shape
+ *     3,           // Number of choices
+ *     decision,
+ *     options
+ * );
+ *
+ * // When decision = 0.0-0.33: selects option 0
+ * // When decision = 0.33-0.66: selects option 1
+ * // When decision = 0.66-1.0: selects option 2
+ * }</pre>
+ *
+ * @param <T>  the packed collection type
+ * @author  Michael Murray
+ * @see org.almostrealism.algebra.ScalarFeatures#choice(int, TraversalPolicy, Producer, Producer)
+ */
 public class Choice<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 	private int choiceCount;
 
+	/**
+	 * Creates a new Choice computation.
+	 *
+	 * @param shape  the shape of the output (single choice result)
+	 * @param choiceCount  the number of choices available
+	 * @param decision  producer providing the decision value (typically in [0, 1])
+	 * @param choices  producer providing all choice options (shape should be [choiceCount, resultSize])
+	 * @throws IllegalArgumentException if the choices shape doesn't match expectations
+	 */
 	public Choice(TraversalPolicy shape, int choiceCount,
 				  Producer<PackedCollection<?>> decision,
 				  Producer<PackedCollection<?>> choices) {
@@ -35,6 +81,22 @@ public class Choice<T extends PackedCollection<?>> extends TraversableExpression
 		this.choiceCount = choiceCount;
 	}
 
+	/**
+	 * Generates the expression that performs the choice selection.
+	 *
+	 * <p>
+	 * The selection logic:
+	 * <ol>
+	 *   <li>Read decision value from args[1]</li>
+	 *   <li>Scale by choiceCount and floor to get integer index</li>
+	 *   <li>Calculate position in choices array: index * resultSize</li>
+	 *   <li>Extract the selected option from choices</li>
+	 * </ol>
+	 * </p>
+	 *
+	 * @param args  traversable expressions [this, decision, choices]
+	 * @return the collection expression for the selected choice
+	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), idx -> {
@@ -44,6 +106,16 @@ public class Choice<T extends PackedCollection<?>> extends TraversableExpression
 		});
 	}
 
+	/**
+	 * Validates and adjusts the choices producer to ensure it has the correct shape.
+	 *
+	 * @param memLength  expected size of each individual choice
+	 * @param choiceCount  expected number of choices
+	 * @param choices  the choices producer to validate
+	 * @param <T>  the packed collection type
+	 * @return the choices producer (unchanged if valid)
+	 * @throws IllegalArgumentException if the choices shape doesn't match expectations
+	 */
 	protected static <T extends PackedCollection<?>> Producer<PackedCollection<?>>
 			adjustChoices(int memLength, int choiceCount, Producer<PackedCollection<?>> choices) {
 		if (!(choices instanceof Shape)) return choices;
