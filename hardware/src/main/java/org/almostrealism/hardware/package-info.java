@@ -13,9 +13,9 @@
  *       provides access to hardware-accelerated computation execution</li>
  *   <li><b>Memory Management</b> - {@link org.almostrealism.hardware.MemoryData} and
  *       {@link org.almostrealism.hardware.MemoryBank} for efficient memory allocation</li>
- *   <li><b>Kernel Compilation</b> - {@link org.almostrealism.hardware.KernelizedOperation}
+ *   <li><b>Kernel Compilation</b> - {@link org.almostrealism.hardware.AcceleratedComputationOperation}
  *       compiles computation graphs to native code</li>
- *   <li><b>Computation Execution</b> - {@link org.almostrealism.hardware.ComputeContext}
+ *   <li><b>Computation Execution</b> - {@link io.almostrealism.code.ComputeContext}
  *       manages computation lifecycle and caching</li>
  *   <li><b>Input Handling</b> - {@link org.almostrealism.hardware.PassThroughProducer}
  *       for passing arguments through computation graphs</li>
@@ -64,8 +64,8 @@
  * </ul>
  *
  * @see org.almostrealism.hardware.HardwareOperator
- * @see org.almostrealism.hardware.KernelizedOperation
- * @see org.almostrealism.hardware.ComputeContext
+ * @see org.almostrealism.hardware.AcceleratedComputationOperation
+ * @see io.almostrealism.code.ComputeContext
  * @see org.almostrealism.hardware.PassThroughProducer
  */
 package org.almostrealism.hardware;

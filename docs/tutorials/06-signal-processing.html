@@ -114,7 +114,7 @@ signal.fill(pos -&gt; {
                 <h2>Step 3: Fast Fourier Transform (FFT)</h2>
                 <p>Analyze frequency content of signals using FFT:</p>
 
-                <pre><code class="language-java">import org.almostrealism.time.computations.FFT;
+                <pre><code class="language-java">import org.almostrealism.time.computations.FourierTransform;
 
 // Ensure signal length is power of 2 for FFT
 int fftSize = 2048;
@@ -124,7 +124,7 @@ PackedCollection&lt;?&gt; signal = new PackedCollection&lt;&gt;(shape(fftSize));
 signal.fill(pos -&gt; generateSignal(pos[0]));
 
 // Perform FFT
-FFT fft = new FFT(fftSize);
+FourierTransform fft = new FourierTransform(fftSize);
 PackedCollection&lt;?&gt; spectrum = fft.forward(signal);
 
 // spectrum contains complex values: [real0, imag0, real1, imag1, ...]
@@ -246,9 +246,7 @@ for (int i = 0; i < newSize; i++) {
                 <h2>Step 6: Wavelet Transform</h2>
                 <p>Analyze time-frequency characteristics using wavelets:</p>
 
-                <pre><code class="language-java">import org.almostrealism.time.computations.WaveletTransform;
-
-// Haar wavelet (simplest wavelet)
+                <pre><code class="language-java">// Haar wavelet (simplest wavelet)
 public class HaarWavelet {
     public static PackedCollection&lt;?&gt; forward(PackedCollection&lt;?&gt; signal) {
         int n = signal.getCount();
@@ -376,7 +374,7 @@ public class HaarWavelet {
         PackedCollection&lt;?&gt; spectrogram =
             new PackedCollection&lt;&gt;(shape(numWindows, numFreqs));
 
-        FFT fft = new FFT(windowSize);
+        FourierTransform fft = new FourierTransform(windowSize);
 
         for (int w = 0; w < numWindows; w++) {
             int startIdx = w * hopSize;

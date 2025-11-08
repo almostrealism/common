@@ -138,7 +138,7 @@ params.ssHeight = 2;   // 2 samples per pixel vertically
 ### 6. Image Output
 
 ```java
-import org.almostrealism.color.ImageCanvas;
+import org.almostrealism.texture.ImageCanvas;
 
 // Save as JPEG
 ImageCanvas.encodeImageFile(

@@ -99,7 +99,7 @@
  *   <li><b>ar-geometry</b> - Ray, Camera, and intersection data structures</li>
  * </ul>
  *
- * @see org.almostrealism.raytrace.RayTracedScene
+ * @see org.almostrealism.render.RayTracedScene
  * @see org.almostrealism.raytrace.RayIntersectionEngine
  * @see org.almostrealism.raytrace.LightingEngine
  */

@@ -126,8 +126,8 @@ updateOp.get().run();
 ### 5. Dataset Management
 
 ```java
-import org.almostrealism.model.Dataset;
-import org.almostrealism.model.ValueTarget;
+import org.almostrealism.optimize.Dataset;
+import org.almostrealism.optimize.ValueTarget;
 
 // Create dataset from pairs
 Dataset<PackedCollection<?>> dataset = Dataset.of(inputOutputPairs);
