@@ -4,49 +4,7 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Updated vcs settings.">
-      <change afterPath="$PROJECT_DIR$/collect/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/css/style.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/index.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/js/docs.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/tutorials/01-vectors-and-operations.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/io/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/physics/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/stats/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/time/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tools/src/main/java/org/almostrealism/ui/package-info.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/PackedCollection.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/PackedCollection.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionMinusComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionMinusComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionPermute.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionPermute.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionZerosComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionZerosComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/IndexProjectionProducerComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/IndexProjectionProducerComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/PackedCollectionPad.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/PackedCollectionPad.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/Random.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/Random.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Alert.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Alert.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Console.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Console.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/ConsoleFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/ConsoleFeatures.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Describable.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/Describable.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/OutputFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/OutputFeatures.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/TimingMetric.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/TimingMetric.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/io/package-info.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/lifecycle/SuppliedValue.java" beforeDir="false" afterPath="$PROJECT_DIR$/io/src/main/java/org/almostrealism/lifecycle/SuppliedValue.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/relation/src/main/java/io/almostrealism/relation/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/relation/src/main/java/io/almostrealism/relation/package-info.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/space/src/main/java/org/almostrealism/primitives/Sphere.java" beforeDir="false" afterPath="$PROJECT_DIR$/space/src/main/java/org/almostrealism/primitives/Sphere.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/BRDF.java" beforeDir="false" afterPath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/BRDF.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/DistributionFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/DistributionFeatures.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/SphericalProbabilityDistribution.java" beforeDir="false" afterPath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/SphericalProbabilityDistribution.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/stats/src/main/java/org/almostrealism/stats/package-info.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/time/src/main/java/org/almostrealism/time/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/time/src/main/java/org/almostrealism/time/package-info.java" afterDir="false" />
-    </list>
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Documentation improvements." />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -732,7 +690,7 @@
       <workItem from="1699726578901" duration="7691000" />
       <workItem from="1699756392387" duration="976000" />
       <workItem from="1702141310684" duration="175000" />
-      <workItem from="1762568823102" duration="2619000" />
+      <workItem from="1762568823102" duration="3470000" />
     </task>
     <task id="LOCAL-00107" summary="Changed offset to long.">
       <created>1520820543425</created>
@@ -1077,7 +1035,7 @@
       <option name="project" value="LOCAL" />
       <updated>1541796882428</updated>
     </task>
-    <option name="localTasksCounter" value="158" />
+    <option name="localTasksCounter" value="159" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1187,7 +1145,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Matrix transform accelerated operations are no longer kernel'd." />
     <MESSAGE value="Many matrix operations and vector normalize converted to accelerated producers." />
     <MESSAGE value="Hardware acceleration for a range of other functions, as well as conversion of RGB to use cl_mem." />
     <MESSAGE value="Many minor improvements in further migration to using Producer throughout the API. Introduced RGBMultiply." />
@@ -1212,7 +1169,8 @@
     <MESSAGE value="Added support for assigning Variables without creating them in CodePrintWriter." />
     <MESSAGE value="Introduced some new methods in CollectionFeatures and CollectionProducer. Introduced CollectionProvider, and updated CollectionProviderProducer to use it instead of Provider. Updated NativeCompiler to create JNI extensions directory if it does not already exist. New convenience methods of MemoryData and TraversalPolicy. Updated Minus to support Integer as well as Double. Improvements to GradientPropagation, and more tests for CollectionProducer::delta and gradient descent." />
     <MESSAGE value="Updated vcs settings." />
-    <option name="LAST_COMMIT_MESSAGE" value="Updated vcs settings." />
+    <MESSAGE value="Documentation improvements." />
+    <option name="LAST_COMMIT_MESSAGE" value="Documentation improvements." />
   </component>
   <component name="VgoProject">
     <settings-migrated>true</settings-migrated>

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Hardware Acceleration Setup - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Hardware Acceleration Setup</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial shows you how to configure and enable hardware acceleration in Almost Realism. You'll learn:</p>
+                <ul>
+                    <li>Why hardware acceleration is critical for performance</li>
+                    <li>How to set up environment variables for GPU/CPU acceleration</li>
+                    <li>Available hardware backends (native, OpenCL, Metal)</li>
+                    <li>How to verify acceleration is working</li>
+                    <li>Troubleshooting common issues</li>
+                    <li>Performance comparison examples</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Completion of previous tutorials</li>
+                    <li>Java 11+ installed</li>
+                    <li>Almost Realism framework installed</li>
+                    <li>Terminal/command line access</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Understanding Hardware Acceleration</h2>
+                <p>Almost Realism compiles Java operations into native code at runtime, enabling:</p>
+                <ul>
+                    <li><strong>GPU Execution:</strong> Parallel processing on thousands of cores</li>
+                    <li><strong>Optimized CPU:</strong> SIMD instructions and cache-friendly layouts</li>
+                    <li><strong>Zero-Copy:</strong> Direct memory access without Java object overhead</li>
+                    <li><strong>Kernel Fusion:</strong> Combining multiple operations into single kernels</li>
+                </ul>
+
+                <p><strong>Performance Impact:</strong> Hardware acceleration can provide 10-1000x speedup for large-scale operations compared to pure Java.</p>
+            </section>
+
+            <section>
+                <h2>Step 2: Required Environment Variables</h2>
+                <p><strong>CRITICAL:</strong> Almost Realism requires these environment variables to be set before running any code.</p>
+
+                <h3>Linux/macOS</h3>
+                <pre><code class="language-bash"># Set the library directory (any writable location)
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+
+# Set the hardware driver
+export AR_HARDWARE_DRIVER=native
+
+# Verify they're set
+echo $AR_HARDWARE_LIBS
+echo $AR_HARDWARE_DRIVER</code></pre>
+
+                <h3>Windows (PowerShell)</h3>
+                <pre><code class="language-powershell"># Set the library directory
+$env:AR_HARDWARE_LIBS="C:\Temp\ar_libs\"
+
+# Set the hardware driver
+$env:AR_HARDWARE_DRIVER="native"
+
+# Verify
+echo $env:AR_HARDWARE_LIBS
+echo $env:AR_HARDWARE_DRIVER</code></pre>
+
+                <h3>Windows (Command Prompt)</h3>
+                <pre><code class="language-bash">set AR_HARDWARE_LIBS=C:\Temp\ar_libs\
+set AR_HARDWARE_DRIVER=native
+
+echo %AR_HARDWARE_LIBS%
+echo %AR_HARDWARE_DRIVER%</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Understanding the Environment Variables</h2>
+
+                <h3>AR_HARDWARE_LIBS</h3>
+                <p>Specifies the directory where hardware acceleration libraries are generated and loaded from.</p>
+                <ul>
+                    <li>Can be ANY writable directory (/tmp, home directory, etc.)</li>
+                    <li>Directory is created automatically if it doesn't exist</li>
+                    <li>Contains JNI .so files, OpenCL kernels, or Metal shaders</li>
+                    <li>Caches compiled kernels for faster startup</li>
+                </ul>
+
+                <h3>AR_HARDWARE_DRIVER</h3>
+                <p>Specifies which hardware backend to use:</p>
+                <ul>
+                    <li><strong>native:</strong> Standard JNI operations with runtime-generated native code (default, most compatible)</li>
+                    <li><strong>opencl:</strong> OpenCL acceleration for CPU/GPU (Linux, Windows)</li>
+                    <li><strong>metal:</strong> Metal GPU acceleration (Apple Silicon Macs)</li>
+                    <li><strong>external:</strong> Generated executable approach (experimental)</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 4: Permanent Configuration</h2>
+                <p>To avoid setting variables every time, add them to your shell profile:</p>
+
+                <h3>Bash (~/.bashrc or ~/.bash_profile)</h3>
+                <pre><code class="language-bash"># Add to ~/.bashrc
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</code></pre>
+
+                <h3>Zsh (~/.zshrc)</h3>
+                <pre><code class="language-bash"># Add to ~/.zshrc
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native</code></pre>
+
+                <h3>Apply Changes</h3>
+                <pre><code class="language-bash"># Reload your shell configuration
+source ~/.bashrc  # or ~/.zshrc
+
+# Or open a new terminal</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 5: Maven Integration</h2>
+                <p>When running tests or applications via Maven, always prefix with environment variables:</p>
+
+                <pre><code class="language-bash"># Run tests
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl algebra
+
+# Run specific test
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl ml -Dtest=TransformerTest
+
+# Run all module tests
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test</code></pre>
+
+                <h3>Alternative: Set in IDE</h3>
+                <p>In IntelliJ IDEA or Eclipse, add environment variables to run configurations:</p>
+                <ul>
+                    <li>Run → Edit Configurations</li>
+                    <li>Environment variables: AR_HARDWARE_LIBS=/tmp/ar_libs/;AR_HARDWARE_DRIVER=native</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 6: Verifying Hardware Acceleration</h2>
+                <p>Create a simple test to verify acceleration is working:</p>
+
+                <pre><code class="language-java">import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import static org.almostrealism.collect.CollectionFeatures.*;
+
+public class HardwareTest {
+    public static void main(String[] args) {
+        // Check if environment is configured
+        System.out.println("AR_HARDWARE_LIBS: " +
+            System.getenv("AR_HARDWARE_LIBS"));
+        System.out.println("AR_HARDWARE_DRIVER: " +
+            System.getenv("AR_HARDWARE_DRIVER"));
+
+        // Create large collections
+        int size = 1000000;
+        PackedCollection&lt;?&gt; a = new PackedCollection&lt;&gt;(shape(size));
+        PackedCollection&lt;?&gt; b = new PackedCollection&lt;&gt;(shape(size));
+
+        a.fill(pos -&gt; Math.random());
+        b.fill(pos -&gt; Math.random());
+
+        // Build accelerated computation
+        long start = System.currentTimeMillis();
+        PackedCollection&lt;?&gt; result = cp(a)
+            .add(cp(b))
+            .multiply(2.0)
+            .get()
+            .evaluate();
+        long elapsed = System.currentTimeMillis() - start;
+
+        System.out.println("Processed " + size + " elements in " +
+                           elapsed + "ms");
+        System.out.println("First result: " + result.toDouble(0));
+
+        // Should complete in milliseconds with acceleration
+        // Would take much longer without it
+    }
+}</code></pre>
+
+                <p><strong>Expected Output:</strong></p>
+                <pre><code>AR_HARDWARE_LIBS: /tmp/ar_libs/
+AR_HARDWARE_DRIVER: native
+Processed 1000000 elements in 45ms
+First result: 3.2156...</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 7: Choosing the Right Driver</h2>
+
+                <h3>native (Recommended Default)</h3>
+                <ul>
+                    <li>✓ Works on all platforms</li>
+                    <li>✓ Most stable and tested</li>
+                    <li>✓ Good CPU performance</li>
+                    <li>✓ Minimal dependencies</li>
+                    <li>✗ CPU-only (no GPU)</li>
+                </ul>
+
+                <h3>opencl (GPU Acceleration)</h3>
+                <ul>
+                    <li>✓ GPU acceleration on NVIDIA, AMD, Intel</li>
+                    <li>✓ Works on Linux and Windows</li>
+                    <li>✓ Very fast for large parallel workloads</li>
+                    <li>✗ Requires OpenCL drivers installed</li>
+                    <li>✗ Setup can be complex</li>
+                </ul>
+                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=opencl</code></pre>
+
+                <h3>metal (Apple Silicon)</h3>
+                <ul>
+                    <li>✓ GPU acceleration on M1/M2/M3 Macs</li>
+                    <li>✓ Excellent performance on Apple hardware</li>
+                    <li>✗ Only works on macOS with Metal support</li>
+                </ul>
+                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=metal</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Troubleshooting Common Issues</h2>
+
+                <h3>Error: NoClassDefFoundError PackedCollection</h3>
+                <p><strong>Cause:</strong> Environment variables not set before JVM starts.</p>
+                <p><strong>Solution:</strong></p>
+                <pre><code class="language-bash"># Ensure variables are set BEFORE running Java
+export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native
+# THEN run your application
+java -jar myapp.jar</code></pre>
+
+                <h3>Error: UnsatisfiedLinkError</h3>
+                <p><strong>Cause:</strong> Cannot load native libraries.</p>
+                <p><strong>Solution:</strong></p>
+                <ul>
+                    <li>Verify AR_HARDWARE_LIBS points to a writable directory</li>
+                    <li>Check directory permissions: <code>chmod 755 /tmp/ar_libs/</code></li>
+                    <li>Try a different directory if /tmp has noexec flag</li>
+                </ul>
+
+                <h3>Error: OpenCL platform not found</h3>
+                <p><strong>Cause:</strong> OpenCL drivers not installed.</p>
+                <p><strong>Solution:</strong></p>
+                <ul>
+                    <li>Install GPU drivers (NVIDIA CUDA, AMD ROCm)</li>
+                    <li>Or fall back to native: <code>export AR_HARDWARE_DRIVER=native</code></li>
+                </ul>
+
+                <h3>Slow Performance</h3>
+                <p><strong>Possible causes:</strong></p>
+                <ul>
+                    <li>Working with small datasets (overhead dominates)</li>
+                    <li>Environment variables not set (falling back to slow path)</li>
+                    <li>Disk I/O bottleneck</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 9: Performance Comparison</h2>
+                <p>Benchmark showing the impact of hardware acceleration:</p>
+
+                <pre><code class="language-java">import org.almostrealism.collect.PackedCollection;
+import static org.almostrealism.collect.CollectionFeatures.*;
+
+public class PerformanceBenchmark {
+    public static void main(String[] args) {
+        int[] sizes = {1000, 10000, 100000, 1000000};
+
+        for (int size : sizes) {
+            PackedCollection&lt;?&gt; a = new PackedCollection&lt;&gt;(shape(size));
+            PackedCollection&lt;?&gt; b = new PackedCollection&lt;&gt;(shape(size));
+            a.fill(pos -&gt; Math.random());
+            b.fill(pos -&gt; Math.random());
+
+            // Hardware-accelerated path
+            long start = System.nanoTime();
+            PackedCollection&lt;?&gt; result = cp(a)
+                .add(cp(b))
+                .multiply(2.0)
+                .get()
+                .evaluate();
+            long elapsed = System.nanoTime() - start;
+
+            System.out.printf("Size: %7d | Time: %6.2f ms%n",
+                             size, elapsed / 1_000_000.0);
+        }
+    }
+}</code></pre>
+
+                <p><strong>Typical Results:</strong></p>
+                <pre><code>Size:    1000 | Time:   2.15 ms
+Size:   10000 | Time:   3.42 ms
+Size:  100000 | Time:  12.78 ms
+Size: 1000000 | Time:  45.23 ms
+
+# Without acceleration, 1M elements might take 500-2000ms!</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 10: Best Practices</h2>
+                <ul>
+                    <li><strong>Always set variables first:</strong> Before starting any Java process</li>
+                    <li><strong>Use persistent location:</strong> /tmp might be cleared on reboot; consider ~/.ar_libs/</li>
+                    <li><strong>Start with native:</strong> Most stable, then try opencl/metal for GPU</li>
+                    <li><strong>Verify in tests:</strong> Check env vars at start of test suites</li>
+                    <li><strong>CI/CD:</strong> Set env vars in build scripts</li>
+                    <li><strong>Monitor cache:</strong> AR_HARDWARE_LIBS directory can grow; clean periodically</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Next Steps</h2>
+                <ul>
+                    <li><a href="04-computation-graphs.html">Tutorial 4: Building Computation Graphs</a></li>
+                    <li><a href="05-ml-inference.html">Tutorial 5: Running ML Models</a></li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/package-summary.html">Hardware Module API Docs</a></li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ Why hardware acceleration is critical for performance</li>
+                    <li>✓ How to set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER</li>
+                    <li>✓ Difference between native, opencl, and metal drivers</li>
+                    <li>✓ How to make environment variables permanent</li>
+                    <li>✓ Maven integration for tests</li>
+                    <li>✓ Verifying acceleration is working</li>
+                    <li>✓ Troubleshooting common issues</li>
+                    <li>✓ Performance comparison and benchmarking</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>

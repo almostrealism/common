@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Testing Best Practices - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Testing Best Practices</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#modules">Modules</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../index.html#api">API Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Introduction</h2>
+                <p>This tutorial covers testing best practices for Almost Realism applications. You'll learn:</p>
+                <ul>
+                    <li>Using TestFeatures for common test utilities</li>
+                    <li>Testing hardware-accelerated operations</li>
+                    <li>Numerical precision and tolerance handling</li>
+                    <li>Performance testing and benchmarking</li>
+                    <li>Testing ML models with ModelTestFeatures</li>
+                    <li>Debugging computation graphs</li>
+                    <li>Logging test output to files</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Completion of previous tutorials</li>
+                    <li>Understanding of JUnit testing</li>
+                    <li>Hardware acceleration configured</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Step 1: Environment Setup for Tests</h2>
+                <p><strong>CRITICAL:</strong> Always set environment variables before running tests.</p>
+
+                <pre><code class="language-bash"># From command line
+export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+export AR_HARDWARE_DRIVER=native && \
+mvn test -pl algebra
+
+# Or in your IDE run configuration
+AR_HARDWARE_LIBS=/tmp/ar_libs/;AR_HARDWARE_DRIVER=native</code></pre>
+
+                <h3>Test Class Template</h3>
+                <pre><code class="language-java">import org.almostrealism.util.TestFeatures;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.junit.Test;
+
+import static org.junit.Assert.*;
+
+public class MyFeatureTest implements TestFeatures, ConsoleFeatures {
+    @Test
+    public void testBasicOperation() {
+        // Setup file logging
+        Console.root().addListener(
+            fileOutput("test_output/basic_operation.txt"));
+
+        log("=== Testing Basic Operation ===");
+
+        // Your test code
+        PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(100));
+        data.fill(pos -&gt; Math.random());
+
+        log("Data created with " + data.getCount() + " elements");
+
+        // Assertions
+        assertEquals(100, data.getCount());
+
+        log("Test completed successfully");
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 2: Using TestFeatures</h2>
+                <p><code>TestFeatures</code> interface provides common utilities for testing:</p>
+
+                <pre><code class="language-java">import org.almostrealism.util.TestFeatures;
+
+public class CollectionTest implements TestFeatures {
+    @Test
+    public void testCollectionOperations() {
+        // Create test data
+        PackedCollection&lt;?&gt; a = pack(1.0, 2.0, 3.0);
+        PackedCollection&lt;?&gt; b = pack(4.0, 5.0, 6.0);
+
+        // Perform operation
+        PackedCollection&lt;?&gt; result = cp(a).add(cp(b)).get().evaluate();
+
+        // Assert with tolerance
+        assertEquals(5.0, result.toDouble(0), 0.0001);
+        assertEquals(7.0, result.toDouble(1), 0.0001);
+        assertEquals(9.0, result.toDouble(2), 0.0001);
+    }
+
+    @Test
+    public void testWithLogging() {
+        // Enable verbose logging
+        enableVerbose();
+
+        PackedCollection&lt;?&gt; data = pack(1.0, 2.0, 3.0);
+        PackedCollection&lt;?&gt; doubled = cp(data).multiply(2.0).get().evaluate();
+
+        // Log outputs for debugging
+        log("Input: " + Arrays.toString(toArray(data)));
+        log("Output: " + Arrays.toString(toArray(doubled)));
+
+        assertArrayEquals(
+            new double[]{2.0, 4.0, 6.0},
+            toArray(doubled),
+            0.0001
+        );
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 3: Numerical Precision Testing</h2>
+                <p>Hardware-accelerated operations may have slight numerical differences from CPU calculations:</p>
+
+                <pre><code class="language-java">@Test
+public void testNumericalPrecision() {
+    PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(1000));
+    input.fill(pos -&gt; Math.random());
+
+    // Expected result (CPU calculation)
+    double expected = 0.0;
+    for (int i = 0; i < input.getCount(); i++) {
+        expected += input.toDouble(i) * 2.0 + 1.0;
+    }
+
+    // Actual result (GPU calculation)
+    CollectionProducer&lt;?&gt; computation = cp(input)
+        .multiply(2.0)
+        .add(c(1.0))
+        .sum();
+
+    double actual = computation.get().evaluate().toDouble(0);
+
+    // Use appropriate tolerance for floating-point comparison
+    // GPU may have different rounding than CPU
+    assertEquals(expected, actual, 0.01);  // 1% tolerance
+
+    log("Expected: " + expected);
+    log("Actual: " + actual);
+    log("Difference: " + Math.abs(expected - actual));
+}</code></pre>
+
+                <h3>Relative Error Testing</h3>
+                <pre><code class="language-java">public void assertRelativeEquals(double expected, double actual,
+                                 double relativeError) {
+    double diff = Math.abs(expected - actual);
+    double threshold = Math.abs(expected) * relativeError;
+
+    if (diff > threshold) {
+        fail(String.format(
+            "Values differ by %f (%.2f%%), expected %f, got %f",
+            diff, (diff / Math.abs(expected)) * 100, expected, actual
+        ));
+    }
+}
+
+@Test
+public void testWithRelativeError() {
+    double expected = 123456.789;
+    double actual = 123457.001;
+
+    // Assert within 0.1% relative error
+    assertRelativeEquals(expected, actual, 0.001);
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 4: Performance Testing</h2>
+
+                <h3>Basic Timing</h3>
+                <pre><code class="language-java">@Test
+public void testPerformance() {
+    int size = 1000000;
+    PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+    data.fill(pos -&gt; Math.random());
+
+    // Build computation
+    CollectionProducer&lt;?&gt; computation = cp(data)
+        .multiply(2.0)
+        .add(c(1.0))
+        .sqrt();
+
+    // Warmup (compile kernels)
+    computation.get().evaluate();
+
+    // Measure performance
+    long start = System.nanoTime();
+    for (int i = 0; i < 100; i++) {
+        PackedCollection&lt;?&gt; result = computation.get().evaluate();
+    }
+    long elapsed = System.nanoTime() - start;
+
+    double avgTime = elapsed / 100.0 / 1_000_000.0;  // ms
+    double throughput = size / (avgTime / 1000.0);   // elements/sec
+
+    log(String.format("Average time: %.2f ms", avgTime));
+    log(String.format("Throughput: %.2f M elements/sec",
+                      throughput / 1_000_000.0));
+
+    // Assert performance threshold
+    assertTrue("Performance too slow: " + avgTime + "ms",
+               avgTime < 10.0);  // Should complete in <10ms
+}</code></pre>
+
+                <h3>Comparative Benchmarking</h3>
+                <pre><code class="language-java">@Test
+public void compareCPUvsGPU() {
+    int size = 100000;
+    PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+    data.fill(pos -&gt; Math.random());
+
+    // CPU approach (manual loop)
+    long cpuStart = System.nanoTime();
+    PackedCollection&lt;?&gt; cpuResult = new PackedCollection&lt;&gt;(shape(size));
+    for (int i = 0; i < size; i++) {
+        double val = data.toDouble(i);
+        cpuResult.setMem(i, val * 2.0 + 1.0);
+    }
+    long cpuTime = System.nanoTime() - cpuStart;
+
+    // GPU approach (hardware accelerated)
+    long gpuStart = System.nanoTime();
+    PackedCollection&lt;?&gt; gpuResult = cp(data)
+        .multiply(2.0)
+        .add(c(1.0))
+        .get()
+        .evaluate();
+    long gpuTime = System.nanoTime() - gpuStart;
+
+    log("CPU time: " + cpuTime / 1_000_000.0 + " ms");
+    log("GPU time: " + gpuTime / 1_000_000.0 + " ms");
+    log("Speedup: " + (double) cpuTime / gpuTime + "x");
+
+    // Verify results match
+    for (int i = 0; i < size; i++) {
+        assertEquals(cpuResult.toDouble(i), gpuResult.toDouble(i), 0.0001);
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 5: Testing ML Models</h2>
+                <p>Use <code>ModelTestFeatures</code> for ML-specific testing:</p>
+
+                <pre><code class="language-java">import org.almostrealism.util.ModelTestFeatures;
+
+public class ModelTest implements ModelTestFeatures {
+    @Test
+    public void testModelInference() {
+        // Create synthetic model
+        int inputSize = 100;
+        int outputSize = 10;
+
+        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(inputSize));
+        input.fill(pos -&gt; Math.random());
+
+        // Simple linear model: y = Wx + b
+        PackedCollection&lt;?&gt; weights =
+            new PackedCollection&lt;&gt;(shape(outputSize, inputSize));
+        PackedCollection&lt;?&gt; bias = new PackedCollection&lt;&gt;(shape(outputSize));
+
+        weights.fill(pos -&gt; (Math.random() - 0.5) * 0.1);
+        bias.fill(pos -&gt; 0.0);
+
+        // Build computation graph
+        CollectionProducer&lt;?&gt; output = cp(weights)
+            .enumerate(1, 1)
+            .multiply(cp(input))
+            .sum(1)
+            .add(cp(bias));
+
+        // Execute
+        PackedCollection&lt;?&gt; result = output.get().evaluate();
+
+        // Assertions
+        assertEquals(outputSize, result.getCount());
+
+        // Check output range is reasonable
+        for (int i = 0; i < outputSize; i++) {
+            double val = result.toDouble(i);
+            assertTrue("Output out of range: " + val,
+                      Math.abs(val) < 10.0);
+        }
+
+        log("Model inference completed successfully");
+    }
+
+    @Test
+    public void testGradientComputation() {
+        PackedCollection&lt;?&gt; x = new PackedCollection&lt;&gt;(shape(10));
+        x.fill(pos -&gt; pos[0]);  // [0, 1, 2, ..., 9]
+
+        // f(x) = x^2
+        CollectionProducer&lt;?&gt; y = cp(x).pow(c(2.0));
+
+        // df/dx = 2x
+        CollectionProducer&lt;?&gt; gradient = y.delta(cp(x));
+
+        PackedCollection&lt;?&gt; grad = gradient.get().evaluate(x);
+
+        // Verify gradient
+        for (int i = 0; i < 10; i++) {
+            double expected = 2.0 * i;
+            double actual = grad.toDouble(i);
+            assertEquals(expected, actual, 0.01);
+        }
+
+        log("Gradient computation verified");
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 6: Logging Test Output to Files</h2>
+                <p>Save test output to files for later review:</p>
+
+                <pre><code class="language-java">import org.almostrealism.io.Console;
+import org.almostrealism.io.OutputFeatures;
+import org.almostrealism.io.ConsoleFeatures;
+
+public class LoggingTest implements ConsoleFeatures {
+    @Test
+    public void testWithFileLogging() throws Exception {
+        // Create test_output directory if needed
+        String logFile = "test_output/computation_test_results.txt";
+
+        // Setup file logging
+        Console.root().addListener(OutputFeatures.fileOutput(logFile));
+
+        log("=== Computation Test ===");
+        log("Timestamp: " + System.currentTimeMillis());
+
+        // Your test code
+        PackedCollection&lt;?&gt; input = new PackedCollection&lt;&gt;(shape(100));
+        input.fill(pos -&gt; Math.random());
+
+        CollectionProducer&lt;?&gt; computation = cp(input)
+            .multiply(2.0)
+            .add(c(1.0));
+
+        long start = System.nanoTime();
+        PackedCollection&lt;?&gt; result = computation.get().evaluate();
+        long elapsed = System.nanoTime() - start;
+
+        log("Execution time: " + elapsed / 1_000_000.0 + " ms");
+        log("First result value: " + result.toDouble(0));
+        log("Last result value: " + result.toDouble(99));
+
+        log("=== Test Completed ===");
+
+        // Output is saved to file AND displayed in console
+    }
+}</code></pre>
+
+                <h3>Organized Test Output</h3>
+                <pre><code class="language-java">public class OrganizedTestSuite implements ConsoleFeatures {
+    private static final String OUTPUT_DIR = "test_output/";
+
+    @Test
+    public void testFeatureA() {
+        Console.root().addListener(
+            fileOutput(OUTPUT_DIR + "feature_a_test.txt"));
+
+        log("=== Feature A Test ===");
+        // Test code...
+        log("Feature A: PASSED");
+    }
+
+    @Test
+    public void testFeatureB() {
+        Console.root().addListener(
+            fileOutput(OUTPUT_DIR + "feature_b_test.txt"));
+
+        log("=== Feature B Test ===");
+        // Test code...
+        log("Feature B: PASSED");
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 7: Testing Edge Cases</h2>
+
+                <h3>Empty Collections</h3>
+                <pre><code class="language-java">@Test
+public void testEmptyCollection() {
+    PackedCollection&lt;?&gt; empty = new PackedCollection&lt;&gt;(shape(0));
+
+    // Should not crash
+    CollectionProducer&lt;?&gt; result = cp(empty).multiply(2.0);
+
+    assertNotNull(result);
+    assertEquals(0, result.getShape().getTotalSize());
+}</code></pre>
+
+                <h3>Large Collections</h3>
+                <pre><code class="language-java">@Test
+public void testLargeCollection() {
+    int size = 10_000_000;  // 10 million elements
+
+    PackedCollection&lt;?&gt; large = new PackedCollection&lt;&gt;(shape(size));
+    large.fill(pos -&gt; 1.0);
+
+    // Should handle without memory errors
+    PackedCollection&lt;?&gt; result = cp(large)
+        .multiply(2.0)
+        .get()
+        .evaluate();
+
+    assertEquals(size, result.getCount());
+    assertEquals(2.0, result.toDouble(0), 0.0001);
+}</code></pre>
+
+                <h3>NaN and Infinity Handling</h3>
+                <pre><code class="language-java">@Test
+public void testNaNHandling() {
+    PackedCollection&lt;?&gt; data = pack(1.0, 0.0, -1.0);
+
+    // Division by zero produces Infinity
+    PackedCollection&lt;?&gt; result = cp(data)
+        .divide(c(0.0))
+        .get()
+        .evaluate();
+
+    assertTrue(Double.isInfinite(result.toDouble(0)));
+    assertTrue(Double.isNaN(result.toDouble(1)));  // 0/0 = NaN
+}
+
+@Test
+public void testInfinityPropagation() {
+    PackedCollection&lt;?&gt; data = pack(
+        Double.POSITIVE_INFINITY,
+        1.0,
+        Double.NEGATIVE_INFINITY
+    );
+
+    PackedCollection&lt;?&gt; result = cp(data)
+        .multiply(2.0)
+        .get()
+        .evaluate();
+
+    assertTrue(Double.isInfinite(result.toDouble(0)));
+    assertFalse(Double.isInfinite(result.toDouble(1)));
+    assertTrue(Double.isInfinite(result.toDouble(2)));
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 8: Integration Testing</h2>
+                <p>Test complete workflows end-to-end:</p>
+
+                <pre><code class="language-java">@Test
+public void testCompleteWorkflow() {
+    Console.root().addListener(
+        fileOutput("test_output/integration_test.txt"));
+
+    log("=== Integration Test: Data Processing Pipeline ===");
+
+    // Step 1: Load data
+    log("Step 1: Loading data...");
+    PackedCollection&lt;?&gt; rawData = loadTestData();
+    log("Loaded " + rawData.getCount() + " samples");
+
+    // Step 2: Preprocessing
+    log("Step 2: Preprocessing...");
+    CollectionProducer&lt;?&gt; normalized = cp(rawData)
+        .subtract(c(0.5))
+        .multiply(2.0);
+    PackedCollection&lt;?&gt; preprocessed = normalized.get().evaluate();
+    log("Normalization complete");
+
+    // Step 3: Feature extraction
+    log("Step 3: Extracting features...");
+    CollectionProducer&lt;?&gt; features = cp(preprocessed)
+        .pow(c(2.0))
+        .sum();
+    PackedCollection&lt;?&gt; extracted = features.get().evaluate();
+    log("Features extracted: " + extracted.getCount());
+
+    // Step 4: Validation
+    log("Step 4: Validating results...");
+    assertTrue("Invalid feature count",
+               extracted.getCount() > 0);
+    assertFalse("NaN in features",
+                Double.isNaN(extracted.toDouble(0)));
+
+    log("=== Integration Test: PASSED ===");
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 9: Common Test Patterns</h2>
+
+                <h3>Parameterized Tests</h3>
+                <pre><code class="language-java">import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
+
+@RunWith(Parameterized.class)
+public class ParameterizedOperationTest implements TestFeatures {
+    private final int size;
+
+    public ParameterizedOperationTest(int size) {
+        this.size = size;
+    }
+
+    @Parameters
+    public static Collection&lt;Object[]&gt; data() {
+        return Arrays.asList(new Object[][] {
+            {10}, {100}, {1000}, {10000}, {100000}
+        });
+    }
+
+    @Test
+    public void testOperationAtSize() {
+        PackedCollection&lt;?&gt; data = new PackedCollection&lt;&gt;(shape(size));
+        data.fill(pos -&gt; Math.random());
+
+        PackedCollection&lt;?&gt; result = cp(data)
+            .multiply(2.0)
+            .get()
+            .evaluate();
+
+        assertEquals(size, result.getCount());
+        log("Test passed for size: " + size);
+    }
+}</code></pre>
+
+                <h3>Setup and Teardown</h3>
+                <pre><code class="language-java">public class TestWithSetup implements TestFeatures {
+    private PackedCollection&lt;?&gt; testData;
+
+    @Before
+    public void setUp() {
+        log("Setting up test data...");
+        testData = new PackedCollection&lt;&gt;(shape(1000));
+        testData.fill(pos -&gt; Math.random());
+    }
+
+    @After
+    public void tearDown() {
+        log("Cleaning up...");
+        testData = null;  // Allow GC
+    }
+
+    @Test
+    public void testOperation1() {
+        assertNotNull(testData);
+        // Use testData...
+    }
+
+    @Test
+    public void testOperation2() {
+        assertNotNull(testData);
+        // Use testData...
+    }
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Step 10: Debugging Failed Tests</h2>
+
+                <h3>Detailed Logging</h3>
+                <pre><code class="language-java">@Test
+public void testWithDetailedLogging() {
+    enableVerbose();  // Enable all debug output
+
+    PackedCollection&lt;?&gt; input = pack(1.0, 2.0, 3.0);
+
+    log("Input values: ");
+    for (int i = 0; i < input.getCount(); i++) {
+        log("  [" + i + "] = " + input.toDouble(i));
+    }
+
+    CollectionProducer&lt;?&gt; computation = cp(input).multiply(2.0);
+
+    log("Computation graph built");
+
+    PackedCollection&lt;?&gt; result = computation.get().evaluate();
+
+    log("Output values: ");
+    for (int i = 0; i < result.getCount(); i++) {
+        log("  [" + i + "] = " + result.toDouble(i));
+    }
+
+    // Assertions...
+}</code></pre>
+
+                <h3>Intermediate Value Inspection</h3>
+                <pre><code class="language-java">@Test
+public void debugComputationGraph() {
+    PackedCollection&lt;?&gt; x = pack(1.0, 2.0, 3.0);
+
+    // Test each stage separately
+    PackedCollection&lt;?&gt; step1 = cp(x).multiply(2.0).get().evaluate();
+    log("After multiply: " + Arrays.toString(toArray(step1)));
+
+    PackedCollection&lt;?&gt; step2 = cp(step1).add(c(1.0)).get().evaluate();
+    log("After add: " + Arrays.toString(toArray(step2)));
+
+    PackedCollection&lt;?&gt; step3 = cp(step2).sqrt().get().evaluate();
+    log("After sqrt: " + Arrays.toString(toArray(step3)));
+
+    // Now we can see exactly where any issue occurs
+}</code></pre>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>You've learned:</p>
+                <ul>
+                    <li>✓ Environment setup for testing</li>
+                    <li>✓ Using TestFeatures and ModelTestFeatures</li>
+                    <li>✓ Numerical precision and tolerance handling</li>
+                    <li>✓ Performance testing and benchmarking</li>
+                    <li>✓ Testing ML models and gradients</li>
+                    <li>✓ Logging test output to files</li>
+                    <li>✓ Testing edge cases (empty, large, NaN, infinity)</li>
+                    <li>✓ Integration testing patterns</li>
+                    <li>✓ Common test patterns (parameterized, setup/teardown)</li>
+                    <li>✓ Debugging failed tests</li>
+                </ul>
+
+                <p><strong>Best Practices Summary:</strong></p>
+                <ul>
+                    <li>Always set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER before tests</li>
+                    <li>Use appropriate tolerance for floating-point comparisons</li>
+                    <li>Log test output to files for later review</li>
+                    <li>Test edge cases (empty, large, special values)</li>
+                    <li>Measure and assert on performance when critical</li>
+                    <li>Test both forward pass and gradients for ML models</li>
+                    <li>Use descriptive test names and logging messages</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>
