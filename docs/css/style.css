@@ -139,9 +139,34 @@ section h3 {
     position: relative;
 }
 
+.module-card.foundation {
+    border-color: #0277bd !important;
+    background: linear-gradient(to bottom, #fff 0%, #e1f5ff 100%) !important;
+}
+
 .module-card.core {
-    border-color: var(--secondary-color);
-    background: linear-gradient(to bottom, #fff 0%, #f0f8ff 100%);
+    border-color: #7b1fa2 !important;
+    background: linear-gradient(to bottom, #fff 0%, #f3e5f5 100%) !important;
+}
+
+.module-card.data {
+    border-color: #e65100 !important;
+    background: linear-gradient(to bottom, #fff 0%, #fff3e0 100%) !important;
+}
+
+.module-card.math {
+    border-color: #2e7d32 !important;
+    background: linear-gradient(to bottom, #fff 0%, #e8f5e9 100%) !important;
+}
+
+.module-card.domain {
+    border-color: #c2185b !important;
+    background: linear-gradient(to bottom, #fff 0%, #fce4ec 100%) !important;
+}
+
+.module-card.app {
+    border-color: #f57f17 !important;
+    background: linear-gradient(to bottom, #fff 0%, #fff9c4 100%) !important;
 }
 
 .module-card:hover {
@@ -173,6 +198,30 @@ section h3 {
     font-size: 0.75rem;
     font-weight: 600;
     margin-bottom: 0.5rem;
+}
+
+.foundation-badge {
+    background: #0277bd;
+}
+
+.core-badge {
+    background: #7b1fa2;
+}
+
+.data-badge {
+    background: #e65100;
+}
+
+.math-badge {
+    background: #2e7d32;
+}
+
+.domain-badge {
+    background: #c2185b;
+}
+
+.app-badge {
+    background: #f57f17;
 }
 
 .doc-link {

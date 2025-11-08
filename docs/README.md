@@ -56,38 +56,6 @@ The HTML documentation links to these JavaDoc files. The JavaDoc is configured t
 - **Search** - Find modules and content quickly (coming soon)
 - **Code Copy** - One-click code snippet copying
 
-## Module Documentation Status
-
-### Fully Documented (README + Package-info)
-- ✅ io - Logging, metrics, lifecycle management
-- ✅ stats - Probability distributions and sampling
-- ✅ tools - UI tools for profiling
-- ✅ time - Time-series and signal processing
-- ✅ relation - Producer/Evaluable foundation
-- ✅ collect - PackedCollection core data structure
-- ✅ algebra - Vector, Matrix, Scalar types
-- ✅ utils - Testing framework and utilities
-- ✅ physics - Quantum and classical physics simulation
-
-### Partial Documentation
-- 🟡 hardware - README exists, needs expansion
-- 🟡 code - README exists, needs expansion
-
-### Needs Documentation
-- ⬜ graph - Neural network layers
-- ⬜ ml - Machine learning models
-- ⬜ geometry - Geometric primitives
-- ⬜ space - 3D scene management
-- ⬜ color - Color representation
-- ⬜ chemistry - Chemical elements
-- ⬜ heredity - Genetic algorithms
-- ⬜ economics - Economic modeling
-- ⬜ optimize - Optimization algorithms
-- ⬜ render - Rendering pipeline
-- ⬜ uml - UML generation
-- ⬜ llvm - LLVM integration
-- ⬜ ml-script - ML scripting
-
 ## Contributing
 
 To add or improve documentation:

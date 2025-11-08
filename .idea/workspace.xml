@@ -4,16 +4,12 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Introduced ml tutorial.">
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Improved architecture details in docs.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/economics/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/economics/agent-memory.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/economics/economics.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/economics/pom.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/economics/src/main/resources/LICENSE" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/utils/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/css/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/docs/css/style.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/utils.iml" beforeDir="false" afterPath="$PROJECT_DIR$/utils/utils.iml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -426,14 +422,13 @@
       <window_info id="Pull Requests" />
       <window_info id="Learn" />
       <window_info id="Robo tasks" side_tool="true" />
-      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24107143" />
-      <window_info id="Commit" order="1" weight="0.24107143" />
+      <window_info content_ui="combo" id="Project" order="0" weight="0.24107143" />
+      <window_info active="true" id="Commit" order="1" visible="true" weight="0.24107143" />
       <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
       <window_info anchor="bottom" id="NextEditPredictionSettingsToolwindow" />
       <window_info anchor="bottom" id="Database Changes" />
       <window_info anchor="bottom" id="TypeScript" />
       <window_info anchor="bottom" id="Profiler" />
-      <window_info anchor="bottom" id="Build" />
       <window_info anchor="bottom" id="internal-profiler" />
       <window_info anchor="bottom" id="GitHub Copilot MCP Log" />
       <window_info anchor="bottom" id="Python Packages" />
@@ -445,8 +440,9 @@
       <window_info anchor="bottom" id="Version Control" order="0" />
       <window_info anchor="bottom" id="Problems" order="1" />
       <window_info anchor="bottom" id="Problems View" order="2" />
-      <window_info active="true" anchor="bottom" id="Terminal" order="3" visible="true" weight="0.33034772" />
+      <window_info anchor="bottom" id="Terminal" order="3" weight="0.33034772" />
       <window_info anchor="bottom" id="Services" order="4" />
+      <window_info anchor="bottom" id="Build" order="5" weight="0.33034772" />
       <window_info anchor="right" id="sbt" />
       <window_info anchor="right" id="Plots" />
       <window_info anchor="right" id="PR AI Assistant" />
@@ -751,7 +747,7 @@
       <workItem from="1699756392387" duration="976000" />
       <workItem from="1702141310684" duration="175000" />
       <workItem from="1762568823102" duration="3898000" />
-      <workItem from="1762624938918" duration="2307000" />
+      <workItem from="1762624938918" duration="4073000" />
     </task>
     <task id="LOCAL-00107" summary="Changed offset to long.">
       <created>1520820543425</created>
@@ -1096,7 +1092,7 @@
       <option name="project" value="LOCAL" />
       <updated>1541796882428</updated>
     </task>
-    <option name="localTasksCounter" value="163" />
+    <option name="localTasksCounter" value="165" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1206,8 +1202,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Added cast." />
-    <MESSAGE value="Work around for generics issue." />
     <MESSAGE value="Corrected AbstractSurface constructor." />
     <MESSAGE value="Improved error message when arguments to a HardwareOperator are null." />
     <MESSAGE value="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values." />
@@ -1231,7 +1225,9 @@
     <MESSAGE value="Corrected class references in documentation." />
     <MESSAGE value="Corrected more class references in documentation. Introduced mermaid js chart in documentation html." />
     <MESSAGE value="Introduced ml tutorial." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced ml tutorial." />
+    <MESSAGE value="Removed economics module and update dependencies." />
+    <MESSAGE value="Improved architecture details in docs." />
+    <option name="LAST_COMMIT_MESSAGE" value="Improved architecture details in docs." />
   </component>
   <component name="VgoProject">
     <settings-migrated>true</settings-migrated>

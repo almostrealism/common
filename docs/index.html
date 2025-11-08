@@ -109,7 +109,6 @@ graph TB
     %% Geometry & Statistics
     algebra --> geometry["geometry<br/>Ray, Camera, transforms"]
     algebra --> stats["stats<br/>distributions"]
-    algebra --> economics["economics<br/>placeholder"]
 
     %% Time
     geometry --> time["time<br/>temporal operations"]
@@ -119,7 +118,7 @@ graph TB
     classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 
     class hardware data
-    class algebra,geometry,stats,economics,time math
+    class algebra,geometry,stats,time math
                 </div>
 
                 <h3>Domain Modules</h3>
@@ -173,7 +172,6 @@ graph TB
     %% Entry points from domain layer
     graphMod["graph"]
     chemistry["chemistry"]
-    economics["economics"]
     spaceMod["space"]
     io["io"]
 
@@ -182,7 +180,6 @@ graph TB
 
     %% Utils
     chemistry --> utils["utils<br/>testing utilities"]
-    economics --> utils
     optimize --> utils
     spaceMod --> utils
 
@@ -203,11 +200,9 @@ graph TB
     %% Styling
     classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef math fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     classDef app fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 
     class graphMod,chemistry,spaceMod domain
-    class economics math
     class io core
     class optimize,render,ml,utils,tools,mlscript app
                 </div>
@@ -221,113 +216,178 @@ graph TB
 
             <section id="modules">
                 <h2>Framework Modules</h2>
-                <p>The framework consists of 24 specialized modules:</p>
+                <p>The framework consists of 23 specialized modules organized into 4 architectural layers:</p>
 
+                <h3>Foundation, Core &amp; Data Infrastructure</h3>
                 <div class="module-grid">
-                    <div class="module-card core">
-                        <h3><a href="modules/relation.html">relation</a></h3>
-                        <span class="badge">Core</span>
-                        <p>Producer/Evaluable abstraction - foundation for deferred execution and computation graphs</p>
-                        <a href="../relation/README.md" class="doc-link">README</a> | <a href="apidocs/io/almostrealism/relation/package-summary.html" class="doc-link">JavaDoc</a>
+                    <div class="module-card foundation">
+                        <h3>uml</h3>
+                        <span class="badge foundation-badge">Foundation</span>
+                        <p>Metadata, lifecycle management, and framework-wide utilities</p>
+                        <a href="../uml/README.md" class="doc-link">README</a> | <a href="apidocs/io/almostrealism/uml/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
                     <div class="module-card core">
-                        <h3><a href="modules/collect.html">collect</a></h3>
-                        <span class="badge">Core</span>
-                        <p>PackedCollection - memory-efficient multi-dimensional data structures</p>
-                        <a href="../collect/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/collect/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card core">
-                        <h3><a href="modules/algebra.html">algebra</a></h3>
-                        <span class="badge">Core</span>
-                        <p>Vector, Matrix, Scalar types with hardware-accelerated operations</p>
-                        <a href="../algebra/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/algebra/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card core">
-                        <h3><a href="modules/hardware.html">hardware</a></h3>
-                        <span class="badge">Core</span>
-                        <p>GPU/CPU kernel compilation and execution layer</p>
-                        <a href="../hardware/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/hardware/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3><a href="modules/graph.html">graph</a></h3>
-                        <p>Neural network layers and computation graph management</p>
-                        <a href="apidocs/org/almostrealism/graph/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3><a href="modules/ml.html">ml</a></h3>
-                        <p>Machine learning models, transformers, and training infrastructure</p>
-                        <a href="apidocs/org/almostrealism/ml/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3><a href="modules/io.html">io</a></h3>
+                        <h3>io</h3>
+                        <span class="badge core-badge">Core</span>
                         <p>Logging, metrics, alerting, and lifecycle management</p>
                         <a href="../io/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/io/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3><a href="modules/time.html">time</a></h3>
-                        <p>Time-series processing and signal analysis (FFT, filtering)</p>
-                        <a href="../time/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/time/package-summary.html" class="doc-link">JavaDoc</a>
+                    <div class="module-card core">
+                        <h3>relation</h3>
+                        <span class="badge core-badge">Core</span>
+                        <p>Producer/Evaluable abstraction - foundation for deferred execution</p>
+                        <a href="../relation/README.md" class="doc-link">README</a> | <a href="apidocs/io/almostrealism/relation/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3><a href="modules/stats.html">stats</a></h3>
+                    <div class="module-card data">
+                        <h3>code</h3>
+                        <span class="badge data-badge">Data</span>
+                        <p>Code generation and compilation infrastructure</p>
+                        <a href="../code/README.md" class="doc-link">README</a> | <a href="apidocs/io/almostrealism/code/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card data">
+                        <h3>collect</h3>
+                        <span class="badge data-badge">Data</span>
+                        <p>PackedCollection - memory-efficient multi-dimensional data structures</p>
+                        <a href="../collect/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/collect/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card data">
+                        <h3>hardware</h3>
+                        <span class="badge data-badge">Data</span>
+                        <p>GPU/CPU kernel compilation and execution layer</p>
+                        <a href="../hardware/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/hardware/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+                </div>
+
+                <h3>Mathematics &amp; Geometry Layer</h3>
+                <div class="module-grid">
+                    <div class="module-card math">
+                        <h3>algebra</h3>
+                        <span class="badge math-badge">Math</span>
+                        <p>Vector, Matrix, Scalar types with hardware-accelerated operations</p>
+                        <a href="../algebra/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/algebra/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card math">
+                        <h3>geometry</h3>
+                        <span class="badge math-badge">Math</span>
+                        <p>Geometric primitives, ray tracing, intersection tests</p>
+                        <a href="../geometry/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/geometry/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card math">
+                        <h3>stats</h3>
+                        <span class="badge math-badge">Math</span>
                         <p>Probability distributions and statistical sampling</p>
                         <a href="../stats/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/stats/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3><a href="modules/physics.html">physics</a></h3>
+                    <div class="module-card math">
+                        <h3>time</h3>
+                        <span class="badge math-badge">Math</span>
+                        <p>Time-series processing and signal analysis (FFT, filtering)</p>
+                        <a href="../time/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/time/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+                </div>
+
+                <h3>Domain Modules</h3>
+                <div class="module-grid">
+                    <div class="module-card domain">
+                        <h3>color</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>Color representation, transformations, and shader support</p>
+                        <a href="../color/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/color/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card domain">
+                        <h3>physics</h3>
+                        <span class="badge domain-badge">Domain</span>
                         <p>Quantum mechanics, photon fields, rigid body dynamics</p>
                         <a href="../physics/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/physics/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3><a href="modules/utils.html">utils</a></h3>
+                    <div class="module-card domain">
+                        <h3>llvm</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>LLVM/C interoperability for native code generation</p>
+                        <a href="../llvm/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/llvm/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card domain">
+                        <h3>heredity</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>Genetic algorithms and evolutionary computation</p>
+                        <a href="../heredity/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/heredity/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card domain">
+                        <h3>graph</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>Neural network layers and computation graph management</p>
+                        <a href="../graph/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/graph/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card domain">
+                        <h3>chemistry</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>Chemical elements, periodic table, and molecular models</p>
+                        <a href="../chemistry/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card domain">
+                        <h3>space</h3>
+                        <span class="badge domain-badge">Domain</span>
+                        <p>3D scene management, cameras, meshes, and vertices</p>
+                        <a href="../space/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/primitives/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+                </div>
+
+                <h3>Application Layer</h3>
+                <div class="module-grid">
+                    <div class="module-card app">
+                        <h3>optimize</h3>
+                        <span class="badge app-badge">Application</span>
+                        <p>Model training, evolutionary optimization, and fitness computation</p>
+                        <a href="../optimize/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/optimize/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card app">
+                        <h3>render</h3>
+                        <span class="badge app-badge">Application</span>
+                        <p>Ray tracing engine and rendering infrastructure</p>
+                        <a href="../render/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/raytrace/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card app">
+                        <h3>ml</h3>
+                        <span class="badge app-badge">Application</span>
+                        <p>Machine learning models, transformers, and training infrastructure</p>
+                        <a href="../ml/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/ml/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card app">
+                        <h3>utils</h3>
+                        <span class="badge app-badge">Application</span>
                         <p>Testing framework, model training utilities, and helpers</p>
                         <a href="../utils/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/util/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3><a href="modules/tools.html">tools</a></h3>
+                    <div class="module-card app">
+                        <h3>tools</h3>
+                        <span class="badge app-badge">Application</span>
                         <p>JavaFX/Swing UI tools for operation profiling visualization</p>
                         <a href="../tools/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/ui/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
-                    <div class="module-card">
-                        <h3>geometry</h3>
-                        <p>Geometric primitives, ray tracing, intersection tests</p>
-                        <a href="apidocs/org/almostrealism/geometry/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3>space</h3>
-                        <p>3D scene management, cameras, vertices</p>
-                        <a href="apidocs/org/almostrealism/primitives/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3>color</h3>
-                        <p>Color representation and transformations</p>
-                        <a href="apidocs/org/almostrealism/color/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3>chemistry</h3>
-                        <p>Chemical elements and atomic models</p>
-                        <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
-                    </div>
-
-                    <div class="module-card">
-                        <h3>Other Modules</h3>
-                        <p>code, heredity, optimize, render, uml, llvm, ml-script</p>
-                        <a href="modules/all.html">View All</a>
+                    <div class="module-card app">
+                        <h3>ml-script</h3>
+                        <span class="badge app-badge">Application</span>
+                        <p>Groovy DSL for ML model definition and scripting</p>
+                        <a href="../ml-script/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/ml/script/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
                 </div>
             </section>

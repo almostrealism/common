@@ -27,7 +27,6 @@
     <orderEntry type="library" name="Maven: org.almostrealism:relation:0.13" level="project" />
     <orderEntry type="library" name="Maven: org.almostrealism:uml:0.13" level="project" />
     <orderEntry type="library" name="Maven: org.almostrealism:io:0.13" level="project" />
-    <orderEntry type="module" module-name="economics" />
     <orderEntry type="module" module-name="algebra" />
     <orderEntry type="module" module-name="hardware" />
     <orderEntry type="module" module-name="code" />
