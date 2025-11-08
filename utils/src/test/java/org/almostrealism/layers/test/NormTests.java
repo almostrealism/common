@@ -43,7 +43,27 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatures {
+	public static boolean enableRandom = true;
 	public static double threshold = 0.005;
+
+	protected static double values[] = {0.5, 1.5, 2.0};
+	protected static int pos = 0;
+
+	private static double random() {
+		if (enableRandom) {
+			return Math.random();
+		}
+
+		return values[pos++ % values.length];
+	}
+
+	protected Supplier<PackedCollection<?>> randomInput(int size) {
+		return () -> new PackedCollection<>(size).fill(() -> random() / 10.0);
+	}
+
+	protected Supplier<PackedCollection<?>> randomGradient(int size) {
+		return () -> new PackedCollection<>(shape(size)).fill(() -> 1 + (random() * 4.0));
+	}
 
 	protected void validate(int groups, int groupSize, int v,
 							PackedCollection<?> in, PackedCollection<?> out,
@@ -635,15 +655,6 @@ public class NormTests implements LayerFeatures, GradientTestFeatures, TestFeatu
 		} else {
 			profile(name, op).save("results/" + name + ".xml");
 		}
-	}
-
-	protected Supplier<PackedCollection<?>> randomInput(int size) {
-		return () -> new PackedCollection<>(size).fill(() -> Math.random() / 10.0);
-	}
-
-	protected Supplier<PackedCollection<?>> randomGradient(int size) {
-		// return () -> new PackedCollection<>(shape(size)).fill(() -> Math.random() / 4.0);
-		return () -> new PackedCollection<>(shape(size)).fill(() -> 1 + (Math.random() * 4.0));
 	}
 
 	@Test

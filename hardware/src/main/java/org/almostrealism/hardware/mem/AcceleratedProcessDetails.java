@@ -71,6 +71,20 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	public int getKernelSize() { return kernelSize; }
 
+	private synchronized void notifyListeners() {
+		listeners.forEach(r -> {
+			try {
+				r.run();
+			} finally {
+				if (semaphore != null) {
+					semaphore.countDown();
+				}
+			}
+		});
+
+		listeners.clear();
+	}
+
 	protected synchronized void checkReady() {
 		if (!isReady()) return;
 
@@ -78,22 +92,10 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			arguments = replacementManager.processArguments(originalArguments);
 		}
 
-		Runnable notice = () -> {
-			listeners.forEach(r -> {
-				try {
-					r.run();
-				} finally {
-					if (semaphore != null) {
-						semaphore.countDown();
-					}
-				}
-			});
-		};
-
 		if (enableAsyncListeners) {
-			executor.execute(notice);
+			executor.execute(this::notifyListeners);
 		} else {
-			notice.run();
+			notifyListeners();
 		}
 	}
 
