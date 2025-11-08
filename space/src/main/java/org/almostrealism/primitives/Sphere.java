@@ -136,7 +136,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * <h4>The Process:</h4>
 	 * <ol>
 	 *   <li><b>World Space:</b> Sphere has transform M (typically translation by location + scale by size)</li>
-	 *   <li><b>Inverse Transform:</b> Apply M⁻¹ to the ray, moving it into "sphere space"</li>
+	 *   <li><b>Inverse Transform:</b> Apply M^-1 to the ray, moving it into "sphere space"</li>
 	 *   <li><b>Sphere Space:</b> Sphere is now at origin with radius 1.0 (unit sphere)</li>
 	 *   <li><b>Intersection:</b> Compute ray-sphere intersection using the transformed ray</li>
 	 *   <li><b>Distance:</b> Return parameter t where intersection occurs</li>
@@ -148,32 +148,32 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 *
 	 * <p>The intersection math (lines 154-169) uses the formula:</p>
 	 * <pre>
-	 * g = D·D  (direction dot direction = squared length of direction)
-	 * discriminant = b² - g(c - 1)
-	 * t = (-b ± sqrt(discriminant)) / g
+	 * g = D.D  (direction dot direction = squared length of direction)
+	 * discriminant = b^2 - g(c - 1)
+	 * t = (-b +/- sqrt(discriminant)) / g
 	 * </pre>
 	 *
-	 * <p><b>Key Insight:</b> The formula divides by g = ||D||², which automatically compensates
+	 * <p><b>Key Insight:</b> The formula divides by g = ||D||^2, which automatically compensates
 	 * for non-normalized directions:</p>
 	 * <ul>
 	 *   <li>If ||D|| = 1 (normalized): g = 1, and t is the actual distance in world space</li>
-	 *   <li>If ||D|| ≠ 1 (scaled): g = ||D||², and t is still mathematically correct but represents
+	 *   <li>If ||D|| != 1 (scaled): g = ||D||^2, and t is still mathematically correct but represents
 	 *       a parameter value rather than geometric distance</li>
 	 * </ul>
 	 *
 	 * <h4>Transform Effects on Ray Direction:</h4>
 	 *
-	 * <p>When inverse transform M⁻¹ is applied to a ray:</p>
+	 * <p>When inverse transform M^-1 is applied to a ray:</p>
 	 * <ul>
 	 *   <li><b>Translation:</b> Affects origin only, direction unchanged</li>
-	 *   <li><b>Scale by factor s:</b> Origin scaled by s, direction scaled by s, length becomes s×||D||</li>
+	 *   <li><b>Scale by factor s:</b> Origin scaled by s, direction scaled by s, length becomes s*||D||</li>
 	 *   <li><b>Inverse scale by 1/s:</b> Direction scaled by 1/s, length becomes ||D||/s</li>
 	 * </ul>
 	 *
 	 * <p>Example: Sphere at location (2,0,0) with size 1.0</p>
 	 * <ul>
 	 *   <li>Transform M: translate(2,0,0) then scale(1,1,1) = just translation</li>
-	 *   <li>Inverse M⁻¹: translate(-2,0,0)</li>
+	 *   <li>Inverse M^-1: translate(-2,0,0)</li>
 	 *   <li>Ray: origin=(2,0,5), direction=(0,0,-1) [normalized, length 1]</li>
 	 *   <li>Transformed ray: origin=(0,0,5), direction=(0,0,-1) [still length 1]</li>
 	 *   <li>Intersection: t = 4.0 (sphere extends from z=-1 to z=1, ray hits at z=1)</li>
@@ -182,33 +182,33 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 * <p>Example: Sphere at location (0,0,0) with size 2.0</p>
 	 * <ul>
 	 *   <li>Transform M: scale(2,2,2)</li>
-	 *   <li>Inverse M⁻¹: scale(0.5,0.5,0.5)</li>
+	 *   <li>Inverse M^-1: scale(0.5,0.5,0.5)</li>
 	 *   <li>Ray: origin=(0,0,10), direction=(0,0,-1) [normalized, length 1]</li>
 	 *   <li>Transformed ray: origin'=(0,0,5), direction'=(0,0,-0.5) [NOT normalized, length 0.5]</li>
 	 *   <li>Intersection calculation in sphere space:
 	 *     <ul>
-	 *       <li>b = O'·D' = (0,0,5)·(0,0,-0.5) = -2.5</li>
-	 *       <li>c = O'·O' = 25</li>
-	 *       <li>g = D'·D' = 0.25</li>
-	 *       <li>discriminant = b² - g(c-1) = 6.25 - 6 = 0.25</li>
+	 *       <li>b = O'.D' = (0,0,5).(0,0,-0.5) = -2.5</li>
+	 *       <li>c = O'.O' = 25</li>
+	 *       <li>g = D'.D' = 0.25</li>
+	 *       <li>discriminant = b^2 - g(c-1) = 6.25 - 6 = 0.25</li>
 	 *       <li>t = (-b - sqrt(discriminant)) / g = (2.5 - 0.5) / 0.25 = 8</li>
 	 *     </ul>
 	 *   </li>
-	 *   <li>Intersection point in sphere space: origin' + t×direction' = (0,0,5) + 8×(0,0,-0.5) = (0,0,1) ✓</li>
-	 *   <li>Intersection point in world space: (0,0,1) × 2 = (0,0,2) ✓</li>
-	 *   <li>World space distance check: ||(0,0,2) - (0,0,10)|| = 8 ✓</li>
+	 *   <li>Intersection point in sphere space: origin' + t*direction' = (0,0,5) + 8*(0,0,-0.5) = (0,0,1) OK</li>
+	 *   <li>Intersection point in world space: (0,0,1) * 2 = (0,0,2) OK</li>
+	 *   <li>World space distance check: ||(0,0,2) - (0,0,10)|| = 8 OK</li>
 	 *   <li><b>Result: The returned t=8 IS the correct world-space distance!</b></li>
 	 * </ul>
 	 *
 	 * <h4>Mathematical Correctness of Non-Normalized Directions</h4>
 	 *
 	 * <p><b>Conclusion:</b> The intersection calculation is mathematically correct even when the
-	 * transformed ray direction is NOT normalized. The division by g = ||D||² in the quadratic
+	 * transformed ray direction is NOT normalized. The division by g = ||D||^2 in the quadratic
 	 * formula automatically compensates for direction scaling:</p>
 	 * <ul>
 	 *   <li>Inverse transform scales direction by factor 1/s</li>
-	 *   <li>This makes g = (1/s)² = 1/s²</li>
-	 *   <li>Division by g multiplies the result by s²</li>
+	 *   <li>This makes g = (1/s)^2 = 1/s^2</li>
+	 *   <li>Division by g multiplies the result by s^2</li>
 	 *   <li>Combined effect correctly accounts for the transform</li>
 	 *   <li>Returned t represents correct distance in WORLD SPACE, not sphere space</li>
 	 * </ul>

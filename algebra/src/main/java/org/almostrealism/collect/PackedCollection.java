@@ -342,7 +342,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 	 * <ul>
 	 * <li>Input shape: (d1, d2, ..., dn)</li>
 	 * <li>Output shape: (count, d1, d2, ..., dn)</li>
-	 * <li>Total size: count × original_size</li>
+	 * <li>Total size: count * original_size</li>
 	 * </ul>
 	 * 
 	 * <h4>Usage Examples:</h4>

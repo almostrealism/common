@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Almost Realism Framework Documentation</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Almost Realism Framework</h1>
+            <p class="tagline">Hardware-Accelerated Computation Framework for Machine Learning, Physics, and Graphics</p>
+            <nav>
+                <a href="#overview">Overview</a>
+                <a href="#modules">Modules</a>
+                <a href="#tutorials">Tutorials</a>
+                <a href="#api">API Docs</a>
+                <a href="#getting-started">Getting Started</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>Almost Realism is a comprehensive Java framework for building hardware-accelerated applications in machine learning, computer graphics, and physics simulation. The framework provides:</p>
+
+                <div class="features">
+                    <div class="feature">
+                        <h3>🚀 Hardware Acceleration</h3>
+                        <p>Automatic GPU compilation with support for OpenCL, Metal, and native JNI backends.</p>
+                    </div>
+                    <div class="feature">
+                        <h3>📊 ML & Deep Learning</h3>
+                        <p>Transformer models, autoregressive inference, and training infrastructure.</p>
+                    </div>
+                    <div class="feature">
+                        <h3>⚛️ Physics Simulation</h3>
+                        <p>Quantum mechanics, photon fields, and rigid body dynamics.</p>
+                    </div>
+                    <div class="feature">
+                        <h3>📐 Computational Geometry</h3>
+                        <p>Vector math, ray tracing, and 3D graphics primitives.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Architecture</h2>
+                <p>The framework is built on a layered architecture:</p>
+                <pre class="architecture-diagram">
+┌─────────────────────────────────────┐
+│   Application Layer                │  ML Models, Simulations
+├─────────────────────────────────────┤
+│   Graph Layer (Computation Graphs)  │  Neural Networks, Pipelines
+├─────────────────────────────────────┤
+│   Algebra Layer                     │  Vectors, Matrices, Tensors
+├─────────────────────────────────────┤
+│   Collection Layer (PackedCollection│  Multi-dimensional Arrays
+├─────────────────────────────────────┤
+│   Relation Layer (Producer/Evaluable│  Lazy Evaluation, Optimization
+├─────────────────────────────────────┤
+│   Hardware Layer                    │  GPU/CPU Kernel Compilation
+└─────────────────────────────────────┘</pre>
+            </section>
+
+            <section id="modules">
+                <h2>Framework Modules</h2>
+                <p>The framework consists of 24 specialized modules:</p>
+
+                <div class="module-grid">
+                    <div class="module-card core">
+                        <h3><a href="modules/relation.html">relation</a></h3>
+                        <span class="badge">Core</span>
+                        <p>Producer/Evaluable abstraction - foundation for deferred execution and computation graphs</p>
+                        <a href="../relation/README.md" class="doc-link">README</a> | <a href="apidocs/io/almostrealism/relation/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card core">
+                        <h3><a href="modules/collect.html">collect</a></h3>
+                        <span class="badge">Core</span>
+                        <p>PackedCollection - memory-efficient multi-dimensional data structures</p>
+                        <a href="../collect/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/collect/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card core">
+                        <h3><a href="modules/algebra.html">algebra</a></h3>
+                        <span class="badge">Core</span>
+                        <p>Vector, Matrix, Scalar types with hardware-accelerated operations</p>
+                        <a href="../algebra/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/algebra/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card core">
+                        <h3><a href="modules/hardware.html">hardware</a></h3>
+                        <span class="badge">Core</span>
+                        <p>GPU/CPU kernel compilation and execution layer</p>
+                        <a href="../hardware/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/hardware/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/graph.html">graph</a></h3>
+                        <p>Neural network layers and computation graph management</p>
+                        <a href="apidocs/org/almostrealism/graph/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/ml.html">ml</a></h3>
+                        <p>Machine learning models, transformers, and training infrastructure</p>
+                        <a href="apidocs/org/almostrealism/ml/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/io.html">io</a></h3>
+                        <p>Logging, metrics, alerting, and lifecycle management</p>
+                        <a href="../io/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/io/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/time.html">time</a></h3>
+                        <p>Time-series processing and signal analysis (FFT, filtering)</p>
+                        <a href="../time/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/time/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/stats.html">stats</a></h3>
+                        <p>Probability distributions and statistical sampling</p>
+                        <a href="../stats/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/stats/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/physics.html">physics</a></h3>
+                        <p>Quantum mechanics, photon fields, rigid body dynamics</p>
+                        <a href="../physics/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/physics/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/utils.html">utils</a></h3>
+                        <p>Testing framework, model training utilities, and helpers</p>
+                        <a href="../utils/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/util/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3><a href="modules/tools.html">tools</a></h3>
+                        <p>JavaFX/Swing UI tools for operation profiling visualization</p>
+                        <a href="../tools/README.md" class="doc-link">README</a> | <a href="apidocs/org/almostrealism/ui/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3>geometry</h3>
+                        <p>Geometric primitives, ray tracing, intersection tests</p>
+                        <a href="apidocs/org/almostrealism/geometry/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3>space</h3>
+                        <p>3D scene management, cameras, vertices</p>
+                        <a href="apidocs/org/almostrealism/primitives/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3>color</h3>
+                        <p>Color representation and transformations</p>
+                        <a href="apidocs/org/almostrealism/color/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3>chemistry</h3>
+                        <p>Chemical elements and atomic models</p>
+                        <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
+                    </div>
+
+                    <div class="module-card">
+                        <h3>Other Modules</h3>
+                        <p>code, heredity, economics, optimize, render, uml, llvm, ml-script</p>
+                        <a href="modules/all.html">View All</a>
+                    </div>
+                </div>
+            </section>
+
+            <section id="getting-started">
+                <h2>Getting Started</h2>
+
+                <h3>Installation</h3>
+                <pre><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.almostrealism&lt;/groupId&gt;
+    &lt;artifactId&gt;ar-{module}&lt;/artifactId&gt;
+    &lt;version&gt;0.72&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+
+                <h3>Environment Setup</h3>
+                <p>For hardware acceleration, set environment variables:</p>
+                <pre><code>export AR_HARDWARE_LIBS=/tmp/ar_libs/
+export AR_HARDWARE_DRIVER=native  # or opencl, metal</code></pre>
+
+                <h3>Quick Example</h3>
+                <pre><code class="language-java">import org.almostrealism.algebra.*;
+import org.almostrealism.collect.*;
+
+// Create vectors
+PackedCollection&lt;Vector&gt; vectors = Vector.bank(1000);
+
+// Hardware-accelerated operations
+CollectionProducer&lt;?&gt; normalized = normalize(cp(vectors));
+CollectionProducer&lt;?&gt; scaled = normalized.multiply(2.0);
+
+// Execute on GPU
+PackedCollection&lt;?&gt; result = scaled.get().evaluate();</code></pre>
+            </section>
+
+            <section id="tutorials">
+                <h2>Tutorials</h2>
+                <ul class="tutorial-list">
+                    <li><a href="tutorials/01-vectors-and-operations.html">Working with Vectors and Operations</a></li>
+                    <li><a href="tutorials/02-packedcollection-basics.html">PackedCollection Fundamentals</a></li>
+                    <li><a href="tutorials/03-hardware-acceleration.html">Hardware Acceleration Setup</a></li>
+                    <li><a href="tutorials/04-computation-graphs.html">Building Computation Graphs</a></li>
+                    <li><a href="tutorials/05-ml-inference.html">Running ML Models</a></li>
+                    <li><a href="tutorials/06-signal-processing.html">Signal Processing with Time Module</a></li>
+                    <li><a href="tutorials/07-testing-best-practices.html">Testing Best Practices</a></li>
+                </ul>
+            </section>
+
+            <section id="api">
+                <h2>API Documentation</h2>
+                <p>Complete JavaDoc API documentation is available for all modules:</p>
+                <ul>
+                    <li><a href="apidocs/index.html">Complete API Documentation (All Modules)</a></li>
+                    <li>Individual module JavaDocs are linked from each module card above</li>
+                </ul>
+                <p><strong>Note:</strong> To regenerate JavaDoc HTML, run:</p>
+                <pre><code>mvn javadoc:aggregate</code></pre>
+                <p>This will create HTML documentation in <code>docs/apidocs/</code></p>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+                <ul>
+                    <li><a href="../README.md">Main Project README</a></li>
+                    <li><a href="../CLAUDE.md">Development Guidelines for Claude Code</a></li>
+                    <li><a href="https://github.com/almostrealism/common">GitHub Repository</a></li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+            <p>Generated documentation for Almost Realism v0.72</p>
+        </footer>
+    </div>
+
+    <script src="js/docs.js"></script>
+</body>
+</html>

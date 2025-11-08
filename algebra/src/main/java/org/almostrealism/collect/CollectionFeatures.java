@@ -750,7 +750,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * 
 	 * // Create a 3D tensor filled with pi
 	 * CollectionProducer<PackedCollection<?>> piTensor = constant(shape(2, 2, 2), Math.PI);
-	 * // Result: 2x2x2 tensor where all 8 elements equal π
+	 * // Result: 2x2x2 tensor where all 8 elements equal pi
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> constant(TraversalPolicy shape, double value) {
@@ -1748,7 +1748,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *   <li>Matrix/tensor transposition</li>
 	 *   <li>Changing data layout for optimal access patterns</li>
 	 *   <li>Preparing data for operations that expect specific dimension orders</li>
-	 *   <li>Converting between different tensor format conventions (e.g., NCHW ↔ NHWC)</li>
+	 *   <li>Converting between different tensor format conventions (e.g., NCHW &lt;-&gt; NHWC)</li>
 	 * </ul>
 	 * 
 	 * <p><strong>Usage Examples:</strong></p>
@@ -2526,7 +2526,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Square root in mathematical expressions
 	 * CollectionProducer<PackedCollection<?>> squares = c(1.0, 4.0, 9.0);
 	 * CollectionProducer<PackedCollection<?>> magnitude = sqrt(sum(squares));
-	 * // Result: sqrt(1+4+9) = sqrt(14) ≈ 3.74
+	 * // Result: sqrt(1+4+9) = sqrt(14) ~= 3.74
 	 * }</pre>
 	 */
 	default <T extends PackedCollection<?>> CollectionProducer<T> sqrt(Producer<T> value) {

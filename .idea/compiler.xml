@@ -7,28 +7,31 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="ar-space" />
-        <module name="ar-llvm" />
-        <module name="ar-code" />
-        <module name="ar-geometry" />
+        <module name="ar-render" />
+        <module name="ar-tools" />
         <module name="ar-algebra" />
         <module name="ar-io" />
-        <module name="ar-heredity" />
         <module name="ar-swing" />
+        <module name="ar-ml-script" />
         <module name="ar-color" />
-        <module name="ar-stats" />
-        <module name="Common" />
         <module name="ar-relation" />
-        <module name="ar-ml" />
-        <module name="ar-graph" />
         <module name="ar-optimize" />
-        <module name="ar-collect" />
         <module name="ar-physics" />
         <module name="ar-uml" />
         <module name="ar-chemistry" />
         <module name="ar-time" />
         <module name="ar-utils" />
-        <module name="ar-economics" />
         <module name="ar-hardware" />
+        <module name="ar-llvm" />
+        <module name="ar-code" />
+        <module name="ar-geometry" />
+        <module name="ar-heredity" />
+        <module name="ar-stats" />
+        <module name="Common" />
+        <module name="ar-ml" />
+        <module name="ar-graph" />
+        <module name="ar-collect" />
+        <module name="ar-economics" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
@@ -50,13 +53,16 @@
       <module name="ar-io" options="-h target/headers" />
       <module name="ar-llvm" options="-h target/headers" />
       <module name="ar-ml" options="-h target/headers" />
+      <module name="ar-ml-script" options="-h target/headers" />
       <module name="ar-optimize" options="-h target/headers" />
       <module name="ar-physics" options="-h target/headers" />
       <module name="ar-relation" options="-h target/headers" />
+      <module name="ar-render" options="-h target/headers" />
       <module name="ar-space" options="-h target/headers" />
       <module name="ar-stats" options="-h target/headers" />
       <module name="ar-swing" options="-h target/headers" />
       <module name="ar-time" options="-h target/headers" />
+      <module name="ar-tools" options="-h target/headers" />
       <module name="ar-uml" options="-h target/headers" />
       <module name="ar-utils" options="-h target/headers" />
       <module name="common" options="-h target/headers" />

@@ -90,7 +90,7 @@ import java.util.List;
  * <p>Zero collections have special mathematical properties that enable optimizations:</p>
  * <ul>
  *   <li><strong>Additive Identity</strong>: A + 0 = A for any collection A</li>
- *   <li><strong>Multiplicative Zero</strong>: A × 0 = 0 for any collection A</li>
+ *   <li><strong>Multiplicative Zero</strong>: A * 0 = 0 for any collection A</li>
  *   <li><strong>Derivative Property</strong>: d/dx(0) = 0</li>
  *   <li><strong>Sum Property</strong>: sum(zeros) = 0</li>
  * </ul>
@@ -137,9 +137,9 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * This method enables critical algebraic optimizations throughout the computation
 	 * pipeline, such as:
 	 * <ul>
-	 *   <li>Multiplication by zero → zero result</li>
-	 *   <li>Addition with zero → identity operation</li>
-	 *   <li>Sum of zeros → zero result</li>
+	 *   <li>Multiplication by zero -&gt; zero result</li>
+	 *   <li>Addition with zero -&gt; identity operation</li>
+	 *   <li>Sum of zeros -&gt; zero result</li>
 	 * </ul>
 	 * 
 	 * <p>This optimization is extensively used in {@link org.almostrealism.collect.CollectionFeatures}
@@ -284,10 +284,10 @@ public class CollectionZerosComputation<T extends PackedCollection<?>> extends C
 	 * 
 	 * // Target variable: shape [2]
 	 * Producer<?> target = someVariable; // shape [2]
-	 * 
+	 *
 	 * // Delta result: shape [3, 2] - zero gradient
 	 * CollectionProducer<T> gradient = zeros.delta(target);
-	 * // Result: 3x2 matrix of zeros representing ∂zeros/∂target = 0
+	 * // Result: 3x2 matrix of zeros representing d(zeros)/d(target) = 0
 	 * }</pre>
 	 * 
 	 * @param target The target variable with respect to which the derivative is computed

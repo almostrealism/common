@@ -83,12 +83,12 @@ import java.util.function.Supplier;
  * </ul>
  * 
  * <h3>Mathematical Operation:</h3>
- * <p>For an input collection I with shape [d₁, d₂, ..., dₙ] and position offset [p₁, p₂, ..., pₙ],
- * the padding operation creates an output collection O with shape [s₁, s₂, ..., sₙ] where:</p>
+ * <p>For an input collection I with shape [d1, d2, ..., dn] and position offset [p1, p2, ..., pn],
+ * the padding operation creates an output collection O with shape [s1, s2, ..., sn] where:</p>
  * <ul>
- * <li>sᵢ ≥ pᵢ + dᵢ for all dimensions i</li>
- * <li>O[i₁, i₂, ..., iₙ] = I[i₁-p₁, i₂-p₂, ..., iₙ-pₙ] if all (iⱼ-pⱼ) are within input bounds</li>
- * <li>O[i₁, i₂, ..., iₙ] = 0 otherwise</li>
+ * <li>si &gt;= pi + di for all dimensions i</li>
+ * <li>O[i1, i2, ..., in] = I[i1-p1, i2-p2, ..., in-pn] if all (ij-pj) are within input bounds</li>
+ * <li>O[i1, i2, ..., in] = 0 otherwise</li>
  * </ul>
  * 
  * @param <T> The type of PackedCollection being padded
@@ -110,7 +110,7 @@ public class PackedCollectionPad<T extends PackedCollection<?>> extends Traversa
 	 * Constructs a new PackedCollectionPad computation.
 	 * 
 	 * @param shape The desired output shape after padding. Each dimension must be large enough
-	 *              to contain the input data at the specified position: shape[i] ≥ position[i] + inputShape[i]
+	 *              to contain the input data at the specified position: shape[i] &gt;= position[i] + inputShape[i]
 	 * @param position The offset position where the input data should be placed within the output.
 	 *                 Each value specifies how many zeros to add before the input data in that dimension.
 	 *                 For example, position[1] = 2 means add 2 zeros before the input data in dimension 1.

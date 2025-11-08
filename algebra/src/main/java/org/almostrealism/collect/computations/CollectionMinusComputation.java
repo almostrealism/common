@@ -37,8 +37,8 @@ import java.util.List;
  * backpropagation in machine learning and optimization scenarios.</p>
  * 
  * <h2>Mathematical Operation</h2>
- * <p>For a collection C with elements [c₁, c₂, ..., cₙ], the minus operation produces
- * a new collection with elements [-c₁, -c₂, ..., -cₙ].</p>
+ * <p>For a collection C with elements [c1, c2, ..., cn], the minus operation produces
+ * a new collection with elements [-c1, -c2, ..., -cn].</p>
  * 
  * <h2>Usage Patterns</h2>
  * <p>This computation is typically used indirectly through higher-level methods such as:</p>
@@ -232,8 +232,8 @@ public class CollectionMinusComputation<T extends PackedCollection<?>> extends T
 	 * <p>The returned expression creates a computation tree like:</p>
 	 * <pre>
 	 * UniformCollectionExpression("minus")
-	 *   └── Minus operation
-	 *       └── Input expression (args[1])
+	 *   +-- Minus operation
+	 *       +-- Input expression (args[1])
 	 * </pre>
 	 * 
 	 * @see io.almostrealism.code.ExpressionFeatures#minus(TraversalPolicy, TraversableExpression)

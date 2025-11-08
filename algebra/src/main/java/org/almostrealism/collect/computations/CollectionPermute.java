@@ -33,10 +33,10 @@ import java.util.List;
  * all element values.
  * 
  * <p><strong>Dimension Permutation Concept:</strong></p>
- * <p>Given a collection with shape (d₀, d₁, d₂, ..., dₙ) and a permutation order [p₀, p₁, p₂, ..., pₙ],
- * the result will have shape (d_{p₀}, d_{p₁}, d_{p₂}, ..., d_{pₙ}). The element that was at position
- * [i₀, i₁, i₂, ..., iₙ] in the original collection will be accessible at position 
- * [i_{p₀}, i_{p₁}, i_{p₂}, ..., i_{pₙ}] in the permuted collection.</p>
+ * <p>Given a collection with shape (d0, d1, d2, ..., dn) and a permutation order [p0, p1, p2, ..., pn],
+ * the result will have shape (d_p0, d_p1, d_p2, ..., d_pn). The element that was at position
+ * [i0, i1, i2, ..., in] in the original collection will be accessible at position
+ * [i_p0, i_p1, i_p2, ..., i_pn] in the permuted collection.</p>
  * 
  * <p><strong>Usage Examples:</strong></p>
  * <pre>{@code

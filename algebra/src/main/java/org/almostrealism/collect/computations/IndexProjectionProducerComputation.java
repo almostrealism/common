@@ -56,9 +56,9 @@ import java.util.stream.Collectors;
  * For example, if you have a 4-element collection [a, b, c, d] and want to create a subset [a, c, d],
  * the index projection function would map:</p>
  * <ul>
- *   <li>Output index 0 → Input index 0 (element a)</li>
- *   <li>Output index 1 → Input index 2 (element c)</li>
- *   <li>Output index 2 → Input index 3 (element d)</li>
+ *   <li>Output index 0 -> Input index 0 (element a)</li>
+ *   <li>Output index 1 -> Input index 2 (element c)</li>
+ *   <li>Output index 2 -> Input index 3 (element d)</li>
  * </ul>
  * 
  * <h2>Usage Examples</h2>

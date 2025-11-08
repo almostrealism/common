@@ -16,9 +16,43 @@
 
 package org.almostrealism.io;
 
+/**
+ * Interface for objects that can provide a human-readable description of themselves.
+ *
+ * <p>This interface is used throughout the Almost Realism framework to provide
+ * more informative string representations than {@code toString()}, particularly
+ * for complex objects like computation graphs, models, and operations.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * public class MyOperation implements Describable {
+ *     @Override
+ *     public String describe() {
+ *         return "MyOperation[input=" + input + ", output=" + output + "]";
+ *     }
+ * }
+ *
+ * // Get description safely
+ * String desc = Describable.describe(myObject);  // Works even if myObject is null
+ * }</pre>
+ *
+ * @see Object#toString()
+ */
 public interface Describable {
+	/**
+	 * Returns a human-readable description of this object.
+	 *
+	 * @return a descriptive string
+	 */
 	String describe();
 
+	/**
+	 * Returns a description of the given object, using {@link #describe()} if available,
+	 * otherwise {@link Object#toString()}.
+	 *
+	 * @param o the object to describe, or null
+	 * @return the description, or null if the object is null
+	 */
 	static String describe(Object o) {
 		if (o == null)
 			return null;

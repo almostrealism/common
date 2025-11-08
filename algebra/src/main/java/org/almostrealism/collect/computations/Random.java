@@ -60,7 +60,7 @@ import java.util.stream.IntStream;
  * <p><strong>Distribution Types:</strong></p>
  * <ul>
  *   <li><strong>Uniform:</strong> Values distributed uniformly in the range [0.0, 1.0)</li>
- *   <li><strong>Normal:</strong> Values distributed according to standard normal distribution (μ=0, σ=1)</li>
+ *   <li><strong>Normal:</strong> Values distributed according to standard normal distribution (mean=0, stddev=1)</li>
  * </ul>
  * 
  * <p>The class also provides static utility methods {@link #nextInt()} and {@link #nextFloat()}
@@ -110,7 +110,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @throws IllegalArgumentException if the shape has zero total size
 	 */
@@ -126,7 +126,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @param seed the seed for the random number generator, or null to use a default seed
 	 * @throws IllegalArgumentException if the shape has zero total size
@@ -143,7 +143,7 @@ public class Random implements CollectionProducer<PackedCollection<?>>, Operatio
 	 * </p>
 	 * 
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
-	 * @param normal if true, generates values from a standard normal distribution (μ=0, σ=1);
+	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
 	 * @param random the source for new random number numbers
 	 * @throws IllegalArgumentException if the shape has zero total size
