@@ -32,8 +32,6 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class AcceleratedProcessDetails implements ConsoleFeatures {
-	public static boolean enableAsyncListeners =
-			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 
 	private Object[] originalArguments;
 	private Object[] arguments;
@@ -92,7 +90,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			arguments = replacementManager.processArguments(originalArguments);
 		}
 
-		if (enableAsyncListeners) {
+		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(this::notifyListeners);
 		} else {
 			notifyListeners();

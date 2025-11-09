@@ -49,8 +49,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	// TODO  Should be removed?
 	public static boolean enableOutputCount = true;
 
-	public static boolean enableAsync =
-			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 	public static boolean enableConstantCache =
 			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
 	public static boolean enableKernelSizeWarnings =
@@ -233,7 +231,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				if (!enableAsync ||
+				if (!Hardware.getLocalHardware().isAsync() ||
 						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
 						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
@@ -292,7 +290,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	protected void execute(Runnable r) {
-		if (enableAsync) {
+		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);
 		} else {
 			r.run();
