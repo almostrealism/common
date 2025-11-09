@@ -43,6 +43,58 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Interface for computations that produce {@link PackedCollection} results with hardware acceleration.
+ *
+ * <p>
+ * {@link CollectionProducerComputation} combines {@link ProducerComputation} and
+ * {@link CollectionProducerParallelProcess} to provide the complete infrastructure for
+ * hardware-accelerated collection operations. This interface is the foundation for all
+ * computations that:
+ * <ul>
+ *   <li>Produce {@link PackedCollection} results</li>
+ *   <li>Can be compiled to native code or GPU kernels</li>
+ *   <li>Support automatic differentiation</li>
+ *   <li>Enable parallel execution</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Key Capabilities</h2>
+ * <ul>
+ *   <li><b>Hardware Acceleration:</b> Automatic compilation to optimized kernels via {@link #get()}</li>
+ *   <li><b>Shape Management:</b> Flexible shape handling with {@link #postProcessOutput} and {@link #shapeForLength}</li>
+ *   <li><b>Process Isolation:</b> {@link IsolatedProcess} for independent execution contexts</li>
+ *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #applyDeltaStrategy}</li>
+ *   <li><b>Result Postprocessing:</b> Shape adjustment and wrapping via {@link #postProcessOutput}</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ * <pre>{@code
+ * // 1. Create computation
+ * CollectionProducerComputation<PackedCollection<?>> comp = ...;
+ *
+ * // 2. Get evaluable (compiles to hardware)
+ * Evaluable<PackedCollection<?>> ev = comp.get();
+ *
+ * // 3. Execute
+ * PackedCollection<?> result = ev.evaluate();
+ * }</pre>
+ *
+ * <h2>Configuration Flags</h2>
+ * <ul>
+ *   <li><b>isolationLogging:</b> Enables logging when processes are isolated (default: false,
+ *       controlled by AR_ISOLATION_LOGGING env var)</li>
+ *   <li><b>enableShapeTrim:</b> Avoids prepending dimensions in {@link #postProcessOutput}
+ *       when enabled (default: false)</li>
+ * </ul>
+ *
+ * @param <T>  the packed collection type produced by this computation
+ * @author  Michael Murray
+ * @see CollectionProducerParallelProcess
+ * @see ProducerComputation
+ * @see PackedCollection
+ * @see DefaultCollectionEvaluable
+ */
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		 ProducerComputation<T>, CollectionProducerParallelProcess<T> {
 	boolean isolationLogging = SystemUtils.isEnabled("AR_ISOLATION_LOGGING").orElse(false);

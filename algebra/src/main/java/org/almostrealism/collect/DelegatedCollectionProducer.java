@@ -21,30 +21,102 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.DelegatedProducer;
 
+/**
+ * A wrapper that delegates collection producer operations to an underlying {@link CollectionProducer}.
+ *
+ * <p>
+ * {@link DelegatedCollectionProducer} provides a lightweight delegation pattern for collection producers,
+ * forwarding method calls to a wrapped producer while allowing subclasses to override specific behaviors.
+ * This is useful for:
+ * <ul>
+ *   <li>Adding additional metadata or tracking to existing producers</li>
+ *   <li>Modifying specific behaviors while preserving most functionality</li>
+ *   <li>Creating proxy or adapter patterns for collection operations</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Direct vs Indirect Delegation</h2>
+ * <p>
+ * The {@code directDelegate} parameter controls how method calls are forwarded:
+ * <ul>
+ *   <li><b>Direct (true):</b> Methods are delegated directly to the wrapped producer</li>
+ *   <li><b>Indirect (false):</b> Additional processing or filtering may occur before delegation</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Fixed Count Behavior</h2>
+ * <p>
+ * The {@code fixedCount} parameter affects how {@link #isFixedCount()} behaves:
+ * <ul>
+ *   <li><b>true:</b> Delegates to the wrapped producer's {@link #isFixedCount()}</li>
+ *   <li><b>false:</b> Always returns false, indicating variable count</li>
+ * </ul>
+ * </p>
+ *
+ * @param <T>  the packed collection type
+ * @author  Michael Murray
+ * @see CollectionProducer
+ * @see org.almostrealism.hardware.computations.DelegatedProducer
+ */
 public class DelegatedCollectionProducer<T extends PackedCollection<?>>
 						extends DelegatedProducer<T>
 						implements CollectionProducerBase<T, Producer<T>> {
 	private boolean fixedCount;
 
+	/**
+	 * Creates a delegated collection producer with direct delegation and fixed count.
+	 *
+	 * @param op  the collection producer to wrap
+	 */
 	public DelegatedCollectionProducer(CollectionProducer<T> op) {
 		this(op, true);
 	}
+
+	/**
+	 * Creates a delegated collection producer with the specified delegation mode and fixed count.
+	 *
+	 * @param op  the collection producer to wrap
+	 * @param directDelegate  true for direct delegation, false for indirect
+	 */
 	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate) {
 		this(op, directDelegate, true);
 	}
+
+	/**
+	 * Creates a delegated collection producer with full configuration.
+	 *
+	 * @param op  the collection producer to wrap
+	 * @param directDelegate  true for direct delegation, false for indirect
+	 * @param fixedCount  true to delegate isFixedCount(), false to always return false
+	 */
 	public DelegatedCollectionProducer(CollectionProducer<T> op, boolean directDelegate, boolean fixedCount) {
 		super(op, directDelegate);
 		this.fixedCount = fixedCount;
 	}
 
+	/**
+	 * Returns the shape of the wrapped collection producer.
+	 *
+	 * @return the traversal policy from the wrapped producer
+	 */
 	@Override
 	public TraversalPolicy getShape() {
 		return ((CollectionProducer) op).getShape();
 	}
 
+	/**
+	 * Traverse operation is not supported on delegated producers.
+	 *
+	 * @throws UnsupportedOperationException always thrown
+	 */
 	@Override
 	public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
 
+	/**
+	 * Reshape operation is not supported on delegated producers.
+	 *
+	 * @throws UnsupportedOperationException always thrown
+	 */
 	@Override
 	public Producer<T> reshape(TraversalPolicy shape) {
 		throw new UnsupportedOperationException();
@@ -56,16 +128,39 @@ public class DelegatedCollectionProducer<T extends PackedCollection<?>>
 		return CollectionProducerBase.super.getCountLong();
 	}
 
+	/**
+	 * Returns whether this producer has a fixed element count.
+	 *
+	 * <p>
+	 * Behavior depends on the {@code fixedCount} parameter:
+	 * <ul>
+	 *   <li>If true: delegates to the wrapped producer's isFixedCount()</li>
+	 *   <li>If false: always returns false</li>
+	 * </ul>
+	 * </p>
+	 *
+	 * @return true if the count is fixed, false otherwise
+	 */
 	@Override
 	public boolean isFixedCount() {
 		return fixedCount ? super.isFixedCount() : false;
 	}
 
+	/**
+	 * Returns the total size of the output collection.
+	 *
+	 * @return the total size from the wrapped producer's shape
+	 */
 	@Override
 	public long getOutputSize() {
 		return ((CollectionProducer) op).getShape().getTotalSize();
 	}
 
+	/**
+	 * Returns a signature string for this delegated producer including shape information.
+	 *
+	 * @return signature string with shape details, or null if no signature available
+	 */
 	@Override
 	public String signature() {
 		String signature = super.signature();

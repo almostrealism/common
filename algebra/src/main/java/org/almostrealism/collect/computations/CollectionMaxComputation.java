@@ -26,11 +26,112 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 
+/**
+ * A computation that performs a reduction operation to find the maximum element in a {@link PackedCollection}.
+ *
+ * <p>This class extends {@link AggregatedProducerComputation} to implement a max reduction,
+ * finding the largest value among all elements of an input collection. The result is a
+ * single-element collection containing the maximum value.</p>
+ *
+ * <h2>Mathematical Operation</h2>
+ * <p>For an input collection C with elements [c₁, c₂, ..., cₙ], the computation produces:</p>
+ * <pre>
+ * result = max(c₁, c₂, c₃, ..., cₙ)
+ * </pre>
+ * <p>The result is a single-element collection containing the largest input value.</p>
+ *
+ * <h2>Implementation Details</h2>
+ * <p>The maximum is computed using an aggregation pattern:</p>
+ * <ul>
+ *   <li><strong>Initialization:</strong> Accumulator starts at {@link MinimumValue} (negative infinity)</li>
+ *   <li><strong>Accumulation:</strong> Each element is compared to the current maximum</li>
+ *   <li><strong>Iteration:</strong> Fixed count equal to the input collection size</li>
+ *   <li><strong>Comparison:</strong> Uses {@link Max#of(io.almostrealism.expression.Expression, io.almostrealism.expression.Expression)} for element-wise max</li>
+ * </ul>
+ *
+ * <h2>Usage Examples</h2>
+ *
+ * <p><strong>Finding maximum in a vector:</strong></p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> vector = c(3.0, 7.0, 2.0, 9.0, 5.0);
+ * CollectionMaxComputation<PackedCollection<?>> max =
+ *     new CollectionMaxComputation<>(vector);
+ *
+ * PackedCollection<?> result = max.get().evaluate();
+ * // Result: [9.0]
+ * }</pre>
+ *
+ * <p><strong>Finding maximum in a matrix (all elements):</strong></p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> matrix = c(shape(2, 3),
+ *     1.0, 8.0, 3.0,
+ *     4.0, 2.0, 6.0);
+ *
+ * CollectionMaxComputation<PackedCollection<?>> max =
+ *     new CollectionMaxComputation<>(matrix);
+ *
+ * PackedCollection<?> result = max.get().evaluate();
+ * // Result: [8.0]
+ * }</pre>
+ *
+ * <p><strong>Using via CollectionFeatures:</strong></p>
+ * <pre>{@code
+ * // More commonly used through helper methods
+ * CollectionProducer<PackedCollection<?>> data = c(-5.0, 10.0, 3.0);
+ * CollectionProducer<PackedCollection<?>> maximum = max(data);
+ * // Result: [10.0]
+ * }</pre>
+ *
+ * <h2>Performance Characteristics</h2>
+ * <ul>
+ *   <li><strong>Complexity:</strong> O(n) where n is the number of elements</li>
+ *   <li><strong>Memory:</strong> Single-element output collection</li>
+ *   <li><strong>Parallelization:</strong> Can use parallel reduction strategies</li>
+ *   <li><strong>Numerical Stability:</strong> Handles negative infinity as initial value</li>
+ * </ul>
+ *
+ * <h2>Comparison with Related Operations</h2>
+ * <ul>
+ *   <li><strong>CollectionMaxComputation:</strong> Reduction to single max value (this class)</li>
+ *   <li><strong>CollectionSumComputation:</strong> Reduction to sum</li>
+ *   <li><strong>Min Operation:</strong> Similar but finds minimum value</li>
+ *   <li><strong>ArgMax:</strong> Finds the index of the maximum value</li>
+ * </ul>
+ *
+ * @param <T> The type of {@link PackedCollection} this computation produces
+ *
+ * @see AggregatedProducerComputation
+ * @see CollectionSumComputation
+ * @see io.almostrealism.expression.Max
+ * @see io.almostrealism.expression.MinimumValue
+ * @see org.almostrealism.collect.CollectionFeatures#max(io.almostrealism.relation.Producer)
+ *
+ * @author Michael Murray
+ */
 public class CollectionMaxComputation<T extends PackedCollection<?>> extends AggregatedProducerComputation<T> {
+	/**
+	 * Constructs a max computation that reduces the input collection to a single maximum value.
+	 * The input shape is automatically determined from the producer.
+	 *
+	 * @param input The {@link Producer} providing the collection to find the maximum of
+	 */
 	public CollectionMaxComputation(Producer<PackedCollection<?>> input) {
 		this(CollectionFeatures.getInstance().shape(input), input);
 	}
 
+	/**
+	 * Constructs a max computation with an explicit shape specification.
+	 * This constructor sets up the aggregation with:
+	 * <ul>
+	 *   <li>Output shape: single element (shape.replace(shape(1)))</li>
+	 *   <li>Iteration count: total input size</li>
+	 *   <li>Initial value: negative infinity ({@link MinimumValue})</li>
+	 *   <li>Aggregation function: max(out, arg)</li>
+	 * </ul>
+	 *
+	 * @param shape The {@link TraversalPolicy} of the input collection
+	 * @param input The {@link Producer} providing the collection to find the maximum of
+	 */
 	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection<?>> input) {
 		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new MinimumValue(),
@@ -38,11 +139,25 @@ public class CollectionMaxComputation<T extends PackedCollection<?>> extends Agg
 				input);
 	}
 
+	/**
+	 * Generates a new max computation with the specified child processes.
+	 * This method creates a new instance with the same configuration but using
+	 * the child process at index 1 as the input source.
+	 *
+	 * @param children List of child {@link Process} instances where children.get(1) is the input
+	 * @return A new {@link CollectionMaxComputation} for the child input
+	 */
 	@Override
 	public CollectionMaxComputation<T> generate(List<Process<?, ?>> children) {
 		return new CollectionMaxComputation((Producer) children.get(1));
 	}
 
+	/**
+	 * Indicates that this computation supports signature generation for caching
+	 * and deduplication purposes.
+	 *
+	 * @return {@code true} to enable signature support
+	 */
 	@Override
 	protected boolean isSignatureSupported() { return true; }
 }

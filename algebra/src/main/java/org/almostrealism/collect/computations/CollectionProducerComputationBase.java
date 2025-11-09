@@ -451,6 +451,13 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 				.orElse(0L);
 	}
 
+	/**
+	 * Determines whether this computation has a fixed execution count.
+	 * A computation has a fixed count only if both the shape's count is fixed
+	 * and all parent constraints indicate a fixed count.
+	 *
+	 * @return true if the count is fixed, false otherwise
+	 */
 	@Override
 	public boolean isFixedCount() {
 		return getShape().isFixedCount() && super.isFixedCount();
@@ -767,6 +774,14 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return CollectionProducerComputation.super.delegate(original, actual);
 	}
 
+	/**
+	 * Generates a signature string for this computation including shape information.
+	 * The signature is used for computation caching and deduplication.
+	 * It combines the base signature with the detailed shape representation.
+	 *
+	 * @return A signature string including shape details, or null if no base signature exists
+	 * @see TraversalPolicy#toStringDetail()
+	 */
 	@Override
 	public String signature() {
 		String signature = super.signature();
@@ -836,6 +851,26 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 	}
 
+	/**
+	 * Assigns a delta alternate producer to the given producer for automatic differentiation.
+	 * This utility method handles unwrapping reshaped producers to set the delta alternate
+	 * on the underlying computation.
+	 *
+	 * <p>The method performs the following steps:</p>
+	 * <ul>
+	 *   <li>Unwraps {@link ReshapeProducer} to access the underlying computation</li>
+	 *   <li>Verifies the computation is a {@link CollectionProducerComputationBase}</li>
+	 *   <li>Assigns the alternate producer via {@link #setDeltaAlternate(CollectionProducer)}</li>
+	 * </ul>
+	 *
+	 * @param <T> The packed collection type
+	 * @param producer The producer to assign the delta alternate to
+	 * @param alternate The alternative producer to use for delta computations
+	 * @return The original producer (for method chaining)
+	 * @throws IllegalArgumentException if the producer is not a {@link CollectionProducerComputationBase}
+	 * @see #setDeltaAlternate(CollectionProducer)
+	 * @see ReshapeProducer
+	 */
 	public static <T extends PackedCollection<?>> CollectionProducer<T> assignDeltaAlternate(
 			CollectionProducer<T> producer, CollectionProducer<T> alternate) {
 		Producer computation;

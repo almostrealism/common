@@ -90,6 +90,13 @@ public class DefaultTraversableExpressionComputation<T extends PackedCollection<
 	 */
 	private Function<TraversableExpression[], CollectionExpression> expression;
 
+	/**
+	 * Flag indicating whether this computation should generate a signature for
+	 * program identification and reuse. When false, signature() returns null,
+	 * preventing caching of the generated program. This is useful when the
+	 * {@link CollectionExpression} contains details that wouldn't be captured
+	 * in a standard signature.
+	 */
 	private boolean generateSignature;
 
 	/**

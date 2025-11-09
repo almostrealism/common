@@ -96,6 +96,191 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
+/**
+ * Comprehensive factory interface for creating {@link CollectionProducer} computations.
+ *
+ * <p>
+ * {@link CollectionFeatures} is the primary API for building computational graphs in the Almost Realism
+ * framework. It provides over 200 factory methods organized into functional categories, enabling users
+ * to construct complex hardware-accelerated operations through simple method calls.
+ * </p>
+ *
+ * <h2>Design Pattern</h2>
+ * <p>
+ * This interface is designed as a mixin that classes can implement to gain access to all factory methods:
+ * </p>
+ * <pre>{@code
+ * public class MyComputation implements CollectionFeatures {
+ *     public void example() {
+ *         // All factory methods available directly
+ *         CollectionProducer<?> data = c(10.0);
+ *         CollectionProducer<?> result = add(data, c(5.0));
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Method Categories</h2>
+ *
+ * <h3>1. Shape Factory Methods</h3>
+ * <ul>
+ *   <li>{@code shape(int...)} - Create traversal policies</li>
+ *   <li>{@code shape(Producer<?>)} - Extract shape from producers</li>
+ *   <li>{@code traverse(int, Producer)} - Traverse along axis</li>
+ *   <li>{@code reshape(TraversalPolicy, Producer)} - Reshape producers</li>
+ * </ul>
+ *
+ * <h3>2. Producer Creation</h3>
+ * <ul>
+ *   <li>{@code v(Class)} - Create variable producers</li>
+ *   <li>{@code c(double)} - Create constant scalar producers</li>
+ *   <li>{@code c(double...)} - Create constant collection producers</li>
+ *   <li>{@code p(PackedCollection)} - Wrap collections as producers</li>
+ * </ul>
+ *
+ * <h3>3. Arithmetic Operations</h3>
+ * <ul>
+ *   <li>{@code add(Producer, Producer)} - Element-wise addition</li>
+ *   <li>{@code subtract(Producer, Producer)} - Element-wise subtraction</li>
+ *   <li>{@code multiply(Producer, Producer)} - Element-wise multiplication</li>
+ *   <li>{@code divide(Producer, Producer)} - Element-wise division</li>
+ *   <li>{@code pow(Producer, Producer)} - Element-wise exponentiation</li>
+ *   <li>{@code sqrt(Producer)} - Square root</li>
+ *   <li>{@code minus(Producer)} - Negation</li>
+ * </ul>
+ *
+ * <h3>4. Mathematical Functions</h3>
+ * <ul>
+ *   <li>{@code exp(Producer)} - Exponential (e^x)</li>
+ *   <li>{@code log(Producer)} - Natural logarithm</li>
+ *   <li>{@code abs(Producer)} - Absolute value</li>
+ *   <li>{@code sq(Producer)} - Square (x²)</li>
+ *   <li>{@code sigmoid(Producer)} - Sigmoid activation</li>
+ *   <li>{@code mod(Producer, Producer)} - Modulo operation</li>
+ * </ul>
+ *
+ * <h3>5. Statistical Operations</h3>
+ * <ul>
+ *   <li>{@code sum(Producer)} - Sum all elements</li>
+ *   <li>{@code mean(Producer)} - Mean of all elements</li>
+ *   <li>{@code variance(Producer)} - Variance</li>
+ *   <li>{@code max(Producer)} - Maximum value</li>
+ *   <li>{@code indexOfMax(Producer)} - Index of maximum</li>
+ *   <li>{@code magnitude(Producer)} - L2 norm</li>
+ *   <li>{@code subtractMean(Producer)} - Center data by subtracting mean</li>
+ * </ul>
+ *
+ * <h3>6. Comparison and Logical Operations</h3>
+ * <ul>
+ *   <li>{@code greaterThan(Producer, Producer)} - Element-wise > comparison</li>
+ *   <li>{@code lessThan(Producer, Producer)} - Element-wise < comparison</li>
+ *   <li>{@code greaterThanOrEqual(Producer, Producer)} - Element-wise >= comparison</li>
+ *   <li>{@code lessThanOrEqual(Producer, Producer)} - Element-wise <= comparison</li>
+ *   <li>{@code and(Producer, Producer)} - Logical AND</li>
+ *   <li>{@code conditional selection via greaterThan/lessThan overloads}</li>
+ * </ul>
+ *
+ * <h3>7. Transformation Operations</h3>
+ * <ul>
+ *   <li>{@code repeat(int, Producer)} - Repeat along axis</li>
+ *   <li>{@code enumerate(TraversalPolicy, Producer)} - Extract indexed elements</li>
+ *   <li>{@code subset(TraversalPolicy, Producer, int...)} - Extract subset</li>
+ *   <li>{@code permute(Producer, int...)} - Permute dimensions</li>
+ *   <li>{@code pad(Producer, int...)} - Add zero padding</li>
+ *   <li>{@code map(Producer, Function)} - Map function over elements</li>
+ *   <li>{@code reduce(Producer, Function)} - Reduce operation</li>
+ * </ul>
+ *
+ * <h3>8. Constant Generators</h3>
+ * <ul>
+ *   <li>{@code zeros(TraversalPolicy)} - Create zero-filled collection</li>
+ *   <li>{@code epsilon()} - Machine epsilon constant</li>
+ *   <li>{@code random(TraversalPolicy)} - Uniform random values</li>
+ *   <li>{@code integers(int, int)} - Integer sequence</li>
+ * </ul>
+ *
+ * <h3>9. Advanced Operations</h3>
+ * <ul>
+ *   <li>{@code enumerate()} - Index enumeration for advanced indexing</li>
+ *   <li>{@code traverseEach(Producer)} - Traverse all dimensions</li>
+ *   <li>{@code combineGradient()} - Gradient combination for backpropagation</li>
+ *   <li>{@code aggregated(Supplier)} - Aggregated producer for batching</li>
+ * </ul>
+ *
+ * <h2>Usage Examples</h2>
+ *
+ * <h3>Building a Computation Graph</h3>
+ * <pre>{@code
+ * CollectionProducer<?> x = v(PackedCollection.class);
+ * CollectionProducer<?> weights = c(1.0, 2.0, 3.0);
+ *
+ * // Build graph: y = sigmoid(x * weights + 0.5)
+ * CollectionProducer<?> y = sigmoid(
+ *     add(
+ *         multiply(x, weights),
+ *         c(0.5)
+ *     )
+ * );
+ * }</pre>
+ *
+ * <h3>Statistical Analysis</h3>
+ * <pre>{@code
+ * CollectionProducer<?> data = p(myData);
+ *
+ * // Normalize: (x - mean) / sqrt(variance)
+ * CollectionProducer<?> normalized = divide(
+ *     subtractMean(data),
+ *     sqrt(variance(data))
+ * );
+ * }</pre>
+ *
+ * <h3>Conditional Logic</h3>
+ * <pre>{@code
+ * CollectionProducer<?> x = ...;
+ * CollectionProducer<?> y = ...;
+ *
+ * // ReLU: max(0, x)
+ * CollectionProducer<?> relu = greaterThan(x, c(0.0), x, c(0.0));
+ *
+ * // Clamp: clip values to [min, max]
+ * CollectionProducer<?> clamped = lessThan(x, c(min),
+ *     c(min),
+ *     greaterThan(x, c(max), c(max), x)
+ * );
+ * }</pre>
+ *
+ * <h3>Tensor Transformations</h3>
+ * <pre>{@code
+ * CollectionProducer<?> tensor = p(myTensor); // shape (10, 20, 30)
+ *
+ * tensor.reshape(shape(200, 30))      // Reshape to (200, 30)
+ * tensor.traverse(1)                  // Traverse along axis 1
+ * tensor.subset(shape(5, 10), 0, 5)   // Extract (5, 10) subset
+ * tensor.permute(2, 0, 1)             // Permute to (30, 10, 20)
+ * tensor.pad(1, 2, 3)                 // Add padding
+ * }</pre>
+ *
+ * <h2>Implementation Notes</h2>
+ * <ul>
+ *   <li><b>Lazy Evaluation:</b> All methods return producers that build a computation graph;
+ *       actual computation happens only when {@code get().evaluate()} is called</li>
+ *   <li><b>Hardware Acceleration:</b> Computations are compiled to optimized kernels automatically</li>
+ *   <li><b>Shape Inference:</b> Output shapes are inferred from input shapes where possible</li>
+ *   <li><b>Broadcasting:</b> Binary operations support NumPy-style broadcasting</li>
+ *   <li><b>Type Safety:</b> Generic types help catch shape/type errors at compile time</li>
+ * </ul>
+ *
+ * <h2>Configuration</h2>
+ * <ul>
+ *   <li><b>enableShapelessWarning:</b> Warns when creating shapeless producers (default: false)</li>
+ * </ul>
+ *
+ * @author  Michael Murray
+ * @see CollectionProducer
+ * @see PackedCollection
+ * @see TraversalPolicy
+ * @see MatrixFeatures
+ * @see DeltaFeatures
+ */
 public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableVariableRepeat = false;

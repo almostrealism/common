@@ -44,16 +44,144 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.DoubleSupplier;
-import java.util.function.DoubleUnaryOperator;
-import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.function.*;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * A hardware-accelerated multi-dimensional array backed by contiguous memory.
+ *
+ * <p>
+ * {@link PackedCollection} is the fundamental data container in the Almost Realism framework,
+ * providing efficient storage and access for multi-dimensional numerical data. It combines:
+ * <ul>
+ *   <li><b>Memory efficiency:</b> Contiguous packed memory layout for cache-friendly access</li>
+ *   <li><b>Hardware acceleration:</b> Direct GPU/CPU memory backing via {@link MemoryData}</li>
+ *   <li><b>Multi-dimensional support:</b> Arbitrary rank tensors with {@link TraversalPolicy}</li>
+ *   <li><b>Flexible traversal:</b> Custom access patterns via {@link TraversalOrdering}</li>
+ *   <li><b>Type safety:</b> Generic type parameter for specialized memory data types</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Memory Layout</h2>
+ * <p>
+ * Data is stored in row-major order (C-style) in a contiguous memory block. For a 3×4 matrix:
+ * </p>
+ * <pre>
+ * Logical:      Memory:
+ * [0  1  2  3]  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+ * [4  5  6  7]
+ * [8  9 10 11]
+ * </pre>
+ *
+ * <h2>Construction Patterns</h2>
+ * <pre>{@code
+ * // 1. Simple shape construction
+ * PackedCollection<?> tensor = new PackedCollection<>(3, 4, 5);  // 3×4×5 tensor
+ *
+ * // 2. With traversal policy
+ * TraversalPolicy shape = new TraversalPolicy(10, 20);
+ * PackedCollection<?> matrix = new PackedCollection<>(shape);
+ *
+ * // 3. Copy constructor
+ * PackedCollection<?> copy = new PackedCollection<>(original);
+ *
+ * // 4. With existing memory delegate
+ * MemoryData memory = ...;
+ * PackedCollection<?> view = new PackedCollection<>(shape, 0, memory, 0);
+ * }</pre>
+ *
+ * <h2>Access Patterns</h2>
+ * <pre>{@code
+ * PackedCollection<?> data = new PackedCollection<>(10, 5);
+ *
+ * // Indexed access
+ * data.setMem(0, 1.5);
+ * double value = data.toDouble(0);
+ *
+ * // Array access
+ * data.set(0, new double[]{1.0, 2.0, 3.0, 4.0, 5.0});
+ * double[] row = data.get(0).toArray();
+ *
+ * // Streaming
+ * double sum = data.doubleStream().sum();
+ * data.forEach(row -> System.out.println(row));
+ * }</pre>
+ *
+ * <h2>Initialization Methods</h2>
+ * <pre>{@code
+ * PackedCollection<?> data = new PackedCollection<>(100);
+ *
+ * data.fill(0.0);                      // Fill with constant
+ * data.randFill();                     // Fill with uniform random [0,1)
+ * data.randnFill();                    // Fill with normal distribution
+ * data.identityFill();                 // Fill as identity matrix (2D only)
+ * data.fill(pos -> pos[0] * pos[1]);   // Fill with function
+ * data.replace(x -> x * 2.0);          // Transform in-place
+ * }</pre>
+ *
+ * <h2>Shape and Traversal</h2>
+ * <p>
+ * The {@link TraversalPolicy} defines the logical shape and how elements are accessed:
+ * </p>
+ * <pre>{@code
+ * PackedCollection<?> data = new PackedCollection<>(3, 4);
+ * TraversalPolicy shape = data.getShape();
+ *
+ * shape.getDimensions();     // 2
+ * shape.length(0);           // 3
+ * shape.length(1);           // 4
+ * shape.getTotalSize();      // 12
+ * shape.getTraversalAxis();  // 0 (traverse rows)
+ * }</pre>
+ *
+ * <h2>Memory Delegation</h2>
+ * <p>
+ * {@link PackedCollection} can wrap existing {@link MemoryData} without copying:
+ * </p>
+ * <pre>{@code
+ * // Create a view into existing memory
+ * MemoryData largeBuffer = ...;
+ * PackedCollection<?> subset = new PackedCollection<>(
+ *     shape(10, 10),
+ *     0,              // traversal axis
+ *     largeBuffer,
+ *     100             // offset into buffer
+ * );
+ *
+ * // Changes to subset modify largeBuffer
+ * subset.setMem(0, 5.0);
+ * }</pre>
+ *
+ * <h2>I/O Operations</h2>
+ * <pre>{@code
+ * PackedCollection<?> data = ...;
+ *
+ * // Save to file
+ * data.save(new File("tensor.dat"));
+ *
+ * // Load from file
+ * PackedCollection<?> loaded = PackedCollection.load(new File("tensor.dat"));
+ *
+ * // Print for debugging
+ * data.print();  // Pretty-printed to console
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>
+ * {@link PackedCollection} is <b>not thread-safe</b>. External synchronization is required
+ * for concurrent access. For parallel operations, use the computation framework which handles
+ * synchronization internally.
+ * </p>
+ *
+ * @param <T>  the memory data type backing this collection
+ * @author  Michael Murray
+ * @see TraversalPolicy
+ * @see MemoryData
+ * @see CollectionProducer
+ * @see CollectionFeatures
+ */
 public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter
 		implements MemoryBank<T>, Collection<T, PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static Evaluable<PackedCollection<?>> clear;

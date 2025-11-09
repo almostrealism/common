@@ -28,6 +28,140 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Core interface for producers that generate {@link PackedCollection} instances through computational graphs.
+ *
+ * <p>
+ * {@link CollectionProducer} is the fundamental building block for all collection-based computations
+ * in the Almost Realism framework. It provides a rich API for building complex computational graphs
+ * through method chaining, supporting:
+ * <ul>
+ *   <li><b>Shape transformations:</b> reshape, traverse, transpose, subset</li>
+ *   <li><b>Arithmetic operations:</b> add, subtract, multiply, divide, pow, sqrt, exp, log</li>
+ *   <li><b>Statistical operations:</b> sum, mean, variance, max, min, magnitude</li>
+ *   <li><b>Comparison operations:</b> greaterThan, lessThan, and (logical)</li>
+ *   <li><b>Advanced transformations:</b> repeat, enumerate, permute, pad, map, reduce</li>
+ *   <li><b>Automatic differentiation:</b> delta, grad for gradient computation</li>
+ * </ul>
+ * </p>
+ *
+ * <h2>Core Design Principles</h2>
+ * <ul>
+ *   <li><b>Immutable Operations:</b> All operations return new producers, never modifying the original</li>
+ *   <li><b>Deferred Execution:</b> Operations build a computational graph; actual computation happens on evaluation</li>
+ *   <li><b>Hardware Acceleration:</b> Computations compile to optimized kernels for CPU/GPU execution</li>
+ *   <li><b>Type Safety:</b> Shape information is tracked through the type system where possible</li>
+ * </ul>
+ *
+ * <h2>Method Chaining Example</h2>
+ * <pre>{@code
+ * // Build a computation graph through method chaining
+ * CollectionProducer<Vector> input = v(Vector.class);
+ * CollectionProducer<PackedCollection<?>> result = input
+ *     .reshape(shape(10, 3))      // Reshape to 10×3
+ *     .subtract(input.mean(0))    // Subtract mean along axis 0
+ *     .divide(input.variance(0))  // Divide by variance
+ *     .pow(2.0)                   // Square all elements
+ *     .sum();                     // Sum all elements
+ *
+ * // Execute the graph
+ * PackedCollection<?> output = result.get().evaluate();
+ * }</pre>
+ *
+ * <h2>Shape Operations</h2>
+ * <p>
+ * Shape operations manipulate the traversal policy without changing data:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> x = ...; // shape (2, 3, 4)
+ *
+ * x.reshape(shape(6, 4))           // Reshape to 6×4
+ * x.traverse(1)                    // Traverse along axis 1
+ * x.transpose()                    // Transpose matrix (2D only)
+ * x.subset(shape(2, 2), 0, 1)      // Extract 2×2 subset starting at (0,1)
+ * }</pre>
+ *
+ * <h2>Arithmetic Operations</h2>
+ * <p>
+ * Element-wise arithmetic with automatic broadcasting:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> a = ...;
+ * CollectionProducer<PackedCollection<?>> b = ...;
+ *
+ * a.add(b)           // Element-wise addition
+ * a.add(5.0)         // Add scalar to all elements
+ * a.multiply(b)      // Element-wise multiplication
+ * a.divide(2.0)      // Divide all elements by 2
+ * a.pow(2.0)         // Square all elements
+ * a.sqrt()           // Square root
+ * a.exp()            // e^x
+ * a.log()            // ln(x)
+ * }</pre>
+ *
+ * <h2>Statistical Operations</h2>
+ * <p>
+ * Reduction operations with optional axis specification:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> data = ...; // shape (10, 5)
+ *
+ * data.sum()         // Sum all elements → shape (1)
+ * data.sum(0)        // Sum along axis 0 → shape (5)
+ * data.mean()        // Mean of all elements
+ * data.mean(1)       // Mean along axis 1 → shape (10)
+ * data.variance()    // Variance
+ * data.max()         // Maximum value
+ * data.magnitude()   // L2 norm
+ * }</pre>
+ *
+ * <h2>Comparison and Logical Operations</h2>
+ * <p>
+ * Boolean operations that produce 1.0 (true) or 0.0 (false):
+ * </p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> x = ...;
+ * CollectionProducer<PackedCollection<?>> y = ...;
+ *
+ * x.greaterThan(y)           // 1.0 where x > y, 0.0 elsewhere
+ * x.lessThan(y)              // 1.0 where x < y, 0.0 elsewhere
+ * x.and(y)                   // 1.0 where both non-zero
+ *
+ * // Conditional selection
+ * x.greaterThan(y, trueVal, falseVal)  // Select based on comparison
+ * }</pre>
+ *
+ * <h2>Advanced Transformations</h2>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> x = ...; // shape (3, 4)
+ *
+ * x.repeat(5)                // Repeat along axis 0 → shape (15, 4)
+ * x.enumerate(10)            // Enumerate indices → shape (10)
+ * x.permute(1, 0)            // Permute dimensions → shape (4, 3)
+ * x.pad(1, 2)                // Add padding → shape (5, 8)
+ * x.map(elem -> elem.pow(2)) // Map function over elements
+ * }</pre>
+ *
+ * <h2>Automatic Differentiation</h2>
+ * <p>
+ * Compute gradients for backpropagation:
+ * </p>
+ * <pre>{@code
+ * CollectionProducer<PackedCollection<?>> x = v(PackedCollection.class);
+ * CollectionProducer<PackedCollection<?>> y = x.pow(2).sum();
+ *
+ * // Compute ∂y/∂x
+ * CollectionProducer<PackedCollection<?>> gradient = y.delta(x);
+ * // Result: 2x (derivative of x²)
+ * }</pre>
+ *
+ * @param <T>  the shape type produced by this producer
+ * @author  Michael Murray
+ * @see CollectionProducerBase
+ * @see DeltaFeatures
+ * @see PackedCollection
+ * @see CollectionProducerComputation
+ */
 public interface CollectionProducer<T extends Shape<?>> extends
 		CollectionProducerBase<T, CollectionProducer<T>>,
 		DeltaFeatures {

@@ -125,6 +125,18 @@ public class TraversableRepeatedProducerComputation<T extends PackedCollection<?
 	 */
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
+	/**
+	 * The function that defines the computation logic applied at each iteration.
+	 *
+	 * <p>This function receives the traversable arguments and the current accumulated
+	 * value, then returns a {@link TraversableExpression} representing the next state.
+	 * The returned traversable expression allows for index-based access to intermediate
+	 * results during computation, enabling complex accumulation and reduction patterns.</p>
+	 *
+	 * <p>Unlike the parent class which uses simple {@link Expression}s, this field
+	 * uses {@link TraversableExpression}s to provide more flexible access patterns
+	 * and better integration with traversable computation graphs.</p>
+	 */
 	private BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
 
 	/**
