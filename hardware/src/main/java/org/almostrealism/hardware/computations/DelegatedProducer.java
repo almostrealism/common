@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
@@ -113,6 +114,9 @@ public class DelegatedProducer<T> implements
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return this;
 	}
+
+	@Override
+	public void destroy() { Destroyable.destroy(op); }
 
 	@Override
 	public String signature() {

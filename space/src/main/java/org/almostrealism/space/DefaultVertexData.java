@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,10 +91,12 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 
 		Producer<PackedCollection<Vector>> producer =
 				points(
-						() ->
-								args -> vertices.get(((int[]) args[0])[0]),
-						() -> args -> vertices.get(((int[]) args[0])[1]),
-						() -> args -> vertices.get(((int[]) args[0])[2]));
+						func(shape(1, 3),
+								args -> vertices.get(((int[]) args[0])[0])),
+						func(shape(1, 3),
+								args -> vertices.get(((int[]) args[0])[1])),
+						func(shape(1, 3),
+								args -> vertices.get(((int[]) args[0])[2])));
 		Evaluable<PackedCollection<Vector>> ev = producer.get();
 
 		for (int i = 0; i < triangles.length; i++) {

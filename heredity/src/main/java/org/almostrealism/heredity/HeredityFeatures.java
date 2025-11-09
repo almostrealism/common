@@ -60,10 +60,6 @@ public interface HeredityFeatures extends CollectionFeatures {
 		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
 	}
 
-	default Gene<PackedCollection<?>> g(Scalar... factors) {
-		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
-	}
-
 	default Gene<PackedCollection<?>> g(Producer<Scalar>... factors) {
 		return g(Stream.of(factors).map(f -> (Factor) protein -> f).toArray(Factor[]::new));
 	}

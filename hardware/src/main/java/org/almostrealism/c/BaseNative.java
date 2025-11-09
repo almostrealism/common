@@ -25,7 +25,6 @@ public abstract class BaseNative {
 	public static final boolean enableVerbose = false;
 	private static final List<Class> libs = new ArrayList<>();
 
-	private String head;
 	private String functionName;
 	private NativeCompiler compiler;
 
@@ -45,7 +44,7 @@ public abstract class BaseNative {
 		initNativeFunctionName();
 
 		try {
-			loadNative(getClass(), getCode());
+			loadNative(getClass(), getFunctionDefinition());
 		} catch (UnsatisfiedLinkError e) {
 			throw new RuntimeException(e);
 		}
@@ -56,19 +55,6 @@ public abstract class BaseNative {
 
 		compiler.compileAndLoad(cls, code);
 		libs.add(cls);
-	}
-
-
-	public String getHead() { return head; }
-
-	public void setHead(String head) { this.head = head; }
-
-	protected String getCode() {
-		if (getHead() == null) {
-			return getFunctionDefinition();
-		} else {
-			return getHead() + "\n" + getFunctionDefinition();
-		}
 	}
 
 	protected String getFunctionName() { return functionName; }

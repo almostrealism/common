@@ -140,7 +140,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 	@Test
 	public void kernelEvaluation() {
 		// Define argument 0
-		Producer<PackedCollection<?>> arg = v(shape(1), 0);
+		Producer<PackedCollection<?>> arg = v(shape(-1), 0);
 
 		// Compose the expression
 		Producer<PackedCollection<?>> constantOperation = c(7.0).multiply(arg);

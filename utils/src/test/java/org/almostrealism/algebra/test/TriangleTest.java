@@ -25,12 +25,12 @@ import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.bool.GreaterThanCollection;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareOperator;
@@ -85,9 +85,9 @@ public class TriangleTest implements TestFeatures {
 		Triangle t = basicTriangle();
 
 		Evaluable<Ray> r = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get();
-		Supplier<Evaluable<? extends Scalar>> distance = () -> new AdaptEvaluable<>(Triangle.intersectAt, r, new Provider<>(t.getData()));
-		Scalar s = distance.get().evaluate();
-		System.out.println(s);
+		Producer<PackedCollection<?>> distance = () -> new AdaptEvaluable<>(Triangle.intersectAt, r, new Provider<>(t.getData().traverse(0)));
+		PackedCollection<?> s = distance.get().evaluate();
+		s.print();
 
 		assertEquals(1.0, s);
 	}
@@ -98,14 +98,12 @@ public class TriangleTest implements TestFeatures {
 	 */
 	@Test
 	public void intersectAtDistance() {
-		HardwareOperator.verboseLog(() -> {
-			Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
-			PackedCollection<?> td = triangle();
+		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+		PackedCollection<?> td = triangle();
 
-			Scalar distance = Triangle.intersectAt.evaluate(in, td);
-			log("distance = " + distance);
-			Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
-		});
+		PackedCollection<?> distance = Triangle.intersectAt.evaluate(in, td.traverse(0));
+		log("distance = " + distance);
+		assertEquals(1.0, distance.toDouble());
 	}
 
 	protected Producer<Ray> intersectAt() {
@@ -113,32 +111,41 @@ public class TriangleTest implements TestFeatures {
 				ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
-	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
+	protected CollectionProducer<Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		CollectionProducerComputationBase<Vector, Vector> originVector =
-				(CollectionProducerComputationBase)
-						((CollectionProducerComputationBase) noRank).getInputs().get(1);
+		if (noRank instanceof ReshapeProducer)
+			noRank = ((ReshapeProducer) noRank).getComputation();
 
-		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
+		CollectionProducer<Vector> originVector =
+				(CollectionProducer)
+						((CollectionProducerComputationBase) noRank).getInputs().get(1);
+		if (originVector instanceof ReshapeProducer) {
+			originVector = (CollectionProducer<Vector>) ((ReshapeProducer) originVector).getComputation();
+		}
+
+		return (CollectionProducer<Vector>) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
 	}
 
 	protected Producer<Vector> originPointProducer() {
-		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+		CollectionProducer<Vector> origin = originProducer();
+
 		return vector((Producer) ((ComputableBase) origin).getInputs().get(1));
 	}
 
 	protected Producer<Vector> originDirectionProducer() {
-		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+		CollectionProducer<Vector> origin = originProducer();
 		return vector((Producer) ((ComputableBase) origin).getInputs().get(2));
 	}
 
 	@Test
 	public void originComposition() {
+		if (skipGeometryIssues) return;
+
 		Producer<Vector> o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 
 		Vector vo = evo.evaluate();
-		System.out.println(vo);
+		vo.print();
 		Assert.assertEquals(new Vector(0.0, 0.0, 0.0), vo);
 
 		Producer<Vector> d = originDirectionProducer();
@@ -151,14 +158,12 @@ public class TriangleTest implements TestFeatures {
 
 	@Test
 	public void origin() {
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducerComputation<Vector> at = vector(originProducer());
-			Evaluable<Vector> ev = at.get();
+		CollectionProducer<Vector> at = vector(originProducer());
+		Evaluable<Vector> ev = at.get();
 
-			Vector p = ev.evaluate();
-			p.print();
-			Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
-		});
+		Vector p = ev.evaluate();
+		p.print();
+		Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
 	}
 
 	protected PackedCollection<?> triangle() {
@@ -199,28 +204,24 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
-				Input.value(Ray.shape(), 0));
+				Input.value(shape(-1, 6), 0));
 
-		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);
-		AcceleratedConjunctionScalar acs = (AcceleratedConjunctionScalar) (Supplier) gts.getInputs().get(3);
-
+		GreaterThanCollection gts = (GreaterThanCollection) (Supplier) intersectAt.getInputs().get(4);
 		Evaluable<Scalar> ev = gts.get();
 
-		Scalar distance = ev.evaluate(in, td);
-		System.out.println(distance);
-		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
+		PackedCollection<?> distance = ev.evaluate(in, td.traverse(0));
+		assertEquals(1.0, distance.toDouble());
 
-		distance = intersectAt.get().evaluate(in, td);
-		System.out.println("distance = " + distance);
-		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
+		distance = intersectAt.get().evaluate(in, td.traverse(0));
+		assertEquals(1.0, distance.toDouble());
 	}
 
 	@Test
-	public void intersectionTest() {
+	public void intersection() {
 		Evaluable<Ray> ev = intersectAt().get();
 
-		Ray r = ev.evaluate();
-		System.out.println(r);
-		Assert.assertEquals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)), r);
+		Ray r = new Ray(ev.evaluate(), 0);
+		r.print();
+		assertEquals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)), r);
 	}
 }

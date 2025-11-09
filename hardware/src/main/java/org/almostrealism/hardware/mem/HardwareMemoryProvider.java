@@ -43,6 +43,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private HashMap<Long, NativeRef<T>> allocated;
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 	private ReferenceQueue<T> referenceQueue;
+	private volatile boolean destroying;
 
 	public HardwareMemoryProvider() {
 		this.allocated = new HashMap<>();
@@ -118,7 +119,10 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 	private void deallocateNow(NativeRef<T> ref) {
 		deallocate(ref);
-		allocated.remove(ref.getAddress());
+
+		if (!destroying) {
+			allocated.remove(ref.getAddress());
+		}
 	}
 
 	protected NativeRef<T> nativeRef(T ram) {
@@ -133,12 +137,21 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	protected T allocated(T ram) {
+		if (destroying) {
+			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
+		}
+
 		NativeRef<T> ref = nativeRef(ram);
 		if (allocated.containsKey(ref.getAddress())) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 
-		allocated.put(ref.getAddress(), ref);
+		try {
+			allocated.put(ref.getAddress(), ref);
+		} catch (ClassCastException e) {
+			warn("Unable to record allocation", e);
+		}
+
 		return ram;
 	}
 
@@ -177,24 +190,43 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	@Override
-	public void destroy() {
-		if (allocated != null) {
-			List<NativeRef<T>> stillAllocated = new ArrayList<>(allocated.values());
-			stillAllocated.stream()
-					.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
-					.limit(10)
-					.forEach(ref -> {
-						warn(ref + " was not deallocated");
-						if (ref.getAllocationStackTrace() != null) {
-							Stream.of(ref.getAllocationStackTrace())
-									.forEach(stack -> warn("\tat " + stack));
-						}
-					});
+	public synchronized void destroy() {
+		try {
+			destroying = true;
 
-			// TODO  Deallocating all of these at once appears to produce SIGSEGV
-			// List<MetalMemory> available = new ArrayList<>(allocated);
-			// available.forEach(mem -> deallocate(0, mem));
-			allocated = null;
+			if (allocated != null) {
+				List<NativeRef<T>> stillAllocated = new ArrayList<>();
+
+				w: while (true) {
+					try {
+						stillAllocated.clear();
+						allocated.values().forEach(stillAllocated::add);
+						break w;
+					} catch (Exception e) {
+						// start over and try again if the allocated map was
+						// modified while attempting to capture its contents
+						warn(e.getClass().getSimpleName() + " - " + e.getMessage());
+					}
+				}
+
+				stillAllocated.stream()
+						.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
+						.limit(10)
+						.forEach(ref -> {
+							warn(ref + " was not deallocated");
+							if (ref.getAllocationStackTrace() != null) {
+								Stream.of(ref.getAllocationStackTrace())
+										.forEach(stack -> warn("\tat " + stack));
+							}
+						});
+
+				// TODO  Deallocating all of these at once appears to produce SIGSEGV
+				// List<MetalMemory> available = new ArrayList<>(allocated);
+				// available.forEach(mem -> deallocate(0, mem));
+				allocated = null;
+			}
+		} finally {
+			destroying = false;
 		}
 	}
 

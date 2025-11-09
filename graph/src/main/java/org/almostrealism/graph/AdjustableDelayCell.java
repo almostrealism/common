@@ -86,7 +86,7 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("AdjustableDelayCell Tick");
-		tick.add(buffer.add(temporal(r(p(cursors)), (Producer) p(getCachedValue()))));
+		tick.add(buffer.add(temporal(r(p(cursors)), p(getCachedValue()))));
 		tick.add(a(cp(getOutputValue()), buffer.valueAt(p(cursors))));
 		tick.add(buffer.purge(p(cursors), defaultPurgeFrequency));
 		tick.add(cursors.increment(getScale()));

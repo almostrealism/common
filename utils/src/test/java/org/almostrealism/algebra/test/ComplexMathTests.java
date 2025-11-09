@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -88,8 +88,8 @@ public class ComplexMathTests implements TestFeatures {
 	public void complexFromPartsMagnitude() {
 		Evaluable<PackedCollection<?>> m =
 				complexFromParts(
-						v(shape(1024), 0),
-						v(shape(1024), 1))
+						v(shape(1024).traverseEach(), 0),
+						v(shape(1024).traverseEach(), 1))
 				.magnitude().get();
 
 		PackedCollection<?> real = new PackedCollection<>(1024).fill(Math::random);

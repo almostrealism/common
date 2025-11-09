@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
-import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
@@ -143,16 +143,16 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
 //			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
 //												scalar(-1.0), closest(t(fr))));
-			Producer<Scalar> distance = scalar(greaterThan(discriminant(fr), c(0.0),
-												closest(t(fr)), scalar(-1.0)));
+			Producer distance = greaterThan(discriminant(fr), c(0.0),
+												closest(t(fr)), c(-1.0));
 			return new ShadableIntersection(this, r, distance);
 		} else {
 			Evaluable<Scalar> s = args -> {
 				Ray ray = fr.get().evaluate(args);
 
-				double b = ray.oDotd().evaluate(args).getValue();
-				double c = ray.oDoto().evaluate(args).getValue();
-				double g = ray.dDotd().evaluate(args).getValue();
+				double b = ray.oDotd().evaluate(args).toDouble();
+				double c = ray.oDoto().evaluate(args).toDouble();
+				double g = ray.dDotd().evaluate(args).toDouble();
 
 				double discriminant = (b * b) - (g) * (c - 1);
 
@@ -237,29 +237,30 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	// TODO  Make private
 	public Producer<Scalar> discriminant(Producer<Ray> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
-		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(scalar(-1.0))));
+		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).subtract(1.0)));
 	}
 
 	// TODO  Make private
 	public Producer<Scalar> discriminantSqrt(Producer<Ray> ray) {
-		return scalarPow(discriminant(ray), scalar(0.5));
+		return pow(discriminant(ray), c(0.5));
 	}
 
 	// TODO  Make private
-	public AcceleratedConjunctionScalar closest(Producer<Pair<?>> t) {
-		return new AcceleratedConjunctionScalar(
+	public Producer closest(Producer<Pair<?>> t) {
+		Producer distance = new AcceleratedConjunctionScalar(
 				new LessThanScalar(l(t), r(t), l(t), r(t), false),
 				new GreaterThanScalar(l(t), scalar(0.0), l(t), new GreaterThanScalar(r(t),
 						scalar(0.0), r(t), scalar(-1.0), false), false),
 				new GreaterThanScalar(l(t), scalar(0)),
 				new GreaterThanScalar(r(t), scalar(0)));
+		return l(distance);
 	}
 
-	private ExpressionComputation<Pair<?>> t(Producer<Ray> ray) {
+	private CollectionProducer<Pair<?>> t(Producer<Ray> ray) {
 		Producer<Scalar> dS = discriminantSqrt(ray);
-		Producer<Scalar> minusODotD = oDotd(ray).multiply(scalar(-1.0));
+		Producer<Scalar> minusODotD = oDotd(ray).minus();
 		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
-		return pair(add(minusODotD, dS).multiply(dDotDInv),
-					add(minusODotD, minus(dS)).multiply(dDotDInv));
+		return pair((Producer) add(minusODotD, dS).multiply(dDotDInv),
+				    (Producer) add(minusODotD, minus(dS)).multiply(dDotDInv));
 	}
 }

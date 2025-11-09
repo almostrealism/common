@@ -40,7 +40,7 @@ public class DeltaFeaturesTests implements DeltaFeatures, TestFeatures {
 				.reshape(count, dim).traverse();
 		PackedCollection<?> w1 = pack(4, -3, 2);
 		PackedCollection<?> w2 = pack(2, 1, 5);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// f(x) = w2 * x
 		// g(x) = w1 * x

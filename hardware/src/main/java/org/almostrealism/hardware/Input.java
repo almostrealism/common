@@ -29,7 +29,7 @@ public class Input {
 	}
 
 	public static <T> Producer<T> value(int memLength, int argIndex) {
-		return new PassThroughProducer(memLength, argIndex);
+		return new PassThroughProducer(new TraversalPolicy(memLength), argIndex);
 	}
 
 	public static Producer[] generateArguments(int memLength, int first, int count) {

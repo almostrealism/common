@@ -17,7 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.expression.DimValue;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.compute.PhysicalScope;
@@ -84,9 +84,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public void setDelegateOffset(Expression<Integer> delegateOffset) { this.delegateOffset = delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { setDelegateOffset(new IntegerConstant(delegateOffset)); }
 
-	public boolean isDisableOffset() {
-		return disableOffset;
-	}
+	public boolean isDisableOffset() { return disableOffset; }
 	public void setDisableOffset(boolean disableOffset) {
 		this.disableOffset = disableOffset;
 	}
@@ -102,30 +100,30 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	public Expression<Double> getValueRelative(int index) {
+		return getValueRelative(new IntegerConstant(index));
+	}
+
+	public Expression<Double> getValueRelative(Expression index) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		TraversableExpression exp = TraversableExpression.traverse(getProducer());
 
 		if (exp != null) {
-			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
+			Expression<Double> value = exp.getValueRelative(index);
 			if (value != null) return value;
 		}
 
 		if (getDelegate() != null) {
-			return getDelegate().getValueRelative(index + getDelegateOffset().intValue().getAsInt());
+			return getDelegate().getValueRelative(index.add(getDelegateOffset()));
 		}
 
-		return (Expression) reference(getArrayPosition(this, new IntegerConstant(index), 0), false);
+		return (Expression) reference(new KernelIndex().multiply(length()).add(index.toInt()));
 	}
 
 	@Override
 	public Expression<T> valueAt(Expression<?> exp) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(exp);
-	}
-
-	public InstanceReference<Multiple<T>, T> ref(int pos) {
-		return ref(new IntegerConstant(pos));
 	}
 
 	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
@@ -141,47 +139,38 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 
 	@Deprecated
 	public Expression<T> referenceRelative(Expression<?> pos) {
-		return referenceRelative(pos, new KernelIndex(null, 0));
-	}
-
-	public Expression<T> referenceRelative(Expression<?> pos, KernelIndex idx) {
 		if (getDelegate() != null) {
 			return getDelegate().referenceRelative(pos.add(getDelegateOffset()));
+		} else if (!(getProducer() instanceof Countable)) {
+			return reference(pos);
 		} else {
-			return reference(getArrayPosition(this, pos, idx), false);
+			return reference(new KernelIndex().multiply(length()).add(pos.toInt()));
 		}
 	}
 
-	public Expression<T> referenceAbsolute(Expression<?> pos) {
-		return reference(pos, false);
-	}
-
-	public Expression<T> referenceDynamic(Expression<?> pos) {
-		return reference(pos, true);
-	}
-
-	protected Expression<T> reference(Expression<?> pos, boolean dynamic) {
+	public Expression<T> reference(Expression<?> pos) {
 		if (destroyed) throw new UnsupportedOperationException();
 
-		if (getDelegate() == null) {
-			return InstanceReference.create(this, pos, dynamic);
-		} else if (getDelegate() == this) {
+		if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
-		} else {
-			return getDelegate().reference(pos.add(getDelegateOffset()), false);
+		} else if (getDelegate() != null) {
+			return getDelegate().reference(pos.add(getDelegateOffset()));
 		}
+
+		Expression<?> index = pos;
+		Expression<Boolean> condition = index.greaterThanOrEqual(new IntegerConstant(0));
+
+		pos = index.toInt();
+		index = pos.imod(length());
+
+		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
+		return ScopeSettings.enableInstanceReferenceMasking ? Mask.of(condition, ref) : ref;
 	}
 
 	public Expression getOffsetValue() {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		return new StaticReference<>(Integer.class, getName() + "Offset");
-	}
-
-	public Expression getDimValue() {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		return new DimValue(this, 0);
 	}
 
 	public Expression<Integer> length() {
@@ -197,25 +186,5 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		return Objects.equals(getArraySize(), ((ArrayVariable) obj).getArraySize());
 	}
 
-	@Deprecated
-	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
-		return getArrayPosition(v, pos, new KernelIndex(null, kernelIndex));
-	}
-
-	private Expression<?> getArrayPosition(ArrayVariable v, Expression pos, KernelIndex idx) {
-		Expression offset = new IntegerConstant(0);
-
-		if (v.getProducer() instanceof Countable) {
-			Expression dim = new DimValue(v, idx.getKernelAxis());
-
-			Expression kernelOffset = idx.multiply(dim);
-			return kernelOffset.add(offset).add(pos.toInt());
-		} else {
-			return offset.add(pos).toInt();
-		}
-	}
-
-	public void destroy() {
-		this.destroyed = true;
-	}
+	public void destroy() { this.destroyed = true; }
 }

@@ -23,8 +23,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.DeltaFeatures;
-import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
-import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
 import java.util.function.Function;

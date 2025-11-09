@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,37 +19,51 @@ package org.almostrealism.geometry.test;
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.function.Supplier;
 
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
-		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
-		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
+		CollectionProducer<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
+		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
+		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 	}
 
 	@Test
 	public void pointAtTest2() {
-		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
-		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
+		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
 	@Test
 	public void dynamicPointAt() {
-		Supplier<Evaluable<? extends Scalar>> d = () -> new AdaptEvaluable<>(scalar(-20).get());
-		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
-		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+		Producer<PackedCollection<?>> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
+		CollectionProducer<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), (Producer) d);
+		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
+	}
+
+	@Test
+	public void directions() {
+		Producer<Vector> directions = direction(v(shape(-1, 6), 0));
+
+		PackedCollection<Ray> rays = new PackedCollection<>(shape(3, 6).traverse(1));
+		rays.set(0, new Ray(new Vector(1, 2, 3), new Vector(4, 5, 6)));
+		rays.set(1, new Ray(new Vector(7, 8, 9), new Vector(10, 11, 12)));
+		rays.set(2, new Ray(new Vector(13, 14, 15), new Vector(16, 17, 18)));
+
+		PackedCollection<?> d = new PackedCollection<>(shape(3, 3).traverse(1));
+
+		directions.into(d.each()).evaluate(rays);
+		d.print();
+
+		assertEquals(new Vector(4, 5, 6), d.get(0));
+		assertEquals(new Vector(10, 11, 12), d.get(1));
+		assertEquals(new Vector(16, 17, 18), d.get(2));
 	}
 
 	@Test

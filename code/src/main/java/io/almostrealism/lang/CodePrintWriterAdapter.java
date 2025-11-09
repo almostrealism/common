@@ -50,8 +50,6 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		return language;
 	}
 
-	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }
-
 	protected void setScopePrefix(String prefix) {
 		setExternalScopePrefix(prefix);
 		setInternalScopePrefix(prefix);
@@ -59,21 +57,6 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	protected void setExternalScopePrefix(String prefix) { this.scopePrefixExt = prefix; }
 	protected void setInternalScopePrefix(String prefix) { this.scopePrefixInt = prefix; }
-
-	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
-	protected void setScopeClose(String close) { this.scopeClose = close; }
-
-	protected String typePrefix(Class type) {
-		if (type == null) {
-			return "";
-		} else {
-			return language.nameForType(type) + " ";
-		}
-	}
-
-	protected String getCurrentScopeName() {
-		return scopeName.peek();
-	}
 
 	@Override
 	public void println(Metric m) {

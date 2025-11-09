@@ -16,8 +16,8 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
@@ -134,5 +134,11 @@ public class BranchBlock implements Block {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
 		return l;
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(backwards);
+		Destroyable.destroy(gradient);
 	}
 }

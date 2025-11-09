@@ -52,6 +52,12 @@ public class ExpressionSimplificationTests implements ExpressionFeatures, TestFe
 	}
 
 	@Test
+	public void modBoundedEquality() {
+		assertEquals(5, kernel().withLimit(6).add(3).imod(6).upperBound().orElse(-1));
+		assertTrue(kernel().withLimit(6).add(3).imod(6).eq(5).booleanValue().isEmpty());
+	}
+
+	@Test
 	public void modLimit() {
 		Assert.assertEquals(25, new IntegerConstant(25).upperBound(null).orElse(-1));
 		Assert.assertEquals(100, kernel().withLimit(100).getLimit().orElse(-1));

@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
@@ -137,6 +138,8 @@ public class ReshapeProducer<T extends Shape<T>>
 	 * Default is {@code true}.
 	 */
 	public static boolean enableShapeDelegateIsolation = true;
+
+	public static boolean enableTraversalShapeValidation = false;
 
 	/** Metadata describing this reshape operation for debugging and introspection. */
 	private OperationMetadata metadata;
@@ -528,22 +531,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
-	public Expression uniqueNonZeroIndexRelative(Index localIndex, Expression<?> targetIndex) {
-		return producer instanceof TraversableExpression ?
-				((TraversableExpression) producer).uniqueNonZeroIndexRelative(localIndex, targetIndex) :
-				TraversableExpression.super.uniqueNonZeroIndexRelative(localIndex, targetIndex);
-	}
-
-	@Override
 	public boolean isTraversable() {
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
-	}
-
-	@Override
-	public boolean isRelative() {
-		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isRelative();
-		return true;
 	}
 
 	@Override
@@ -630,6 +620,9 @@ public class ReshapeProducer<T extends Shape<T>>
 	}
 
 	@Override
+	public void destroy() { Destroyable.destroy(producer); }
+
+	@Override
 	public String signature() {
 		String signature = Signature.of(getComputation());
 		if (signature == null) return null;
@@ -678,6 +671,12 @@ public class ReshapeProducer<T extends Shape<T>>
 	 */
 	private T apply(Shape<T> in) {
 		if (shape == null) {
+			if (enableTraversalShapeValidation && producer instanceof Shape &&
+					getShape().isFixedCount() &&
+					getShape().getTotalSizeLong() != in.getShape().getTotalSizeLong()) {
+				throw new IllegalArgumentException();
+			}
+
 			return in.reshape(in.getShape().traverse(traversalAxis));
 		} else {
 			return in.reshape(shape);

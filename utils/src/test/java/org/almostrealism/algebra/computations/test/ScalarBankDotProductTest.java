@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,16 +39,16 @@ public class ScalarBankDotProductTest implements TestFeatures {
 	public void scalarBankDotProduct32() {
 		PackedCollection<Scalar> window = window();
 
-		Scalar given = new Scalar(IntStream.range(0, SIZE)
+		PackedCollection<?> given = pack(IntStream.range(0, SIZE)
 				.mapToDouble(i -> window.get(i).getValue() * window.get(i).getValue()).sum());
 
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);
 			Producer<PackedCollection<?>> b = subset(shape(SIZE, 1), v(shape(SIZE, 2), 1), 0);
-			Evaluable<? extends Scalar> ev = scalar(multiply(a, b).sum()).get();
+			Evaluable<PackedCollection<?>> ev = multiply(a, b).sum().get();
 
-			Scalar test = ev.evaluate(window().traverse(0), window().traverse(0));
-			System.out.println(test);
+			PackedCollection<?> test = ev.evaluate(window().traverse(0), window().traverse(0));
+			test.print();
 			assertEquals(given, test);
 		});
 	}

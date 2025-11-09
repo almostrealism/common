@@ -18,35 +18,32 @@ package org.almostrealism;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.DynamicProducer;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.graph.mesh.TriangleFeatures;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
-import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.Input;
@@ -63,7 +60,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends LayerFeatures,
-								ScalarBankFeatures, PairBankFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {
 	boolean enableFixedCollections = true;
@@ -82,6 +78,7 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(v);
 	}
 
+	@Deprecated
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}
@@ -91,15 +88,15 @@ public interface CodeFeatures extends LayerFeatures,
 	}
 
 	default CollectionProducer<PackedCollection<?>> x(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 0));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
 	default CollectionProducer<PackedCollection<?>> y(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 1));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
 	default CollectionProducer<PackedCollection<?>> z(int... dims) {
-		return c(value(dims.length == 0 ? shape(1) : shape(dims), 2));
+		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
@@ -111,10 +108,6 @@ public interface CodeFeatures extends LayerFeatures,
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
-
-	default Producer<PackedCollection<Scalar>> scalars(PackedCollection<Scalar> s) {
-		return ExpressionComputation.fixed(s, Scalar.scalarBankPostprocessor());
-	}
 
 	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 

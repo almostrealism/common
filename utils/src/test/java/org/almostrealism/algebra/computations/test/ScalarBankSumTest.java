@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ public class ScalarBankSumTest implements TestFeatures {
 		bank.set(2, 3);
 		bank.set(3, 4);
 
-		Producer<Scalar> s = scalar(subset(shape(4, 1), p(bank), 0).sum());
+		Producer<PackedCollection<?>> s = subset(shape(4, 1), p(bank), 0).sum();
 		assertEquals(10, s.get().evaluate());
 	}
 }

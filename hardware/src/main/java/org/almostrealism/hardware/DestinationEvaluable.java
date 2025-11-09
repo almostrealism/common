@@ -17,23 +17,36 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.CLException;
 
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>, Runnable, ConsoleFeatures {
+public class DestinationEvaluable<T extends MemoryBank> implements
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
 	private Evaluable<T> operation;
 	private MemoryBank destination;
 
+	private Executor executor;
+	private Consumer<T> downstream;
+
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination) {
-		this.operation = operation;
-		this.destination = destination;
+		this(operation, destination, null, null);
+	}
+
+	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
+								Executor executor) {
+		this(operation, destination, executor, null);
 
 		if (operation instanceof HardwareEvaluable) {
 			// DestinationEvaluable is intended to be used only as an alternative
@@ -45,6 +58,14 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 		}
 	}
 
+	private DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
+								Executor executor, Consumer<T> downstream) {
+		this.operation = operation;
+		this.destination = destination;
+		this.executor = executor;
+		this.downstream = downstream;
+	}
+
 	@Override
 	public void run() { evaluate(); }
 
@@ -53,10 +74,12 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 		if (operation instanceof Provider<T>) {
 			operation.into(destination).evaluate(args);
 		} else if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
-			((AcceleratedOperation) operation).apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
+					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			details.getSemaphore().waitFor();
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
-			if (HardwareOperator.enableKernelLog) log("Evaluating " + name + " kernel...");
+			if (HardwareOperator.enableVerboseLog) log("Evaluating " + name + " kernel...");
 
 			boolean enableLog = false;
 
@@ -85,12 +108,42 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T>,
 		return (T) destination;
 	}
 
+	@Override
+	public void request(Object[] args) {
+		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
+			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
+					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
+		} else {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	@Override
+	public void setDownstream(Consumer<T> consumer) {
+		if (downstream != null) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.downstream = consumer;
+	}
+
+	@Override
+	public StreamingEvaluable<T> async(Executor executor) {
+		return new DestinationEvaluable<>(operation, destination, executor);
+	}
+
 	public T replaceNull(Object[] o) {
 		if (operation instanceof NullProcessor) {
 			return (T) ((NullProcessor) operation).replaceNull(o);
 		} else {
 			throw new NullPointerException();
 		}
+	}
+
+	@Override
+	public void destroy() {
+		Destroyable.destroy(operation);
 	}
 
 	@Override

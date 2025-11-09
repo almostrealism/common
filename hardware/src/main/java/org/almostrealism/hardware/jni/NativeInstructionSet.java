@@ -65,7 +65,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	@Override
 	default void destroy() { }
 
-	default void apply(long idx, long kernelSize, int[] dim0, MemoryData... args) {
+	default void apply(long idx, long kernelSize, MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
@@ -81,22 +81,16 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
 					Stream.of(args).mapToInt(MemoryData::getAtomicMemLength).toArray(),
-					dim0, i, kernelSize);
+					i, kernelSize);
 	}
 
-	default void apply(RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
+	default void apply(RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
 		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
 
 		for (int i = 0; i < args.length; i++) {
 			if (args[i] == null) {
 				throw new NullPointerException("Argument " + i + " is null");
 			}
-
-//			TODO  This is useful validation, but it can prevent the execution of operations
-//			TODO  which depart from expected sizing via the use of TraversalOrdering
-//			if (bytes * (globalId * dim0[i] + offsets[i]) > args[i].getSize()) {
-//				throw new IllegalArgumentException("Positions in argument " + i + " will run beyond its size");
-//			}
 		}
 
 		apply(Optional.ofNullable(getComputeContext())
@@ -108,16 +102,16 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 					.map(CLComputeContext.class::cast)
 					.map(CLComputeContext::getClQueue)
 					.map(cl_command_queue::getNativePointer).findFirst().orElse(-1L),
-				args, offsets, sizes, dim0, globalId, kernelSize);
+				args, offsets, sizes, globalId, kernelSize);
 	}
 
-	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int[] dim0, int globalId, long kernelSize) {
+	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
 		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
-				offsets, sizes, dim0, args.length, globalId, kernelSize);
+				offsets, sizes, args.length, globalId, kernelSize);
 	}
 
-	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId, long kernelSize);
+	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count, int globalId, long kernelSize);
 
 	@Override
 	default Console console() { return Hardware.console; }

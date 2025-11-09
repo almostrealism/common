@@ -68,7 +68,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 
 			String e = expression.getExpression(lang);
 			ArrayVariable<?> variable = variables.get(e);
-			if (variable != null) return variable.referenceAbsolute(new KernelIndex());
+			if (variable != null) return variable.reference(new KernelIndex());
 
 			if (operations.size() >= defaultMaxEntries) {
 				if (enableVerbose)
@@ -84,7 +84,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 
 			variable = variableFactory.apply((Producer) operation.isolate());
 			variables.put(e, variable);
-			return variable.referenceAbsolute(new KernelIndex());
+			return variable.reference(new KernelIndex());
 		} finally {
 			timing.addEntry(String.valueOf(count), System.nanoTime() - start);
 		}

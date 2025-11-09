@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public interface GradientTestFeatures extends CodeFeatures {
 		if (variable) {
 			log("Validating variable input...");
 			PackedCollection<?> variableInput = inputGenerator.apply(4);
-			CollectionProducer<PackedCollection<?>> x = x(dim);
+			CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 			Producer<PackedCollection<?>> c = operation.getResultant(x);
 			PackedCollection<?> out = c.get().evaluate(variableInput);

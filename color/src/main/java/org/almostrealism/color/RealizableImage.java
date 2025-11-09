@@ -21,10 +21,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.Function;
 
-public class RealizableImage implements Producer<RGB[][]> {
+public class RealizableImage implements Producer<RGB[][]>, ConsoleFeatures {
 	private Producer<RGB> source;
 	private Function<Pair, RGB> func;
 	private Pair dim;
@@ -47,7 +48,8 @@ public class RealizableImage implements Producer<RGB[][]> {
 	@Override
 	public Evaluable<RGB[][]> get() {
 		return args -> {
-			if (HardwareOperator.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
+			if (HardwareOperator.enableVerboseLog)
+				log("Evaluating source kernel...");
 
 			if (args == null || args.length <= 0) {
 				args = new Object[]{new Pair(0, 0)};

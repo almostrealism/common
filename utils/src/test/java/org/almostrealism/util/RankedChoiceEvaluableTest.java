@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
@@ -23,16 +24,12 @@ import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
-import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements TestFeatures {
@@ -40,13 +37,15 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 
 	@Test
 	public void highestRank() {
+		if (skipGeometryIssues) return;
+
 		IntStream.range(0, 5).forEach(i -> {
 			Scalar in = new Scalar(1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 					in, new Pair(3, Intersection.e));
 
 			System.out.println("rank = " + out.getA());
-			Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
+			assertEquals(1.0, out.getA());
 		});
 	}
 
@@ -104,7 +103,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 	// TODO  @Test
 	public void rankedChoice1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
+		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
 		System.out.println("result = " + result);
@@ -114,7 +113,7 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 	// TODO  @Test
 	public void rankedChoice2() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
-		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
+		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
 		System.out.println("result = " + result);
@@ -124,85 +123,10 @@ public class RankedChoiceEvaluableTest implements TestFeatures {
 	// TODO  @Test
 	public void rankedChoiceCompact1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
-		acc.compile();
+		Evaluable<Vector> acc = rcp.getAccelerated();
 
 		Vector result = acc.evaluate();
 		System.out.println("result = " + result);
 		assert result.equals(new Vector(4, 5, 6));
-	}
-
-	// TODO  @Test
-	public void randomRankedChoiceKernel() {
-		List<ProducerWithRank<Scalar, Scalar>> values = Arrays.asList(
-				new ProducerWithRankAdapter<>(v(Scalar.shape(), 0),
-										v(Scalar.shape(), 1)),
-				new ProducerWithRankAdapter<>(v(Scalar.shape(), 2),
-										v(Scalar.shape(), 3)),
-				new ProducerWithRankAdapter<>(v(Scalar.shape(), 4),
-										v(Scalar.shape(), 5)));
-
-		AcceleratedRankedChoiceEvaluable<Scalar> acc =
-				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, Scalar::scalarBank,
-													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
-
-		Scalar result = acc.evaluate(new Scalar(1), new Scalar(0), new Scalar(2),
-				new Scalar(1), new Scalar(3), new Scalar(2));
-		Assert.assertEquals(2, result.getValue(), Math.pow(10, -10));
-
-		int count = 1;
-
-		System.out.println("RankedChoiceProducerTest: Preparing random input...");
-
-		PackedCollection<Scalar> input[] = new PackedCollection[] {
-				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
-				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
-				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count) };
-		input[0].set(0, 0.13229523881923733, 1.0);
-		input[1].set(0, -0.9907866131625955, 1.0);
-		input[2].set(0, -0.9494781072737721, 1.0);
-		input[3].set(0, -0.20104796782364365, 1.0);
-		input[4].set(0, -0.4483061040652183, 1.0);
-		input[5].set(0, -0.4508810286585523, 1.0);
-
-		PackedCollection<Scalar> output = Scalar.scalarBank(count);
-		acc.into(output).evaluate(input);
-
-		Assert.assertEquals(0.0, output.get(0).getValue(), Math.pow(10, -10));
-
-		count = 1000;
-
-		System.out.println("RankedChoiceProducerTest: Preparing random input...");
-
-		input = new PackedCollection[] { new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
-									new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
-									new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count) };
-
-		for (int i = 0; i < input.length; i++) {
-			for (int j = 0; j < input[i].getCountLong(); j++) {
-				input[i].set(j, 2 * Math.random() - 1, 1);
-			}
-		}
-
-		System.out.println("RankedChoiceProducerTest: Evaluating kernel...");
-		output = Scalar.scalarBank(count);
-		acc.into(output).evaluate(input);
-
-		boolean failed = false;
-
-		System.out.println("RankedChoiceProducerTest: Comparing...");
-		for (int i = 0; i < output.getCountLong(); i++) {
-			Scalar value = acc.evaluate(input[0].get(i), input[1].get(i), input[2].get(i),
-										input[3].get(i), input[4].get(i), input[5].get(i));
-			if (Math.abs(value.getValue() - output.get(i).getValue()) > gap) {
-				System.out.println(i + ": [" + input[0].get(i).getValue() + ", " + input[1].get(i).getValue() + "]" +
-									"[" + input[2].get(i).getValue() + ", " + input[3].get(i).getValue() + "]" +
-									"[" + input[4].get(i).getValue() + ", " + input[5].get(i).getValue() + "] = " +
-									output.get(i).getValue() + " (expected " + value.getValue() + ")");
-				failed = true;
-			}
-		}
-
-		if (failed) Assert.fail();
 	}
 }

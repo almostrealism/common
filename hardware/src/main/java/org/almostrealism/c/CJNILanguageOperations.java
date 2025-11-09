@@ -69,7 +69,7 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	@Override
 	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jintArray dim0, jint count, jint global_index, jlong global_total");
+			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count, jint global_index, jlong global_total");
 			return;
 		}
 

@@ -61,10 +61,6 @@ public interface LanguageOperations {
 
 	String renderMethod(Method<?> method);
 
-	default String getVariableDimName(ArrayVariable v, int dim) {
-		return v.getName() + "Dim" + dim;
-	}
-
 	default String getVariableSizeName(ArrayVariable v) {
 		return v.getName() + "Size";
 	}

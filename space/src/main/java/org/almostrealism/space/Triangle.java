@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@ package org.almostrealism.space;
 
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.ParticleGroup;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
@@ -36,15 +38,12 @@ import org.almostrealism.geometry.ContinuousField;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 
-import java.util.function.Supplier;
-
 /**
  * A {@link Triangle} represents a triangle in 3d space.
  * 
  * @author  Michael Murray
  */
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
-	public static boolean enableHardwareOperator = true;
 
 	private static TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
@@ -57,18 +56,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 
 	protected static final Evaluable<PackedCollection<Vector>> dataProducer;
 
-	public static final Evaluable<Scalar> intersectAt;
+	public static final Evaluable<PackedCollection<?>> intersectAt;
 	
 	static {
-//		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
-		ExpressionComputation<PackedCollection<Vector>> triangle =
+		CollectionProducer<PackedCollection<Vector>> triangle =
 				triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
 		dataProducer = triangle.get();
 
-//		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
-//				Input.value(Ray.shape(), 0, -1)).get();
 		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
-				Input.value(Ray.shape(), 0)).get();
+				Input.value(new TraversalPolicy(false, false, 6), 0)).get();
 	}
 
 	/**
@@ -132,21 +128,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		this.p2 = p2;
 		this.p3 = p3;
 
-		if (enableHardwareOperator) {
-			this.data = dataProducer.evaluate(getPointData().traverse(0))
-								.reshape(shape(4, 3)).traverse(1);
-		} else {
-			Vector a = this.p2.subtract(this.p1);
-			Vector b = this.p3.subtract(this.p1);
-
-			Vector normal = a.crossProduct(b);
-			normal.normalize();
-
-			this.data.set(0, this.p1.subtract(this.p2));
-			this.data.set(1, this.p1.subtract(this.p3));
-			this.data.set(2, this.p1);
-			this.data.set(3, normal);
-		}
+		this.data = dataProducer.evaluate(getPointData().traverse(0))
+				.reshape(shape(4, 3)).traverse(1);
 	}
 
 	public void setVertices(Vector v[]) {
@@ -256,7 +239,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public Producer<RGB> getValueAt(Producer<Vector> point) {
 		Producer<RGB> dcp = getColorAt(point, useT);
 
-		return () -> args -> {
+		return func(shape(3), args -> {
 			RGB dc = dcp.get().evaluate(args);
 
 			Vector triple = point.get().evaluate(args);
@@ -314,7 +297,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 			} else {
 				return dc;
 			}
-		};
+		});
 	}
 	
 	/**
@@ -324,7 +307,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> p) {
 		if (smooth && vertexData == null) {
-			return () -> args -> {
+			return func(shape(3), args -> {
 				Vector point = p.get().evaluate(args);
 
 				double g = point.getX();
@@ -363,7 +346,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 				n.divideBy(n.length());
 
 				return n;
-			};
+			});
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
@@ -387,58 +370,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		Producer<Ray> r = ray;
 		if (ut) r = t.getInverse().transform(ray);
 
-		if (enableHardwareOperator) {
-			Evaluable<Ray> er = r.get();
-			// TODO  Perhaps r should be ray...
-			return new ShadableIntersection(this, r, () -> new AdaptEvaluable<>(intersectAt, er, new Provider<>(data)));
-		} else {
-			final Supplier<Evaluable<? extends Ray>> fr = r;
-
-			Producer<Scalar> s = new Producer<>() {
-				@Override
-				public Evaluable<Scalar> get() {
-					return args -> {
-						Ray r = fr.get().evaluate(args);
-
-						Vector abc = data.get(0);
-						Vector def = data.get(1);
-						Vector jkl = Triangle.this.data.get(2).subtract(r.getOrigin());
-
-						double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-								abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-								abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
-
-						if (m == 0)
-							return null;
-
-						double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-								jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-								jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
-						u = u / m;
-
-						if (u <= 0.0)
-							return null;
-
-						double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-								r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-								r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-						v = v / m;
-
-						if (v <= 0.0 || u + v >= 1.0)
-							return null;
-
-						double t = def.getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-								def.getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-								def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-						t = -1.0 * t / m;
-
-						return new Scalar(t);
-					};
-				}
-			};
-
-			return new ShadableIntersection(this, r, s);
-		}
+		Evaluable<Ray> er = r.get();
+		// TODO  Perhaps r should be ray...
+		return new ShadableIntersection(this, r, func(shape(1),
+				args ->
+						new AdaptEvaluable<>(intersectAt, er, new Provider<>(data.traverse(0))).evaluate(args)));
 	}
 
 	@Override

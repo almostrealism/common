@@ -70,7 +70,6 @@ import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
@@ -96,6 +95,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures {
@@ -139,7 +139,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: shape with dimensions [2, 3, 4], total size = 24
 	 * }</pre>
 	 */
-	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
+	default TraversalPolicy shape(int... dims) {
+		if (dims[0] == -1) {
+			if (dims.length == 1) {
+				return new TraversalPolicy(false, false, 1);
+			}
+
+			return new TraversalPolicy(false, false, IntStream.of(dims).skip(1).toArray());
+		}
+
+		return new TraversalPolicy(dims);
+	}
 	
 	/**
 	 * Creates a new {@link TraversalPolicy} with the specified dimensions using long values.
@@ -160,7 +170,17 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 * // Result: shape with dimensions [10000, 20000], total size = 200000000
 	 * }</pre>
 	 */
-	default TraversalPolicy shape(long... dims) { return new TraversalPolicy(dims); }
+	default TraversalPolicy shape(long... dims) {
+		if (dims[0] == -1) {
+			if (dims.length == 1) {
+				return new TraversalPolicy(false, false, 1);
+			}
+
+			return new TraversalPolicy(false, false, LongStream.of(dims).skip(1).toArray());
+		}
+
+		return new TraversalPolicy(dims);
+	}
 	
 	/**
 	 * Creates a position {@link TraversalPolicy} with the specified dimensions.
@@ -610,11 +630,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new DelegatedCollectionProducer<>(c(actual), false, false);
 	}
 
-	@Override
-	default <T> ProducerSubstitution<T> substitute(Producer<T> original, Producer<T> replacement) {
-		return new CollectionProducerSubstitution(original, replacement);
-	}
-
 	/**
 	 * Creates a {@link CollectionProducer} from a sequence of double values.
 	 * This is a fundamental method for creating computational producers
@@ -845,12 +860,8 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
-	@Deprecated
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expressions[] = IntStream.range(0, producers.length)
-				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueRelative(0))
-				.toArray(Function[]::new);
-		return new ExpressionComputation(shape(producers.length, 1), List.of(expressions), producers);
+	default <T extends PackedCollection<?>> CollectionProducer<T> concat(Producer<PackedCollection<?>>... producers) {
+		return concat(0, producers);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
@@ -896,6 +907,10 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 					}
 				}
 			}
+		}
+
+		if (axis < 0) {
+			throw new UnsupportedOperationException();
 		}
 
 		int total = 0;
@@ -2654,13 +2669,6 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 		// TODO  Add short-circuit
 		return compute("mod", shape -> args ->
 						mod(shape, args[1], args[2]), a, b);
-	}
-
-	@Deprecated
-	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				Mod.of(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {

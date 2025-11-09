@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>org.almostrealism</groupId>
 		<artifactId>common</artifactId>
-		<version>0.70</version>
+		<version>0.71</version>
 	</parent>
 
 	<artifactId>ar-ml</artifactId>
@@ -122,7 +122,7 @@
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-utils</artifactId>
-			<version>0.70</version>
+			<version>0.71</version>
 		</dependency>
 
 		<dependency>

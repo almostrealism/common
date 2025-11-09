@@ -65,7 +65,7 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 			throw new IllegalArgumentException("Cannot reference series variable when nothing has been cached");
 		}
 
-		return variable.referenceAbsolute(e(entrySize * entry).add(index));
+		return variable.reference(e(entrySize * entry).add(index));
 	}
 
 	@Override

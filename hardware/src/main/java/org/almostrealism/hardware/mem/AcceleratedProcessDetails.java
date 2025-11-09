@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,58 +16,51 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.function.BiConsumer;
+import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class AcceleratedProcessDetails implements ConsoleFeatures {
-	private boolean enableAggregation = true;
-	public static int aggregationThreshold = 1024 * 1024;
+	public static boolean enableAsyncListeners = false;
 
-	private OperationList prepare;
-	private OperationList postprocess;
+	private boolean enableAggregation = true;
+
 	private Object[] originalArguments;
 	private Object[] arguments;
 	private int kernelSize;
 
-	private Semaphore semaphore;
+	private MemoryReplacementManager replacementManager;
 
-	public AcceleratedProcessDetails(Object[] args, MemoryProvider target,
-									 TempMemoryFactory tempFactory, int kernelSize) {
-		this.prepare = new OperationList();
-		this.postprocess = new OperationList();
+	private Executor executor;
+	private DefaultLatchSemaphore semaphore;
+	private List<Runnable> listeners;
+
+	public AcceleratedProcessDetails(Object[] args, int kernelSize,
+									 MemoryReplacementManager replacementManager,
+									 Executor executor) {
 		this.originalArguments = args;
-		this.arguments = new Object[args.length];
 		this.kernelSize = kernelSize;
-
-		arguments = processArguments(args, target, tempFactory);
+		this.replacementManager = replacementManager;
+		this.executor = executor;
+		this.listeners = new ArrayList<>();
 	}
 
-	public OperationList getPrepare() {
-		return prepare;
-	}
-	public OperationList getPostprocess() {
-		return postprocess;
-	}
-
-	public boolean isEmpty() {
-		return prepare.isEmpty() && postprocess.isEmpty();
-	}
+	public OperationList getPrepare() { return replacementManager.getPrepare(); }
+	public OperationList getPostprocess() { return replacementManager.getPostprocess(); }
+	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
 	public Semaphore getSemaphore() { return semaphore; }
-	public void setSemaphore(Semaphore semaphore) { this.semaphore = semaphore; }
+	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
 
 	public <A> A[] getArguments(IntFunction<A[]> generator) {
 		return Stream.of(getArguments()).toArray(generator);
@@ -78,87 +71,55 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	public int getKernelSize() { return kernelSize; }
 
-	@Override
-	public Console console() { return Hardware.console; }
+	protected synchronized void checkReady() {
+		if (!isReady()) return;
 
-	private Object[] processArguments(Object args[], MemoryProvider target, TempMemoryFactory tempFactory) {
-		if (!enableAggregation) return args;
-
-		Map<MemoryData, Replacement> replacements = new HashMap<>();
-
-		Object result[] = new Object[args.length];
-
-		i: for (int i = 0; i < args.length; i++) {
-			Object arg = args[i];
-
-			if (!(arg instanceof MemoryData)) {
-				result[i] = arg;
-				continue i;
-			}
-
-			MemoryData data = (MemoryData) arg;
-			if (data.getMem() == null) {
-				throw new IllegalArgumentException();
-			} else if (data.getMemOrdering() != null) {
-				warn("Reordered memory cannot be aggregated");
-				result[i] = arg;
-				continue i;
-			} else if (data.getMem().getProvider() == target || data.getMemLength() > aggregationThreshold) {
-				result[i] = arg;
-				continue i;
-			}
-
-			Replacement replacement;
-
-			if (replacements.containsKey(data.getRootDelegate())) {
-				replacement = replacements.get(data.getRootDelegate());
-			} else {
-				replacement = new Replacement();
-				replacement.root = data.getRootDelegate();
-				replacement.children = new ArrayList<>();
-				replacements.put(replacement.root, replacement);
-			}
-
-			replacement.children.add(data);
+		if (arguments == null) {
+			arguments = enableAggregation ? replacementManager.processArguments(originalArguments) : originalArguments;
 		}
 
-		for (Replacement replacement : replacements.values()) {
-			replacement.processChildren(tempFactory, (child, temp) -> {
-				for (int i = 0; i < args.length; i++) {
-					if (child == args[i]) {
-						result[i] = temp;
+		Runnable notice = () -> {
+			listeners.forEach(r -> {
+				try {
+					r.run();
+				} finally {
+					if (semaphore != null) {
+						semaphore.countDown();
 					}
 				}
 			});
-		}
+		};
 
-		return result;
-	}
-
-	protected class Replacement {
-		private MemoryData root;
-		private List<MemoryData> children;
-
-		protected void processChildren(TempMemoryFactory tempFactory, BiConsumer<MemoryData, MemoryData> tempChildren) {
-			int start = children.stream().mapToInt(MemoryData::getOffset).min().getAsInt();
-			int end = children.stream().mapToInt(md -> md.getOffset() + md.getMemLength()).max().getAsInt();
-			int length = end - start;
-
-			MemoryData data = new Bytes(length, root, start);
-			MemoryData tmp = tempFactory.apply(length, length);
-
-			prepare.add(new MemoryDataCopy("Temp Prep", data, tmp));
-			postprocess.add(new MemoryDataCopy("Temp Post", tmp, data));
-
-			Bytes tempBytes = new Bytes(length, tmp, 0);
-
-			for (MemoryData child : children) {
-				tempChildren.accept(child, tempBytes.range(child.getOffset() - start, child.getMemLength(), child.getAtomicMemLength()));
-			}
+		if (enableAsyncListeners) {
+			executor.execute(notice);
+		} else {
+			notice.run();
 		}
 	}
 
-	public interface TempMemoryFactory {
-		MemoryData apply(int memLength, int atomicLength);
+	public boolean isReady() {
+		return Stream.of(originalArguments).noneMatch(Objects::isNull);
 	}
+
+	public void result(int index, Object result) {
+		if (originalArguments[index] != null) {
+			throw new IllegalArgumentException("Duplicate result for argument index " + index);
+		} else if (isReady()) {
+			throw new IllegalStateException("Received result when details are already available");
+		}
+
+		originalArguments[index] = result;
+
+		// TODO  This check should not block the
+		// TODO  return of the results method
+		checkReady();
+	}
+
+	public synchronized void whenReady(Runnable r) {
+		this.listeners.add(r);
+		checkReady();
+	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

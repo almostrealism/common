@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,21 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.streams;
 
-/**
- * A {@link MemoryData} that allows a segment to be reserved for use via
- * {@link #reserveOffset(MemoryData)}.
- *
- * @author  Michael Murray
- */
-public interface PooledMem<T extends MemoryData> extends MemoryData {
-	int reserveOffset(T owner);
+import java.util.function.Consumer;
+
+public abstract class StreamingEvaluableBase<T> implements StreamingEvaluable<T> {
+	private Consumer<T> downstream;
+
+	protected Consumer<T> getDownstream() { return downstream; }
+
+	@Override
+	public void setDownstream(Consumer<T> consumer) {
+		if (downstream != null && downstream != consumer) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.downstream = consumer;
+	}
 }

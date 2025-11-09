@@ -28,7 +28,6 @@ import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.util.DescribableParent;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,19 +48,7 @@ public abstract class OperationAdapter<T> implements
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
 
-	private OperationMetadata metadata;
-
 	public OperationAdapter() { }
-
-	@SafeVarargs
-	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
-		setInputs(input);
-	}
-
-	public void init() {
-		if (function == null) setFunctionName(functionName(getClass()));
-		metadata = new OperationMetadata(getFunctionName(), getName());
-	}
 
 	@Override
 	public void setFunctionName(String name) { function = name; }
@@ -70,16 +57,8 @@ public abstract class OperationAdapter<T> implements
 	public String getFunctionName() { return function; }
 
 	@Override
-	public OperationMetadata getMetadata() { return metadata; }
-
-	@Override
-	public String getName() { return operationName(null, getClass(), getFunctionName()); }
-
-	@Override
 	public int getArgsCount() { return getArguments().size(); }
 
-	@SafeVarargs
-	protected final void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
 	protected void setInputs(List<Supplier<Evaluable<? extends T>>> inputs) { this.inputs = inputs; }
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
@@ -99,14 +78,6 @@ public abstract class OperationAdapter<T> implements
 				.collect(Collectors.toList());
 	}
 
-	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
-		if (getArgumentVariables() == null) {
-			throw new IllegalArgumentException(getName() + " is not compiled");
-		}
-
-		return getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
-	}
-
 	public void resetArguments() { this.arguments = null; }
 
 	protected void waitFor(Semaphore semaphore) {
@@ -117,9 +88,7 @@ public abstract class OperationAdapter<T> implements
 	@Override
 	public void destroy() {
 		if (getInputs() != null) {
-			getInputs().stream().map(in -> in instanceof Destroyable ? (Destroyable) in : null)
-					.filter(Objects::nonNull)
-					.forEach(Destroyable::destroy);
+			getInputs().forEach(Destroyable::destroy);
 		}
 
 		resetArguments();

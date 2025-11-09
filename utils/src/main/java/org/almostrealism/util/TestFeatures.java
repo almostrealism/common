@@ -104,7 +104,19 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	default void assertEquals(Object expected, Object actual) {
-		if (!Objects.equals(expected, actual)) {
+		if (actual instanceof PackedCollection) {
+			assertEquals(expected, (PackedCollection<?>) actual);
+		} else if (!Objects.equals(expected, actual)) {
+			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	default void assertEquals(Object expected, PackedCollection<?> actual) {
+		if (expected instanceof Number) {
+			assertEquals(((Number) expected).doubleValue(), actual.toDouble());
+		} else if (expected instanceof PackedCollection) {
+			assertEquals((PackedCollection<?>) expected, actual);
+		} else if (!Objects.equals(expected, actual)) {
 			throw new AssertionError(actual + " != " + expected);
 		}
 	}
@@ -318,6 +330,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			profile(profile, p);
 			log("Validating optimized kernel output...");
 			validate.accept(output);
+			log("Validating optimized kernel output copy...");
 			validate.accept(dest);
 		}
 

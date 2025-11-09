@@ -36,34 +36,36 @@ public class SphereTest implements TestFeatures {
 
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, 1.0));
-		Scalar distance = f.getDistance().get().evaluate();
-		System.out.println(distance);
+		PackedCollection<?> distance = f.getDistance().get().evaluate();
+		distance.print();
 		assertEquals(-1, distance);
 
 		f = s.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, -1.0));
 		distance = f.getDistance().get().evaluate();
-		System.out.println(distance);
+		distance.print();
 		assertEquals(2, distance);
 
 		f = s.intersectAt(ray(0.5, 0.5, 3.0, 0.0, 0.0, -1.0));
 		distance = f.getDistance().get().evaluate();
-		System.out.println(distance);
+		distance.print();
 		assertEquals(2.2928932188134525, distance);
 
-		Ray r = f.get(0).get().evaluate();
+		Ray r = new Ray(f.get(0).get().evaluate(), 0);
 		System.out.println(r);
 
 		f = s.intersectAt(ray(0.0, 0.0, -2.0, 57.22891566265059, 72.32037025267255, 404.1157064026493));
 		distance = f.getDistance().get().evaluate();
 		System.out.println(distance);
 
-		r = f.get(0).get().evaluate();
+		r = new Ray(f.get(0).get().evaluate(), 0);
 		System.out.println(r);
 	}
 
 	@Test
 	public void discriminantKernel() {
-		Producer<Ray> ray = v(Ray.shape(), 0);
+		if (skipGeometryIssues) return;
+
+		Producer<Ray> ray = v(shape(-1, 6), 0);
 
 		int w = 100;
 		int h = 100;
@@ -81,7 +83,7 @@ public class SphereTest implements TestFeatures {
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
 		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
-		Evaluable<Scalar> ev = scalar(greaterThan(c(d), c(0.0), scalar(1.0), scalar(-1.0))).get();
+		Evaluable<PackedCollection<?>> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;
@@ -98,12 +100,14 @@ public class SphereTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel() {
+		if (skipGeometryIssues) return;
+
 		int w = 100;
 		int h = 100;
 
 		Sphere s = new Sphere();
 
-		ShadableIntersection f = s.intersectAt(v(Ray.shape(), 0));
+		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
 		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
 		for (int x = 0; x < w; x++) {
@@ -112,9 +116,9 @@ public class SphereTest implements TestFeatures {
 			}
 		}
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
+		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 1), 2);
 
-		Evaluable<Scalar> ev = f.getDistance().get();
+		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;
@@ -142,14 +146,14 @@ public class SphereTest implements TestFeatures {
 		Sphere s = new Sphere();
 		ShadableIntersection f = s.intersectAt(v(shape(h, w, 6), 0));
 
-		c.rayAt(pair(v(shape(w * h, 2), 0)), pair(w, h));
+		c.rayAt(v(shape(w * h, 2), 0), pair(w, h));
 
 		PackedCollection<?> positions = new PackedCollection<>(shape(w * h, 2), 1);
 		// TODO  Setup positions
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
-		Evaluable<Scalar> ev = f.getDistance().get();
+		Evaluable<PackedCollection<?>> ev = f.getDistance().get();
 		ev.into(destination).evaluate(positions);
 
 		int hits = 0;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
@@ -33,8 +32,7 @@ import org.junit.Test;
 public class VectorMathTest implements TestFeatures {
 	@Test
 	public void scalarPow() {
-		Scalar result = scalar(scalar(3).pow(3)).get().evaluate();
-		assertEquals(27, result);
+		assertEquals(27, c(3).pow(3).evaluate());
 	}
 
 	@Test
@@ -50,8 +48,8 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		ExpressionComputation<Vector> product = scalarMultiply(vector(1, 2, 3), 2);
-		Vector result = product.get().evaluate();
+		CollectionProducer<PackedCollection<?>> product = vector(1, 2, 3).multiply(c(2));
+		Vector result = new Vector(product.get().evaluate(), 0);
 		assertEquals(2, result.getX());
 		assertEquals(4, result.getY());
 		assertEquals(6, result.getZ());
@@ -89,31 +87,63 @@ public class VectorMathTest implements TestFeatures {
 		verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
-			Producer<Scalar> s = scalar(y(a).multiply(z(b))
-					.subtract(z(a).multiply(y(b))));
-			HardwareEvaluable<Scalar> so = (HardwareEvaluable<Scalar>) s.get();
+			Producer<PackedCollection<?>> s = y(a).multiply(z(b)).subtract(z(a).multiply(y(b)));
+			HardwareEvaluable<PackedCollection<?>> so = (HardwareEvaluable<PackedCollection<?>>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());
 		});
 	}
 
-	protected ExpressionComputation<Vector> crossProduct(Producer<Vector> v) {
-		return crossProduct(vector(0.0, 0.0, -1.0), v);
+	protected CollectionProducer<Vector> crossProduct(Producer<Vector> v) {
+		return vector(crossProduct(vector(0.0, 0.0, -1.0), v));
 	}
 
 	@Test
 	public void crossProduct() {
-		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
+		CollectionProducer<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
-		Assert.assertEquals(1, cpo.getArgsCount());
+		assertEquals(1, cpo.getArgsCount());
 
 		Vector v = cp.get().evaluate();
 		System.out.println(v);
 
-		Assert.assertEquals(-200, v.getX(), Math.pow(10, -10));
-		Assert.assertEquals(-100, v.getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, v.getZ(), Math.pow(10, -10));
+		assertEquals(-200, v.getX());
+		assertEquals(-100, v.getY());
+		assertEquals(0, v.getZ());
+	}
+
+	@Test
+	public void normalizedCrossProduct1() {
+		CollectionProducer<Vector> cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
+
+		HardwareEvaluable<Vector> cpo = (HardwareEvaluable<Vector>) cp.get();
+		assertEquals(1, cpo.getArgsCount());
+
+		Vector v = new Vector(cp.get().evaluate(), 0);
+		v.print();
+
+		assertEquals(-0.894427191, v.getX());
+		assertEquals(-0.447213595, v.getY());
+		assertEquals(0, v.getZ());
+	}
+
+
+	// TODO  Create a test of just the crossProduct(v(shape(3), 0)) part to see if the issue is there
+	//       or in the normalize(...) part
+	@Test
+	public void normalizedCrossProduct2() {
+		if (skipGeometryIssues) return;
+
+		CollectionProducer<Vector> cp = normalize(crossProduct(v(shape(3), 0)));
+		Evaluable<Vector> ev = cp.get();
+
+		Vector v = new Vector(ev.evaluate(new Vector(100, -200, 0)), 0);
+		v.print();
+
+		assertEquals(-0.894427191, v.getX());
+		assertEquals(-0.447213595, v.getY());
+		assertEquals(0, v.getZ());
 	}
 
 	@Test

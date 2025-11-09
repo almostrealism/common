@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,32 +17,31 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-
-import java.util.function.Supplier;
 
 public class ExpressionDelegationTest implements TestFeatures {
 	@Test
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);
-		Evaluable<Scalar> ev = r(p(t)).get();
+		Evaluable<PackedCollection<?>> ev = r(p(t)).get();
 		assertEquals(8.0, ev.evaluate());
 	}
 
 	@Test
 	public void scalarFromTemporalScalarFromScalars() {
 		verboseLog(() -> {
-			Scalar a = new Scalar(1.0);
-			Scalar b = new Scalar(2.0);
-			Evaluable<Scalar> ev = r((Supplier) temporal(p(a), p(b))).get();
+			PackedCollection<?> a = pack(1.0);
+			PackedCollection<?> b = pack(2.0);
+			Evaluable<PackedCollection<?>> ev = r((Producer) temporal(p(a), p(b))).get();
 
-			Scalar s = ev.evaluate();
+			PackedCollection<?> s = ev.evaluate();
 			System.out.println(s);
 			assertEquals(2.0, s);
 		});

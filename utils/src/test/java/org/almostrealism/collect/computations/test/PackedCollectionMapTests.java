@@ -906,7 +906,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = traverse(2, p(input))
-					.map(v -> concat((Producer) v, p(addOn)));
+					.map(v ->
+							concat(shape(1, 1, 2 * s), (Producer) v, p(addOn)));
 			System.out.println(conv.getShape());
 
 			PackedCollection<?> output = conv.get().evaluate();

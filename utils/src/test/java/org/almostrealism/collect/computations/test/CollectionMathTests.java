@@ -26,13 +26,33 @@ import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
 	@Test
-	public void broadcastProduct() {
+	public void broadcastProduct1() {
 		PackedCollection<?> a = new PackedCollection<>(shape(10));
 		a.fill(pos -> Math.random());
 
 		verboseLog(() -> {
 			PackedCollection<?> result = cp(a).multiply(c(2.0)).get().evaluate();
-			System.out.println(result.getShape().toStringDetail());
+			log(result.getShape().toStringDetail());
+
+			for (int i = 0; i < 10; i++) {
+				assertEquals(a.valueAt(i) * 2.0, result.valueAt(i));
+			}
+		});
+	}
+
+	@Test
+	public void broadcastProduct2() {
+		PackedCollection<?> a = new PackedCollection<>(shape(10));
+		a.fill(pos -> Math.random());
+
+		verboseLog(() -> {
+			PackedCollection<?> result = new PackedCollection<>(shape(10));
+
+			CollectionProducer<PackedCollection<?>> product =
+					multiply(v(shape(-1), 0), v(shape(1), 1));
+			product.get().into(result.each()).evaluate(a.each(), pack(2.0));
+
+			result.print();
 
 			for (int i = 0; i < 10; i++) {
 				assertEquals(a.valueAt(i) * 2.0, result.valueAt(i));
@@ -119,9 +139,7 @@ public class CollectionMathTests implements TestFeatures {
 	public void sum() {
 		int size = 768;
 
-		PackedCollection<?> x = new PackedCollection<>(shape(size));
-		x.fill(pos -> Math.random());
-
+		PackedCollection<?> x = new PackedCollection<>(shape(size)).randFill();
 
 		kernelTest(() -> c(p(x)).sum(),
 				output -> {

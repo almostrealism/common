@@ -31,8 +31,8 @@ public class AltComputeContextsTest implements TestFeatures {
 		dc(() -> {
 			Scalar result = new Scalar();
 
-			Producer<Scalar> sum = scalarAdd(scalar(1.0), scalar(2.0));
-			Producer<Scalar> product = scalarsMultiply(scalar(3.0), scalar(2.0));
+			Producer<Scalar> sum = add(c(1.0), c(2.0));
+			Producer<Scalar> product = multiply(c(3.0), c(2.0));
 
 			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
 			System.out.println("Result = " + result.getValue());

@@ -115,7 +115,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 
 		PackedCollection<?> result = new PackedCollection<>(shape(cutoffs.getShape().getTotalSize(), (filterOrder + 1)));
 		lowPassCoefficients(
-				v(shape(1), 0), sampleRate, filterOrder)
+				v(shape(-1), 0), sampleRate, filterOrder)
 				.get().into(result.traverse(1)).evaluate(cutoffs);
 
 //		PackedCollection<?> result =
@@ -159,7 +159,7 @@ public class TemporalFeaturesTest implements TestFeatures {
 		Producer<PackedCollection<?>> coefficients = choice(2,
 				shape(filterOrder + 1),
 				decision,
-				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients));
+				concat(shape(2, filterOrder + 1), hpCoefficients, lpCoefficients).traverse(1));
 
 		PackedCollection<?> result = coefficients.evaluate();
 

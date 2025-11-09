@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,14 +22,11 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.lifecycle.Lifecycle;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
@@ -96,12 +93,9 @@ public interface TemporalFeatures extends GeometryFeatures {
 		}
 	}
 
-	default CollectionProducer<TemporalScalar> temporal(Supplier<Evaluable<? extends Scalar>> time,
-														Supplier<Evaluable<? extends Scalar>> value) {
-		return new ExpressionComputation<>(
-				List.of(args -> args.get(1).getValueRelative(0), args -> args.get(2).getValueRelative(0)),
-				(Supplier) time, (Supplier) value)
-				.setPostprocessor(TemporalScalar.postprocessor());
+	default CollectionProducer<TemporalScalar> temporal(Producer<PackedCollection<?>> time,
+														Producer<PackedCollection<?>> value) {
+		return concat(shape(2), time, value);
 	}
 
 	default Interpolate interpolate(Producer<PackedCollection<?>> series,

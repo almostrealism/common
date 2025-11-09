@@ -129,7 +129,7 @@ public class CollectionKernelTests implements TestFeatures {
 
 	@Test
 	public void conditionalKernel() {
-		Producer<PackedCollection<?>> in = v(1, 0);
+		Producer<PackedCollection<?>> in = v(shape(-1), 0);
 		Producer<PackedCollection<?>> t = integers(0, 100);
 		Producer<PackedCollection<?>> conditional =
 				greaterThanConditional(t, c(50),

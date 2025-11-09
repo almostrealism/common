@@ -33,7 +33,7 @@ import org.almostrealism.time.Temporal;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatures {
+public class TimeCell implements Cell<PackedCollection<?>>, Temporal, Destroyable, CodeFeatures {
 	private Receptor r;
 	private Pair<?> time;
 	private Producer<PackedCollection<?>> initial, loopDuration;
@@ -83,8 +83,8 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 	}
 
 	@Override
-	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return r == null ? new OperationList("TimeCell Push") : r.push(frameScalar());
+	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+		return r == null ? new OperationList("TimeCell Push") : r.push(frame());
 	}
 
 	@Override
@@ -112,7 +112,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 	}
 
 	@Override
-	public void setReceptor(Receptor<Scalar> r) {
+	public void setReceptor(Receptor<PackedCollection<?>> r) {
 		if (cellWarnings && this.r != null) {
 			warn("Replacing receptor");
 		}
@@ -128,8 +128,6 @@ public class TimeCell implements Cell<Scalar>, Temporal, Destroyable, CodeFeatur
 	public double getFrame() {
 		return time.toDouble(0);
 	}
-
-	public Producer<Scalar> frameScalar() { return l(cp(time)); }
 
 	public Producer<PackedCollection<?>> frame() { return cp(time.range(shape(1))); }
 

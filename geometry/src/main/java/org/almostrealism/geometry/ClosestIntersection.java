@@ -45,7 +45,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				Scalar s = (Scalar) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
 				if (s == null) continue p;
 
 				double v = s.getValue();
@@ -69,7 +69,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			for (ContinuousField in : s) {
 				if (in == null) continue p;
 
-				Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+				Scalar s = (Scalar) ((Evaluable) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
 				if (s == null) continue p;
 
 				double v = s.getValue();

@@ -16,19 +16,15 @@
 
 package org.almostrealism.bool;
 
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
 @Deprecated
-public class LessThanCollection extends LessThan<PackedCollection<?>> implements AcceleratedConditionalStatementCollection {
-	public LessThanCollection(
-			Supplier leftOperand, Supplier rightOperand,
-			Supplier trueValue, Supplier falseValue) {
-		this(leftOperand, rightOperand, trueValue, falseValue, false);
-	}
-
+public class LessThanCollection extends LessThan<PackedCollection<?>>
+		implements AcceleratedConditionalStatement<PackedCollection<?>>, CollectionProducerComputation<PackedCollection<?>> {
 	public LessThanCollection(
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue,

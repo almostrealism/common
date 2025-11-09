@@ -18,24 +18,16 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
-import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
@@ -46,17 +38,17 @@ import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
 							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
+
 	public static Console console = Computation.console.child();
 
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
@@ -78,33 +70,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	private ProcessDetailsFactory detailsFactory;
 	protected MemoryDataArgumentMap argumentMap;
 
-	@SafeVarargs
-	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel,
-								   Supplier<Evaluable<? extends T>>... args) {
-		super(args);
-		setArgumentMapping(true);
-		this.context = context;
-		this.kernel = kernel;
-	}
-
-	@SafeVarargs
-	public AcceleratedOperation(ComputeContext<MemoryData> context, String function, boolean kernel,
-								Supplier<Evaluable<? extends T>>... args) {
-		this(context, kernel, args);
-		setFunctionName(function);
-	}
-
 	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel) {
 		setArgumentMapping(true);
 		this.context = context;
 		this.kernel = kernel;
 	}
 
-	public Class getSourceClass() { return getClass(); }
-
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
-
-	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
 
 	public abstract <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager();
 
@@ -114,29 +86,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		this.argumentMapping = enabled;
 	}
 
-	public ArrayVariable getArgument(int index) {
-		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
-	}
-
-	public Variable getOutputVariable() { return getArgument(getOutputArgumentIndex()); }
-	
-	/** @return  -1 */
-	protected int getOutputArgumentIndex() { return -1; }
-
 	@Override
 	public List<Argument<? extends T>> getChildren() {
 		return getArguments();
 	}
 
-	/** @return  -1 */
-	@Override
-	public long getCountLong() { return -1; }
-
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
 		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
 	}
 
-	public boolean isAggregatedInput() { return false; }
+	public abstract boolean isAggregatedInput();
+
+	protected abstract int getOutputArgumentIndex();
 
 	protected void prepareScope() {
 		if (argumentMap != null) {
@@ -161,8 +122,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	/**
 	 * Prepare the {@link Execution} for this {@link AcceleratedOperation}.
-	 * This will obtain the {@link #getInstructionSetManager()} InstructionSetManager}
-	 * and either {@link #compile() compile} the operation or prepare the
+	 * This will obtain the {@link #getInstructionSetManager() InstructionSetManager}
+	 * and either compile the operation or prepare the
 	 * operation to use an {@link Execution} from a previously compiled
 	 * {@link io.almostrealism.code.InstructionSet}.
 	 *
@@ -182,28 +143,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	public Scope<?> compile() {
-		prepareScope();
-		return null;
-	}
-
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		if (getArgumentVariables() != null) return;
-
-		if (getInputs() != null) {
-			ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
-			setArguments(getInputs().stream()
-					.map(manager.argumentForInput(getNameProvider()))
-					.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
-					.map(arg -> (Argument<? extends T>) arg)
-					.collect(Collectors.toList()));
-		}
 	}
 
 	public void preApply() {
@@ -234,10 +176,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	public ProcessArgumentEvaluator getEvaluator() {
-		return evaluator;
-	}
-
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) {
 		this.evaluator = evaluator;
 
@@ -246,12 +184,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	protected MemoryReplacementManager createMemoryReplacementManager() {
+		return new MemoryReplacementManager(
+				getComputeContext().getDataContext().getKernelMemoryProvider(),
+				this::createAggregatedInput);
+	}
+
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
-			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
+			detailsFactory = new ProcessDetailsFactory<>(
+					isKernel(), isFixedCount(), getCount(),
 					getArgumentVariables(), getOutputArgumentIndex(),
-					getComputeContext().getDataContext().getKernelMemoryProvider(),
-					this::createAggregatedInput);
+					this::createMemoryReplacementManager,
+					getComputeContext()::runLater);
 
 			if (evaluator != null) {
 				detailsFactory.setEvaluator(evaluator);
@@ -284,44 +229,45 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null && getInstructionSetManager() == null) {
-			warn(getName() + " was not compiled ahead of time");
-			compile();
+			throw new UnsupportedOperationException("Operation was not compiled");
 		}
 
 		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		MemoryData input[] = process.getArguments(MemoryData[]::new);
+		process.setSemaphore(new DefaultLatchSemaphore(getMetadata(), 1));
 
-		// Prepare the operator
-		Execution operator = setupOperator(process);
-		boolean processing = isPreprocessingRequired(process);
+		process.whenReady(() -> {
+			MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-		// Preprocessing
-		if (processing) {
-			preApply();
-			process.getPrepare().get().run();
-		}
+			// Prepare the operator
+			Execution operator = setupOperator(process);
+			boolean processing = isPreprocessingRequired(process);
 
-		// Run the operator
-		long start = System.nanoTime();
-		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptMetric.addEntry(System.nanoTime() - start);
-		process.setSemaphore(semaphore);
-		semaphores.set(semaphore);
-
-		// Postprocessing
-		if (processing) {
-			if (semaphore != null) {
-				// TODO  This should actually result in a new Semaphore
-				// TODO  that performs the post processing whenever the
-				// TODO  original semaphore is finished
-				// warn("Postprocessing will wait for semaphore");
-				semaphore.waitFor();
+			// Preprocessing
+			if (processing) {
+				preApply();
+				process.getPrepare().get().run();
 			}
 
-			process.getPostprocess().get().run();
-			postApply();
-		}
+			// Run the operator
+			long start = System.nanoTime();
+			Semaphore nextSemaphore = operator.accept(input, null);
+			acceptMetric.addEntry(System.nanoTime() - start);
+
+			// Postprocessing
+			if (processing) {
+				if (nextSemaphore != null) {
+					// TODO  This should actually result in a new Semaphore
+					// TODO  that performs the post processing whenever the
+					// TODO  original semaphore is finished
+					// warn("Postprocessing will wait for semaphore");
+					nextSemaphore.waitFor();
+				}
+
+				process.getPostprocess().get().run();
+				postApply();
+			}
+		});
 
 		return process;
 	}
@@ -362,7 +308,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void destroy() {
 		super.destroy();
 
-		argumentMap.destroy();
+		if (argumentMap != null) {
+			argumentMap.destroy();
+		}
 	}
 
 	@Override

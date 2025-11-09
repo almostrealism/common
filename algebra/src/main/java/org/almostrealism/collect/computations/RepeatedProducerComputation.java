@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -351,11 +351,9 @@ public class RepeatedProducerComputation<T extends PackedCollection<?>> extends 
 	 * @return An {@link Expression} representing the destination memory location
 	 */
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
-		if (globalIndex instanceof KernelIndex) {
-			return ((ArrayVariable) getOutputVariable()).referenceRelative(offset, (KernelIndex) globalIndex);
-		} else {
-			return ((ArrayVariable) getOutputVariable()).referenceRelative(offset);
-		}
+		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
+		Expression len = ((ArrayVariable<?>) getOutputVariable()).length();
+		return ((ArrayVariable) getOutputVariable()).reference(k.multiply(len).add(offset));
 	}
 
 	/**

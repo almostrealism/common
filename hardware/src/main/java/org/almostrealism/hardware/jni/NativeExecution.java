@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -78,17 +79,7 @@ public class NativeExecution extends HardwareOperator {
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (dependsOn != null) dependsOn.waitFor(); // TODO  We can do better than forcing this method to block
 
-		int dim0[];
 		MemoryData data[] = prepareArguments(argCount, args);
-		int dimMasks[] = computeDimensionMasks(data);
-
-		long s = System.nanoTime();
-		if (enableDimensionMasks) {
-			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
-		} else {
-			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength()).toArray();
-		}
-		dimMaskMetric.addEntry(System.nanoTime() - s);
 
 		if (getGlobalWorkSize() > Integer.MAX_VALUE ||
 				inst.getParallelism() != 1 && getGlobalWorkOffset() != 0) {
@@ -106,7 +97,7 @@ public class NativeExecution extends HardwareOperator {
 
 					executor.submit(() -> {
 						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), dim0, data);
+							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
 						} catch (Exception e) {
 							warn("Operation " + id + " of " +
 									getGlobalWorkSize() + " failed", e);
@@ -123,7 +114,7 @@ public class NativeExecution extends HardwareOperator {
 		} else {
 			recordDuration(latch, () -> {
 				for (int i = 0; i < inst.getParallelism(); i++) {
-					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), dim0, data);
+					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
 					latch.countDown();
 				}
 			});

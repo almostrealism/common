@@ -218,7 +218,7 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	@Override
 	public Producer<Ray> rayAt(Producer<Pair<?>> pos, Producer<Pair<?>> sd) {
 		Producer<Pair<?>> p = divide(pos, sd).subtract(pair(0.5, 0.5)).multiply(v(getProjectionDimensions()));
-		Producer<Vector> xy = vector(l(p), r(p), scalar(0.0));
+		Producer<Vector> xy = vector(l(p), r(p), c(0.0));
 		Producer<Vector> o = getRotationMatrix().getInverse().transform(xy, TransformMatrix.TRANSFORM_AS_LOCATION);
 		return ray(o, v(viewDirection));
 

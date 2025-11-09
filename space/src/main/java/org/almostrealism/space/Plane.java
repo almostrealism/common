@@ -146,7 +146,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	@Override
 	public ContinuousField intersectAt(Producer<Ray> r) {
 		TransformMatrix m = getTransform(true);
-		Supplier<Evaluable<? extends Ray>> tr = r;
+		Producer<Ray> tr = r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
@@ -154,11 +154,11 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 		Producer<Scalar> s;
 
 		if (type == Plane.XY) {
-			s = scalar(minus(z(origin(tr))).divide(z(direction(tr))));
+			s = minus(z(origin(tr))).divide(z(direction(tr)));
 		} else if (type == Plane.XZ) {
-			s = scalar(minus(y(origin(tr))).divide(y(direction(tr))));
+			s = minus(y(origin(tr))).divide(y(direction(tr)));
 		} else if (type == Plane.YZ) {
-			s = scalar(minus(x(origin(tr))).divide(x(direction(tr))));
+			s = minus(x(origin(tr))).divide(x(direction(tr)));
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}

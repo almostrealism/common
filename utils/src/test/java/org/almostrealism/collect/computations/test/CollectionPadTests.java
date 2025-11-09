@@ -16,13 +16,38 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class CollectionPadTests implements TestFeatures {
+	/**
+	 * Tests padding computation with subset operations.
+	 * Creates a 6-element collection and performs subset operations followed by arithmetic.
+	 * The test combines two subsets - one multiplied by 2 and added to the other,
+	 * then pads the result with zeros to match the original shape.
+	 */
+	@Test
+	public void padSubset() {
+		Producer<PackedCollection<?>> multiplier = func(shape(1), args -> pack(2.0));
+
+		PackedCollection<?> data = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+		CollectionProducer<PackedCollection<?>> subset1 = c(data).subset(shape(3), 3);
+		PackedCollection<?> result = pad(shape(6), subset1.multiply(multiplier), 0).evaluate();
+		result.print();
+
+		assertEquals(6, result.getShape().length(0));
+		assertEquals(4 * 2, result.valueAt(0));
+		assertEquals(5 * 2, result.valueAt(1));
+		assertEquals(6 * 2, result.valueAt(2));
+		assertEquals(0.0, result.valueAt(3));
+		assertEquals(0.0, result.valueAt(4));
+		assertEquals(0.0, result.valueAt(5));
+	}
+
 	/**
 	 * Tests 2D padding with asymmetric padding (0 on left, 1 on right).
 	 * Input: 2x3 collection → Output: 2x5 collection

@@ -24,6 +24,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.kernel.KernelWork;
@@ -33,13 +34,13 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
 	public static boolean enableLog;
-	public static boolean enableVerboseLog;
-	public static boolean enableKernelLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
+	public static boolean enableVerboseLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
 	public static boolean enableInstructionSetMonitoring =
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("always");
 	public static boolean enableLargeInstructionSetMonitoring =
@@ -47,9 +48,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static boolean enableFailedInstructionSetMonitoring =
 			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
 					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
-
-	public static boolean enableDimensionMasks = true;
-	public static boolean enableAtomicDimensionMasks = true;
 
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
@@ -121,7 +119,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		String to = supported.get(0).getName();
 		OperationMetadata metadata =
 				new OperationMetadata("reassignMemory_" + from + "_" + to,
-				"Reassign Memory " + from + " -> " + to);
+						"Reassign Memory " + from + " -> " + to);
 
 		recordDuration(null, new OperationWithInfo.RunnableWithInfo(metadata,
 				() -> {
@@ -137,49 +135,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					root.reallocate(supported.get(0));
 				}), false);
 
-	}
-
-	protected int[] computeDimensionMasks(Object args[]) {
-		long start = System.nanoTime();
-
-		try {
-			long sizes[] = new long[args.length];
-
-			for (int i = 0; i < getArgCount(); i++) {
-				if (args[i] == null) {
-					throw new NullPointerException("argument " + i + " to function " + getName());
-				}
-
-				if (!(args[i] instanceof MemoryData)) {
-					throw new IllegalArgumentException("argument " + i + " (" +
-							args[i].getClass().getSimpleName() + ") to function " +
-							getName() + " is not a MemoryData");
-				}
-
-				if (args[i] instanceof MemoryBank) {
-					sizes[i] = ((MemoryBank) args[i]).getCountLong();
-				} else if (args[i] instanceof Bytes) {
-					sizes[i] = ((Bytes) args[i]).getCountLong();
-				} else {
-					sizes[i] = ((MemoryData) args[i]).getMemLength();
-				}
-			}
-
-			if (enableAtomicDimensionMasks && getGlobalWorkSize() == 1) {
-				return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
-			} else {
-				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-					// Is it though?
-					throw new IllegalArgumentException("globalWorkSize is too large");
-				}
-
-				return IntStream.range(0, sizes.length)
-						.map(i -> (sizes[i] >= getGlobalWorkSize() && sizes[i] % getGlobalWorkSize() == 0) ? 1 : 0)
-						.toArray();
-			}
-		} finally {
-			computeDimMasksMetric.addEntry(System.nanoTime() - start);
-		}
 	}
 
 	protected void recordDuration(Semaphore semaphore, Runnable r) {
@@ -238,17 +193,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		} finally {
 			enableVerboseLog = log;
 			NativeCompiler.enableVerbose = compilerLog;
-		}
-	}
-
-	public static void disableDimensionMasks(Runnable r) {
-		boolean masks = enableDimensionMasks;
-
-		try {
-			enableDimensionMasks = false;
-			r.run();
-		} finally {
-			enableDimensionMasks = masks;
 		}
 	}
 }

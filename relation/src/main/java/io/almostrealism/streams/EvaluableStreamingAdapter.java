@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,27 @@
  * limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.streams;
 
 import io.almostrealism.relation.Evaluable;
 
-@Deprecated
-public interface CollectionEvaluable<T extends PackedCollection> extends Evaluable<T>, CollectionFeatures {
+import java.util.concurrent.Executor;
+
+public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
+	private Evaluable<T> evaluable;
+	private Executor executor;
+
+	public EvaluableStreamingAdapter(Evaluable<T> evaluable) {
+		this(evaluable, Runnable::run);
+	}
+
+	public EvaluableStreamingAdapter(Evaluable<T> evaluable, Executor executor) {
+		this.evaluable = evaluable;
+		this.executor = executor;
+	}
+
+	@Override
+	public void request(Object[] args) {
+		executor.execute(() -> getDownstream().accept(evaluable.evaluate(args)));
+	}
 }

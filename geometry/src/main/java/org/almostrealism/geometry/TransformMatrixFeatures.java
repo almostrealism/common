@@ -27,18 +27,14 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -48,7 +44,7 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	default CollectionProducer<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
 	default CollectionProducer<TransformMatrix> value(TransformMatrix v) {
-		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
+		return DefaultTraversableExpressionComputation.fixed(v, TransformMatrix.postprocessor());
 	}
 
 	default CollectionProducer<TransformMatrix> translationMatrix(Producer<Vector> offset) {
@@ -72,64 +68,47 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 		return m.setPostprocessor(TransformMatrix.postprocessor());
 	}
 
-	default CollectionProducerComputation<Vector> transformAsLocation(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsLocation(TransformMatrix matrix,
+																	  Producer<Vector> vector) {
 		return transformAsLocation(v(matrix), vector);
 	}
 
-	default CollectionProducerComputation<Vector> transformAsLocation(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsLocation(Producer<TransformMatrix> matrix,
+																	  Producer<Vector> vector) {
 		return transform(matrix, vector, true);
 	}
 
-	default CollectionProducerComputation<Vector> transformAsOffset(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsOffset(TransformMatrix matrix,
+																	Producer<Vector> vector) {
 		return transformAsOffset(v(matrix), vector);
 	}
 
-	default CollectionProducerComputation<Vector> transformAsOffset(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsOffset(Producer<TransformMatrix> matrix,
+																	Producer<Vector> vector) {
 		return transform(matrix, vector, false);
 	}
 
-	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
+	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix,
+															Producer<Vector> vector, boolean includeTranslation) {
 		TraversalPolicy shape = shape(3);
 
-		if (enableCollectionExpression) {
-			DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
-					(Function<TraversableExpression[], CollectionExpression>) args ->
-							new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
-									(groupIndex, operandIndex) -> outputIndex -> {
-										if (operandIndex == 0) {
-											return e(groupIndex);
-										} else if (operandIndex == 1) {
-											return (Expression) outputIndex.multiply(4).add(e(groupIndex));
-										} else {
-											throw new IllegalArgumentException();
-										}
-									}),
-					(Supplier) vector, (Supplier) matrix);
-			c.setPostprocessor(Vector.postprocessor());
-			return c;
-		} else {
-			DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
-					(Function<TraversableExpression[], CollectionExpression>) (args) ->
-							CollectionExpression.create(shape, index -> {
-								Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
-								Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
-								Function<Integer, Expression<Double>> p = (i) -> (Expression<Double>) Product.of(t.apply(i), v.apply(i));
+		vector = concat(shape(4), (Producer) vector, c(1.0));
 
-								List<Expression<Double>> sum = new ArrayList<>();
-								sum.add(p.apply(0));
-								sum.add(p.apply(1));
-								sum.add(p.apply(2));
-
-								if (includeTranslation) {
-									sum.add(t.apply(3));
-								}
-
-								return Sum.of(sum.toArray(Expression[]::new));
-							}),
-					(Supplier) vector, (Supplier) matrix);
-			c.setPostprocessor(Vector.postprocessor());
-			return c;
-		}
+		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation<>("transform", shape,
+				(Function<TraversableExpression[], CollectionExpression>) args ->
+						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
+								(groupIndex, operandIndex) -> outputIndex -> {
+									if (operandIndex == 0) {
+										return e(groupIndex);
+									} else if (operandIndex == 1) {
+										return (Expression) outputIndex.multiply(4).add(e(groupIndex));
+									} else {
+										throw new IllegalArgumentException();
+									}
+								}),
+				(Supplier) vector, (Supplier) matrix);
+		c.setPostprocessor(Vector.postprocessor());
+		return c;
 	}
 
 	static TransformMatrixFeatures getInstance() {

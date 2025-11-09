@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -113,10 +114,6 @@ public class MetalOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		if (enableVerboseLog) {
-			log(prog.getMetadata().getDisplayName() + " (" + id + ")");
-		}
-
 		if (dependsOn != null) dependsOn.waitFor();
 
 		MemoryData data[] = prepareArguments(argCount, args);
@@ -124,9 +121,7 @@ public class MetalOperator extends HardwareOperator {
 			throw new UnsupportedOperationException();
 		}
 
-		int dimMasks[] = computeDimensionMasks(data);
-
-		Future<?> run = context.getCommandRunner().submit((offset, size, dim0, queue) -> {
+		Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
 			recordDuration(null, () -> {
 				int index = 0;
 				long totalSize = 0;
@@ -143,22 +138,19 @@ public class MetalOperator extends HardwareOperator {
 				}
 
 				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-				offset.setContents(offsetValues);
-
 				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+
+				offset.setContents(offsetValues);
 				size.setContents(sizeValues);
 
-				if (enableDimensionMasks) {
-					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
-					dim0.setContents(dim0Values);
-				} else {
-					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-					dim0.setContents(dim0Values);
+				if (enableVerboseLog) {
+					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
+					log("\tSizes = " + Arrays.toString(sizeValues));
+					log("\tOffsets = " + Arrays.toString(offsetValues));
 				}
 
 				encoder.setBuffer(index++, offset);
 				encoder.setBuffer(index++, size);
-				encoder.setBuffer(index++, dim0);
 
 				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 					throw new UnsupportedOperationException();

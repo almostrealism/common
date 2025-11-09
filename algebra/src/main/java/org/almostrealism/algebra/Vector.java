@@ -261,7 +261,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return dotProduct(v(this), v(vector)).get().evaluate().getValue();
+		return dotProduct(v(this), v(vector)).evaluate().toDouble();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
@@ -276,7 +276,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 
 	public void normalize() {
 		// TODO  This should leverage a reusable Evaluable that takes an argument
-		vnormalize(v(this)).get().evaluate();
+		normalize(cp(this)).into(this).evaluate();
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */
@@ -503,11 +503,6 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 		a.setX(Math.max(a.getX(), b.getX()));
 		a.setY(Math.max(a.getY(), b.getY()));
 		a.setZ(Math.max(a.getZ(), b.getZ()));
-	}
-
-	@Deprecated
-	public static float dot3(Vec4f v0, Vector v1) {
-		return (float) ((v0.x() * v1.getX() + v0.y() * v1.getY() + v0.z() * v1.getZ()));
 	}
 
 	public static double dot3(Vector v0, Vector v1) {

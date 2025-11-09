@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.NullProcessor;
@@ -32,7 +32,7 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceEvaluable<RGB> getAccelerated() {
+	public Evaluable<RGB> getAccelerated() {
 		return getAccelerated(3, RGB::new, RGB::bank);
 	}
 

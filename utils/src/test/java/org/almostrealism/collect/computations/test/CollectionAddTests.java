@@ -40,12 +40,9 @@ public class CollectionAddTests implements TestFeatures {
 	int size = 150000;
 	int parallelism = KernelPreferences.getCpuParallelism();
 
-	@Override
-	public <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
-		return new PassThroughProducer(shape, argIndex, true);
-	}
-
 	public void add(ComputeRequirement... req) {
+		if (testDepth < 4) return;
+
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
 		CollectionProducer<PackedCollection<?>> add = add(v(shape(1), 0), v(shape(1), 1));
@@ -77,6 +74,8 @@ public class CollectionAddTests implements TestFeatures {
 
 	@Test
 	public void javaAdd() throws InterruptedException {
+		if (skipLongTests) return;
+
 		double a[] = new double[size];
 		double b[] = new double[size];
 

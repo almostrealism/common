@@ -145,11 +145,7 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 
 	@Override
 	public void destroy() {
-		Stream.of(setup).map(o -> o instanceof Destroyable ? (Destroyable) o : null)
-				.filter(Objects::nonNull)
-				.forEach(Destroyable::destroy);
-		Stream.of(run).map(o -> o instanceof Destroyable ? (Destroyable) o : null)
-				.filter(Objects::nonNull)
-				.forEach(Destroyable::destroy);
+		Stream.of(setup).forEach(Destroyable::destroy);
+		Stream.of(run).forEach(Destroyable::destroy);
 	}
 }

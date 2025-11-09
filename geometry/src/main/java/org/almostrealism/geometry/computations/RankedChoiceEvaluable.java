@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.ProducerWithRank;
@@ -33,7 +34,10 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 	public static final Evaluable<Pair<?>> highestRank;
 
 	static {
-		highestRank = new HighestRank(Input.value(Scalar.shape(), 0), Input.value(Pair.shape(), 1)).get();
+		TraversalPolicy inputShape =
+				new TraversalPolicy(false, false, 2);
+		highestRank = new HighestRank(Input.value(inputShape, 0),
+				Input.value(inputShape, 1)).get();
 	}
 
 	public RankedChoiceEvaluable(double e) { this(e, true); }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -64,6 +64,11 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	@Override
 	public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
 		JVMMemory src = (JVMMemory) mem;
+
+		if (sOffset < 0) {
+			throw new IllegalArgumentException();
+		}
+
 		for (int i = 0; i < length; i++) {
 			if ((sOffset + i) >= src.data.length) {
 				throw new ArrayIndexOutOfBoundsException();

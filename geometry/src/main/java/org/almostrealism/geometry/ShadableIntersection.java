@@ -25,6 +25,7 @@ import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -35,31 +36,39 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
-	public ShadableIntersection(Gradient surface, Supplier<Evaluable<? extends Ray>> r, Producer<Scalar> distance) {
-		this(surface, RayFeatures.getInstance().pointAt(r, distance), RayFeatures.getInstance().direction(r), distance);
+	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer distance) {
+		this(surface,
+				RayFeatures.getInstance().pointAt(r, distance),
+				RayFeatures.getInstance().direction(r), distance);
 	}
 
-	public ShadableIntersection(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Vector>> normal, Producer<Scalar> distance) {
-		this(RayFeatures.getInstance().pointAt(r, distance), RayFeatures.getInstance().direction(r), normal, distance);
+	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal,
+								Producer<PackedCollection<?>> distance) {
+		this(RayFeatures.getInstance().pointAt(r, distance),
+				RayFeatures.getInstance().direction(r),
+				normal, distance);
 	}
 
-	public ShadableIntersection(Gradient surface, Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {
+	public ShadableIntersection(Gradient surface,
+								Producer<Vector> point, Producer<Vector> incident,
+								Producer<PackedCollection<?>> distance) {
 		this(point, incident, surface.getNormalAt(point), distance);
 	}
 
-	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident, Supplier<Evaluable<? extends Vector>> normal, Producer<Scalar> distance) {
+	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident,
+								Producer<Vector> normal, Producer<PackedCollection<?>> distance) {
 		super(point, distance);
 
 		this.incident = incident;
 
 		Producer<Ray> p = ray(getPoint(), normal);
-		this.normal = new ProducerWithRankAdapter<>(p, distance);
+		this.normal = new ProducerWithRankAdapter<>(p, (Producer) distance);
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return scalarMultiply(vnormalize(incident), -1.0);
+		return minus(normalize(incident));
 	}
 
 	@Override

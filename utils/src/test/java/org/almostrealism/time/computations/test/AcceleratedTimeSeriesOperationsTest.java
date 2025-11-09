@@ -80,7 +80,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
 		Evaluable<PackedCollection<?>> compiled = valueAt.get();
-		Assert.assertEquals(series.valueAt(3.25).toDouble(), compiled.evaluate().toDouble(), Math.pow(10, -10));
+		Assert.assertEquals(series.valueAt(3.25).toDouble(1), compiled.evaluate().toDouble(), Math.pow(10, -10));
 	}
 
 	protected void valueAtAssertions(AcceleratedTimeSeries series) {
@@ -97,7 +97,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add(temporal(r(p(cursors)), scalar(30)));
+		return series.add(temporal(r(p(cursors)), c(30)));
 	}
 
 	protected Supplier<Runnable> assign() {

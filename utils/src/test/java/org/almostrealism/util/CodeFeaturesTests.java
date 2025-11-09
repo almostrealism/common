@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
@@ -28,11 +27,11 @@ import java.util.function.Supplier;
 public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation1() {
-		Producer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
 
-		Evaluable<Scalar> pev = p.get();
-		Evaluable<Scalar> qev = q.get();
+		Evaluable<PackedCollection<?>> pev = p.get();
+		Evaluable<PackedCollection<?>> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -40,11 +39,11 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation2() {
-		Producer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
 
-		Evaluable<Scalar> pev = p.get();
-		Evaluable<Scalar> qev = q.get();
+		Evaluable<PackedCollection<?>> pev = p.get();
+		Evaluable<PackedCollection<?>> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -53,51 +52,51 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation3() {
 		Scalar multiplier = new Scalar(1.0);
-		Producer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
 
-		Evaluable<Scalar> pev = p.get();
-		Evaluable<Scalar> qev = q.get();
+		Evaluable<PackedCollection<?>> pev = p.get();
+		Evaluable<PackedCollection<?>> qev = q.get();
 
-		assertEquals(2.0, pev.evaluate());
-		assertEquals(7.0, qev.evaluate());
+		assertEquals(2.0, new Scalar(pev.evaluate()));
+		assertEquals(7.0, new Scalar(qev.evaluate()));
 
 		multiplier.setValue(2.0);
-		assertEquals(4.0, pev.evaluate());
-		assertEquals(9.0, qev.evaluate());
+		assertEquals(4.0, new Scalar(pev.evaluate()));
+		assertEquals(9.0, new Scalar(qev.evaluate()));
 	}
 
 	@Test
 	public void partialComputation4() {
 		Scalar multiplier = new Scalar(1.0);
-		Producer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
 
-		Evaluable<Scalar> qev = q.get();
-		assertEquals(7.0, qev.evaluate());
+		Evaluable<PackedCollection<?>> qev = q.get();
+		assertEquals(7.0, new Scalar(qev.evaluate()));
 
-		Evaluable<Scalar> pev = p.get();
-		assertEquals(2.0, pev.evaluate());
+		Evaluable<PackedCollection<?>> pev = p.get();
+		assertEquals(2.0, new Scalar(pev.evaluate()));
 
 		// Make sure the process respects the update to a provided value
 		multiplier.setValue(2.0);
-		assertEquals(4.0, p.get().evaluate());
-		assertEquals(9.0, q.get().evaluate());
+		assertEquals(4.0, new Scalar(p.get().evaluate()));
+		assertEquals(9.0, new Scalar(q.get().evaluate()));
 
 		// Make sure the original Evaluables are not affected
-		assertEquals(4.0, pev.evaluate());
-		assertEquals(9.0, qev.evaluate());
+		assertEquals(4.0, new Scalar(pev.evaluate()));
+		assertEquals(9.0, new Scalar(qev.evaluate()));
 	}
 
 	@Test
 	public void partialComputation5() {
-		Producer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
-		Producer<Scalar> r = scalarsMultiply(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(c(1.0), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
 
-		Evaluable<Scalar> pev = p.get();
-		Evaluable<Scalar> qev = q.get();
-		Evaluable<Scalar> rev = r.get();
+		Evaluable<PackedCollection<?>> pev = p.get();
+		Evaluable<PackedCollection<?>> qev = q.get();
+		Evaluable<PackedCollection<?>> rev = r.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -107,30 +106,30 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation6() {
 		Scalar multiplier = new Scalar(1.0);
-		Producer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
-		Producer<Scalar> r = scalarsMultiply(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(p(multiplier), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
 
-		assertEquals(10.0, r.get().evaluate());
-		assertEquals(2.0, p.get().evaluate());
-		assertEquals(7.0, q.get().evaluate());
+		assertEquals(10.0, new Scalar(r.get().evaluate()));
+		assertEquals(2.0, new Scalar(p.get().evaluate()));
+		assertEquals(7.0, new Scalar(q.get().evaluate()));
 	}
 
 	@Test
 	public void partialComputation7() {
 		Scalar multiplier = new Scalar(1.0);
-		Producer<Scalar> p = scalarsMultiply(() -> args -> multiplier, scalar(2.0));
-		Producer<Scalar> q = scalarAdd(scalar(5.0), p);
-		Producer<Scalar> r = scalarsMultiply(scalar(5.0), p);
+		Producer<PackedCollection<?>> p = multiply(func(shape(2), args -> multiplier), c(2.0));
+		Producer<PackedCollection<?>> q = add(c(5.0), p);
+		Producer<PackedCollection<?>> r = multiply(c(5.0), p);
 
-		assertEquals(10.0, r.get().evaluate());
-		assertEquals(2.0, p.get().evaluate());
-		assertEquals(7.0, q.get().evaluate());
+		assertEquals(10.0, new Scalar(r.get().evaluate()));
+		assertEquals(2.0, new Scalar(p.get().evaluate()));
+		assertEquals(7.0, new Scalar(q.get().evaluate()));
 
 		multiplier.setValue(2.0);
-		assertEquals(20.0, r.get().evaluate());
-		assertEquals(9.0, q.get().evaluate());
-		assertEquals(4.0, p.get().evaluate());
+		assertEquals(20.0, new Scalar(r.get().evaluate()));
+		assertEquals(9.0, new Scalar(q.get().evaluate()));
+		assertEquals(4.0, new Scalar(p.get().evaluate()));
 	}
 
 	@Test

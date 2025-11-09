@@ -84,7 +84,7 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
 			if (isNative()) {
-				out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t* dim0Arr, uint32_t count");
+				out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t count");
 				return;
 			} else if (isEnableArgumentDetailReads() && isEnableArrayVariables()) {
 				if (!arguments.isEmpty()) {
@@ -97,10 +97,6 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 					out.accept(annotationForPhysicalScope(access, PhysicalScope.GLOBAL));
 					out.accept(" int *sizeArr");
 					out.accept(argumentPost(arguments.size() + 1, true, access));
-					out.accept(", ");
-					out.accept(annotationForPhysicalScope(access, PhysicalScope.GLOBAL));
-					out.accept(" int *dim0Arr");
-					out.accept(argumentPost(arguments.size() + 2, true, access));
 				}
 
 				return;

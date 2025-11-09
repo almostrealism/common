@@ -25,6 +25,7 @@ import io.almostrealism.code.NamedFunction;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
@@ -69,7 +70,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		init();
 	}
 
-	@Override
 	public void init() {
 		if (getComputation() instanceof NamedFunction) {
 			setFunctionName(((NamedFunction) getComputation()).getFunctionName());
@@ -78,13 +78,12 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 	}
 
-	@Override
 	public NameProvider getNameProvider() {
 		if (getComputation() instanceof NamedFunction) {
 			return new DefaultNameProvider((NamedFunction) getComputation());
 		}
 
-		return super.getNameProvider();
+		throw new UnsupportedOperationException();
 	}
 
 	public Computation<T> getComputation() { return computation; }
@@ -99,7 +98,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public OperationMetadata getMetadata() {
-		return computation instanceof OperationInfo ? ((OperationInfo) computation).getMetadata() : super.getMetadata();
+		if (computation instanceof OperationInfo) {
+			return ((OperationInfo) computation).getMetadata();
+		}
+
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -118,11 +121,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public String getName() {
-		if (getComputation() instanceof Named) {
-			return ((Named) getComputation()).getName();
-		} else {
-			return super.getName();
-		}
+		return Named.nameOf(getComputation());
 	}
 
 	@Override
@@ -233,7 +232,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		return getCompiler().getScope();
 	}
 
-	@Override
 	public synchronized Scope<T> compile() {
 		new ExpressionCache().use(getMetadata(), () -> {
 			prepareScope();
@@ -246,6 +244,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Deprecated
 	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
+		warn("Use of deprecated compile method");
 		this.instructions = instructions;
 		this.executionKey = executionKey;
 	}
@@ -276,7 +275,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		return process;
 	}
 
-	@Override
 	public Variable getOutputVariable() {
 		return getComputation().getOutputVariable();
 	}
@@ -286,6 +284,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 	@Override
 	public String signature() { return getCompiler().signature(); }
+
+	@Override
+	protected void waitFor(Semaphore semaphore) {
+		if (getComputeContext().isExecutorThread()) {
+			throw new IllegalStateException("Attempting to block the ComputeContext executor");
+		}
+
+		super.waitFor(semaphore);
+	}
 
 	@Override
 	public String describe() {
@@ -304,6 +311,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
+		}
+
+		if (compiler != null) {
+			compiler.destroy();
+			compiler = null;
 		}
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,4 +24,11 @@ public interface Semaphore {
 	void waitFor();
 
 	Semaphore withRequester(OperationMetadata requester);
+
+	default void onComplete(Runnable r) {
+		new Thread(() -> {
+			waitFor();
+			r.run();
+		}, "Semaphore onComplete").start();
+	}
 }

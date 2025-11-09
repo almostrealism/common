@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
@@ -45,27 +46,14 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		implements ProducerArgumentReference, MemoryDataComputation<T>,
 					CollectionExpression<PassThroughProducer<T>>,
 					DescribableParent<Process<?, ?>> {
+
 	private TraversalPolicy shape;
 	private int argIndex;
-	private boolean absolute;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
-		this(shape, argIndex, false);
-	}
-
-	public PassThroughProducer(TraversalPolicy shape, int argIndex, boolean absolute) {
 		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
-		this.absolute = absolute;
-		init();
-	}
-
-	public PassThroughProducer(int size, int argIndex) {
-		this();
-		this.shape = new TraversalPolicy(size).traverse(0);
-		this.argIndex = argIndex;
-		this.absolute = false;
 		init();
 	}
 
@@ -86,7 +74,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public long getCountLong() { return getShape().getCountLong(); }
 
 	@Override
-	public boolean isFixedCount() { return false; }
+	public boolean isFixedCount() { return getShape().isFixedCount(); }
 
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {
@@ -99,7 +87,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 			throw new UnsupportedOperationException();
 		}
 
-		return new PassThroughProducer<>(shape, argIndex, absolute);
+		return new PassThroughProducer<>(shape, argIndex);
 	}
 
 	@Override
@@ -119,12 +107,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public Scope<T> getScope(KernelStructureContext context) {
-		Scope<T> scope = super.getScope(context);
-		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(((ArrayVariable) getOutputVariable()).referenceRelative(i).assign(getValueRelative(e(i))));
-		}
-
-		return scope;
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -146,22 +129,20 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return getValueAt(shape.index(pos));
-	}
-
-	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (absolute) {
-			return (Expression) getArgumentVariables().get(0).referenceAbsolute(index);
+		if (isFixedCount()) {
+			// TODO  This should eventually be unnecessary, since the
+			// TODO  behavior in CollectionVariable should take care
+			// TODO  of this consideration
+			index = index.toInt().imod(getShape().getTotalSizeLong());
 		}
 
-		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
+		return (Expression) getArgumentVariables().get(0).reference(index);
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
+		return (Expression) getArgumentVariables().get(0).reference(kernel().multiply(getMemLength()).add(index));
 	}
 
 	@Override

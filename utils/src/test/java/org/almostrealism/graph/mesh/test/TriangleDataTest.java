@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
@@ -64,7 +64,7 @@ public class TriangleDataTest implements TestFeatures {
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		value = crossProduct(vector(0.0, 0.0, -1.0), edge2).get().evaluate();
+		value = new Vector(crossProduct(vector(0.0, 0.0, -1.0), edge2).get().evaluate(), 0);
 		System.out.println(value);
 		Assert.assertEquals(-2, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-1, value.getY(), Math.pow(10, -10));
@@ -74,18 +74,10 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		PackedCollection<PackedCollection<Vector>> points = points();
-		ExpressionComputation<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
+		CollectionProducer<PackedCollection<Vector>> td = triangle(
+											v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
-		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
-	}
-
-	@Test
-	public void triangleDataCompact() {
-		PackedCollection<PackedCollection<Vector>> points = points();
-		Producer<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
-				v(points.get(0).get(1)),
-				v(points.get(0).get(2)));
 		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
@@ -95,12 +87,13 @@ public class TriangleDataTest implements TestFeatures {
 		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
-		((HardwareEvaluable) td.get()).into(output).evaluate(points);
+		td.get().into(output).evaluate(points);
 		triangleDataAssertions(output.get(0));
 	}
 
 	protected void triangleDataAssertions(PackedCollection<?> value) {
 		Assert.assertEquals(shape(4, 3).traverse(1), value.getShape());
+		value.print();
 
 		Assert.assertEquals(-1, value.get(0).toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.get(0).toDouble(1), Math.pow(10, -10));

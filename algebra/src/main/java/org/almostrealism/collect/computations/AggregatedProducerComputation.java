@@ -107,9 +107,6 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 		if (isFixedCount()) {
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
-			if (inputArg.isRelative()) {
-				throw new UnsupportedOperationException();
-			}
 
 			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());
@@ -214,15 +211,12 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		if (globalIndex instanceof KernelIndex) {
-			Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
-					.referenceRelative(new IntegerConstant(0), (KernelIndex) globalIndex);
-			return expression.apply(currentValue, args[1].getValueRelative(localIndex));
-		} else {
-			Expression currentValue = ((CollectionVariable) ((RelativeTraversableExpression) args[0]).getExpression())
-					.referenceRelative(new IntegerConstant(0));
-			return expression.apply(currentValue, args[1].getValueRelative(localIndex));
-		}
+		CollectionVariable var = (CollectionVariable)
+				((RelativeTraversableExpression) args[0]).getExpression();
+
+		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
+		Expression currentValue = var.reference(k.multiply(var.length()));
+		return expression.apply(currentValue, args[1].getValueRelative(localIndex));
 	}
 
 	@Override

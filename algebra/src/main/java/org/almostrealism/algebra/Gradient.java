@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.Function;
 
 /**
  * A {@link Gradient} represents any continuously evaluable function

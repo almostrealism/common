@@ -21,4 +21,27 @@ public interface Destroyable extends AutoCloseable {
 
 	@Override
 	default void close() { destroy(); }
+
+	static <T> T destroy(T target) {
+		if (target instanceof Destroyable) {
+			((Destroyable) target).destroy();
+		}
+
+		return target;
+	}
+
+	static <T> int destroy(Iterable<T> targets) {
+		if (targets == null) return 0;
+
+		int destroyed = 0;
+
+		for (T target : targets) {
+			if (target instanceof Destroyable) {
+				destroy(target);
+				destroyed++;
+			}
+		}
+
+		return destroyed;
+	}
 }

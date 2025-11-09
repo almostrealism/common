@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,6 +35,15 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public Scalar(boolean certain) { if (certain) setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
+
+	public Scalar(MemoryData delegate) {
+		this(delegate, 0);
+
+		if (delegate.getMemLength() != 2) {
+			warn("Scalar created with delegate of length " +
+					delegate.getMemLength() + " (expected 2)");
+		}
+	}
 
 	public Scalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
@@ -105,21 +114,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
 	public static BiFunction<MemoryData, Integer, PackedCollection<Scalar>> scalarBankPostprocessor() {
 		return (output, offset) -> Scalar.scalarBank(output.getMemLength() / 2, output, offset);
-	}
-
-	/**
-	 * Returns 1 if the sign of the given argument is positive; -1 if
-	 * negative; 0 if 0.
-	 */
-	@Deprecated
-	public static int sgn(double f) {
-		if (f > 0) {
-			return 1;
-		} else if (f < 0) {
-			return -1;
-		}
-
-		return 0;
 	}
 
 	@Deprecated

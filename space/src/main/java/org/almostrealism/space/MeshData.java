@@ -55,11 +55,11 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<PackedCollection<?>> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCountLong(); i++) {
-			destination.get(i).setMem(result.get(i).getA(), 1.0);
+			destination.get(i).setMem(result.get(i).getA());
 		}
 	}
 
@@ -68,7 +68,9 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);
 
-		if (HardwareOperator.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
+		if (HardwareOperator.enableVerboseLog) {
+			log("Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
+		}
 
 		PackedCollection<Pair<?>> dim = Pair.bank(1);
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
@@ -88,13 +90,14 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 				destination.set(i, out.get(0));
 			}
 
-			if (HardwareOperator.enableKernelLog) System.out.println(rays.getCountLong() + " intersection kernels evaluated");
+			if (HardwareOperator.enableVerboseLog)
+				log(rays.getCountLong() + " intersection kernels evaluated");
 		} else {
 			PackedCollection<Scalar> distances = Scalar.scalarBank(this.getCount() * rays.getCount());
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);
-			System.out.println("MeshData: Completed intersection kernel in " +
+			log("Completed intersection kernel in " +
 					(System.currentTimeMillis() - startTime) + " msec");
 			// TODO Choose best with highestRank kernel
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
 		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// w * x
 		CollectionProducer<PackedCollection<?>> c = x.mul(p(w));
@@ -127,7 +127,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(count, dim).traverse();
 		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// w * x + 1
 		CollectionProducer<PackedCollection<?>> c = x.mul(p(w)).add(c(1).repeat(3).consolidate());
@@ -168,7 +168,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 										.mapToDouble(Double::valueOf).toArray())
 										.reshape(4, dim).traverse();
 		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// x^2 + w * x + 1
 		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.mul(p(w))).add(c(1).repeat(3).consolidate());
@@ -206,7 +206,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.mapToDouble(Double::valueOf).toArray())
 				.reshape(4, dim).traverse();
 		PackedCollection<?> w = pack(4, -3, 2);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// x^2 + w * -x + 1
 		CollectionProducer<PackedCollection<?>> c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
@@ -1018,7 +1018,7 @@ public class TraversableDeltaComputationTests implements GradientTestFeatures, T
 				.reshape(count, dim).traverse();
 		PackedCollection<?> w1 = pack(4, -3, 2);
 		PackedCollection<?> w2 = pack(2, 1, 5);
-		CollectionProducer<PackedCollection<?>> x = x(dim);
+		CollectionProducer<PackedCollection<?>> x = x(-1, dim);
 
 		// w2 * w1 * x
 		CollectionProducer<PackedCollection<?>> c = x.mul(p(w1)).mul(p(w2));

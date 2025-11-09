@@ -16,15 +16,15 @@
 
 package org.almostrealism.bool;
 
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
-public class AcceleratedConjunctionCollection extends AcceleratedConjunctionAdapter<PackedCollection<?>> implements AcceleratedConditionalStatementCollection {
-	public AcceleratedConjunctionCollection() {
-		this(null, null);
-	}
+public class AcceleratedConjunctionCollection extends AcceleratedConjunctionAdapter<PackedCollection<?>>
+		implements AcceleratedConditionalStatement<PackedCollection<?>>,
+						CollectionProducerComputation<PackedCollection<?>> {
 
 	@Override
 	public TraversalPolicy getShape() {

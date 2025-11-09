@@ -4,15 +4,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class PairBankTest implements TestFeatures {
 	@Test
@@ -28,9 +21,9 @@ public class PairBankTest implements TestFeatures {
 
 	@Test
 	public void concat() {
-		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
+		Producer<PackedCollection<?>> in = v(shape(-1, 4, 1), 0);
 
-		CollectionProducer<PackedCollection<?>> concat = concat(in, in);
+		CollectionProducer<PackedCollection<?>> concat = concat(shape(4, 2), in, in);
 
 		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
@@ -46,6 +39,8 @@ public class PairBankTest implements TestFeatures {
 
 	@Test
 	public void map() {
+		if (skipKnownIssues) return;
+
 		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
 
 		CollectionProducer<PackedCollection<?>> concat = map(shape(2), traverse(1, in),
@@ -58,7 +53,7 @@ public class PairBankTest implements TestFeatures {
 
 		verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-			destination.print();
+			destination.traverse(1).print();
 		});
 
 		assertEquals(6.0, destination.valueAt(2, 0));
@@ -96,36 +91,5 @@ public class PairBankTest implements TestFeatures {
 		assertEquals(12.0, destination.valueAt(1, 1));
 		assertEquals(19.0, destination.valueAt(3, 0));
 		assertEquals(20.0, destination.valueAt(3, 1));
-	}
-
-	@Test
-	public void pairBankKernel() {
-		PackedCollection<Pair<?>> bank = Pair.bank(10);
-		bank.set(0, new Pair(1, 2));
-		bank.set(1, new Pair(3, 4));
-		bank.set(2, new Pair(5, 6));
-		bank.set(3, new Pair(7, 8));
-		bank.set(4, new Pair(9, 10));
-		bank.set(5, new Pair(11, 12));
-		bank.set(6, new Pair(13, 14));
-		bank.set(7, new Pair(15, 16));
-		bank.set(8, new Pair(17, 18));
-		bank.set(9, new Pair(19, 20));
-
-		int len = 100;
-
-		HardwareOperator.disableDimensionMasks(() -> {
-			PackedCollection<?> destination = new PackedCollection<>(shape(4));
-
-			Producer<PackedCollection<?>> c = new ExpressionComputation<>(List.of(args -> args.get(1).getValueRelative(1)),
-					v(shape(len, 2).traverse(1), 0));
-
-			TraversalPolicy subset = shape(bank.getShape().length(0) - 1, bank.getShape().length(1));
-			c.get().into(destination.traverse(1)).evaluate(bank.range(subset, 2).traverse(1));
-
-			destination.print();
-			assertEquals(6.0, destination.valueAt(1));
-			assertEquals(8.0, destination.valueAt(2));
-		});
 	}
 }

@@ -24,6 +24,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 
+@Deprecated
 public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements Evaluable<T> {
 	private AcceleratedOperationContainer<T> container;
 	protected List<ProducerSubstitution<?>> substitutions;
@@ -31,10 +32,6 @@ public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements E
 	public AcceleratedSubstitutionEvaluable(AcceleratedOperationContainer<T> container) {
 		this.container = container;
 		this.substitutions = new ArrayList<>();
-	}
-
-	public <V> void addSubstitution(Producer<V> original, Producer<V> replacement) {
-		substitutions.add(new ProducerSubstitution<>(original, replacement));
 	}
 
 	public <V> void addSubstitution(ProducerSubstitution<V> substitution) {

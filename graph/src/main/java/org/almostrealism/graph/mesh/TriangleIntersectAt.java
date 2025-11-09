@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,89 +16,89 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.bool.AcceleratedConjunctionCollection;
+import org.almostrealism.bool.GreaterThanCollection;
+import org.almostrealism.bool.LessThanCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.LessThanScalar;
-import io.almostrealism.relation.Evaluable;
 
-import java.util.function.Supplier;
-
-public class TriangleIntersectAt extends LessThanScalar {
-	private static TriangleIntersectAt create(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+public class TriangleIntersectAt extends LessThanCollection {
+	private static TriangleIntersectAt create(Producer<PackedCollection<?>> t,
+											  Producer<Ray> r) {
 		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
 				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
-	private static TriangleIntersectAt create(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction) {
+	private static TriangleIntersectAt create(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
+								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction) {
 		return create(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
-	private static TriangleIntersectAt create(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
+	private static TriangleIntersectAt create(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
+								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
 								  Producer<Vector> s) {
 		return create(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
-	private static TriangleIntersectAt create(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
-								  ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q, Producer<Vector> s) {
+	private static TriangleIntersectAt create(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
+											  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
+											  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s) {
 		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
-	private static TriangleIntersectAt createv(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
-								  ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q, Producer<Vector> s, Producer<Scalar> v) {
+	private static TriangleIntersectAt createv(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
+								  			   CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
+								               CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
+											   Producer<PackedCollection<?>> v) {
 		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
-	private static TriangleIntersectAt createu(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
-								  ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q, Producer<Vector> s,
-								  Producer<Scalar> u, Producer<Scalar> v) {
-		return createt(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
+	private static TriangleIntersectAt createu(CollectionProducer<Vector> abc, CollectionProducer<Vector> def, CollectionProducer<Vector> jkl,
+								  CollectionProducer<Vector> normal, CollectionProducer<Vector> origin, CollectionProducer<Vector> direction,
+								  CollectionProducer<PackedCollection<?>> f, CollectionProducer<Vector> q, Producer<Vector> s,
+								  Producer<PackedCollection<?>> u, Producer<PackedCollection<?>> v) {
+		return createt(f, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	private static TriangleIntersectAt createt(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
-								  ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q, Producer<Vector> s,
-								  Producer<Scalar> u, Producer<Scalar> v, Producer<Scalar> t) {
-		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
-				new AcceleratedConjunctionScalar(
-						t, ScalarFeatures.getInstance().scalar(-1.0),
-						Ops.o().scalarGreaterThan(u, Ops.o().scalar(0.0), true),
-						Ops.o().scalarLessThan(u, Ops.o().scalar(1.0), true),
-						Ops.o().scalarGreaterThan(v, Ops.o().scalar(0.0), true),
-						Ops.o().scalarLessThan(Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
+	private static TriangleIntersectAt createt(CollectionProducer<PackedCollection<?>> f,
+											   Producer<PackedCollection<?>> u,
+											   Producer<PackedCollection<?>> v,
+											   Producer<PackedCollection<?>> t) {
+		return new TriangleIntersectAt(f,
+				new AcceleratedConjunctionCollection(
+						t, Ops.o().c(-1.0),
+						Ops.o().scalarGreaterThan((Producer) u, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan((Producer) u, Ops.o().scalar(1.0), true),
+						Ops.o().scalarGreaterThan((Producer) v, Ops.o().scalar(0.0), true),
+						Ops.o().scalarLessThan((Producer) Ops.o().add(u, v), Ops.o().scalar(1.0), true)));
 	}
 
-	protected TriangleIntersectAt(ExpressionComputation<Vector> abc, ExpressionComputation<Vector> def, ExpressionComputation<Vector> jkl,
-								  ExpressionComputation<Vector> normal, ExpressionComputation<Vector> origin, ExpressionComputation<Vector> direction,
-								  ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q, Producer<Vector> s,
-								  AcceleratedConjunctionScalar trueValue) {
-		super(f, ScalarFeatures.getInstance().scalar(-Intersection.e), trueValue,
-				new GreaterThanScalar(f, ScalarFeatures.getInstance().scalar(Intersection.e), trueValue,
-						ScalarFeatures.getInstance().scalar(-1.0)), true);
+	protected TriangleIntersectAt(CollectionProducer<PackedCollection<?>> f,
+								  AcceleratedConjunctionCollection trueValue) {
+		super(f, CollectionFeatures.getInstance().c(-Intersection.e), trueValue,
+				new GreaterThanCollection(new TraversalPolicy(1),
+						f, CollectionFeatures.getInstance().c(Intersection.e),
+						trueValue,
+						CollectionFeatures.getInstance().c(-1.0)),
+				true);
 	}
 
 	// TODO  Make private
-	public static ExpressionComputation<Vector> h(Producer<Vector> def, Producer<Vector> direction) {
+	public static CollectionProducer<Vector> h(Producer<Vector> def, Producer<Vector> direction) {
 		return Ops.o().crossProduct(direction, def);
 	}
 
 	// TODO  Make private
-	public static ExpressionComputation<Scalar> f(Producer<Vector> abc, ExpressionComputation<Vector> h) {
+	public static CollectionProducer<PackedCollection<?>> f(Producer<Vector> abc, CollectionProducer<Vector> h) {
 		return Ops.o().dotProduct(abc, h);
 	}
 
@@ -108,25 +108,32 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
-		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(s, h)));
+	public static Producer<PackedCollection<?>> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
+		return f.multiply(Ops.o().dotProduct(s, h));
 	}
 
 	// TODO  Make private
-	public static ExpressionComputation<Vector> q(Producer<Vector> abc, Producer<Vector> s) {
+	public static CollectionProducer<Vector> q(Producer<Vector> abc, Producer<Vector> s) {
 		return Ops.o().crossProduct(s, abc);
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> v(Producer<Vector> direction, CollectionProducer<Scalar> f, ExpressionComputation<Vector> q) {
-		return Ops.o().scalar(f.multiply(Ops.o().dotProduct(direction, q)));
+	public static Producer<PackedCollection<?>> v(Producer<Vector> direction,
+												  CollectionProducer<PackedCollection<?>> f,
+												  CollectionProducer<Vector> q) {
+		return f.multiply(Ops.o().dotProduct(direction, q));
 	}
 
-	private static Producer<Scalar> t(Producer<Vector> def, Producer<Scalar> f, ExpressionComputation<Vector> q) {
+	private static Producer<PackedCollection<?>> t(Producer<Vector> def, Producer<PackedCollection<?>> f, CollectionProducer<Vector> q) {
 		return Ops.o().multiply(f, Ops.o().dotProduct(def, q));
 	}
 
-	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+	public static TriangleIntersectAt construct(Producer<PackedCollection<?>> t, Producer<Ray> r) {
 		return create(t, r);
+	}
+
+	@Override
+	public PackedCollection<?> createDestination(int len) {
+		throw new UnsupportedOperationException();
 	}
 }

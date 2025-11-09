@@ -19,8 +19,8 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -156,9 +156,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	/** Cached hardware-accelerated evaluable instance for this computation. */
 	private HardwareEvaluable<O> evaluable;
-	
-	/** Flag indicating whether the cached evaluable needs to be regenerated. */
-	private boolean evaluableOutdated;
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
 	private CollectionProducer<O> deltaAlternate;
@@ -354,19 +351,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		if (dependentLifecycles != null)
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
-		this.evaluableOutdated = true;
 		// this.evaluable = null;
-	}
-
-	/**
-	 * Sets the traversal policy (shape) for this computation.
-	 * This method is protected and intended for use by subclasses
-	 * that need to modify the shape after construction.
-	 * 
-	 * @param shape The new traversal policy to set
-	 */
-	protected void setShape(TraversalPolicy shape) {
-		this.shape = shape;
 	}
 
 	/**
@@ -506,6 +491,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		return Optional.ofNullable(getShape())
 				.map(TraversalPolicy::getCountLong)
 				.orElse(0L);
+	}
+
+	@Override
+	public boolean isFixedCount() {
+		return getShape().isFixedCount() && super.isFixedCount();
 	}
 
 	/**
@@ -782,7 +772,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * 
 	 * @see RepeatedProducerComputationAdapter
 	 * @see CollectionProducerComputationAdapter#toRepeated()
-	 * @see RelativeTraversableProducerComputation#toRepeated()
 	 */
 	public RepeatedProducerComputationAdapter<O> toRepeated() {
 		throw new UnsupportedOperationException();
@@ -802,6 +791,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		super.destroy();
 		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
 		ProducerCache.purgeEvaluableCache(this);
+		Destroyable.destroy(evaluable);
+		this.evaluable = null;
 	}
 
 	/**
