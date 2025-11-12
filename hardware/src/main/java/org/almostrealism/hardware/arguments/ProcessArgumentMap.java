@@ -24,7 +24,6 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.instructions.ProcessTreePositionKey;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.hardware.mem.RootDelegateProviderSupplier;
@@ -148,7 +147,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 			throw new IllegalArgumentException();
 		}
 
-		return ProducerCache.getEvaluableForSupplier(producer);
+		return (Evaluable) producer.get();
 	}
 
 	public static boolean match(Supplier<?> process, Supplier<?> argumentProducer) {

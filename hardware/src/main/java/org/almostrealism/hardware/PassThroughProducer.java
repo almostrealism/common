@@ -225,12 +225,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	@Override
-	public void destroy() {
-		super.destroy();
-		ProducerCache.purgeEvaluableCache(this);
-	}
-
-	@Override
 	public String describe() {
 		return getMetadata().getShortDescription() + " " +
 				getShape().toStringDetail() +

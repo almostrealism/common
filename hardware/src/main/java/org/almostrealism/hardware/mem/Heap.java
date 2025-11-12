@@ -20,7 +20,6 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ProducerCache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -205,7 +204,6 @@ public class Heap {
 		@Override
 		public void destroy() {
 			if (dependentOperations != null) {
-				dependentOperations.forEach(ProducerCache::purgeEvaluableCache);
 				dependentOperations.forEach(o -> {
 					if (o instanceof Destroyable)
 						((Destroyable) o).destroy();

@@ -25,7 +25,6 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.arguments.AcceleratedOperationContainer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -35,6 +34,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -177,7 +177,7 @@ public class ProcessTreeInstructionsManager implements
 	protected List<ArgumentList<?>> children(ArgumentList<?> operation) {
 		return operation.getChildren().stream()
 				.map(Argument::getProducer)
-				.map(ProducerCache::getEvaluableForSupplier)
+				.map(Supplier::get)
 				.filter(ArgumentList.class::isInstance)
 				.map(op -> (ArgumentList<?>) op)
 				.collect(Collectors.toUnmodifiableList());
