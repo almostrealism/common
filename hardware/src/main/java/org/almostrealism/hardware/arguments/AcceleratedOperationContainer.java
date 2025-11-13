@@ -23,7 +23,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ProducerCache;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -71,11 +70,11 @@ public class AcceleratedOperationContainer<T extends MemoryData>
 		if (subs != null) {
 			for (ProducerSubstitution<?> s : subs) {
 				if (s.match(producer)) {
-					return (Evaluable) ProducerCache.getEvaluableForSupplier(s.getReplacement());
+					return (Evaluable) s.getReplacement().get();
 				}
 			}
 		}
 
-		return ProducerCache.getEvaluableForSupplier(producer);
+		return producer.get();
 	}
 }

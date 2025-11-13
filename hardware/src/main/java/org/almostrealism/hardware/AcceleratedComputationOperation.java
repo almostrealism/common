@@ -51,6 +51,7 @@ import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.io.Describable;
+import org.almostrealism.lifecycle.WeakRunnable;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -139,14 +140,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 				instructions = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
-				((ScopeInstructionsManager) instructions).addDestroyListener(() -> {
-					instructions = null;
-					executionKey = null;
-					if (compiler != null) {
-						compiler.destroy();
-						compiler = null;
-					}
-				});
+				((ScopeInstructionsManager) instructions)
+						.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
@@ -247,6 +242,16 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		warn("Use of deprecated compile method");
 		this.instructions = instructions;
 		this.executionKey = executionKey;
+	}
+
+	protected void resetInstructions() {
+		instructions = null;
+		executionKey = null;
+
+		if (compiler != null) {
+			compiler.destroy();
+			compiler = null;
+		}
 	}
 
 	public synchronized void postCompile() {

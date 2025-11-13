@@ -32,7 +32,6 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
@@ -92,7 +91,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	private PassThroughProducer() {
-		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this, null, false)));
+		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this)));
 	}
 
 	@Override
@@ -222,12 +221,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return matches((Algebraic) obj);
-	}
-
-	@Override
-	public void destroy() {
-		super.destroy();
-		ProducerCache.purgeEvaluableCache(this);
 	}
 
 	@Override

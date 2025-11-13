@@ -21,9 +21,11 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.streams.StreamingEvaluable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -49,8 +51,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	// TODO  Should be removed?
 	public static boolean enableOutputCount = true;
 
-	public static boolean enableAsync =
-			SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 	public static boolean enableConstantCache =
 			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
 	public static boolean enableKernelSizeWarnings =
@@ -91,7 +91,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.fixedCount = fixedCount;
 		this.count = count;
 
-		this.evaluator = ProducerCache::getEvaluableForArrayVariable;
+		this.evaluator = new ProcessArgumentEvaluator() {
+			@Override
+			public <T> Evaluable<? extends Multiple<T>> getEvaluable(ArrayVariable<T> argument) {
+				return argument.getProducer().get();
+			}
+		};
 
 		this.arguments = arguments;
 		this.outputArgIndex = outputArgIndex;
@@ -233,7 +238,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (evaluateAhead) {
-				if (!enableAsync ||
+				if (!Hardware.getLocalHardware().isAsync() ||
 						kernelArgEvaluables[i] instanceof DestinationEvaluable<?> ||
 						kernelArgEvaluables[i] instanceof HardwareEvaluable) {
 					asyncEvaluables[i] = kernelArgEvaluables[i].async(this::execute);
@@ -292,7 +297,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	protected void execute(Runnable r) {
-		if (enableAsync) {
+		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);
 		} else {
 			r.run();

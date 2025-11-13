@@ -43,7 +43,6 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
-import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
@@ -747,14 +746,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	 * cached {@link Evaluable}s, and calls the parent class cleanup.
 	 * 
 	 * <p>After calling this method, the computation should not be used again.</p>
-	 * 
-	 * @see ProducerCache#purgeEvaluableCache(Supplier)
 	 */
 	@Override
 	public void destroy() {
 		super.destroy();
-		((MemoryDataDestinationProducer) getInputs().get(0)).destroy();
-		ProducerCache.purgeEvaluableCache(this);
+		getInputs().get(0).destroy();
 		Destroyable.destroy(evaluable);
 		this.evaluable = null;
 	}

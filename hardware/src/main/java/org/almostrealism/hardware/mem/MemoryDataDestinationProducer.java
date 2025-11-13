@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2025 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import io.almostrealism.util.DescribableParent;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 import org.almostrealism.io.Describable;
 
 import java.util.function.BiFunction;
@@ -32,37 +31,21 @@ import java.util.function.IntFunction;
 
 public class MemoryDataDestinationProducer<T extends MemoryData> extends DynamicProducerForMemoryData<T>
 												implements Delegated<Countable>, DescribableParent<Process<?, ?>> {
-	public static boolean enableThreadLocalProvider = true;
 
 	private final Countable process;
-	private ThreadLocalContextSpecific<MemoryBankProvider<T>> provider;
 
 	public MemoryDataDestinationProducer(Countable process) {
 		this(process, (IntFunction<MemoryBank<T>>) null);
 	}
 
 	public MemoryDataDestinationProducer(Countable process, IntFunction<MemoryBank<T>> destination) {
-		this(process, destination, true);
-	}
-
-	public MemoryDataDestinationProducer(Countable process, IntFunction<MemoryBank<T>> destination, boolean provider) {
 		super(destination);
 		this.process = process;
-		if (enableThreadLocalProvider && provider) {
-			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
-			this.provider.init();
-		}
 	}
 
 	public MemoryDataDestinationProducer(Countable process, BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> destination) {
 		super((IntFunction<MemoryBank<T>>)  i -> destination.apply(null, i));
 		this.process = process;
-		if (enableThreadLocalProvider) {
-			this.provider = new ThreadLocalContextSpecific<>(
-					() -> new MemoryBankProvider<>(destination),
-					MemoryBankProvider::destroy);
-			this.provider.init();
-		}
 	}
 
 	@Override
@@ -79,19 +62,12 @@ public class MemoryDataDestinationProducer<T extends MemoryData> extends Dynamic
 
 	@Override
 	public Evaluable<T> get() {
-		return new MemoryDataDestination<>(size -> {
-			if (enableThreadLocalProvider) {
-				return provider.getValue().apply(size);
-			} else {
-				return getDestinationFactory().apply(size);
-			}
-		});
+		return new MemoryDataDestination<>(size -> getDestinationFactory().apply(size));
 	}
 
 	@Override
 	public void destroy() {
 		super.destroy();
-		if (provider != null) provider.destroy();
 	}
 
 	@Override

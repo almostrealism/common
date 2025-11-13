@@ -64,6 +64,7 @@ public final class Hardware {
 	protected static final int MEMORY_SCALE;
 
 	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
+	private static final boolean async = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(true);
 
 	private static final Hardware local;
 
@@ -441,6 +442,8 @@ public final class Hardware {
 				})
 				.orElseThrow(() -> new RuntimeException("No DataContext meets the provided ComputeRequirements"));
 	}
+
+	public boolean isAsync() { return async; }
 
 	public boolean isMemoryVolatile() { return memVolatile; }
 

@@ -42,29 +42,6 @@ package io.almostrealism.uml;
  * by AI systems. The {@link #isHuman()} method provides a way to distinguish between human
  * and AI actors in the system, defaulting to {@code false} to indicate non-human actors.</p>
  *
- * <h2>Example Implementation</h2>
- * <pre>{@code
- * public class AIGeneratedComponent implements Standards {
- *     // This class follows AI code generation standards
- *
- *     /**
- *      * Performs a computation following Standards guidelines.
- *      * This method was generated following the Standards interface requirements.
- *      *
- *      * @param input The input value to process
- *      * @return The computed result
- *      */
- *     public double compute(double input) {
- *         // Comment provided as required by Standards (code > 20 chars)
- *         return input * 2.0 + 1.0;
- *     }
- *
- *     @Override
- *     public boolean isHuman() {
- *         return false;  // AI-generated component
- *     }
- * }
- * }</pre>
  *
  * <h2>Human-AI Collaboration</h2>
  * <p>This interface represents a novel approach to human-AI collaboration in software
