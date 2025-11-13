@@ -34,9 +34,9 @@ import java.util.List;
  * this computation reduces a single collection to its total sum.</p>
  *
  * <h2>Mathematical Operation</h2>
- * <p>For an input collection C with elements [c₁, c₂, ..., cₙ], the computation produces:</p>
+ * <p>For an input collection C with elements [c1, c2, ..., cn], the computation produces:</p>
  * <pre>
- * result = c₁ + c₂ + c₃ + ... + cₙ
+ * result = c1 + c2 + c3 + ... + cn
  * </pre>
  * <p>The result is a single-element collection containing the sum of all input elements.</p>
  *

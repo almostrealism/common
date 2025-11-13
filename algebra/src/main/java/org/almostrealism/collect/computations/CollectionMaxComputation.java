@@ -34,9 +34,9 @@ import java.util.List;
  * single-element collection containing the maximum value.</p>
  *
  * <h2>Mathematical Operation</h2>
- * <p>For an input collection C with elements [c₁, c₂, ..., cₙ], the computation produces:</p>
+ * <p>For an input collection C with elements [c1, c2, ..., cn], the computation produces:</p>
  * <pre>
- * result = max(c₁, c₂, c₃, ..., cₙ)
+ * result = max(c1, c2, c3, ..., cn)
  * </pre>
  * <p>The result is a single-element collection containing the largest input value.</p>
  *

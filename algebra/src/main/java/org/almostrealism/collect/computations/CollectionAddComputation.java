@@ -52,9 +52,9 @@ import java.util.stream.Stream;
  * Because this class extends {@link TransitiveDeltaExpressionComputation}, gradients flow
  * transitively through all input arguments during backpropagation:</p>
  * <pre>
- * ∂(A + B + C)/∂A = 1
- * ∂(A + B + C)/∂B = 1
- * ∂(A + B + C)/∂C = 1
+ * d(A + B + C)/dA = 1
+ * d(A + B + C)/dB = 1
+ * d(A + B + C)/dC = 1
  * </pre>
  *
  * <h2>Usage Examples</h2>

@@ -38,14 +38,14 @@ import java.util.stream.Stream;
  * <h2>Mathematical Operation</h2>
  * <p>For input collections A, B, C, ..., the computation produces:</p>
  * <pre>
- * result[i] = A[i] × B[i] × C[i] × ...
+ * result[i] = A[i] x B[i] x C[i] x ...
  * </pre>
  * <p>where i ranges over all elements in the collections.</p>
  *
  * <h2>Automatic Differentiation</h2>
  * <p>The product rule is applied for gradient computation. For two operands u and v:</p>
  * <pre>
- * ∂(u × v)/∂target = u × ∂v/∂target + v × ∂u/∂target
+ * d(u x v)/dtarget = u x dv/dtarget + v x du/dtarget
  * </pre>
  * <p>Currently, automatic differentiation is supported for exactly two operands with fixed counts.
  * For more than two operands or variable counts, the computation falls back to the parent's delta implementation.</p>
@@ -76,7 +76,7 @@ import java.util.stream.Stream;
  *     new CollectionProductComputation<>(shape, x, y, z);
  *
  * PackedCollection<?> result = product.get().evaluate();
- * // Result: [3.0, 6.0, 8.0]  (2×3×0.5, 3×2×1, 4×1×2)
+ * // Result: [3.0, 6.0, 8.0]  (2x3x0.5, 3x2x1, 4x1x2)
  * }</pre>
  *
  * <h2>Performance Characteristics</h2>
@@ -166,7 +166,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	 * <p>This method implements the product rule of calculus for gradient computation.
 	 * For two operands u and v, the derivative is:</p>
 	 * <pre>
-	 * ∂(u × v)/∂target = u × ∂v/∂target + v × ∂u/∂target
+	 * d(u x v)/dtarget = u x dv/dtarget + v x du/dtarget
 	 * </pre>
 	 *
 	 * <h3>Limitations</h3>
@@ -185,7 +185,7 @@ public class CollectionProductComputation<T extends PackedCollection<?>> extends
 	 *   <li>Validates that the operands meet the requirements (2 operands, fixed counts)</li>
 	 *   <li>Computes u.delta(target) and v.delta(target)</li>
 	 *   <li>Reshapes the deltas to align dimensions properly</li>
-	 *   <li>Applies the product rule: u×vDelta + v×uDelta</li>
+	 *   <li>Applies the product rule: uxvDelta + vxuDelta</li>
 	 *   <li>Reshapes the result to match the expected output shape</li>
 	 * </ol>
 	 *

@@ -40,7 +40,7 @@ import java.util.List;
  * The computation supports an optional "ignore zero" mode for optimization in sparse data scenarios.</p>
  *
  * <h2>Mathematical Operation</h2>
- * <p>For an input collection X with elements [x₁, x₂, ..., xₙ], the computation produces:</p>
+ * <p>For an input collection X with elements [x1, x2, ..., xn], the computation produces:</p>
  * <pre>
  * result[i] = e^(X[i])
  * </pre>
@@ -209,7 +209,7 @@ public class CollectionExponentialComputation<T extends PackedCollection<?>> ext
 
 	/**
 	 * Computes the derivative (delta) of this exponential computation using the chain rule.
-	 * Implements the rule: d/dx[e^f(x)] = e^f(x) × f'(x)
+	 * Implements the rule: d/dx[e^f(x)] = e^f(x) x f'(x)
 	 *
 	 * <p>The derivative of the exponential function is itself, multiplied by the
 	 * derivative of the input with respect to the target. This elegant property

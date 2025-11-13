@@ -234,7 +234,7 @@ public class SphereTest implements TestFeatures {
 		// sqrt(discriminant) = 1.0
 		// -oDotd = -(-3) = 3.0
 		// 1/dDotd = 1/1 = 1.0
-		// t = (3 ± 1) / 1 = {4, 2}
+		// t = (3 +\- 1) / 1 = {4, 2}
 		Assert.assertEquals(1.0, dSqrtVals.valueAt(0, 0), 0.01);
 		Assert.assertEquals(3.0, minusODotDVals.valueAt(0, 0), 0.01);
 		Assert.assertEquals(1.0, dDotDInvVals.valueAt(0, 0), 0.01);

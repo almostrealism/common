@@ -50,8 +50,8 @@
  * <pre>{@code
  * // Nitrogen atom (7 electrons)
  * Atom nitrogen = new Atom(7, Arrays.asList(
- *     Shell.first(2),        // K shell: 1s²
- *     Shell.second(2, 3)     // L shell: 2s² 2p³
+ *     Shell.first(2),        // K shell: 1s^2
+ *     Shell.second(2, 3)     // L shell: 2s^2 2p^3
  * ));
  * }</pre>
  *

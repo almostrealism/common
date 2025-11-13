@@ -63,7 +63,7 @@ public interface Gradient<T> extends Differentiable<T> {
 	 *
 	 * <p>
 	 * The normal vector is perpendicular to the tangent plane of the surface at the given point.
-	 * For implicit surfaces defined by f(x,y,z) = 0, the normal is typically the gradient ∇f.
+	 * For implicit surfaces defined by f(x,y,z) = 0, the normal is typically the gradient gradf.
 	 * </p>
 	 *
 	 * @param point  a producer for the 3D position where the normal should be computed

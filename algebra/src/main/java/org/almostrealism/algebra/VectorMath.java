@@ -56,7 +56,7 @@ public class VectorMath {
 	public static double[] clone(double x[]) { return new double[] {x[0], x[1], x[2]}; }
 
 	/**
-	 * Computes the length (magnitude) of a 3D vector: ||v|| = √(x² + y² + z²).
+	 * Computes the length (magnitude) of a 3D vector: ||v|| = sqrt(x^2 + y^2 + z^2).
 	 *
 	 * @param x  the vector {x, y, z}
 	 * @return the length of the vector

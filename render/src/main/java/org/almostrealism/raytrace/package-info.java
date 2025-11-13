@@ -22,20 +22,20 @@
  * <h2>Rendering Pipeline</h2>
  * <pre>
  * Camera Ray Generation
- *   ↓
+ *    |
  * Ray-Scene Intersection
- *   ↓
+ *    |
  * Closest Surface Selection
- *   ↓
+ *    |
  * Shader Evaluation
- *   ├─ Diffuse lighting
- *   ├─ Specular highlights
- *   ├─ Shadows (optional)
- *   ├─ Reflections (recursive)
- *   └─ Refractions (recursive)
- *   ↓
+ *   |-- Diffuse lighting
+ *   |-- Specular highlights
+ *   |-- Shadows (optional)
+ *   |-- Reflections (recursive)
+ *   +-- Refractions (recursive)
+ *    |
  * Supersampling Average
- *   ↓
+ *    |
  * Final Pixel Color
  * </pre>
  *

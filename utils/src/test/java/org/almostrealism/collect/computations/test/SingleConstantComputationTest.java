@@ -164,8 +164,8 @@ public class SingleConstantComputationTest implements TestFeatures {
 		
 		String description = constant.description();
 		assertNotNull("Description should not be null", description);
-		assertTrue("Description should contain the constant value", 
-			description.contains("3.14") || description.contains("π"));
+		assertTrue("Description should contain the constant value",
+			description.contains("3.14") || description.contains("pi"));
 	}
 
 	/**

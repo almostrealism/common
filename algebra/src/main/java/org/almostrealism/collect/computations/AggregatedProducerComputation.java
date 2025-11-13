@@ -60,14 +60,14 @@ import java.util.function.BiFunction;
  * </pre>
  *
  * <h2>Mathematical Formulation</h2>
- * <p>For an aggregation function f and input elements [x₁, x₂, ..., xₙ]:</p>
+ * <p>For an aggregation function f and input elements [x1, x2, ..., xn]:</p>
  * <pre>
- * result = f(...f(f(initial, x₁), x₂)..., xₙ)
+ * result = f(...f(f(initial, x1), x2)..., xn)
  * </pre>
  *
  * <h2>Key Components</h2>
  * <ul>
- *   <li><strong>Initial Value:</strong> Starting accumulator state (e.g., 0 for sum, -∞ for max)</li>
+ *   <li><strong>Initial Value:</strong> Starting accumulator state (e.g., 0 for sum, -infinity for max)</li>
  *   <li><strong>Aggregation Expression:</strong> Binary function combining accumulator with new element</li>
  *   <li><strong>Iteration Count:</strong> Number of elements to aggregate</li>
  *   <li><strong>Loop Replacement:</strong> Optional optimization to replace iteration with direct expression</li>
@@ -216,7 +216,7 @@ public class AggregatedProducerComputation<T extends PackedCollection<?>> extend
 	 * @param name The operation identifier (e.g., "sum", "max", "product")
 	 * @param shape The {@link TraversalPolicy} defining the output shape (typically smaller than input)
 	 * @param count The number of input elements to aggregate per output element
-	 * @param initial Function providing the initial accumulator value (e.g., 0.0 for sum, -∞ for max)
+	 * @param initial Function providing the initial accumulator value (e.g., 0.0 for sum, -infinity for max)
 	 * @param expression Binary function combining accumulator with each element:
 	 *                   {@code (accumulator, element) -> newAccumulator}
 	 * @param arguments The input {@link Producer}s providing data to aggregate

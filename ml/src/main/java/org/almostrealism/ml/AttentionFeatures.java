@@ -29,13 +29,163 @@ import org.almostrealism.model.SequentialBlock;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * Provides generalized attention mechanism implementations for transformer-based models.
+ *
+ * <p>This interface offers a comprehensive set of methods for building modern attention
+ * mechanisms including multi-head attention (MHA), grouped query attention (GQA), query-key
+ * normalization (QK-Norm), rotary positional embeddings (RoPE), and various transformer
+ * architectures. It extends {@link RotationFeatures} to inherit RoPE functionality.</p>
+ *
+ * <h2>Key Features</h2>
+ * <ul>
+ *   <li><strong>Multi-Head Attention (MHA):</strong> Standard attention with multiple heads</li>
+ *   <li><strong>Grouped Query Attention (GQA):</strong> Efficient attention with fewer KV heads</li>
+ *   <li><strong>QK-Normalization:</strong> Optional query/key normalization (Qwen3, Gemma2)</li>
+ *   <li><strong>Rotary Embeddings (RoPE):</strong> Position-dependent rotations</li>
+ *   <li><strong>Cross-Attention:</strong> Attend over external context (encoder-decoder)</li>
+ *   <li><strong>Causal Masking:</strong> Automatic masking for autoregressive generation</li>
+ * </ul>
+ *
+ * <h2>Supported Architectures</h2>
+ * <p>These methods support various transformer variants:</p>
+ * <table>
+ *   <tr>
+ *     <th>Model Family</th>
+ *     <th>Features Used</th>
+ *   </tr>
+ *   <tr>
+ *     <td>Llama 2/3</td>
+ *     <td>MHA or GQA, RoPE (theta=10000), RMSNorm</td>
+ *   </tr>
+ *   <tr>
+ *     <td>Qwen3</td>
+ *     <td>GQA, QK-Norm, RoPE (theta=1000000)</td>
+ *   </tr>
+ *   <tr>
+ *     <td>Gemma2</td>
+ *     <td>MHA, QK-Norm, RoPE, sliding window</td>
+ *   </tr>
+ *   <tr>
+ *     <td>Mistral</td>
+ *     <td>GQA, RoPE, sliding window attention</td>
+ *   </tr>
+ * </table>
+ *
+ * <h2>Core Attention Methods</h2>
+ *
+ * <p><strong>1. Standard Multi-Head Attention:</strong></p>
+ * <pre>{@code
+ * // Llama-style attention without QK-Norm
+ * Block attn = attention(
+ *     heads, kvHeads, rmsAttWeight,
+ *     wk, wv, wq, wo,
+ *     freqCis, position, requirements
+ * );
+ * }</pre>
+ *
+ * <p><strong>2. Attention with QK-Normalization:</strong></p>
+ * <pre>{@code
+ * // Qwen3-style attention with QK-Norm
+ * Block attn = attention(
+ *     heads, kvHeads, rmsAttWeight,
+ *     wk, wv, wq, wo,
+ *     null, null, null,  // No biases
+ *     qkNormQ, qkNormK,  // QK-Norm weights
+ *     freqCis, position, requirements
+ * );
+ * }</pre>
+ *
+ * <p><strong>3. Complete Transformer Layer:</strong></p>
+ * <pre>{@code
+ * // Combines attention + feed-forward with residuals
+ * Block layer = transformer(
+ *     heads, kvHeads,
+ *     rmsAttWeight, wk, wv, wq, wo,
+ *     bk, bv, bq, qkNormQ, qkNormK,  // Optional params
+ *     freqCis, rmsFfnWeight, w1, w2, w3,
+ *     position, requirements
+ * );
+ * }</pre>
+ *
+ * <h2>Grouped Query Attention (GQA)</h2>
+ * <p>GQA reduces memory and computation by using fewer key-value heads than query heads.
+ * Each KV head is shared across multiple query heads:</p>
+ * <pre>{@code
+ * // Example: 32 query heads, 8 KV heads (4:1 ratio)
+ * Block gqaAttention = attention(
+ *     32,  // query heads
+ *     8,   // KV heads - automatically expanded to match query heads
+ *     rmsAttWeight, wk, wv, wq, wo,
+ *     freqCis, position, requirements
+ * );
+ * }</pre>
+ *
+ * <h2>Usage Pattern</h2>
+ * <p>Typical usage in a model implementation:</p>
+ * <pre>{@code
+ * public class Llama3 implements AttentionFeatures {
+ *     private AutoregressiveModel model;
+ *
+ *     public Llama3(StateDictionary weights) {
+ *         Model transformer = new Model(shape(dim));
+ *
+ *         for (int layer = 0; layer < config.layerCount; layer++) {
+ *             // Load weights for this layer
+ *             PackedCollection<?> wq = weights.get("layers." + layer + ".self_attn.q_proj.weight");
+ *             // ... load other weights ...
+ *
+ *             // Use generalized attention method
+ *             transformer.add(attention(
+ *                 config.headCount, config.kvHeadCount,
+ *                 rmsAttWeight, wk, wv, wq, wo,
+ *                 freqCis, position, requirements
+ *             ));
+ *         }
+ *
+ *         this.model = AutoregressiveModel.of(transformer.compile(), ...);
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Design Principles</h2>
+ * <ul>
+ *   <li><strong>Generalization:</strong> Single methods support multiple architectures via optional parameters</li>
+ *   <li><strong>Composability:</strong> Methods return {@link Block}s that can be chained</li>
+ *   <li><strong>Hardware Acceleration:</strong> All operations compile to GPU/native code</li>
+ *   <li><strong>Memory Efficiency:</strong> KV caching for autoregressive generation</li>
+ * </ul>
+ *
+ * @see RotationFeatures
+ * @see org.almostrealism.layers.LayerFeatures
+ * @see org.almostrealism.model.Block
+ */
 public interface AttentionFeatures extends RotationFeatures {
 
+	/**
+	 * Creates an attention keys layer function that can be applied to different input shapes.
+	 *
+	 * @param keys The key tensor producer (seqLength, kvHeads, headSize)
+	 * @param requirements Compute requirements
+	 * @return A function that creates an attention keys layer for a given input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> attentionKeys(Producer<PackedCollection<?>> keys,
 																   ComputeRequirement... requirements) {
 		return inputShape -> attentionKeys(inputShape, keys, requirements);
 	}
 
+	/**
+	 * Creates a layer that computes attention scores by multiplying queries with keys.
+	 * Handles Grouped Query Attention (GQA) by automatically expanding KV heads to match query heads.
+	 *
+	 * <p>This implements the Q @ K^T operation in attention, producing attention scores
+	 * before softmax normalization. The output is scaled by 1/sqrt(headSize).</p>
+	 *
+	 * @param inputShape Shape of the query input (heads, headSize)
+	 * @param keys Key tensor producer (seqLength, kvHeads, headSize)
+	 * @param requirements Compute requirements
+	 * @return Attention keys layer producing (heads, seqLength) scores
+	 */
 	default CellularLayer attentionKeys(TraversalPolicy inputShape,
 										Producer<PackedCollection<?>> keys,
 										ComputeRequirement... requirements) {
@@ -98,11 +248,30 @@ public interface AttentionFeatures extends RotationFeatures {
 		return reshape(shape(seqLength, heads, headSize), repeated);
 	}
 
+	/**
+	 * Creates an attention values layer function that can be applied to different input shapes.
+	 *
+	 * @param values The value tensor producer (seqLength, kvHeads, headSize)
+	 * @param requirements Compute requirements
+	 * @return A function that creates an attention values layer for a given input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> attentionValues(Producer<PackedCollection<?>> values,
 																     ComputeRequirement... requirements) {
 		return inputShape -> attentionValues(inputShape, values, requirements);
 	}
 
+	/**
+	 * Creates a layer that applies attention weights to values.
+	 * Handles Grouped Query Attention (GQA) by automatically expanding KV heads to match query heads.
+	 *
+	 * <p>This implements the Attention @ V operation, producing the final attended output
+	 * by weighted combination of value vectors according to attention scores.</p>
+	 *
+	 * @param inputShape Shape of the attention scores input (heads, seqLength)
+	 * @param values Value tensor producer (seqLength, kvHeads, headSize)
+	 * @param requirements Compute requirements
+	 * @return Attention values layer producing (dim) output
+	 */
 	default CellularLayer attentionValues(TraversalPolicy inputShape,
 										  Producer<PackedCollection<?>> values,
 										  ComputeRequirement... requirements) {
@@ -291,6 +460,30 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	/**
+	 * Creates a sequence-based multi-head attention block with fused QKV projection.
+	 *
+	 * <p>This implements full-sequence attention (not autoregressive) with:
+	 * <ul>
+	 *   <li>Fused QKV projection for efficiency</li>
+	 *   <li>QK normalization for stability</li>
+	 *   <li>Rotary positional embeddings (RoPE)</li>
+	 *   <li>Scaled dot-product attention</li>
+	 * </ul></p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param seqLen Sequence length
+	 * @param dim Model dimension
+	 * @param heads Number of attention heads
+	 * @param toQkvWeight Fused QKV projection weights
+	 * @param toOutWeight Output projection weights
+	 * @param qNormWeight Query normalization weights
+	 * @param qNormBias Query normalization biases
+	 * @param kNormWeight Key normalization weights
+	 * @param kNormBias Key normalization biases
+	 * @param invFreq RoPE inverse frequencies
+	 * @return Sequence attention block
+	 */
 	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
 									PackedCollection<?> toQkvWeight, PackedCollection<?> toOutWeight,
 									PackedCollection<?> qNormWeight, PackedCollection<?> qNormBias,
@@ -344,7 +537,37 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
-
+	/**
+	 * Creates a cross-attention block for attending over external context.
+	 *
+	 * <p>Cross-attention allows the model to attend to a different sequence (context) than
+	 * the main input. This is used in encoder-decoder architectures where the decoder
+	 * attends to encoder outputs.</p>
+	 *
+	 * <p>Implementation details:
+	 * <ul>
+	 *   <li>Queries (Q) come from the main input</li>
+	 *   <li>Keys (K) and Values (V) come from the context input</li>
+	 *   <li>QK normalization for stability</li>
+	 *   <li>No rotary embeddings (context positions are independent)</li>
+	 * </ul></p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param querySeqLen Query sequence length
+	 * @param contextSeqLen Context sequence length
+	 * @param dim Model dimension
+	 * @param heads Number of attention heads
+	 * @param toQWeight Query projection weights
+	 * @param toKvWeight Fused KV projection weights for context
+	 * @param toOutWeight Output projection weights
+	 * @param qNormWeight Query normalization weights
+	 * @param qNormBias Query normalization biases
+	 * @param kNormWeight Key normalization weights
+	 * @param kNormBias Key normalization biases
+	 * @param contextInput Context block to attend over
+	 * @param attentionScores Optional receptor to capture attention weights
+	 * @return Cross-attention block
+	 */
 	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
 										 int dim, int heads,
 										 PackedCollection<?> toQWeight, PackedCollection<?> toKvWeight,
@@ -402,6 +625,17 @@ public interface AttentionFeatures extends RotationFeatures {
 		return crossAttention;
 	}
 
+	/**
+	 * Creates a SwiGLU feed-forward block with RMSNorm (simplified version without biases).
+	 * Delegates to the full feedForward method with null biases.
+	 *
+	 * @param rms RMSNorm weights
+	 * @param w1 Gate projection weights
+	 * @param w2 Down projection weights
+	 * @param w3 Up projection weights
+	 * @param requirements Compute requirements
+	 * @return Feed-forward block
+	 */
 	default Block feedForward(
 			PackedCollection<?> rms,
 			PackedCollection<?> w1, PackedCollection<?> w2, PackedCollection<?> w3,
@@ -412,6 +646,24 @@ public interface AttentionFeatures extends RotationFeatures {
 				requirements);
 	}
 
+	/**
+	 * Creates a SwiGLU feed-forward block with optional biases.
+	 *
+	 * <p>Implements the SwiGLU activation: FFN(x) = (SiLU(x @ W1 + b1) * (x @ W3 + b3)) @ W2 + b2
+	 * This is the standard feed-forward layer used in modern transformers.</p>
+	 *
+	 * @param shape Input/output shape
+	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
+	 * @param normBiases Normalization biases (null for RMSNorm)
+	 * @param w1 Gate projection weights
+	 * @param w2 Down projection weights
+	 * @param w3 Up projection weights
+	 * @param w1Bias Gate projection bias (null if not used)
+	 * @param w2Bias Down projection bias (null if not used)
+	 * @param w3Bias Up projection bias (null if not used)
+	 * @param requirements Compute requirements
+	 * @return Feed-forward block
+	 */
 	default Block feedForward(
 			TraversalPolicy shape,
 			PackedCollection<?> normWeights, PackedCollection<?> normBiases,
@@ -430,11 +682,30 @@ public interface AttentionFeatures extends RotationFeatures {
 		return feedForward;
 	}
 
+	/**
+	 * Creates a gated linear unit (GLU) function that can be applied to different input shapes.
+	 *
+	 * @param weight Linear projection weights (projects to 2x output dimension)
+	 * @param bias Linear projection bias
+	 * @return A function that creates a GLU block for a given input shape
+	 */
 	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection<?> weight,
 														 PackedCollection<?> bias) {
 		return inputShape -> gatedLinear(inputShape, weight, bias);
 	}
 
+	/**
+	 * Creates a gated linear unit (GLU) block with SiLU activation.
+	 *
+	 * <p>Implements GLU(x) = Linear(x)_left * SiLU(Linear(x)_right)
+	 * The linear projection outputs 2x the input dimension, which is then split
+	 * into two equal parts for gating.</p>
+	 *
+	 * @param inputShape Input shape
+	 * @param weight Linear projection weights
+	 * @param bias Linear projection bias
+	 * @return Gated linear block
+	 */
 	default Block gatedLinear(TraversalPolicy inputShape,
 							  PackedCollection<?> weight,
 							  PackedCollection<?> bias) {
@@ -452,6 +723,18 @@ public interface AttentionFeatures extends RotationFeatures {
 		return glu;
 	}
 
+	/**
+	 * Creates a gated linear feed-forward function with normalization.
+	 *
+	 * @param normWeights Normalization weights
+	 * @param normBiases Normalization biases
+	 * @param weightIn Input projection weights (GLU)
+	 * @param biasIn Input projection bias
+	 * @param weightOut Output projection weights
+	 * @param biasOut Output projection bias
+	 * @param requirements Compute requirements
+	 * @return A function that creates a gated linear FFN block for a given input shape
+	 */
 	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 																	 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
 																	 PackedCollection<?> weightOut, PackedCollection<?> biasOut,
@@ -462,6 +745,22 @@ public interface AttentionFeatures extends RotationFeatures {
 										requirements);
 	}
 
+	/**
+	 * Creates a gated linear feed-forward block with normalization.
+	 *
+	 * <p>Combines normalization, gated linear unit, and output projection:
+	 * FFN(x) = Linear_out(GLU(Norm(x)))</p>
+	 *
+	 * @param inputShape Input/output shape
+	 * @param normWeights Normalization weights
+	 * @param normBiases Normalization biases
+	 * @param weightIn Input projection weights (GLU)
+	 * @param biasIn Input projection bias
+	 * @param weightOut Output projection weights
+	 * @param biasOut Output projection bias
+	 * @param requirements Compute requirements
+	 * @return Gated linear feed-forward block
+	 */
 	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
 										 PackedCollection<?> normWeights, PackedCollection<?> normBiases,
 										 PackedCollection<?> weightIn, PackedCollection<?> biasIn,
@@ -474,6 +773,43 @@ public interface AttentionFeatures extends RotationFeatures {
 		return feedForward;
 	}
 
+	/**
+	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
+	 * Simplified version without attention score capturing - delegates to the full transformerBlock method.
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Model dimension
+	 * @param seqLen Sequence length
+	 * @param heads Number of attention heads
+	 * @param crossAttend Whether to include cross-attention layer
+	 * @param contextSeqLen Context sequence length (for cross-attention)
+	 * @param context Context input block (for cross-attention)
+	 * @param preNormWeight Self-attention pre-normalization weights
+	 * @param preNormBias Self-attention pre-normalization biases
+	 * @param selfQkv Self-attention QKV projection weights
+	 * @param selfWo Self-attention output projection weights
+	 * @param selfQNormWeight Self-attention Q normalization weights
+	 * @param selfQNormBias Self-attention Q normalization biases
+	 * @param selfKNormWeight Self-attention K normalization weights
+	 * @param selfKNormBias Self-attention K normalization biases
+	 * @param invFreq RoPE inverse frequencies
+	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
+	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
+	 * @param crossWq Cross-attention Q projection weights
+	 * @param crossKv Cross-attention KV projection weights
+	 * @param crossWo Cross-attention output projection weights
+	 * @param crossQNormWeight Cross-attention Q normalization weights
+	 * @param crossQNormBias Cross-attention Q normalization biases
+	 * @param crossKNormWeight Cross-attention K normalization weights
+	 * @param crossKNormBias Cross-attention K normalization biases
+	 * @param ffnNormWeight Feed-forward pre-normalization weights
+	 * @param ffnNormBias Feed-forward pre-normalization biases
+	 * @param w1 Feed-forward gate projection weights
+	 * @param w2 Feed-forward output projection weights
+	 * @param w1Bias Feed-forward gate projection bias
+	 * @param w2Bias Feed-forward output projection bias
+	 * @return Complete transformer block
+	 */
 	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
 								   boolean crossAttend,
 								   int contextSeqLen, Block context,
@@ -508,6 +844,51 @@ public interface AttentionFeatures extends RotationFeatures {
 				null);
 	}
 
+	/**
+	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
+	 * This is the full version that supports capturing attention scores via a Receptor.
+	 *
+	 * <p>The transformer block structure:
+	 * <pre>
+	 * x = x + self_attn(norm(x))
+	 * x = x + cross_attn(norm(x), context)  [optional]
+	 * x = x + ffn(norm(x))
+	 * </pre></p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Model dimension
+	 * @param seqLen Sequence length
+	 * @param heads Number of attention heads
+	 * @param crossAttend Whether to include cross-attention layer
+	 * @param contextSeqLen Context sequence length (for cross-attention)
+	 * @param context Context input block (for cross-attention)
+	 * @param preNormWeight Self-attention pre-normalization weights
+	 * @param preNormBias Self-attention pre-normalization biases
+	 * @param selfQkv Self-attention QKV projection weights
+	 * @param selfWo Self-attention output projection weights
+	 * @param selfQNormWeight Self-attention Q normalization weights
+	 * @param selfQNormBias Self-attention Q normalization biases
+	 * @param selfKNormWeight Self-attention K normalization weights
+	 * @param selfKNormBias Self-attention K normalization biases
+	 * @param invFreq RoPE inverse frequencies
+	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
+	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
+	 * @param crossWq Cross-attention Q projection weights
+	 * @param crossKv Cross-attention KV projection weights
+	 * @param crossWo Cross-attention output projection weights
+	 * @param crossQNormWeight Cross-attention Q normalization weights
+	 * @param crossQNormBias Cross-attention Q normalization biases
+	 * @param crossKNormWeight Cross-attention K normalization weights
+	 * @param crossKNormBias Cross-attention K normalization biases
+	 * @param ffnNormWeight Feed-forward pre-normalization weights
+	 * @param ffnNormBias Feed-forward pre-normalization biases
+	 * @param w1 Feed-forward gate projection weights
+	 * @param w2 Feed-forward output projection weights
+	 * @param w1Bias Feed-forward gate projection bias
+	 * @param w2Bias Feed-forward output projection bias
+	 * @param attentionScores Optional receptor to capture cross-attention scores
+	 * @return Complete transformer block
+	 */
 	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
 								   boolean crossAttend,
 								   int contextSeqLen, Block context,
@@ -630,6 +1011,17 @@ public interface AttentionFeatures extends RotationFeatures {
 		return transformer;
 	}
 
+	/**
+	 * Creates a context layer function for linear attention mechanisms.
+	 * Computes the context matrix used in linear attention variants.
+	 *
+	 * @param v Value block
+	 * @param batchSize Batch dimension
+	 * @param heads Number of attention heads
+	 * @param dimHead Dimension per head
+	 * @param size Spatial size (rows * cols)
+	 * @return Context layer function
+	 */
 	default Function<TraversalPolicy, CellularLayer> context(Block v, int batchSize, int heads, int dimHead, int size) {
 		if (v.getOutputShape().getDimensions() != 4 ||
 				v.getOutputShape().length(1) != heads ||
@@ -649,6 +1041,13 @@ public interface AttentionFeatures extends RotationFeatures {
 		});
 	}
 
+	/**
+	 * Creates a linear attention function for image/spatial inputs.
+	 * Linear attention has O(n) complexity compared to O(n^2) for standard attention.
+	 *
+	 * @param dim Output dimension
+	 * @return Function that creates linear attention block from input shape
+	 */
 	default Function<TraversalPolicy, Block> linearAttention(int dim) {
 		return shape -> {
 			int batchSize = shape.length(0);
@@ -659,10 +1058,36 @@ public interface AttentionFeatures extends RotationFeatures {
 		};
 	}
 
+	/**
+	 * Creates a linear attention block with default head configuration (4 heads, 32 dim per head).
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Output dimension
+	 * @param inputChannels Input channels
+	 * @param rows Spatial height
+	 * @param cols Spatial width
+	 * @return Linear attention block
+	 */
 	default Block linearAttention(int batchSize, int dim, int inputChannels, int rows, int cols) {
 		return linearAttention(batchSize, dim, 4, 32, inputChannels, rows, cols);
 	}
 
+	/**
+	 * Creates a linear attention block with configurable head dimensions.
+	 *
+	 * <p>Linear attention uses a linear kernel feature map to approximate attention,
+	 * reducing complexity from O(n^2) to O(n). This is particularly useful for
+	 * high-resolution spatial inputs where standard attention would be prohibitive.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Output dimension
+	 * @param heads Number of attention heads
+	 * @param dimHead Dimension per head
+	 * @param inputChannels Input channels
+	 * @param rows Spatial height
+	 * @param cols Spatial width
+	 * @return Linear attention block
+	 */
 	default Block linearAttention(int batchSize, int dim, int heads, int dimHead,
 								 int inputChannels, int rows, int cols) {
 		double scale = 1.0 / Math.sqrt(dimHead);
@@ -766,6 +1191,12 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attnBlock;
 	}
 
+	/**
+	 * Returns a default instance of AttentionFeatures.
+	 * Useful for static access to attention mechanisms without implementing the interface.
+	 *
+	 * @return A new AttentionFeatures instance
+	 */
 	static AttentionFeatures getInstance() {
 		return new AttentionFeatures() { };
 	}

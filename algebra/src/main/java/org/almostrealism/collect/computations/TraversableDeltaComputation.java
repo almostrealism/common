@@ -55,7 +55,7 @@ import java.util.function.Supplier;
  * by:</p>
  * <ul>
  *   <li>Taking a forward expression and a target variable</li>
- *   <li>Computing the gradient ∂expression/∂target</li>
+ *   <li>Computing the gradient dexpression/dtarget</li>
  *   <li>Propagating gradients through the computational graph</li>
  *   <li>Applying the chain rule automatically</li>
  * </ul>
@@ -63,7 +63,7 @@ import java.util.function.Supplier;
  * <h2>Mathematical Foundation</h2>
  * <p>For a composite function f(g(x)), the chain rule states:</p>
  * <pre>
- * ∂f/∂x = (∂f/∂g) × (∂g/∂x)
+ * df/dx = (df/dg) x (dg/dx)
  * </pre>
  * <p>This class computes such derivatives by recursively applying the delta operation
  * to the expression tree.</p>
@@ -71,13 +71,13 @@ import java.util.function.Supplier;
  * <h2>Usage in Neural Networks</h2>
  * <p>This computation is extensively used in training neural networks:</p>
  * <pre>{@code
- * // Forward pass: y = weights × input + bias
+ * // Forward pass: y = weights x input + bias
  * CollectionProducer<?> y = weights.multiply(input).add(bias);
  *
  * // Loss function: L = (y - target)^2
  * CollectionProducer<?> loss = y.subtract(target).pow(2);
  *
- * // Backward pass: compute ∂L/∂weights
+ * // Backward pass: compute dL/dweights
  * CollectionProducer<?> gradient = loss.delta(weights);
  * // Result: gradient for updating weights
  * }</pre>
@@ -111,7 +111,7 @@ import java.util.function.Supplier;
  * CollectionProducer<?> x = v(shape(3), 0);  // Input variable
  * CollectionProducer<?> y = x.multiply(2).add(1);  // y = 2x + 1
  *
- * CollectionProducer<?> dy_dx = y.delta(x);  // Compute ∂y/∂x = 2
+ * CollectionProducer<?> dy_dx = y.delta(x);  // Compute dy/dx = 2
  * // Result: gradient matrix with appropriate shape
  * }</pre>
  *
@@ -296,7 +296,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	 * Generates the delta expression for computing the gradient at a specific index.
 	 *
 	 * <p>This method applies the chain rule by calling {@code delta(targetVariable)} on the
-	 * forward expression. The resulting {@link CollectionExpression} represents ∂expression/∂target
+	 * forward expression. The resulting {@link CollectionExpression} represents dexpression/dtarget
 	 * at the specified index position.</p>
 	 *
 	 * <p>If this computation has a fixed count, the total shape is set on the expression

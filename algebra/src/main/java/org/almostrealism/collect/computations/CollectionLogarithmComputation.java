@@ -35,10 +35,10 @@ import java.util.List;
  *
  * <p>This class extends {@link TraversableExpressionComputation} to provide efficient element-wise
  * application of the natural logarithm function ln(x), which is the logarithm to base e
- * (where e ≈ 2.71828). The computation is the inverse of the exponential function.</p>
+ * (where e ~= 2.71828). The computation is the inverse of the exponential function.</p>
  *
  * <h2>Mathematical Operation</h2>
- * <p>For an input collection X with elements [x₁, x₂, ..., xₙ], the computation produces:</p>
+ * <p>For an input collection X with elements [x1, x2, ..., xn], the computation produces:</p>
  * <pre>
  * result[i] = ln(X[i])
  * </pre>
@@ -85,8 +85,8 @@ import java.util.List;
  *
  * <h2>Domain and Range</h2>
  * <ul>
- *   <li><strong>Domain:</strong> (0, ∞) - input values must be positive</li>
- *   <li><strong>Range:</strong> (-∞, ∞) - all real numbers</li>
+ *   <li><strong>Domain:</strong> (0, infinity) - input values must be positive</li>
+ *   <li><strong>Range:</strong> (-infinity, infinity) - all real numbers</li>
  *   <li><strong>Special values:</strong> ln(1) = 0, ln(e) = 1</li>
  * </ul>
  *
@@ -169,10 +169,10 @@ public class CollectionLogarithmComputation<T extends PackedCollection<?>> exten
 
 	/**
 	 * Computes the derivative (delta) of this logarithm computation using the chain rule.
-	 * Implements the rule: d/dx[ln(f(x))] = (1/f(x)) × f'(x)
+	 * Implements the rule: d/dx[ln(f(x))] = (1/f(x)) x f'(x)
 	 *
 	 * <p>The derivative of the natural logarithm is 1/x, so for a composite function
-	 * ln(f(x)), the chain rule gives (1/f(x)) × f'(x). This is computed efficiently
+	 * ln(f(x)), the chain rule gives (1/f(x)) x f'(x). This is computed efficiently
 	 * using x^(-1) for the reciprocal operation.</p>
 	 *
 	 * @param target The {@link Producer} with respect to which the derivative is computed

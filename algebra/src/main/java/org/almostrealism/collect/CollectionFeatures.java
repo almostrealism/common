@@ -153,7 +153,7 @@ import java.util.stream.Stream;
  *   <li>{@code exp(Producer)} - Exponential (e^x)</li>
  *   <li>{@code log(Producer)} - Natural logarithm</li>
  *   <li>{@code abs(Producer)} - Absolute value</li>
- *   <li>{@code sq(Producer)} - Square (x²)</li>
+ *   <li>{@code sq(Producer)} - Square (x^2)</li>
  *   <li>{@code sigmoid(Producer)} - Sigmoid activation</li>
  *   <li>{@code mod(Producer, Producer)} - Modulo operation</li>
  * </ul>

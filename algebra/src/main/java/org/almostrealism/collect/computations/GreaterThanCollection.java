@@ -31,7 +31,7 @@ import java.util.List;
  * returning conditional values based on the comparison result.
  *
  * <p>This class extends {@link CollectionComparisonComputation} to implement the greater-than
- * relational operator with optional equality checking (≥). It evaluates the comparison for each
+ * relational operator with optional equality checking (>=). It evaluates the comparison for each
  * corresponding element pair and selects between true and false values accordingly.</p>
  *
  * <h2>Mathematical Operation</h2>
@@ -119,8 +119,8 @@ import java.util.List;
  */
 public class GreaterThanCollection<T extends PackedCollection<?>> extends CollectionComparisonComputation<T> {
 	/**
-	 * Flag controlling whether the comparison includes equality (≥) or is strict (>).
-	 * When true, performs greater-than-or-equal comparison (≥).
+	 * Flag controlling whether the comparison includes equality (>=) or is strict (>).
+	 * When true, performs greater-than-or-equal comparison (>=).
 	 * When false, performs strict greater-than comparison (>).
 	 */
 	private boolean includeEqual;
@@ -151,7 +151,7 @@ public class GreaterThanCollection<T extends PackedCollection<?>> extends Collec
 	 * @param right The {@link Producer} providing the right-hand side values
 	 * @param trueValue The {@link Producer} providing values to use when comparison is true
 	 * @param falseValue The {@link Producer} providing values to use when comparison is false
-	 * @param includeEqual If true, performs ≥ comparison; if false, performs > comparison
+	 * @param includeEqual If true, performs >= comparison; if false, performs > comparison
 	 */
 	public GreaterThanCollection(
 			TraversalPolicy shape,

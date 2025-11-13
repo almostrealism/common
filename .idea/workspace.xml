@@ -6,36 +6,17 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Javadoc updates.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/AlgebraFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/AlgebraFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Differentiable.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/Differentiable.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/MatrixFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/MatrixFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/algebra/package-info.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaFeatures.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/DeltaFeatures.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/InputStub.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/calculus/InputStub.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducer.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducer.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducerComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducerComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducerParallelProcess.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/CollectionProducerParallelProcess.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/DelegatedCollectionProducer.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/DelegatedCollectionProducer.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/ExplicitIndexTraversalOrdering.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/ExplicitIndexTraversalOrdering.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/IndexMaskTraversalOrdering.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/IndexMaskTraversalOrdering.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/PackedCollection.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/PackedCollection.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/AggregatedProducerComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/AggregatedProducerComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/AtomicConstantComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/AtomicConstantComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionAddComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionAddComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionComparisonComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionComparisonComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionConjunctionComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionConjunctionComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionConstantComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionConstantComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionExponentialComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionExponentialComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionLogarithmComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionLogarithmComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionMaxComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionMaxComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProducerComputationBase.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProducerComputationBase.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProductComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProductComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProvider.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProvider.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProviderProducer.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionProviderProducer.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionSumComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/CollectionSumComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/ConstantRepeatedDeltaComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/ConstantRepeatedDeltaComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/DefaultTraversableExpressionComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/DefaultTraversableExpressionComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/GreaterThanCollection.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/GreaterThanCollection.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/LessThanCollection.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/LessThanCollection.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TransitiveDeltaExpressionComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TransitiveDeltaExpressionComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TraversableDeltaComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TraversableDeltaComputation.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TraversableRepeatedProducerComputation.java" beforeDir="false" afterPath="$PROJECT_DIR$/algebra/src/main/java/org/almostrealism/collect/computations/TraversableRepeatedProducerComputation.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/render/src/main/java/org/almostrealism/raytrace/package-info.java" beforeDir="false" afterPath="$PROJECT_DIR$/render/src/main/java/org/almostrealism/raytrace/package-info.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionPadTests.java" beforeDir="false" afterPath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionPadTests.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionPermuteTests.java" beforeDir="false" afterPath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionPermuteTests.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/SingleConstantComputationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/utils/src/test/java/org/almostrealism/collect/computations/test/SingleConstantComputationTest.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -466,7 +447,7 @@
       <window_info anchor="bottom" id="Version Control" order="0" />
       <window_info anchor="bottom" id="Problems" order="1" />
       <window_info anchor="bottom" id="Problems View" order="2" />
-      <window_info anchor="bottom" id="Terminal" order="3" weight="0.33034772" />
+      <window_info active="true" anchor="bottom" id="Terminal" order="3" visible="true" weight="0.33034772" />
       <window_info anchor="bottom" id="Services" order="4" />
       <window_info anchor="bottom" id="Build" order="5" weight="0.33034772" />
       <window_info anchor="right" id="sbt" />
@@ -773,7 +754,8 @@
       <workItem from="1699756392387" duration="976000" />
       <workItem from="1702141310684" duration="175000" />
       <workItem from="1762568823102" duration="3898000" />
-      <workItem from="1762624938918" duration="9044000" />
+      <workItem from="1762624938918" duration="9214000" />
+      <workItem from="1762651566377" duration="6000" />
     </task>
     <task id="LOCAL-00107" summary="Changed offset to long.">
       <created>1520820543425</created>
@@ -1118,7 +1100,7 @@
       <option name="project" value="LOCAL" />
       <updated>1541796882428</updated>
     </task>
-    <option name="localTasksCounter" value="167" />
+    <option name="localTasksCounter" value="168" />
     <servers />
   </component>
   <component name="TestHistory">

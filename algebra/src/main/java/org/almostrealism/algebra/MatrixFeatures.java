@@ -157,8 +157,8 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * <p>
 	 * This method supports several multiplication modes:
 	 * <ul>
-	 *   <li>Matrix-vector multiplication: (M × N) · (N) → (M)</li>
-	 *   <li>Matrix-matrix multiplication: (M × N) · (N × P) → (M × P)</li>
+	 *   <li>Matrix-vector multiplication: (M x N) . (N) -> (M)</li>
+	 *   <li>Matrix-matrix multiplication: (M x N) . (N x P) -> (M x P)</li>
 	 *   <li>Batched multiplication with automatic shape inference</li>
 	 * </ul>
 	 * </p>
@@ -166,10 +166,10 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * <p>
 	 * The implementation includes several optimizations:
 	 * <ul>
-	 *   <li>Zero matrix detection → returns zero result</li>
-	 *   <li>Identity matrix detection → returns input</li>
-	 *   <li>Diagonal matrix detection → optimized scalar multiplication</li>
-	 *   <li>Vector-specific path → uses element-wise multiply + sum instead of full matmul</li>
+	 *   <li>Zero matrix detection -> returns zero result</li>
+	 *   <li>Identity matrix detection -> returns input</li>
+	 *   <li>Diagonal matrix detection -> optimized scalar multiplication</li>
+	 *   <li>Vector-specific path -> uses element-wise multiply + sum instead of full matmul</li>
 	 * </ul>
 	 * </p>
 	 *

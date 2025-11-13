@@ -66,7 +66,7 @@ import java.util.stream.Stream;
  *
  * <h2>Memory Layout</h2>
  * <p>
- * Data is stored in row-major order (C-style) in a contiguous memory block. For a 3×4 matrix:
+ * Data is stored in row-major order (C-style) in a contiguous memory block. For a 3x4 matrix:
  * </p>
  * <pre>
  * Logical:      Memory:
@@ -78,7 +78,7 @@ import java.util.stream.Stream;
  * <h2>Construction Patterns</h2>
  * <pre>{@code
  * // 1. Simple shape construction
- * PackedCollection<?> tensor = new PackedCollection<>(3, 4, 5);  // 3×4×5 tensor
+ * PackedCollection<?> tensor = new PackedCollection<>(3, 4, 5);  // 3x4x5 tensor
  *
  * // 2. With traversal policy
  * TraversalPolicy shape = new TraversalPolicy(10, 20);

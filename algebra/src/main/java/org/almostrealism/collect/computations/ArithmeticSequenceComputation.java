@@ -38,9 +38,9 @@ import java.util.stream.IntStream;
  * values in computational graphs.</p>
  *
  * <h2>Arithmetic Sequence Formula</h2>
- * <p>For a sequence with initial value {@code a₀} and rate {@code r}, the i-th element is:</p>
+ * <p>For a sequence with initial value {@code a0} and rate {@code r}, the i-th element is:</p>
  * <pre>
- * aᵢ = a₀ + i × r
+ * ai = a0 + i x r
  * </pre>
  *
  * <h2>Common Use Cases</h2>
@@ -198,10 +198,10 @@ public class ArithmeticSequenceComputation<T extends PackedCollection<?>> extend
 	 * a sequence where every element is {@code factor} times the corresponding element
 	 * in the original sequence:</p>
 	 * <pre>
-	 * original[i] = initial + i × rate
-	 * scaled[i]   = (initial × factor) + i × (rate × factor)
-	 *             = factor × (initial + i × rate)
-	 *             = factor × original[i]
+	 * original[i] = initial + i x rate
+	 * scaled[i]   = (initial x factor) + i x (rate x factor)
+	 *             = factor x (initial + i x rate)
+	 *             = factor x original[i]
 	 * </pre>
 	 *
 	 * @param factor The scaling factor to apply

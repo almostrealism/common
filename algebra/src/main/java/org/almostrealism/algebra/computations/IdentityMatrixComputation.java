@@ -39,7 +39,7 @@ import java.util.Optional;
  * </p>
  *
  * <p>
- * The identity matrix has the property that I · A = A · I = A for any matrix A
+ * The identity matrix has the property that I . A = A . I = A for any matrix A
  * with compatible dimensions. This makes it the multiplicative identity for
  * matrix operations.
  * </p>

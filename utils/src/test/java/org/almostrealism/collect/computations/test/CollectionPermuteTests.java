@@ -34,8 +34,8 @@ public class CollectionPermuteTests implements TestFeatures {
 	 * Tests basic 2D transpose operation (matrix transpose).
 	 * Demonstrates swapping the two dimensions of a 2D collection using permute(1, 0).
 	 * 
-	 * <p>Original shape: (2, 4) → Permuted shape: (4, 2)</p>
-	 * <p>Element at [i,j] in original → Element at [j,i] in result</p>
+	 * <p>Original shape: (2, 4) -> Permuted shape: (4, 2)</p>
+	 * <p>Element at [i,j] in original -> Element at [j,i] in result</p>
 	 */
 	@Test
 	public void permute2() {
@@ -58,9 +58,9 @@ public class CollectionPermuteTests implements TestFeatures {
 	/**
 	 * Tests 4D dimension reordering with partial permutation.
 	 * Demonstrates swapping middle dimensions while keeping first and last in place using permute(0, 2, 1, 3).
-	 * 
-	 * <p>Original shape: (2, 4, 3, 8) → Permuted shape: (2, 3, 4, 8)</p>
-	 * <p>Element at [i,j,k,l] in original → Element at [i,k,j,l] in result</p>
+	 *
+	 * <p>Original shape: (2, 4, 3, 8) -> Permuted shape: (2, 3, 4, 8)</p>
+	 * <p>Element at [i,j,k,l] in original -> Element at [i,k,j,l] in result</p>
 	 * <p>This pattern is common in tensor operations where you need to reorder height/width or channel dimensions.</p>
 	 */
 	@Test

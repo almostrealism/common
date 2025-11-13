@@ -183,7 +183,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * </ul>
 	 * <p>
 	 * Spherical coordinates are converted to Cartesian using:
-	 * x = r·sin(θ)·cos(φ), y = r·sin(θ)·sin(φ), z = r·cos(θ)
+	 * x = r.sin(θ).cos(φ), y = r.sin(θ).sin(φ), z = r.cos(θ)
 	 * </p>
 	 *
 	 * @param x        Cartesian X coordinate or spherical distance from origin
@@ -220,7 +220,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	/**
 	 * Constructs a new {@link Vector} from a double array containing three coordinates.
 	 *
-	 * @param v  the array containing [x, y, z] coordinates (must have length ≥ 3)
+	 * @param v  the array containing [x, y, z] coordinates (must have length >= 3)
 	 */
 	public Vector(double v[]) {
 		this(v[0], v[1], v[2]);
@@ -229,7 +229,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	/**
 	 * Constructs a new {@link Vector} from a float array containing three coordinates.
 	 *
-	 * @param v  the array containing [x, y, z] coordinates (must have length ≥ 3)
+	 * @param v  the array containing [x, y, z] coordinates (must have length >= 3)
 	 */
 	public Vector(float v[]) {
 		this(v[0], v[1], v[2]);
@@ -323,7 +323,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	}
 
 	/**
-	 * Sets the i-th component of this {@link Vector}, where 0 ≤ i < 3.
+	 * Sets the i-th component of this {@link Vector}, where 0 <= i < 3.
 	 *
 	 * @param i  the component index (0=X, 1=Y, 2=Z)
 	 * @param v  the value to set
@@ -515,7 +515,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * </ul>
 	 *
 	 * @param v  the vector to compute the cross product with
-	 * @return a new {@link Vector} representing this × v
+	 * @return a new {@link Vector} representing this x v
 	 */
 	public Vector crossProduct(Vector v) {
 		double x = getY() * v.getZ() - getZ() * v.getY();

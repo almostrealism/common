@@ -118,7 +118,7 @@ public interface AlgebraFeatures extends CollectionFeatures {
 	 * This method performs a sophisticated broadcast operation that:
 	 * <ol>
 	 *   <li>Aligns the input shapes to a common result shape</li>
-	 *   <li>Repeats dimensions where necessary (size 1 → size N)</li>
+	 *   <li>Repeats dimensions where necessary (size 1 -> size N)</li>
 	 *   <li>Sums over groups defined by the group shape</li>
 	 * </ol>
 	 * </p>

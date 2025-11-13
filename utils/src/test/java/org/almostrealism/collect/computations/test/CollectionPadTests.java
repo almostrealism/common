@@ -50,7 +50,7 @@ public class CollectionPadTests implements TestFeatures {
 
 	/**
 	 * Tests 2D padding with asymmetric padding (0 on left, 1 on right).
-	 * Input: 2x3 collection → Output: 2x5 collection
+	 * Input: 2x3 collection -> Output: 2x5 collection
 	 * Padding pattern: [original data][1 column of zeros]
 	 */
 	@Test
@@ -84,7 +84,7 @@ public class CollectionPadTests implements TestFeatures {
 	/**
 	 * Tests the gradient computation (delta) for 2D padding operations.
 	 * This test demonstrates how padding operations propagate gradients during backpropagation.
-	 * Input: 2x3 collection → Padded: 2x5 → Delta: 2x5x2x3 gradient tensor
+	 * Input: 2x3 collection -> Padded: 2x5 -> Delta: 2x5x2x3 gradient tensor
 	 */
 	@Test
 	public void pad2d1Delta() {
@@ -121,7 +121,7 @@ public class CollectionPadTests implements TestFeatures {
 
 	/**
 	 * Tests symmetric 2D padding where equal amounts are added to all sides.
-	 * Input: 2x3 collection → Output: 4x5 collection  
+	 * Input: 2x3 collection -> Output: 4x5 collection  
 	 * Padding pattern: 1 unit on all sides creates a "border" of zeros around the data
 	 */
 	@Test
@@ -154,7 +154,7 @@ public class CollectionPadTests implements TestFeatures {
 
 	/**
 	 * Tests 3D padding with selective dimension padding.
-	 * Input: 2x2x3 collection → Output: 2x4x5 collection
+	 * Input: 2x2x3 collection -> Output: 2x4x5 collection
 	 * Demonstrates padding only certain dimensions while leaving others unchanged.
 	 */
 	@Test
@@ -193,7 +193,7 @@ public class CollectionPadTests implements TestFeatures {
 	/**
 	 * Tests gradient computation for 3D padding operations.
 	 * This demonstrates how gradients flow through multi-dimensional padding.
-	 * Input: 2x2x3 → Padded: 2x4x5 → Delta: 2x4x5x2x2x3 gradient tensor
+	 * Input: 2x2x3 -> Padded: 2x4x5 -> Delta: 2x4x5x2x2x3 gradient tensor
 	 */
 	@Test
 	public void pad3dDelta() {
@@ -238,7 +238,7 @@ public class CollectionPadTests implements TestFeatures {
 
 	/**
 	 * Tests 4D padding commonly used in neural network scenarios.
-	 * Input: 2x4x2x3 collection (batch x channels x height x width) → Output: 2x4x4x5
+	 * Input: 2x4x2x3 collection (batch x channels x height x width) -> Output: 2x4x4x5
 	 * Demonstrates padding only spatial dimensions while preserving batch and channel dimensions.
 	 * This pattern is typical in convolutional neural networks where spatial padding is applied
 	 * but batch and channel dimensions remain unchanged.

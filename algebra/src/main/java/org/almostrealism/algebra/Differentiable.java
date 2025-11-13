@@ -34,7 +34,7 @@ import io.almostrealism.relation.Function;
  * </ul>
  *
  * <p>
- * Implementations typically represent mathematical functions f: ℝ³ → T where T is often
+ * Implementations typically represent mathematical functions f: ℝ^3 -> T where T is often
  * {@link Scalar} for scalar fields or other types for more complex field representations.
  * </p>
  *

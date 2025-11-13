@@ -40,7 +40,7 @@ import java.util.Optional;
  *   <li>All diagonal elements (i, i) have the same value s</li>
  *   <li>Off-diagonal elements are zero</li>
  * </ul>
- * This is equivalent to s · I where I is the identity matrix.
+ * This is equivalent to s . I where I is the identity matrix.
  * </p>
  *
  * <h2>Example</h2>

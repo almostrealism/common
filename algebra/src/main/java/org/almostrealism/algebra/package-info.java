@@ -21,7 +21,7 @@
  *   <li>{@link org.almostrealism.algebra.Vector} - 3-dimensional vector with x, y, z components</li>
  *   <li>{@link org.almostrealism.algebra.Pair} - 2-element tuple for complex numbers and coordinate pairs</li>
  *   <li>{@link org.almostrealism.algebra.Tensor} - Generic multi-dimensional array with arbitrary shape</li>
- *   <li>{@link org.almostrealism.algebra.Matrix3D} - 3×3 matrix for 3D transformations</li>
+ *   <li>{@link org.almostrealism.algebra.Matrix3D} - 3x3 matrix for 3D transformations</li>
  * </ul>
  *
  * <h3>Utility Types</h3>
@@ -70,7 +70,7 @@
  * <ul>
  *   <li>{@link org.almostrealism.algebra.computations.IdentityMatrixComputation} - Generates identity matrices</li>
  *   <li>{@link org.almostrealism.algebra.computations.DiagonalMatrixComputation} - Creates diagonal matrices from vectors</li>
- *   <li>{@link org.almostrealism.algebra.computations.ScalarMatrixComputation} - Creates scalar matrices (s·I)</li>
+ *   <li>{@link org.almostrealism.algebra.computations.ScalarMatrixComputation} - Creates scalar matrices (s.I)</li>
  *   <li>{@link org.almostrealism.algebra.computations.WeightedSumComputation} - Fundamental building block for matmul, convolution, attention</li>
  * </ul>
  *
@@ -129,7 +129,7 @@
  * and {@link org.almostrealism.algebra.AlgebraFeatures#broadcastSum}:
  * </p>
  * <pre>{@code
- * // Broadcasting (3, 1) with (1, 4) → (3, 4)
+ * // Broadcasting (3, 1) with (1, 4) -> (3, 4)
  * CollectionProducer<PackedCollection<?>> result = broadcast(
  *     shape(3, 4),
  *     vectorA,  // shape (3, 1)
@@ -142,7 +142,7 @@
  * All operations work with {@link io.almostrealism.collect.TraversalPolicy} to define tensor shapes:
  * </p>
  * <pre>{@code
- * TraversalPolicy shape = shape(3, 4, 5);  // 3×4×5 tensor
+ * TraversalPolicy shape = shape(3, 4, 5);  // 3x4x5 tensor
  * int dims = shape.getDimensions();         // 3
  * int totalSize = shape.getTotalSize();     // 60
  * }</pre>

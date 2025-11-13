@@ -238,7 +238,7 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	/**
 	 * Computes the dot product (inner product) of two vectors.
-	 * Returns a · b = a₁b₁ + a₂b₂ + a₃b₃.
+	 * Returns a . b = a1b1 + a2b2 + a3b3.
 	 *
 	 * @param a  the first vector
 	 * @param b  the second vector
@@ -250,7 +250,7 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	/**
 	 * Computes the cross product (vector product) of two vectors.
-	 * Returns a × b = (a₂b₃ - a₃b₂, a₃b₁ - a₁b₃, a₁b₂ - a₂b₁).
+	 * Returns a x b = (a2*b3 - a3*b2, a3*b1 - a1*b3, a1*b2 - a2*b1).
 	 *
 	 * <p>
 	 * The cross product produces a vector perpendicular to both input vectors,
@@ -312,7 +312,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	/**
-	 * Computes the length (magnitude) of a vector: ||v|| = √(v₁² + v₂² + v₃²).
+	 * Computes the length (magnitude) of a vector: ||v|| = sqrt(v1^2 + v2^2 + v3^2).
 	 *
 	 * @param value  the vector producer
 	 * @param <T>  the collection type
@@ -323,7 +323,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	/**
-	 * Computes the squared length (squared magnitude) of a vector: ||v||² = v₁² + v₂² + v₃².
+	 * Computes the squared length (squared magnitude) of a vector: ||v||^2 = v1^2 + v2^2 + v3^2.
 	 * This is more efficient than {@link #length(Producer)} when only comparisons are needed,
 	 * as it avoids the square root computation.
 	 *

@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
  * <p>For example, if a computation {@code f(x, y, z)} has transitive arguments {@code x} and {@code y},
  * then {@code delta(f, target)} computes:</p>
  * <pre>
- * ∂f/∂target = f(∂x/∂target, ∂y/∂target, z)
+ * df/dtarget = f(dx/dtarget, dy/dtarget, z)
  * </pre>
  *
  * <h2>Key Features</h2>
@@ -236,7 +236,7 @@ public abstract class TransitiveDeltaExpressionComputation<T extends PackedColle
 	 * <h3>Example</h3>
 	 * <p>For a computation {@code f(x, y)} where both arguments are transitive:</p>
 	 * <pre>
-	 * ∂f/∂w = f(∂x/∂w, ∂y/∂w)
+	 * df/dw = f(dx/dw, dy/dw)
 	 * </pre>
 	 *
 	 * <p>The result shape is {@code [original_shape..., target_shape...]}, enabling

@@ -20,7 +20,7 @@ package org.almostrealism.algebra;
  * Represents a single term in a multivariate polynomial function of three variables.
  *
  * <p>
- * A {@link PolynomialTerm} represents a term in the form: c · x^i · y^j · z^k,
+ * A {@link PolynomialTerm} represents a term in the form: c . x^i . y^j . z^k,
  * where c is the coefficient and i, j, k are non-negative integer exponents.
  * This class supports:
  * </p>

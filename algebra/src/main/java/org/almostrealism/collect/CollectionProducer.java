@@ -58,7 +58,7 @@ import java.util.function.Supplier;
  * // Build a computation graph through method chaining
  * CollectionProducer<Vector> input = v(Vector.class);
  * CollectionProducer<PackedCollection<?>> result = input
- *     .reshape(shape(10, 3))      // Reshape to 10×3
+ *     .reshape(shape(10, 3))      // Reshape to 10x3
  *     .subtract(input.mean(0))    // Subtract mean along axis 0
  *     .divide(input.variance(0))  // Divide by variance
  *     .pow(2.0)                   // Square all elements
@@ -75,10 +75,10 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CollectionProducer<PackedCollection<?>> x = ...; // shape (2, 3, 4)
  *
- * x.reshape(shape(6, 4))           // Reshape to 6×4
+ * x.reshape(shape(6, 4))           // Reshape to 6x4
  * x.traverse(1)                    // Traverse along axis 1
  * x.transpose()                    // Transpose matrix (2D only)
- * x.subset(shape(2, 2), 0, 1)      // Extract 2×2 subset starting at (0,1)
+ * x.subset(shape(2, 2), 0, 1)      // Extract 2x2 subset starting at (0,1)
  * }</pre>
  *
  * <h2>Arithmetic Operations</h2>
@@ -106,10 +106,10 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CollectionProducer<PackedCollection<?>> data = ...; // shape (10, 5)
  *
- * data.sum()         // Sum all elements → shape (1)
- * data.sum(0)        // Sum along axis 0 → shape (5)
+ * data.sum()         // Sum all elements -> shape (1)
+ * data.sum(0)        // Sum along axis 0 -> shape (5)
  * data.mean()        // Mean of all elements
- * data.mean(1)       // Mean along axis 1 → shape (10)
+ * data.mean(1)       // Mean along axis 1 -> shape (10)
  * data.variance()    // Variance
  * data.max()         // Maximum value
  * data.magnitude()   // L2 norm
@@ -135,10 +135,10 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CollectionProducer<PackedCollection<?>> x = ...; // shape (3, 4)
  *
- * x.repeat(5)                // Repeat along axis 0 → shape (15, 4)
- * x.enumerate(10)            // Enumerate indices → shape (10)
- * x.permute(1, 0)            // Permute dimensions → shape (4, 3)
- * x.pad(1, 2)                // Add padding → shape (5, 8)
+ * x.repeat(5)                // Repeat along axis 0 -> shape (15, 4)
+ * x.enumerate(10)            // Enumerate indices -> shape (10)
+ * x.permute(1, 0)            // Permute dimensions -> shape (4, 3)
+ * x.pad(1, 2)                // Add padding -> shape (5, 8)
  * x.map(elem -> elem.pow(2)) // Map function over elements
  * }</pre>
  *
@@ -150,9 +150,9 @@ import java.util.function.Supplier;
  * CollectionProducer<PackedCollection<?>> x = v(PackedCollection.class);
  * CollectionProducer<PackedCollection<?>> y = x.pow(2).sum();
  *
- * // Compute ∂y/∂x
+ * // Compute dy/dx
  * CollectionProducer<PackedCollection<?>> gradient = y.delta(x);
- * // Result: 2x (derivative of x²)
+ * // Result: 2x (derivative of x^2)
  * }</pre>
  *
  * @param <T>  the shape type produced by this producer

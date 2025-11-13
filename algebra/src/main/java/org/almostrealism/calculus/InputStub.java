@@ -45,7 +45,7 @@ import java.util.List;
  *
  * <h2>Purpose</h2>
  * <p>
- * During automatic differentiation, the chain rule requires computing ∂f/∂x when f depends on x
+ * During automatic differentiation, the chain rule requires computing df/dx when f depends on x
  * indirectly through intermediate computations. {@link InputStub} creates a stand-in for x that:
  * <ul>
  *   <li>Preserves the shape and type information of the original producer</li>
@@ -57,15 +57,15 @@ import java.util.List;
  *
  * <h2>Usage in Chain Rule</h2>
  * <pre>{@code
- * // For h(x) = f(g(x)), compute ∂h/∂x = (∂f/∂g) · (∂g/∂x)
+ * // For h(x) = f(g(x)), compute dh/dx = (df/dg) . (dg/dx)
  * Producer<T> g = ...; // intermediate computation
  * Producer<T> h = f(g); // composite computation
  *
- * // Create stub for g to compute ∂f/∂g in isolation
+ * // Create stub for g to compute df/dg in isolation
  * InputStub<T> gStub = new InputStub<>(g);
- * Producer<T> dfdg = f(gStub).delta(gStub);  // ∂f/∂g
+ * Producer<T> dfdg = f(gStub).delta(gStub);  // df/dg
  *
- * // Then multiply by ∂g/∂x
+ * // Then multiply by dg/dx
  * Producer<T> dgdx = g.delta(x);
  * Producer<T> dhdx = matmul(dfdg, dgdx);  // Full gradient
  * }</pre>
@@ -219,7 +219,7 @@ public class InputStub<T extends PackedCollection<?>> implements CollectionProdu
 	 * <p>
 	 * Matching behavior:
 	 * <ul>
-	 *   <li>If the other object is an InputStub with the same metadata ID → matches</li>
+	 *   <li>If the other object is an InputStub with the same metadata ID -> matches</li>
 	 *   <li>Otherwise, delegates to the wrapped producer's matching logic</li>
 	 * </ul>
 	 * This enables the gradient system to correctly identify corresponding stubs

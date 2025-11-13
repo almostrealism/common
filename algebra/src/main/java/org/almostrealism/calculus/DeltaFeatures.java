@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
  *
  * <p>
  * For a composite function h(x) = f(g(x)), the chain rule states:<br>
- * ∂h/∂x = (∂f/∂g) · (∂g/∂x)
+ * dh/dx = (df/dg) . (dg/dx)
  * </p>
  *
  * <h2>Key Capabilities</h2>
@@ -76,7 +76,7 @@ import java.util.stream.Collectors;
  * CollectionProducer<PackedCollection<?>> h = relu(linear);
  *
  * // Gradient computation using chain rule
- * // ∂h/∂W = ∂ReLU/∂linear · ∂linear/∂W
+ * // dh/dW = dReLU/dlinear . dlinear/dW
  * CollectionProducer<PackedCollection<?>> gradient = h.delta(W);
  * }</pre>
  *
@@ -86,14 +86,14 @@ import java.util.stream.Collectors;
  * inputs with {@link InputStub} instances, enabling clean partial derivative computation:
  * </p>
  * <pre>{@code
- * // For f(g(x), h(x)), compute ∂f/∂g in isolation
+ * // For f(g(x), h(x)), compute df/dg in isolation
  * Producer<T> g = ...;
  * Producer<T> h = ...;
  * ComputationBase<T, T, Evaluable<T>> f = computation(g, h);
  *
  * // Create isolated graph with stub for g
  * CollectionProducer<T> dfdg = generateIsolatedDelta(f, g);
- * // dfdg now represents ∂f/∂g, treating h as constant
+ * // dfdg now represents df/dg, treating h as constant
  * }</pre>
  *
  * <h2>Multi-Term Delta Strategies</h2>
@@ -192,7 +192,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * This method implements the multivariate chain rule for automatic differentiation:
 	 * </p>
 	 * <pre>
-	 * For h(x) = f(g(x)), compute: ∂h/∂x = (∂f/∂g) · (∂g/∂x)
+	 * For h(x) = f(g(x)), compute: dh/dx = (df/dg) . (dg/dx)
 	 * </pre>
 	 *
 	 * <p>
@@ -202,14 +202,14 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 *   <li>If chain rule is supported ({@link #isChainRuleSupported()}):
 	 *     <ol>
 	 *       <li>Match the target in the producer's inputs using {@link AlgebraFeatures#matchInput}</li>
-	 *       <li>If no match found → return null</li>
-	 *       <li>If match is empty (independent) → return zeros</li>
-	 *       <li>If direct match → delegate to {@link #applyDeltaStrategy}</li>
+	 *       <li>If no match found -> return null</li>
+	 *       <li>If match is empty (independent) -> return zeros</li>
+	 *       <li>If direct match -> delegate to {@link #applyDeltaStrategy}</li>
 	 *       <li>Otherwise, apply chain rule:
 	 *         <ul>
-	 *           <li>Compute ∂f/∂g using {@link #generateIsolatedDelta}</li>
-	 *           <li>Compute ∂g/∂x using recursive delta call</li>
-	 *           <li>Matrix multiply: ∂f/∂x = (∂f/∂g) · (∂g/∂x)</li>
+	 *           <li>Compute df/dg using {@link #generateIsolatedDelta}</li>
+	 *           <li>Compute dg/dx using recursive delta call</li>
+	 *           <li>Matrix multiply: df/dx = (df/dg) . (dg/dx)</li>
 	 *         </ul>
 	 *       </li>
 	 *     </ol>
@@ -299,8 +299,8 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * <h3>Strategies</h3>
 	 * <ul>
 	 *   <li><b>NONE:</b> Returns null if target appears in multiple terms</li>
-	 *   <li><b>IGNORE:</b> Returns identity matrix (for additive terms: ∂(a+b)/∂a = I)</li>
-	 *   <li><b>COMBINE:</b> Returns diagonal of non-target terms (for multiplicative: ∂(a·b)/∂a = diag(b))</li>
+	 *   <li><b>IGNORE:</b> Returns identity matrix (for additive terms: d(a+b)/da = I)</li>
+	 *   <li><b>COMBINE:</b> Returns diagonal of non-target terms (for multiplicative: d(a.b)/da = diag(b))</li>
 	 * </ul>
 	 *
 	 * @param strategy  the delta strategy to apply
@@ -359,7 +359,7 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 *
 	 * @param producer  the producer whose inputs should be replaced
 	 * @param toReplace  list of inputs to replace
-	 * @param replacements  map to store the original→stub mappings
+	 * @param replacements  map to store the original->stub mappings
 	 * @param <T>  the shape type
 	 * @return a new producer with inputs replaced by stubs
 	 */
@@ -442,19 +442,19 @@ public interface DeltaFeatures extends MatrixFeatures {
 	 * <ul>
 	 *   <li><b>NONE:</b> No multi-term handling. Returns null if the target appears in multiple terms,
 	 *       preventing potentially incorrect gradient computation.</li>
-	 *   <li><b>IGNORE:</b> For additive operations like (a + b + c). The gradient ∂(a+b)/∂a = I
+	 *   <li><b>IGNORE:</b> For additive operations like (a + b + c). The gradient d(a+b)/da = I
 	 *       (identity matrix), since the derivative of a sum is the sum of derivatives.</li>
-	 *   <li><b>COMBINE:</b> For multiplicative operations like (a · b · c). The gradient ∂(a·b·c)/∂a
-	 *       is the product of all other terms: b·c. Implemented as diagonal(b·c).</li>
+	 *   <li><b>COMBINE:</b> For multiplicative operations like (a . b . c). The gradient d(a.b.c)/da
+	 *       is the product of all other terms: b.c. Implemented as diagonal(b.c).</li>
 	 * </ul>
 	 *
 	 * <h3>Examples</h3>
 	 * <pre>{@code
 	 * // IGNORE strategy for addition
-	 * // ∂(x + y + z)/∂x = I (identity)
+	 * // d(x + y + z)/dx = I (identity)
 	 *
 	 * // COMBINE strategy for multiplication
-	 * // ∂(x · y · z)/∂x = diag(y · z)
+	 * // d(x . y . z)/dx = diag(y . z)
 	 * }</pre>
 	 */
 	enum MultiTermDeltaStrategy {
