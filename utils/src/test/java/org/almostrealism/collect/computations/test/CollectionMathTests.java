@@ -513,13 +513,7 @@ public class CollectionMathTests implements TestFeatures {
 
 		PackedCollection<?> resultData = new PackedCollection<>(shape(3, 1).traverse(1));
 
-		// Create input with both valuesA and valuesB side by side
-		PackedCollection<?> input = new PackedCollection<>(shape(3, 2).traverse(1));
-		for (int i = 0; i < 3; i++) {
-			input.setMem(i * 2, valuesA.valueAt(i, 0), valuesB.valueAt(i, 0));
-		}
-
-		result.get().into(resultData.each()).evaluate(input);
+		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
 		System.out.println("lessThan small batch:");
 		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");

@@ -46,7 +46,7 @@ import java.util.List;
  * the current and previous input samples. The weights are called coefficients, and their
  * count determines the filter order:</p>
  * <pre>
- * y[n] = Σ(i=0 to order) h[i] * x[n - i + order/2]
+ * y[n] = &Sigma;(i=0 to order) h[i] * x[n - i + order/2]
  *
  * Where:
  * - y[n]: Output sample at position n
@@ -214,8 +214,8 @@ import java.util.List;
  * </table>
  *
  * @see FourierTransform
- * @see TemporalFeatures#lowPass(int, Producer)
- * @see TemporalFeatures#highPass(int, Producer)
+ * @see org.almostrealism.time.TemporalFeatures#lowPass(Producer, Producer, int)
+ * @see org.almostrealism.time.TemporalFeatures#highPass(Producer, Producer, int)
  *
  * @author Michael Murray
  */
@@ -231,7 +231,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	 * @throws UnsupportedOperationException if series or coefficients have size ≤ 1
 	 */
 	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
-		super("multiOrderFilter", shape, new Producer[] { series, coefficients });
+		super("multiOrderFilter", shape, series, coefficients);
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
 		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);
