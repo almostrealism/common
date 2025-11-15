@@ -31,9 +31,20 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for map, reduce, and enumerate operations on PackedCollections.
+ * These tests validate traversal, transformation, and aggregation patterns
+ * used in neural network layers and tensor operations.
+ */
 public class PackedCollectionMapTests implements TestFeatures {
-	boolean enableAlt = false;
 
+	/**
+	 * Tests 2D mapping operation that multiplies each element of a collection by all elements of another collection.
+	 * Validates that the outer product pattern (c[i] * d[j]) produces correct results.
+	 *
+	 * <p>Operation: For each element in collection c (size 5), repeat it and multiply by collection d (size 2)
+	 * Expected output: 5x2 matrix where output[i,j] = c[i] * d[j]</p>
+	 */
 	@Test
 	public void map2d() {
 		int n = 5;
@@ -59,20 +70,22 @@ public class PackedCollectionMapTests implements TestFeatures {
 		kernelTest(product, valid);
 	}
 
+	/**
+	 * Tests 3D tensor multiplication with broadcasting.
+	 * Validates element-wise multiplication of a 3D tensor (8x3x3) with a 2D filter (3x3).
+	 *
+	 * <p>Operation: Traverse the first dimension of input, multiply each (3x3) slice by the filter.
+	 * Expected: output[i,j,k] = input[i,j,k] * filter[j,k] for all i in [0,8)</p>
+	 *
+	 * <p>This pattern is common in convolutional layers where filters are applied across feature maps.</p>
+	 */
 	@Test
 	public void map3d() {
 		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection<?> filter = tensor(shape(3, 3)).pack();
 
-		Supplier<Producer<PackedCollection<?>>> product;
-
-		if (enableAlt) {
-			product =
-					() -> traverse(1, p(input)).map(v -> v.multiply(p(filter)));
-		} else {
-			product =
-					() -> traverse(1, p(input)).multiply(repeat(8, p(filter)));
-		}
+		Supplier<Producer<PackedCollection<?>>> product =
+				() -> traverse(1, p(input)).multiply(repeat(8, p(filter)));
 
 		Consumer<PackedCollection<?>> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
@@ -93,6 +106,12 @@ public class PackedCollectionMapTests implements TestFeatures {
 		kernelTest(product, valid);
 	}
 
+	/**
+	 * Tests scaling operations using repeat and traversal.
+	 * Validates that timeline values can be scaled by repeating scale factors.
+	 *
+	 * <p>Currently disabled (@Test commented out) - may need investigation.</p>
+	 */
 	// @Test
 	public void scale() {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
@@ -100,7 +119,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		PackedCollection<?> scale = new PackedCollection<>(shape(5), 1);
 		IntStream.range(0, 5).forEach(i -> scale.set(i, i + 2));
-		System.out.println(Arrays.toString(scale.toArray(0, 5)));
+		log(Arrays.toString(scale.toArray(0, 5)));
 
 		verboseLog(() -> {
 			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).repeat(10);
@@ -109,15 +128,24 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 			Evaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
 			PackedCollection<?> destination = ev.evaluate();
-			System.out.println(destination.getShape());
-			System.out.println(Arrays.toString(destination.toArray(0, 10)));
-			System.out.println(Arrays.toString(destination.toArray(10, 10)));
+			log(destination.getShape());
+			log(Arrays.toString(destination.toArray(0, 10)));
+			log(Arrays.toString(destination.toArray(10, 10)));
 
 			assertEquals(8, destination.toDouble(3));
 			assertEquals(12, destination.toDouble(13));
 		});
 	}
 
+	/**
+	 * Tests simple reduce operation that adds two collections for each traversed slice.
+	 * Validates that map can produce output with arbitrary transformations independent of input.
+	 *
+	 * <p>Operation: Traverse input (8x3x3), for each slice produce source + filter (both 3x1).
+	 * Expected: output[i,j,k] = source[j,k] + filter[j,k], independent of input values.</p>
+	 *
+	 * <p>This tests that mapped operations can ignore the traversed input and produce fixed results.</p>
+	 */
 	@Test
 	public void simpleReduce() {
 		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
@@ -146,6 +174,13 @@ public class PackedCollectionMapTests implements TestFeatures {
 		kernelTest(product, valid);
 	}
 
+	/**
+	 * Tests reduction using sum operation across tensor slices.
+	 * Validates that traversal + reduce correctly aggregates values.
+	 *
+	 * <p>Operation: For each of 8 slices (each 6 elements), compute sum.
+	 * Expected: output[i] = sum of input[i, 0:6]</p>
+	 */
 	@Test
 	public void sumByReduce() {
 		PackedCollection<?> input = tensor(shape(8, 6)).pack();
@@ -153,7 +188,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).reduce(v -> v.sum());
 			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(1, output.getShape().length(1));
@@ -183,7 +218,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
 			PackedCollection<?> output = sum.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
 			Assert.assertEquals(1, output.getShape().length(1));
@@ -215,7 +250,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
 			PackedCollection<?> output = sum.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
 			Assert.assertEquals(1, output.getShape().length(1));
@@ -247,7 +282,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> max = enumerated.traverse(1).max();
 			PackedCollection<?> output = max.get().evaluate().reshape(shape(count, 1));
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			Assert.assertEquals(count, output.getShape().length(0));
 			Assert.assertEquals(1, output.getShape().length(1));
@@ -297,6 +332,19 @@ public class PackedCollectionMapTests implements TestFeatures {
 		kernelTest(product, validate);
 	}
 
+	/**
+	 * Tests map-repeat-reduce pattern used in matrix multiplication and fully connected layers.
+	 * Validates that each row of input can be repeated, multiplied by filter rows, and reduced.
+	 *
+	 * <p>Operation: For input (8x3) and filter (2x3):
+	 * 1. Traverse input to get 8 rows of size 3
+	 * 2. Repeat each row 2 times
+	 * 3. Multiply by filter (broadcasting filter[j] to each repeated copy)
+	 * 4. Reduce by summing across last dimension
+	 * Expected: output[i,j] = sum(input[i,k] * filter[j,k]) for k in [0,3)</p>
+	 *
+	 * <p>This is mathematically equivalent to matrix multiplication: output = input @ filter.T</p>
+	 */
 	@Test
 	public void mapRepeatReduce() {
 		int r = 8;
@@ -309,9 +357,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 		Supplier<CollectionProducer<PackedCollection<?>>> product =
 				() -> traverse(1, p(input))
 						.repeat(w)
-						.multiply(p(filter))
-						.traverse()
-						.reduce(v -> v.sum());
+						.multiply(cp(filter))
+						.sum();
 
 		Consumer<PackedCollection<?>> validate = output -> {
 			for (int i = 0; i < r; i++) {
@@ -392,10 +439,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.traverse(2)
 					.map(v -> v.multiply(p(filter)));
-			System.out.println(conv.getShape());
+			log(conv.getShape());
 
 			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
 				for (int j = 0; j < c - pad; j++) {
@@ -421,7 +468,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 
-						System.out.println("]");
+						log("]");
 					}
 				}
 			}
@@ -446,14 +493,14 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.traverse(2)
 					.map(v ->
 							v.multiply(p(filter)));
-			System.out.println(conv.getShape());
+			log(conv.getShape());
 
 			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
 				for (int j = 0; j < c - pad; j++) {
-					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+					log("PackedCollectionMapTests: " + i + ", " + j);
 
 					for (int k = 0; k < w; k++) {
 						for (int l = 0; l < w; l++) {
@@ -488,21 +535,21 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.traverse(2)
 					.map(v ->
 							v.traverseEach().multiply(traverseEach(p(filter))));
-			System.out.println(conv.getShape());
+			log(conv.getShape());
 
 			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < r - pad; i++) {
 				for (int j = 0; j < c - pad; j++) {
-					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+					log("PackedCollectionMapTests: " + i + ", " + j);
 
 					for (int k = 0; k < w; k++) {
 						for (int l = 0; l < w; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
-							System.out.println("\tPackedCollectionMapTests: " + expected + " vs " + actual);
+							log("\tPackedCollectionMapTests: " + expected + " vs " + actual);
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 					}
@@ -526,12 +573,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.map(v -> v.multiply(p(filter)))
-					.reduce(v -> v.sum());
-			System.out.println(conv.getShape());
+					.multiply(p(filter))
+					.sum();
 
 			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < 8; j++) {
@@ -573,17 +619,24 @@ public class PackedCollectionMapTests implements TestFeatures {
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
-						.repeat(2)
-						.multiply(p(filter));
-				System.out.println(conv.getShape());
+						.map(shape(2, w, w), v ->
+								v.repeat(2).multiply(traverseEach(p(filter))));  // Map over windows, repeat and multiply
 
+				log("Input shape: " + input.getShape());
+				log("Filter shape: " + filter.getShape());
+				log("Conv shape: " + conv.getShape());
 				PackedCollection<?> output = conv.get().evaluate();
-				System.out.println(output.getShape());
+				log("Output shape: " + output.getShape());
+
+				// Print some actual values
+				log("Input[0,0] = " + input.valueAt(0, 0));
+				log("Filter[0,0,0] = " + filter.valueAt(0, 0, 0));
+				log("Output[0,0,0,0,0] = " + output.valueAt(0, 0, 0, 0, 0));
 
 				for (int copy = 0; copy < 2; copy++) {
 					for (int i = 0; i < r - pad; i++) {
 						for (int j = 0; j < c - pad; j++) {
-							System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+							log("PackedCollectionMapTests: " + i + ", " + j);
 
 							for (int k = 0; k < w; k++) {
 								System.out.print("\t[");
@@ -608,7 +661,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 									Assert.assertEquals(expected, actual, 0.0001);
 								}
 
-								System.out.println("]");
+								log("]");
 							}
 						}
 					}
@@ -640,13 +693,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.traverse(2)
 					.repeat(n)
 					.multiply(cp(filter))
-					.traverse()
-					.reduce(v -> v.sum());
-			System.out.println(conv.getShape());
+					.sum();
 
 			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
-			System.out.println(output.getShape());
 			output = output.reshape(shape(r - pad, c - pad, n));
 
 			print(4, 3, output);
@@ -716,14 +766,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.traverse(2)
 					.repeat(n)
-					.multiply(p(filter))
-					.traverse()
-					.reduce(v -> v.sum());
-			System.out.println(conv.getShape());
+					.multiply(cp(filter))
+					.sum();
 
 			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
-			System.out.println(output.getShape());
 			output = output.reshape(shape(8, 8, 4));
 
 			for (int filterIndex = 0; filterIndex < n; filterIndex++) {
@@ -792,14 +839,13 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.repeat(n)
 					.traverse(2)
 					.multiply(cp(filter).repeat(c - pad).traverse(0).repeat(r - pad).traverse(2))
-					//.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
 					.traverse()
 					.reduce(v -> v.sum());
-			System.out.println(conv.getShape());
+			log(conv.getShape());
 
 			Evaluable<PackedCollection<?>> ev = conv.get();
 			PackedCollection<?> output = ev.evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 			output = output.reshape(shape(8, 8, 4));
 
 			for (int filterIndex = 0; filterIndex < n; filterIndex++) {
@@ -815,7 +861,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
-						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						log("PackedCollectionMapTests: " + expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -838,7 +884,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
 
 						if (verboseLogs)
-							System.out.println(expected + " vs " + actual);
+							log(expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -864,18 +910,18 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(2, w)
 					.traverse(3)
 					.max();
-			System.out.println(pool.getShape());
+			log(pool.getShape());
 
 			int r2 = r / w;
 			int c2 = c / w;
 
 			PackedCollection<?> output = pool.get().evaluate().reshape(r2, c2, d);
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int copy = 0; copy < d; copy++) {
 				for (int i = 0; i < r2; i++) {
 					for (int j = 0; j < c2; j++) {
-						System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+						log(i + ", " + j);
 
 						double expected = -Math.pow(10, 5);
 
@@ -909,10 +955,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 			CollectionProducer<PackedCollection<?>> conv = traverse(2, p(input))
 					.map(v ->
 							concat(shape(1, 1, 2 * s), (Producer) v, p(addOn)));
-			System.out.println(conv.getShape());
+			log(conv.getShape());
 
 			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+			log(output.getShape());
 
 			for (int i = 0; i < 10; i++) {
 				for (int j = 0; j < 10; j++) {
