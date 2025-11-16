@@ -23,3 +23,5 @@ javac.*.args
 # Generated code and libs
 Extensions/**
 **/Extensions/**
+
+**/docs/apidocs

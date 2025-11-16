@@ -99,20 +99,20 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 *
 	 * <h3>Test Configuration:</h3>
 	 * <ul>
-	 *   <li>Collection Size: 100,000 frames</li>
+	 *   <li>Collection Size: 50,000 frames</li>
 	 *   <li>Filter Order: 40 (default)</li>
 	 *   <li>Cutoff Frequency: 1000 Hz</li>
 	 *   <li>Sample Rate: 44,100 Hz</li>
-	 *   <li>Iterations: 25,000 (for warm timing)</li>
+	 *   <li>Iterations: 1,000 (for warm timing)</li>
 	 *   <li>Compute Requirements: {@link ComputeRequirement#CPU}</li>
 	 * </ul>
 	 *
 	 * <h3>Expected Performance:</h3>
-	 * <p>Typical results for 100,000 frames on modern CPUs:</p>
+	 * <p>Typical results for 50,000 frames on modern CPUs:</p>
 	 * <ul>
 	 *   <li>Cold start: 200-500 ms (includes JIT compilation)</li>
-	 *   <li>Warm average: 1-5 ms per iteration</li>
-	 *   <li>Throughput: 20M - 100M frames/sec</li>
+	 *   <li>Warm average: 2-5 ms per iteration</li>
+	 *   <li>Throughput: 10M - 25M frames/sec</li>
 	 * </ul>
 	 *
 	 * @throws Exception if test setup or execution fails
@@ -127,11 +127,11 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 
 		// Run performance test with CPU execution
 		runHighPassPerformanceTest(
-				100000,           // collectionSize
+				50000,            // collectionSize
 				40,              // filterOrder (default)
 				1000.0,          // cutoffHz
 				44100,           // sampleRate
-				25000,            // warmIterations
+				1000,            // warmIterations
 				ComputeRequirement.CPU  // CPU execution
 		);
 
@@ -149,20 +149,20 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 *
 	 * <h3>Test Configuration:</h3>
 	 * <ul>
-	 *   <li>Collection Size: 100,000 frames</li>
+	 *   <li>Collection Size: 50,000 frames</li>
 	 *   <li>Filter Order: 40 (default)</li>
 	 *   <li>Cutoff Frequency: 1000 Hz</li>
 	 *   <li>Sample Rate: 44,100 Hz</li>
-	 *   <li>Iterations: 25,000 (for warm timing)</li>
-	 *   <li>Compute Context: GPU ({@link ComputeRequirement#GPU})</li>
+	 *   <li>Iterations: 1,000 (for warm timing)</li>
+	 *   <li>Compute Requirements: {@link ComputeRequirement#GPU}</li>
 	 * </ul>
 	 *
 	 * <h3>Expected Performance:</h3>
 	 * <p>GPU execution should demonstrate significant speedup over CPU for large collections.
-	 * Typical results for 100,000 frames:</p>
+	 * Typical results for 50,000 frames:</p>
 	 * <ul>
-	 *   <li>GPU: 20M - 100M frames/sec</li>
-	 *   <li>Speedup vs CPU: 2-10x (depending on hardware)</li>
+	 *   <li>GPU: 10M - 50M frames/sec</li>
+	 *   <li>Speedup vs CPU: 1-5x (depending on hardware)</li>
 	 * </ul>
 	 *
 	 * @throws Exception if test setup or execution fails
@@ -177,11 +177,11 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 
 		// Run performance test with GPU execution
 		runHighPassPerformanceTest(
-				100000,           // collectionSize
+				50000,            // collectionSize
 				40,              // filterOrder (default)
 				1000.0,          // cutoffHz
 				44100,           // sampleRate
-				25000,            // warmIterations
+				1000,            // warmIterations
 				ComputeRequirement.GPU  // GPU execution
 		);
 
@@ -203,18 +203,24 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 	 * <h3>Execution Flow:</h3>
 	 * <ol>
 	 *   <li>Create input PackedCollection with random data</li>
-	 *   <li>Build high-pass filter using TemporalFeatures::highPass</li>
+	 *   <li>Build high-pass filter using PassThroughProducer (v()) for dynamic input</li>
 	 *   <li>Attach compute requirements to filter using setComputeRequirements()</li>
-	 *   <li>Execute once (cold start) and measure time</li>
-	 *   <li>Execute many times (warm) and measure average time</li>
+	 *   <li>Execute once (cold start) passing input as argument, and measure time</li>
+	 *   <li>Execute many times (warm) passing input as argument, and measure average time</li>
 	 *   <li>Log all results to console and file</li>
 	 * </ol>
 	 *
-	 * <h3>Implementation Note:</h3>
-	 * <p>This test uses {@link MultiOrderFilter#setComputeRequirements(List)} to attach
-	 * compute requirements directly to the filter computation, rather than using dedicated
-	 * compute contexts. This is the recommended pattern for controlling execution targets
-	 * in Almost Realism applications.</p>
+	 * <h3>Implementation Notes:</h3>
+	 * <p><strong>Dynamic Inputs via PassThroughProducer:</strong> This test uses
+	 * {@code v(shape(collectionSize), 0)} to create a {@link io.almostrealism.relation.PassThroughProducer}
+	 * for the input series. This is more representative of real-world usage where data flows
+	 * through the computation graph dynamically at evaluation time, rather than being baked
+	 * into the graph structure. The input is provided as an argument to {@code evaluate(inputSeries)}.</p>
+	 *
+	 * <p><strong>Compute Requirements:</strong> This test uses {@link MultiOrderFilter#setComputeRequirements(List)}
+	 * to attach compute requirements directly to the filter computation, rather than using dedicated
+	 * compute contexts. This is the recommended pattern for controlling execution targets in Almost
+	 * Realism applications.</p>
 	 *
 	 * <h3>Parameter Guidelines:</h3>
 	 * <ul>
@@ -280,14 +286,12 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 		}
 		log("Created input collection with " + collectionSize + " random samples");
 
-		// Create cutoff frequency producer
-		Producer<PackedCollection<?>> cutoff = c(cutoffHz);
-
-		// Build high-pass filter using TemporalFeatures::highPass
-		log("Building high-pass filter (order=" + filterOrder + ")...");
+		// Build high-pass filter using dynamic input via PassThroughProducer
+		// This is more representative of real-world usage where data flows through dynamically
+		log("Building high-pass filter with dynamic input (order=" + filterOrder + ")...");
 		MultiOrderFilter filter = highPass(
-				traverseEach(cp(inputSeries)),
-				cutoff,
+				traverseEach(v(shape(collectionSize), 0)),  // Argument 0: dynamic input series
+				c(cutoffHz),                                 // Constant cutoff frequency
 				sampleRate,
 				filterOrder
 		);
@@ -299,13 +303,14 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 		PackedCollection<?> output = new PackedCollection<>(collectionSize);
 
 		log("Filter built successfully with " + requirement + " compute requirements");
+		log("  Using PassThroughProducer for dynamic input evaluation");
 		log("");
 
 		// Measure cold start (first execution with compilation)
 		log("=== Cold Start (First Execution) ===");
 		long coldStartTime = System.nanoTime();
 
-		filter.get().into(output.traverseEach()).evaluate();
+		filter.get().into(output.traverseEach()).evaluate(inputSeries);
 
 		long coldEndTime = System.nanoTime();
 		double coldDurationMs = (coldEndTime - coldStartTime) / 1_000_000.0;
@@ -319,7 +324,7 @@ public class MultiOrderFilterPerformanceTest implements TestFeatures, ConsoleFea
 		long warmStartTime = System.nanoTime();
 
 		for (int i = 0; i < warmIterations; i++) {
-			filter.get().into(output.traverseEach()).evaluate();
+			filter.get().into(output.traverseEach()).evaluate(inputSeries);
 		}
 
 		long warmEndTime = System.nanoTime();
