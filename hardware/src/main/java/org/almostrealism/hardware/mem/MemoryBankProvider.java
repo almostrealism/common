@@ -25,6 +25,75 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
+/**
+ * Caching factory for {@link MemoryBank} instances with automatic reuse and cleanup.
+ *
+ * <p>{@link MemoryBankProvider} provides a size-based factory that caches the most recently
+ * allocated {@link MemoryBank} and reuses it for subsequent requests of the same size. This
+ * reduces allocation overhead when repeatedly requesting banks of identical size.</p>
+ *
+ * <h2>Caching Behavior</h2>
+ *
+ * <pre>{@code
+ * MemoryBankProvider<Bytes> provider = new MemoryBankProvider<>(
+ *     size -> new BytesBank(size, 100)  // 100 entries of 'size' bytes each
+ * );
+ *
+ * // First request: Allocates new bank
+ * MemoryBank<Bytes> bank1 = provider.apply(1000);  // Allocates
+ *
+ * // Same size: Returns cached bank
+ * MemoryBank<Bytes> bank2 = provider.apply(1000);  // Reuses bank1
+ * assert bank1 == bank2;  // Same instance
+ *
+ * // Different size: Destroys cached, allocates new
+ * MemoryBank<Bytes> bank3 = provider.apply(2000);  // Destroys bank1, allocates new
+ * }</pre>
+ *
+ * <h2>Automatic Cleanup</h2>
+ *
+ * <p>When a different size is requested, the cached bank is automatically destroyed before
+ * allocating the new one:</p>
+ * <pre>{@code
+ * MemoryBank<Bytes> bank1 = provider.apply(1000);  // Allocate
+ * // bank1 is cached
+ *
+ * MemoryBank<Bytes> bank2 = provider.apply(2000);  // Destroy bank1, allocate new
+ * // bank1.destroy() called automatically
+ * // bank2 is now cached
+ * }</pre>
+ *
+ * <h2>Custom Supplier with State</h2>
+ *
+ * <p>Advanced constructor accepts a {@link BiFunction} that receives both the previous bank
+ * and new size, enabling stateful allocation strategies:</p>
+ * <pre>{@code
+ * MemoryBankProvider<Bytes> provider = new MemoryBankProvider<>(
+ *     (previous, newSize) -> {
+ *         if (previous != null) {
+ *             // Custom cleanup logic
+ *             recycleBank(previous);
+ *         }
+ *         return newSize > 0 ? allocateBank(newSize) : null;
+ *     }
+ * );
+ * }</pre>
+ *
+ * <h2>Explicit Destruction</h2>
+ *
+ * <p>Call {@link #destroy()} to explicitly release the cached bank:</p>
+ * <pre>{@code
+ * MemoryBankProvider<Bytes> provider = new MemoryBankProvider<>(...);
+ * MemoryBank<Bytes> bank = provider.apply(1000);
+ *
+ * // Later, when done with provider
+ * provider.destroy();  // Destroys cached bank
+ * }</pre>
+ *
+ * @param <T> MemoryData type for bank elements
+ * @see MemoryBank
+ * @see MemoryBankAdapter
+ */
 public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>>, ConsoleFeatures {
 	private BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier;
 	private MemoryBank<T> last;

@@ -34,6 +34,153 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 
+/**
+ * Abstract base class for compiled hardware operators (kernels/native functions) that execute on accelerators.
+ *
+ * <p>{@link HardwareOperator} represents a compiled executable unit (OpenCL kernel, Metal shader, or JNI native
+ * function) that can be invoked with {@link MemoryData} arguments. It manages argument preparation, automatic
+ * memory migration between providers, work size configuration, and execution timing.</p>
+ *
+ * <h2>Core Responsibilities</h2>
+ *
+ * <ul>
+ *   <li><b>Argument Preparation:</b> Validates and converts arguments to {@link MemoryData}</li>
+ *   <li><b>Memory Migration:</b> Automatically moves data between memory providers (CPU↔GPU) as needed</li>
+ *   <li><b>Work Size Management:</b> Configures parallel execution size via {@link #setGlobalWorkSize}</li>
+ *   <li><b>Execution Timing:</b> Records metrics for profiling and performance analysis</li>
+ *   <li><b>Compilation Tracking:</b> Maintains global CPU/GPU compilation and execution statistics</li>
+ * </ul>
+ *
+ * <h2>Execution Flow</h2>
+ *
+ * <pre>
+ * 1. accept(args) called with Object[] arguments
+ * 2. prepareArguments() validates and converts to MemoryData[]
+ * 3. For each argument:
+ *    - Check if memory provider is supported
+ *    - If not, reallocate to supported provider (CPU→GPU or vice versa)
+ * 4. Execute kernel/native function with prepared arguments
+ * 5. Record timing metrics
+ * </pre>
+ *
+ * <h2>Memory Migration</h2>
+ *
+ * <p>When an argument's memory provider is not supported by this operator, the entire root
+ * delegate is automatically reallocated to a supported provider:</p>
+ * <pre>{@code
+ * // CPU memory → GPU kernel
+ * PackedCollection<?> cpuData = PackedCollection.create(1000);  // JVM heap
+ * GPUKernel kernel = ...;
+ *
+ * // Automatic migration during accept():
+ * kernel.accept(new Object[] { cpuData }, null);
+ * // 1. Detects JVM heap not supported by GPU
+ * // 2. Reallocates root delegate to GPU memory
+ * // 3. Copies data CPU → GPU
+ * // 4. Executes kernel on GPU
+ * }</pre>
+ *
+ * <h2>Work Size Configuration</h2>
+ *
+ * <p>For parallel kernels, work size controls how many iterations execute in parallel:</p>
+ * <pre>{@code
+ * HardwareOperator operator = ...;
+ *
+ * // Process 1000 elements in parallel
+ * operator.setGlobalWorkSize(1000);
+ * operator.accept(args, null);
+ *
+ * // Kernel executes with 1000 parallel work items
+ * // Each work item processes one element
+ * }</pre>
+ *
+ * <h2>Profiling and Metrics</h2>
+ *
+ * <p>All operators automatically record timing and execution statistics:</p>
+ * <pre>{@code
+ * // Enable timing listener
+ * HardwareOperator.timingListener = new OperationTimingListener() {
+ *     @Override
+ *     public long recordDuration(OperationMetadata metadata, Runnable r) {
+ *         long start = System.nanoTime();
+ *         r.run();
+ *         long duration = System.nanoTime() - start;
+ *         System.out.println(metadata.getDisplayName() + ": " + (duration / 1_000_000) + "ms");
+ *         return duration;
+ *     }
+ * };
+ *
+ * // Executions now logged
+ * operator.accept(args, null);  // Prints: "MyKernel: 5ms"
+ * }</pre>
+ *
+ * <p>Global statistics are available for monitoring:</p>
+ * <pre>{@code
+ * System.out.println("GPU compilations: " + HardwareOperator.gpuCompileCount);
+ * System.out.println("GPU operations: " + HardwareOperator.gpuOpCount);
+ * System.out.println("GPU time: " + (HardwareOperator.gpuOpTime / 1_000_000) + "ms");
+ *
+ * System.out.println("CPU compilations: " + HardwareOperator.cpuCompileCount);
+ * System.out.println("CPU operations: " + HardwareOperator.cpuOpCount);
+ * System.out.println("CPU time: " + (HardwareOperator.cpuOpTime / 1_000_000) + "ms");
+ * }</pre>
+ *
+ * <h2>Instruction Set Monitoring</h2>
+ *
+ * <p>Controlled via environment variables:</p>
+ * <ul>
+ *   <li><b>AR_INSTRUCTION_SET_MONITORING=always:</b> Monitor all instruction sets</li>
+ *   <li><b>AR_INSTRUCTION_SET_MONITORING=enabled:</b> Monitor large instruction sets only</li>
+ *   <li><b>AR_INSTRUCTION_SET_MONITORING=failed:</b> Monitor only failed operations</li>
+ *   <li><b>AR_HARDWARE_KERNEL_LOG=true:</b> Enable verbose kernel logging</li>
+ * </ul>
+ *
+ * <h2>Subclass Requirements</h2>
+ *
+ * <p>Concrete implementations must provide:</p>
+ * <ul>
+ *   <li>{@link #isGPU()} - Whether this operator runs on GPU or CPU</li>
+ *   <li>{@link #getSupportedMemory()} - List of supported memory providers</li>
+ *   <li>{@link #getHardwareName()} - Human-readable hardware name (e.g., "OpenCL", "Metal", "JNI")</li>
+ *   <li>{@link #getArgCount()} - Number of arguments this operator expects</li>
+ *   <li>{@link #accept(Object[], Semaphore)} - Execute the kernel/native function</li>
+ * </ul>
+ *
+ * <h2>Backend Implementations</h2>
+ *
+ * <ul>
+ *   <li><b>CLOperator:</b> OpenCL kernels for GPU/CPU execution</li>
+ *   <li><b>MetalOperator:</b> Metal shaders for Apple Silicon GPUs</li>
+ *   <li><b>NativeExecution:</b> JNI-compiled C functions</li>
+ * </ul>
+ *
+ * <h2>Common Patterns</h2>
+ *
+ * <h3>Simple Execution</h3>
+ * <pre>{@code
+ * HardwareOperator kernel = compileKernel(...);
+ * kernel.setGlobalWorkSize(1000);
+ * kernel.accept(new Object[] { input, output }, null);
+ * }</pre>
+ *
+ * <h3>Async Execution with Semaphore</h3>
+ * <pre>{@code
+ * Semaphore sem = kernel.accept(args, null);
+ * // ... do other work ...
+ * if (sem != null) sem.waitFor();  // Wait for completion
+ * }</pre>
+ *
+ * <h3>Verbose Debugging</h3>
+ * <pre>{@code
+ * HardwareOperator.verboseLog(() -> {
+ *     kernel.accept(args, null);  // Logs detailed execution info
+ * });
+ * }</pre>
+ *
+ * @see AcceleratedOperation
+ * @see KernelWork
+ * @see Execution
+ */
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);

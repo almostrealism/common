@@ -31,11 +31,128 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
- * A {@link MemoryBankAdapter} is the default implementation for tracking
- * a section of RAM to store a collection of {@link MemoryData}s in a
- * single {@link org.jocl.cl_mem}.
+ * Base implementation of {@link MemoryBank} with configurable element caching.
  *
- * @author  Michael Murray
+ * <p>{@link MemoryBankAdapter} provides a memory-efficient bank of {@link MemoryData} instances
+ * stored in contiguous memory. It supports flexible caching strategies to balance memory usage
+ * and access performance.</p>
+ *
+ * <p><b>DEPRECATED:</b> This class is deprecated in favor of direct use of {@link Bytes} and
+ * typed collection classes. It remains for backward compatibility with existing code.</p>
+ *
+ * <h2>Cache Levels</h2>
+ *
+ * <p>The primary feature of {@link MemoryBankAdapter} is its configurable caching of elements:</p>
+ *
+ * <h3>CacheLevel.ALL</h3>
+ * <p>Pre-creates all elements during initialization and stores them in a {@link List}:</p>
+ * <pre>{@code
+ * MemoryBankAdapter<MyData> bank = new MyBank(100, 1000, spec ->
+ *     new MyData(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.ALL
+ * );
+ * // 1000 MyData instances created immediately
+ * // Fast access: O(1) lookup in List
+ * // High memory: 1000 Java objects + contiguous memory
+ * }</pre>
+ *
+ * <h3>CacheLevel.ACCESSED</h3>
+ * <p>Creates elements on-demand and caches them in a {@link HashMap} (default):</p>
+ * <pre>{@code
+ * MemoryBankAdapter<MyData> bank = new MyBank(100, 1000, spec ->
+ *     new MyData(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.ACCESSED
+ * );
+ * // Elements created only when get() is called
+ * // Moderate access: O(1) HashMap lookup after first access
+ * // Moderate memory: Only accessed elements cached
+ * }</pre>
+ *
+ * <h3>CacheLevel.NONE</h3>
+ * <p>Creates new element instances on every {@code get()} call:</p>
+ * <pre>{@code
+ * MemoryBankAdapter<MyData> bank = new MyBank(100, 1000, spec ->
+ *     new MyData(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.NONE
+ * );
+ * // New instance created on each get()
+ * // Slowest access: Factory call on every get()
+ * // Lowest memory: No Java object overhead
+ * }</pre>
+ *
+ * <h2>Element Factory Pattern</h2>
+ *
+ * <p>Elements are created via a {@link Function} that receives a {@link DelegateSpec}:</p>
+ * <pre>{@code
+ * Function<DelegateSpec, MyData> factory = spec -> {
+ *     // Create element delegating to bank memory at offset
+ *     return new MyData(spec.getDelegate(), spec.getOffset());
+ * };
+ *
+ * MemoryBankAdapter<MyData> bank = new MyBank(100, 1000, factory);
+ * MyData element = bank.get(5);  // Factory creates MyData at offset 500
+ * }</pre>
+ *
+ * <h2>Memory Layout</h2>
+ *
+ * <p>Elements are stored in contiguous memory with fixed atomic length:</p>
+ * <pre>
+ * MemoryBankAdapter(memLength=100, count=10)
+ *
+ * Memory Layout:
+ * [Element 0: 100 bytes][Element 1: 100 bytes]...[Element 9: 100 bytes]
+ *  Offset: 0             Offset: 100             Offset: 900
+ *
+ * get(0) → DelegateSpec(offset=0)   → MyData delegating to bank at offset 0
+ * get(5) → DelegateSpec(offset=500) → MyData delegating to bank at offset 500
+ * </pre>
+ *
+ * <h2>Common Usage Patterns</h2>
+ *
+ * <h3>High-Performance Access (CacheLevel.ALL)</h3>
+ * <pre>{@code
+ * // Frequently accessed, fixed-size collections
+ * MemoryBankAdapter<Vector3> vertices = new VectorBank(
+ *     12, 1000,  // 1000 vec3s (12 bytes each)
+ *     spec -> new Vector3(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.ALL
+ * );
+ *
+ * // Fast iteration (no allocations)
+ * vertices.stream().forEach(v -> transform(v));
+ * }</pre>
+ *
+ * <h3>Sparse Access (CacheLevel.ACCESSED)</h3>
+ * <pre>{@code
+ * // Large collections with sparse access
+ * MemoryBankAdapter<Matrix> matrices = new MatrixBank(
+ *     400, 100000,  // 100K matrices
+ *     spec -> new Matrix(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.ACCESSED  // Only cache accessed matrices
+ * );
+ *
+ * matrices.get(42);  // Created and cached
+ * matrices.get(42);  // Retrieved from cache
+ * }</pre>
+ *
+ * <h3>Transient Access (CacheLevel.NONE)</h3>
+ * <pre>{@code
+ * // One-time iteration over large collection
+ * MemoryBankAdapter<LargeObject> objects = new ObjectBank(
+ *     1000, 1000000,  // 1M large objects
+ *     spec -> new LargeObject(spec.getDelegate(), spec.getOffset()),
+ *     CacheLevel.NONE  // No caching overhead
+ * );
+ *
+ * // Process once without caching
+ * objects.stream().forEach(obj -> process(obj));
+ * }</pre>
+ *
+ * @param <T> Element type, must extend {@link MemoryData}
+ * @see MemoryBank
+ * @see Bytes
+ * @deprecated Use {@link Bytes} with typed wrappers or direct collection classes instead
+ * @author Michael Murray
  */
 @Deprecated
 public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {

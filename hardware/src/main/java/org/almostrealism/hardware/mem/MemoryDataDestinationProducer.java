@@ -29,6 +29,16 @@ import org.almostrealism.io.Describable;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 
+/**
+ * Producer wrapper that provides destination memory with count information from a delegate process.
+ *
+ * <p>Combines {@link MemoryDataDestination} factory behavior with {@link Countable} delegation,
+ * enabling operations to query output size while maintaining destination memory allocation control.</p>
+ *
+ * @param <T> MemoryData type for destinations
+ * @see MemoryDataDestination
+ * @see Countable
+ */
 public class MemoryDataDestinationProducer<T extends MemoryData> extends DynamicProducerForMemoryData<T>
 												implements Delegated<Countable>, DescribableParent<Process<?, ?>> {
 

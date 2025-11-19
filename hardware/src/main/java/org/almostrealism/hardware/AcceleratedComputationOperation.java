@@ -56,6 +56,143 @@ import org.almostrealism.lifecycle.WeakRunnable;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * Accelerated operation that wraps a {@link Computation} for compilation and execution on hardware accelerators.
+ *
+ * <p>{@link AcceleratedComputationOperation} bridges the gap between high-level {@link Computation} abstractions
+ * and low-level hardware execution by compiling computations into {@link Scope} objects, managing instruction set
+ * caching via signatures, and coordinating execution through the {@link AcceleratedOperation} framework.</p>
+ *
+ * <h2>Computation Compilation</h2>
+ *
+ * <p>The wrapped {@link Computation} is compiled into executable code via {@link ComputationScopeCompiler}:</p>
+ * <pre>{@code
+ * // Create computation
+ * Computation<PackedCollection<?>> multiply = c -> c.multiply(2.0);
+ *
+ * // Wrap for acceleration
+ * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
+ *     Hardware.getLocalHardware().getComputeContext(),
+ *     multiply,
+ *     true  // kernel mode
+ * );
+ *
+ * // Compilation happens during prepareScope or first execution
+ * op.prepareScope();  // Compiles Computation → Scope → Kernel/Native
+ * }</pre>
+ *
+ * <h2>Instruction Set Reuse via Signatures</h2>
+ *
+ * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and the computation provides
+ * a signature, compiled kernels are cached and shared across multiple instances:</p>
+ * <pre>{@code
+ * // First computation with signature "vectorAdd"
+ * Computation<PackedCollection<?>> add1 = ...;
+ * add1.getMetadata().setSignature("vectorAdd");
+ * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1, true);
+ * op1.prepareScope();  // Compiles and caches under signature "vectorAdd"
+ *
+ * // Second computation with same signature
+ * Computation<PackedCollection<?>> add2 = ...;
+ * add2.getMetadata().setSignature("vectorAdd");
+ * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2, true);
+ * op2.prepareScope();  // Reuses cached kernel from "vectorAdd"
+ * }</pre>
+ *
+ * <p>This significantly reduces compilation overhead for repeated operations with the same structure.</p>
+ *
+ * <h2>Instruction Set Management</h2>
+ *
+ * <p>Two instruction set managers are used depending on signature availability:</p>
+ * <ul>
+ *   <li><b>{@link ScopeInstructionsManager}:</b> When signature is available, enables cross-instance caching</li>
+ *   <li><b>{@link ComputationInstructionsManager}:</b> When no signature, creates operation-specific instruction set</li>
+ * </ul>
+ *
+ * <pre>{@code
+ * @Override
+ * public ComputableInstructionSetManager getInstructionSetManager() {
+ *     String signature = signature();
+ *
+ *     if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+ *         // Reusable instruction set shared across operations
+ *         return computer.getScopeInstructionsManager(signature, ...);
+ *     } else {
+ *         // Operation-specific instruction set
+ *         return new ComputationInstructionsManager(...);
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Execution Keys</h2>
+ *
+ * <p>Execution keys uniquely identify compiled kernels within an instruction set:</p>
+ * <ul>
+ *   <li><b>{@link ScopeSignatureExecutionKey}:</b> When signature-based caching is enabled</li>
+ *   <li><b>{@link DefaultExecutionKey}:</b> Based on function name and argument count otherwise</li>
+ * </ul>
+ *
+ * <h2>Integration with Computation</h2>
+ *
+ * <p>Properties are delegated to the wrapped {@link Computation}:</p>
+ * <ul>
+ *   <li><b>Metadata:</b> {@link #getMetadata()} delegates to {@link OperationInfo#getMetadata()}</li>
+ *   <li><b>Count:</b> {@link #getCountLong()} delegates to {@link Countable#getCountLong()} or {@link ParallelProcess#getParallelism()}</li>
+ *   <li><b>Compute Requirements:</b> {@link #getComputeRequirements()} from {@link ComputationScopeCompiler}</li>
+ *   <li><b>Name:</b> {@link #getName()} via {@link Named}</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ *
+ * <pre>{@code
+ * // Create operation
+ * AcceleratedComputationOperation op = new AcceleratedComputationOperation(context, computation, true);
+ *
+ * // Prepare scope (triggers compilation if needed)
+ * op.prepareScope();
+ *
+ * // Execute (uses cached kernel if available)
+ * AcceleratedProcessDetails process = op.apply(output, args);
+ *
+ * // Cleanup
+ * op.destroy();
+ * }</pre>
+ *
+ * <h2>Common Patterns</h2>
+ *
+ * <h3>Creating from Computation</h3>
+ * <pre>{@code
+ * // Define computation
+ * Computation<PackedCollection<?>> normalize = c -> c.divide(c.max());
+ *
+ * // Wrap for GPU execution
+ * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
+ *     Hardware.getLocalHardware().getComputeContext(),
+ *     normalize,
+ *     true
+ * );
+ * }</pre>
+ *
+ * <h3>Using with Signature-Based Caching</h3>
+ * <pre>{@code
+ * // Enable instruction set reuse
+ * ScopeSettings.enableInstructionSetReuse = true;
+ *
+ * // Create computation with signature
+ * Computation<PackedCollection<?>> op = ...;
+ * op.getMetadata().setSignature("myOperation");
+ *
+ * // All operations with this signature share compiled kernels
+ * AcceleratedComputationOperation acc = new AcceleratedComputationOperation(context, op, true);
+ * }</pre>
+ *
+ * @param <T> The type of data produced by the wrapped {@link Computation}
+ * @see AcceleratedOperation
+ * @see Computation
+ * @see ComputationScopeCompiler
+ * @see ScopeInstructionsManager
+ * @see ComputableInstructionSetManager
+ */
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
 		implements Countable, Signature {
 

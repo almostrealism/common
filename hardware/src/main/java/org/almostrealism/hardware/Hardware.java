@@ -54,6 +54,413 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
+/**
+ * Central configuration and initialization point for the Almost Realism hardware acceleration system.
+ *
+ * <p>{@link Hardware} is responsible for:</p>
+ * <ul>
+ *   <li>Parsing environment variables to configure acceleration backends</li>
+ *   <li>Initializing {@link DataContext}s for OpenCL, Metal, and JNI execution</li>
+ *   <li>Managing memory providers and shared memory configuration</li>
+ *   <li>Providing access to {@link ComputeContext}s for kernel compilation and execution</li>
+ *   <li>Setting up profiling infrastructure</li>
+ *   <li>Coordinating precision (FP32 vs FP64) across backends</li>
+ * </ul>
+ *
+ * <h2>Singleton Pattern</h2>
+ *
+ * <p>{@link Hardware} follows the singleton pattern with a static {@link #getLocalHardware()}
+ * accessor. The singleton is initialized during class loading based on environment variables:</p>
+ * <pre>{@code
+ * // Singleton automatically configured at startup
+ * Hardware hw = Hardware.getLocalHardware();
+ * DefaultComputer computer = hw.getComputer();
+ * DataContext<MemoryData> ctx = hw.getDataContext();
+ * }</pre>
+ *
+ * <h2>Environment Variable Configuration</h2>
+ *
+ * <p>Almost all {@link Hardware} behavior is controlled via environment variables, allowing
+ * zero-code configuration for different execution environments:</p>
+ *
+ * <h3>AR_HARDWARE_DRIVER</h3>
+ * <p><strong>Purpose:</strong> Specifies which hardware acceleration backend(s) to use.</p>
+ * <p><strong>Values:</strong></p>
+ * <ul>
+ *   <li><strong>{@code native}</strong> - JNI backend with runtime-generated C code (default for CPU)</li>
+ *   <li><strong>{@code cl}</strong> - OpenCL backend for GPU/CPU acceleration</li>
+ *   <li><strong>{@code mtl}</strong> - Metal backend for Apple Silicon GPU</li>
+ *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement (maps to JNI on x86, JNI on ARM)</li>
+ *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement (maps to CL on x86, MTL on ARM)</li>
+ *   <li><strong>{@code *}</strong> - Automatic selection (default):
+ *     <ul>
+ *       <li>ARM64 (Apple Silicon): JNI, MTL, CL</li>
+ *       <li>x86/x64: CL, JNI (not on macOS)</li>
+ *     </ul>
+ *   </li>
+ *   <li><strong>Multiple drivers:</strong> Comma-separated list: {@code cl,native}</li>
+ * </ul>
+ *
+ * <p><strong>Example:</strong></p>
+ * <pre>
+ * # Force OpenCL backend
+ * export AR_HARDWARE_DRIVER=cl
+ *
+ * # Enable both OpenCL and JNI
+ * export AR_HARDWARE_DRIVER=cl,native
+ *
+ * # Use abstract GPU requirement (auto-selects best GPU backend)
+ * export AR_HARDWARE_DRIVER=gpu
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_LIBS</h3>
+ * <p><strong>Purpose:</strong> Directory where generated native libraries are stored.</p>
+ * <p><strong>Required:</strong> Yes (system will not function without this)</p>
+ * <pre>
+ * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_PRECISION</h3>
+ * <p><strong>Purpose:</strong> Floating-point precision for computations.</p>
+ * <p><strong>Values:</strong> {@code FP32} (float), {@code FP64} (double, default)</p>
+ * <pre>
+ * # Use 32-bit floats for faster GPU execution
+ * export AR_HARDWARE_PRECISION=FP32
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
+ * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
+ * <p><strong>Formula:</strong> Max reservation = 2^MEMORY_SCALE × 64MB</p>
+ * <p><strong>Default:</strong> 4 (i.e., 2^4 × 64MB = 1GB)</p>
+ * <pre>
+ * # Allow 4GB max reservation (2^6 × 64MB = 4GB)
+ * export AR_HARDWARE_MEMORY_SCALE=6
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_MEMORY_LOCATION</h3>
+ * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
+ * <p><strong>Values:</strong></p>
+ * <ul>
+ *   <li><strong>{@code device}</strong> - GPU/accelerator memory (default, fastest)</li>
+ *   <li><strong>{@code host}</strong> - System RAM accessible by GPU</li>
+ *   <li><strong>{@code heap}</strong> - Java heap (volatile, slowest)</li>
+ *   <li><strong>{@code delegate}</strong> - Native buffer delegation</li>
+ * </ul>
+ *
+ * <h3>AR_HARDWARE_NIO_MEMORY</h3>
+ * <p><strong>Purpose:</strong> Enable NIO-based shared memory between backends.</p>
+ * <p><strong>Values:</strong> {@code true}, {@code false}</p>
+ * <pre>
+ * export AR_HARDWARE_NIO_MEMORY=true
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_MAX_DEPTH</h3>
+ * <p><strong>Purpose:</strong> Maximum {@link OperationList} nesting depth.</p>
+ * <p><strong>Default:</strong> 500</p>
+ * <pre>
+ * export AR_HARDWARE_MAX_DEPTH=1000
+ * </pre>
+ *
+ * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
+ * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
+ * <p><strong>Default:</strong> 1024</p>
+ *
+ * <h3>AR_HARDWARE_EPSILON_64</h3>
+ * <p><strong>Purpose:</strong> Use full FP64 epsilon precision.</p>
+ * <p><strong>Default:</strong> {@code false} (uses FP32 epsilon even for FP64)</p>
+ *
+ * <h3>AR_HARDWARE_ASYNC</h3>
+ * <p><strong>Purpose:</strong> Enable asynchronous execution.</p>
+ * <p><strong>Default:</strong> {@code true}</p>
+ *
+ * <h2>Common Configuration Patterns</h2>
+ *
+ * <h3>Development (Fast Compilation, CPU Execution)</h3>
+ * <pre>
+ * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * export AR_HARDWARE_DRIVER=native
+ * export AR_HARDWARE_PRECISION=FP64
+ * </pre>
+ *
+ * <h3>Production GPU (Maximum Performance)</h3>
+ * <pre>
+ * export AR_HARDWARE_LIBS=/var/ar_libs/
+ * export AR_HARDWARE_DRIVER=gpu
+ * export AR_HARDWARE_PRECISION=FP32
+ * export AR_HARDWARE_MEMORY_SCALE=6
+ * export AR_HARDWARE_MEMORY_LOCATION=device
+ * </pre>
+ *
+ * <h3>Apple Silicon (Unified Memory)</h3>
+ * <pre>
+ * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * export AR_HARDWARE_DRIVER=mtl
+ * export AR_HARDWARE_NIO_MEMORY=true
+ * export AR_HARDWARE_PRECISION=FP32
+ * </pre>
+ *
+ * <h3>Multi-Backend (OpenCL + JNI Fallback)</h3>
+ * <pre>
+ * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * export AR_HARDWARE_DRIVER=cl,native
+ * export AR_HARDWARE_PRECISION=FP32
+ * </pre>
+ *
+ * <h2>DataContext vs ComputeContext</h2>
+ *
+ * <h3>DataContext</h3>
+ * <p>Manages memory allocation and data transfer for a specific backend:</p>
+ * <ul>
+ *   <li>{@link org.almostrealism.hardware.cl.CLDataContext} - OpenCL</li>
+ *   <li>{@link MetalDataContext} - Metal</li>
+ *   <li>{@link NativeDataContext} - JNI/C</li>
+ * </ul>
+ *
+ * <p><strong>Usage:</strong></p>
+ * <pre>{@code
+ * DataContext<MemoryData> ctx = Hardware.getLocalHardware().getDataContext();
+ * MemoryProvider<?> provider = ctx.getMemoryProvider(1024);
+ * }</pre>
+ *
+ * <h3>ComputeContext</h3>
+ * <p>Handles kernel compilation and execution for a specific backend.</p>
+ * <p><strong>Usage:</strong></p>
+ * <pre>{@code
+ * ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputeContext();
+ * Runnable compiled = ctx.compileRunnable(...);
+ * }</pre>
+ *
+ * <h2>Context Selection Based on Requirements</h2>
+ *
+ * <p>When multiple backends are configured, {@link Hardware} selects the appropriate context
+ * based on {@link ComputeRequirement}s:</p>
+ * <pre>{@code
+ * // Get GPU context (prefers Metal on ARM, OpenCL on x86)
+ * DataContext<MemoryData> gpuCtx = hw.getDataContext(ComputeRequirement.GPU);
+ *
+ * // Get CPU context (prefers JNI)
+ * DataContext<MemoryData> cpuCtx = hw.getDataContext(ComputeRequirement.CPU);
+ *
+ * // Get OpenCL specifically
+ * DataContext<MemoryData> clCtx = hw.getDataContext(ComputeRequirement.CL);
+ *
+ * // Accelerator preference (GPU backends)
+ * DataContext<MemoryData> accel = hw.getDataContext(true, true);
+ * }</pre>
+ *
+ * <h2>Shared Memory Configuration</h2>
+ *
+ * <p>When multiple backends are active, {@link Hardware} can configure shared memory
+ * to avoid redundant data copies between backends:</p>
+ *
+ * <h3>Automatic Shared Memory (Metal + JNI on Apple Silicon)</h3>
+ * <pre>
+ * export AR_HARDWARE_DRIVER=*
+ * export AR_HARDWARE_NIO_MEMORY=true
+ * </pre>
+ *
+ * <p><strong>Result:</strong> JNI backend delegates memory allocation to Metal's unified memory,
+ * allowing zero-copy sharing between Metal GPU kernels and JNI CPU operations.</p>
+ *
+ * <h3>Manual Shared Memory</h3>
+ * <pre>{@code
+ * // Metal provides shared memory for JNI
+ * KernelPreferences.enableSharedMemory();
+ * Hardware hw = Hardware.getLocalHardware();
+ * // JNI will automatically use Metal's memory provider
+ * }</pre>
+ *
+ * <h2>Profiling Support</h2>
+ *
+ * <p>Attach an {@link OperationProfile} to collect timing data across all operations:</p>
+ * <pre>{@code
+ * OperationProfile profile = new DefaultProfile();
+ * Hardware.getLocalHardware().assignProfile(profile);
+ *
+ * // Run operations...
+ * computation.get().run();
+ *
+ * // Profile now contains timing data
+ * System.out.println("Total time: " + profile.getTotalTime());
+ *
+ * // Clear profiling
+ * Hardware.getLocalHardware().clearProfile();
+ * }</pre>
+ *
+ * <h2>Context Listeners</h2>
+ *
+ * <p>Register listeners to be notified of context lifecycle events:</p>
+ * <pre>{@code
+ * ContextListener listener = new ContextListener() {
+ *     public void contextStarted(DataContext<?> ctx) {
+ *         System.out.println("Context started: " + ctx.getName());
+ *     }
+ *
+ *     public void contextDestroyed(DataContext<?> ctx) {
+ *         System.out.println("Context destroyed: " + ctx.getName());
+ *     }
+ * };
+ *
+ * Hardware.getLocalHardware().addContextListener(listener);
+ * }</pre>
+ *
+ * <p><strong>Note:</strong> Listeners are stored via {@link WeakReference} to prevent memory
+ * leaks. Strong references must be maintained elsewhere.</p>
+ *
+ * <h2>Temporary Context Switching</h2>
+ *
+ * <p>Create isolated contexts for specific operations:</p>
+ *
+ * <h3>Data Context Isolation</h3>
+ * <pre>{@code
+ * // Create new isolated data context
+ * Hardware hw = Hardware.getLocalHardware();
+ * PackedCollection<?> result = hw.dataContext(() -> {
+ *     // This code runs in a fresh DataContext
+ *     // Allocated memory is automatically cleaned up
+ *     PackedCollection<?> temp = new PackedCollection<>(1000);
+ *     temp.fill(Math::random);
+ *     return temp.copy();  // Return must be copied out
+ * });
+ * // Temporary context destroyed here
+ * }</pre>
+ *
+ * <h3>Compute Context Isolation</h3>
+ * <pre>{@code
+ * // Force GPU execution for specific code
+ * Hardware hw = Hardware.getLocalHardware();
+ * hw.computeContext(() -> {
+ *     // All operations in this block prefer GPU
+ *     computation.get().run();
+ *     return null;
+ * }, ComputeRequirement.GPU);
+ * }</pre>
+ *
+ * <h2>Precision Management</h2>
+ *
+ * <p>{@link Hardware} coordinates precision across backends:</p>
+ * <pre>{@code
+ * Precision p = Hardware.getLocalHardware().getPrecision();
+ * System.out.println("Using " + p.name() + " precision");
+ *
+ * // Get epsilon for comparisons
+ * double eps = Hardware.getLocalHardware().epsilon();
+ * if (Math.abs(a - b) < eps) {
+ *     // Values are approximately equal
+ * }
+ * }</pre>
+ *
+ * <p><strong>Precision Selection Rules:</strong></p>
+ * <ol>
+ *   <li>Use {@code AR_HARDWARE_PRECISION} if set</li>
+ *   <li>If {@link KernelPreferences#isRequireUniformPrecision()}, use lowest backend precision</li>
+ *   <li>Otherwise, allow mixed precision across backends</li>
+ * </ol>
+ *
+ * <h2>Memory Management</h2>
+ *
+ * <p>Obtain memory providers for allocation:</p>
+ * <pre>{@code
+ * Hardware hw = Hardware.getLocalHardware();
+ *
+ * // Get provider for 1000 doubles
+ * MemoryProvider<?> provider = hw.getMemoryProvider(1000);
+ * Memory mem = provider.allocate(1000);
+ *
+ * // Get native buffer provider (if NIO memory enabled)
+ * MemoryProvider<? extends RAM> nioProvider = hw.getNativeBufferMemoryProvider();
+ * }</pre>
+ *
+ * <h2>Configuration Inspection</h2>
+ *
+ * <p>Query current configuration:</p>
+ * <pre>{@code
+ * Hardware hw = Hardware.getLocalHardware();
+ *
+ * // List all active contexts
+ * for (DataContext<MemoryData> ctx : hw.getAllDataContexts()) {
+ *     System.out.println("Context: " + ctx.getName());
+ *     System.out.println("  Precision: " + ctx.getPrecision());
+ *     System.out.println("  CPU: " + ctx.getComputeContext().isCPU());
+ * }
+ *
+ * // Check configuration flags
+ * boolean async = hw.isAsync();
+ * boolean memVolatile = hw.isMemoryVolatile();
+ * int memScale = hw.getMemoryScale();
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ *
+ * <p>{@link Hardware} itself is thread-safe, but context switching via {@link #dataContext(Callable)}
+ * and {@link #computeContext(Callable, ComputeRequirement...)} uses thread-local storage. Each
+ * thread maintains its own context stack.</p>
+ *
+ * <h2>Initialization Logging</h2>
+ *
+ * <p>Enable verbose logging to see initialization details:</p>
+ * <pre>{@code
+ * Hardware.enableVerbose = true;
+ * // Output:
+ * // Hardware[local]: Processing Hardware Requirements...
+ * // Hardware[CL]: Max RAM is 1024 Megabytes (FP32)
+ * // Hardware[JNI]: Enabling shared memory via CLMemoryProvider
+ * }</pre>
+ *
+ * <h2>Common Pitfalls</h2>
+ *
+ * <h3>Forgetting AR_HARDWARE_LIBS</h3>
+ * <pre>
+ * # BAD: Missing required environment variable
+ * java -jar myapp.jar
+ * # Error: NoClassDefFoundError
+ *
+ * # GOOD: Set AR_HARDWARE_LIBS before running
+ * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * export AR_HARDWARE_DRIVER=native
+ * java -jar myapp.jar
+ * </pre>
+ *
+ * <h3>Incompatible Memory Location with NIO</h3>
+ * <pre>
+ * # BAD: HOST location incompatible with NIO memory
+ * export AR_HARDWARE_NIO_MEMORY=true
+ * export AR_HARDWARE_MEMORY_LOCATION=host
+ * # Warning: location will be set to DELEGATE instead
+ *
+ * # GOOD: Use DELEGATE with NIO memory
+ * export AR_HARDWARE_NIO_MEMORY=true
+ * export AR_HARDWARE_MEMORY_LOCATION=delegate
+ * </pre>
+ *
+ * <h3>Precision Mismatch with Multiple Backends</h3>
+ * <pre>
+ * # If using multiple backends, ensure precision compatibility
+ * export AR_HARDWARE_DRIVER=cl,native
+ * export AR_HARDWARE_PRECISION=FP32  # Both backends use FP32
+ * </pre>
+ *
+ * <h2>Advanced: Cascading Optimization Strategy</h2>
+ *
+ * <p>{@link Hardware} automatically configures a cascading optimization strategy for
+ * {@link OperationList} compilation:</p>
+ * <ol>
+ *   <li><strong>ParallelismDiversityOptimization:</strong> Segment by parallelism count</li>
+ *   <li><strong>TraversableDepthTargetOptimization:</strong> Optimize traversal depth</li>
+ *   <li><strong>ParallelismTargetOptimization:</strong> Target optimal parallelism</li>
+ * </ol>
+ *
+ * <p>These optimizations automatically reshape operation graphs for better hardware utilization.</p>
+ *
+ * @see DataContext
+ * @see ComputeContext
+ * @see DefaultComputer
+ * @see ComputeRequirement
+ * @see OperationProfile
+ * @see Precision
+ *
+ * @author  Michael Murray
+ */
 public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static boolean defaultKernelFriendly = true;

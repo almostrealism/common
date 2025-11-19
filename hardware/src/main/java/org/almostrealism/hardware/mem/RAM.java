@@ -21,6 +21,138 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.stream.Stream;
 
+/**
+ * Base class for native memory buffers with allocation tracking and debugging support.
+ *
+ * <p>{@link RAM} serves as the foundation for all native memory implementations, providing
+ * pointer-based addressing and automatic allocation tracking for debugging memory leaks.
+ * It implements the {@link Memory} interface for integration with the hardware acceleration
+ * system.</p>
+ *
+ * <h2>Allocation Tracking</h2>
+ *
+ * <p>Every {@link RAM} instance automatically captures its allocation stack trace, which is
+ * invaluable for diagnosing memory leaks and orphaned allocations:</p>
+ *
+ * <pre>{@code
+ * RAM memory = createSomeRAM();
+ *
+ * // Later, if memory isn't properly destroyed:
+ * StackTraceElement[] trace = memory.getAllocationStackTrace();
+ * for (StackTraceElement frame : trace) {
+ *     System.err.println("  at " + frame);
+ * }
+ * // Output shows where the allocation originated
+ * }</pre>
+ *
+ * <p>Allocation tracking can be configured via environment variables:</p>
+ * <ul>
+ *   <li><b>AR_HARDWARE_MEMORY_WARNINGS</b>: Enable/disable warnings (default: true)</li>
+ *   <li><b>AR_HARDWARE_ALLOCATION_TRACE_FRAMES</b>: Number of stack frames to capture (default: 16, 0 to disable)</li>
+ * </ul>
+ *
+ * <pre>
+ * # Capture full stack traces
+ * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=50
+ *
+ * # Disable allocation tracking (performance optimization)
+ * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=0
+ *
+ * # Disable memory warnings
+ * export AR_HARDWARE_MEMORY_WARNINGS=false
+ * </pre>
+ *
+ * <h2>Pointer-Based Addressing</h2>
+ *
+ * <p>{@link RAM} uses pointer-based addressing for native memory access. Two pointer
+ * concepts are supported:</p>
+ *
+ * <ul>
+ *   <li><b>Container Pointer</b>: Pointer to the container object (e.g., Java object header)</li>
+ *   <li><b>Content Pointer</b>: Pointer to the actual data content (may differ from container)</li>
+ * </ul>
+ *
+ * <p>By default, {@link #getContainerPointer()} delegates to {@link #getContentPointer()},
+ * but subclasses can override this if container and content differ (e.g., wrappers).</p>
+ *
+ * <pre>{@code
+ * // Example: Direct byte buffer
+ * class DirectBuffer extends RAM {
+ *     private ByteBuffer buffer;
+ *
+ *     public long getContentPointer() {
+ *         return ((DirectBuffer) buffer).address();  // Native memory address
+ *     }
+ *
+ *     public long getSize() {
+ *         return buffer.capacity();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Subclass Requirements</h2>
+ *
+ * <p>Concrete {@link RAM} implementations must override:</p>
+ * <ul>
+ *   <li>{@link #getContentPointer()}: Return native memory address</li>
+ *   <li>{@link #getSize()}: Return size in bytes</li>
+ *   <li>{@link #destroy()}: Free native resources (from {@link Memory} interface)</li>
+ * </ul>
+ *
+ * <h2>Equality and Identity</h2>
+ *
+ * <p>{@link RAM} instances are considered equal if they point to the same native memory
+ * (same container pointer). This is pointer equality, not content equality:</p>
+ *
+ * <pre>{@code
+ * RAM a = allocate(100);
+ * RAM b = a;  // Same pointer
+ * RAM c = allocate(100);  // Different pointer
+ *
+ * a.equals(b)  // true  (same pointer)
+ * a.equals(c)  // false (different pointer, even if same size)
+ * }</pre>
+ *
+ * <h2>Debugging Memory Leaks</h2>
+ *
+ * <p>When memory leaks are detected (allocations never destroyed), the allocation
+ * stack traces help identify the source:</p>
+ *
+ * <pre>{@code
+ * // Application code
+ * public void processData() {
+ *     RAM temp = new DirectBuffer(1000);
+ *     // ... work ...
+ *     // BUG: Forgot to call temp.destroy()
+ * }
+ *
+ * // Later, leak detector finds orphaned RAM
+ * RAM leaked = findLeakedAllocations().get(0);
+ * System.err.println("Leaked allocation from:");
+ * for (StackTraceElement frame : leaked.getAllocationStackTrace()) {
+ *     System.err.println("  at " + frame);
+ * }
+ * // Output:
+ * //   at DirectBuffer.<init>(DirectBuffer.java:25)
+ * //   at MyClass.processData(MyClass.java:42)  <-- Source of leak!
+ * }</pre>
+ *
+ * <h2>Performance Considerations</h2>
+ *
+ * <p>Allocation tracking has minimal overhead (~1-2% in typical workloads), but can be
+ * disabled for production deployments:</p>
+ *
+ * <pre>
+ * # Development: Full tracking
+ * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=16
+ *
+ * # Production: Disable tracking
+ * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=0
+ * </pre>
+ *
+ * @see Memory
+ * @see Bytes
+ */
 public abstract class RAM implements Memory {
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(16);

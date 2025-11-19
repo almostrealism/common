@@ -46,6 +46,161 @@ import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 
+/**
+ * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
+ *
+ * <p>{@link AcceleratedOperation} coordinates the entire lifecycle of accelerated computations, from scope
+ * preparation and kernel compilation through argument mapping, execution, and cleanup. It serves as the foundation
+ * for both kernel-based operations (GPU/OpenCL/Metal) and JNI-based native code execution.</p>
+ *
+ * <h2>Operation Lifecycle</h2>
+ *
+ * <p>An accelerated operation progresses through several phases:</p>
+ * <pre>
+ * 1. Scope Preparation:  prepareScope() → creates ArgumentMap, prepares inputs
+ * 2. Compilation:        load() → compiles or retrieves cached kernel/native code
+ * 3. Argument Setup:     getProcessDetails() → prepares arguments for execution
+ * 4. Preprocessing:      preApply() → aggregates arguments if needed
+ * 5. Execution:          operator.accept() → runs kernel/native code
+ * 6. Postprocessing:     postApply() → disaggregates results
+ * 7. Cleanup:            destroy() → releases resources
+ * </pre>
+ *
+ * <h2>Argument Mapping and Aggregation</h2>
+ *
+ * <p>For kernel operations, {@link AcceleratedOperation} automatically manages argument preparation
+ * via {@link MemoryDataArgumentMap}:</p>
+ * <pre>{@code
+ * // When scope is prepared:
+ * prepareScope() {
+ *     // Creates MemoryDataArgumentMap with aggregation support
+ *     argumentMap = MemoryDataArgumentMap.create(context, metadata, ...);
+ *
+ *     // Maps operation inputs to kernel arguments
+ *     prepareArguments(argumentMap);
+ * }
+ *
+ * // Before execution:
+ * preApply() {
+ *     // Copies CPU memory → aggregated GPU buffer
+ *     argumentMap.getPrepareData().run();
+ * }
+ *
+ * // After execution:
+ * postApply() {
+ *     // Copies aggregated buffer → original CPU memory
+ *     argumentMap.getPostprocessData().run();
+ * }
+ * }</pre>
+ *
+ * <h2>Kernel vs Non-Kernel Operations</h2>
+ *
+ * <p>Operations can be either kernel-based (executed on GPU/accelerator) or non-kernel (JNI/native):</p>
+ * <pre>{@code
+ * // Kernel operation (GPU)
+ * AcceleratedOperation kernelOp = new MyKernelOperation(context, true);
+ * kernelOp.prepareScope();  // Creates argumentMap with aggregation
+ * kernelOp.load();          // Compiles OpenCL/Metal kernel
+ *
+ * // Non-kernel operation (JNI)
+ * AcceleratedOperation nativeOp = new MyNativeOperation(context, false);
+ * nativeOp.prepareScope();  // Simpler argument handling
+ * nativeOp.load();          // Compiles C code via JNI
+ * }</pre>
+ *
+ * <h2>Instruction Set Management</h2>
+ *
+ * <p>Compilation and caching are delegated to {@link InstructionSetManager}, which provides
+ * multi-level caching (operation container cache, process tree cache, scope cache):</p>
+ * <pre>{@code
+ * @Override
+ * public InstructionSetManager getInstructionSetManager() {
+ *     return Hardware.getLocalHardware().getComputeContext().getKernelManager();
+ * }
+ *
+ * @Override
+ * public ExecutionKey getExecutionKey() {
+ *     return new MyExecutionKey(getScope(), getArguments());
+ * }
+ *
+ * // Load operator (compiles or retrieves from cache)
+ * Execution operator = load();  // Uses instructionSetManager.getOperator(key)
+ * }</pre>
+ *
+ * <h2>Asynchronous Execution</h2>
+ *
+ * <p>Operations coordinate asynchronous execution via {@link Semaphore}:</p>
+ * <pre>{@code
+ * // Synchronous execution
+ * operation.run();  // Blocks until complete
+ *
+ * // Asynchronous execution
+ * AcceleratedProcessDetails process = operation.apply(output, args);
+ * process.getSemaphore().waitFor();  // Wait when needed
+ *
+ * // Chained async execution
+ * process1.getSemaphore().andThen(() -> {
+ *     return operation2.apply(...);
+ * });
+ * }</pre>
+ *
+ * <h2>Profiling and Timing</h2>
+ *
+ * <p>All operations record timing metrics for performance analysis:</p>
+ * <ul>
+ *   <li>{@link #retrieveOperatorMetric} - Time to compile/retrieve cached operator</li>
+ *   <li>{@link #processArgumentsMetric} - Time to set up kernel arguments</li>
+ *   <li>{@link #acceptMetric} - Time for actual kernel/native execution</li>
+ *   <li>{@link #evaluateMetric} - Total evaluation time including pre/post processing</li>
+ * </ul>
+ *
+ * <h2>Subclass Requirements</h2>
+ *
+ * <p>Concrete implementations must provide:</p>
+ * <ul>
+ *   <li>{@link #getInstructionSetManager()} - Provide the manager for this operation type</li>
+ *   <li>{@link #getExecutionKey()} - Create a unique key for caching this operation</li>
+ *   <li>{@link #isAggregatedInput()} - Whether arguments should be aggregated</li>
+ *   <li>{@link #getOutputArgumentIndex()} - Index of output argument in kernel signature</li>
+ * </ul>
+ *
+ * <h2>Common Patterns</h2>
+ *
+ * <h3>Creating a Kernel Operation</h3>
+ * <pre>{@code
+ * public class VectorAddOperation extends AcceleratedComputationOperation {
+ *     public VectorAddOperation(Producer<PackedCollection<?>> a,
+ *                               Producer<PackedCollection<?>> b) {
+ *         super(Hardware.getLocalHardware().getComputeContext(), true,
+ *               a.get().evaluate(), b.get().evaluate());
+ *     }
+ *
+ *     @Override
+ *     public ExecutionKey getExecutionKey() {
+ *         return new DefaultExecutionKey(getScope(), getArguments());
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h3>Executing an Operation</h3>
+ * <pre>{@code
+ * // Compile and execute synchronously
+ * VectorAddOperation op = new VectorAddOperation(a, b);
+ * PackedCollection<?> result = op.evaluate();  // Blocks until complete
+ *
+ * // Execute asynchronously
+ * AcceleratedProcessDetails process = op.apply(output, args);
+ * // ... do other work ...
+ * process.getSemaphore().waitFor();  // Wait when needed
+ * }</pre>
+ *
+ * @param <T> The type of {@link MemoryData} this operation works with
+ * @see AcceleratedComputationOperation
+ * @see AcceleratedComputationEvaluable
+ * @see InstructionSetManager
+ * @see MemoryDataArgumentMap
+ * @see AcceleratedProcessDetails
+ */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
 							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
 

@@ -31,6 +31,155 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+/**
+ * {@link Evaluable} implementation that executes {@link ProducerComputation} instances on hardware accelerators.
+ *
+ * <p>{@link AcceleratedComputationEvaluable} extends {@link AcceleratedComputationOperation} to implement the
+ * {@link Evaluable} interface, enabling direct evaluation of computations to produce results. This is the
+ * standard way to execute {@link ProducerComputation} instances (created via {@link Producer#get()}) on
+ * hardware accelerators.</p>
+ *
+ * <h2>Evaluation Pattern</h2>
+ *
+ * <p>The typical usage pattern involves creating a {@link Producer}, getting its {@link Evaluable},
+ * and invoking {@link #evaluate(Object...)}:</p>
+ * <pre>{@code
+ * // Create producer
+ * Producer<PackedCollection<?>> producer = c(2.0).multiply(c(3.0));
+ *
+ * // Get evaluable (returns AcceleratedComputationEvaluable)
+ * Evaluable<PackedCollection<?>> evaluable = producer.get();
+ *
+ * // Evaluate to produce result
+ * PackedCollection<?> result = evaluable.evaluate();  // Result: 6.0
+ * }</pre>
+ *
+ * <h2>Destination Management</h2>
+ *
+ * <p>Results can be computed into existing memory via {@link #into(Object)}:</p>
+ * <pre>{@code
+ * // Allocate output buffer
+ * PackedCollection<?> output = PackedCollection.create(1000);
+ *
+ * // Compute directly into output (zero-copy)
+ * producer.get().into(output).evaluate();
+ *
+ * // output now contains the result
+ * }</pre>
+ *
+ * <p>Custom destination factories can be provided via {@link #setDestinationFactory}:</p>
+ * <pre>{@code
+ * AcceleratedComputationEvaluable eval = ...;
+ *
+ * // Use custom memory allocation strategy
+ * eval.setDestinationFactory(size -> new PackedCollection(size, () -> customMemory(size)));
+ *
+ * // Destinations created with custom factory
+ * PackedCollection<?> result = eval.evaluate();
+ * }</pre>
+ *
+ * <h2>Streaming Support</h2>
+ *
+ * <p>Implements {@link StreamingEvaluable} for integration with data pipelines:</p>
+ * <pre>{@code
+ * AcceleratedComputationEvaluable<PackedCollection<?>> transform = ...;
+ *
+ * // Set downstream consumer
+ * transform.setDownstream(result -> {
+ *     // Process each result
+ *     System.out.println("Result: " + result);
+ * });
+ *
+ * // Evaluate pushes to downstream
+ * transform.evaluate();  // Triggers downstream consumer
+ * }</pre>
+ *
+ * <h2>Constant Propagation</h2>
+ *
+ * <p>If the wrapped {@link ProducerComputation} is constant (produces the same value every time),
+ * {@link #isConstant()} returns true, enabling optimizations:</p>
+ * <pre>{@code
+ * Producer<Scalar> constant = c(42.0);  // Constant value
+ * Evaluable<Scalar> eval = constant.get();
+ *
+ * if (eval.isConstant()) {
+ *     // Can cache result, skip compilation, etc.
+ *     Scalar cached = eval.evaluate();
+ * }
+ * }</pre>
+ *
+ * <h2>Post-Compilation Hooks</h2>
+ *
+ * <p>After compilation, {@link #postCompile()} is called to perform additional setup.
+ * Subclasses can override to customize behavior:</p>
+ * <pre>{@code
+ * @Override
+ * public synchronized void postCompile() {
+ *     super.postCompile();
+ *
+ *     // Custom post-compilation setup
+ *     optimizeForHardware();
+ * }
+ * }</pre>
+ *
+ * <h2>Redundant Compilation</h2>
+ *
+ * <p>The static flag {@link #enableRedundantCompilation} controls whether multiple evaluables
+ * with the same signature can compile independently. When true (default), each evaluable
+ * compiles even if another with the same signature exists:</p>
+ * <pre>{@code
+ * // Disable redundant compilation to save resources
+ * AcceleratedComputationEvaluable.enableRedundantCompilation = false;
+ *
+ * // First evaluable compiles
+ * Evaluable eval1 = producer1.get();
+ * eval1.evaluate();  // Compiles
+ *
+ * // Second evaluable with same signature reuses compilation
+ * Evaluable eval2 = producer2.get();  // Same structure as producer1
+ * eval2.evaluate();  // Reuses compiled kernel
+ * }</pre>
+ *
+ * <h2>Integration with AcceleratedOperation</h2>
+ *
+ * <p>Inherits all {@link AcceleratedComputationOperation} functionality:</p>
+ * <ul>
+ *   <li>Automatic argument mapping and aggregation</li>
+ *   <li>Instruction set caching via signatures</li>
+ *   <li>Asynchronous execution support</li>
+ *   <li>Profiling and timing metrics</li>
+ * </ul>
+ *
+ * <h2>Common Patterns</h2>
+ *
+ * <h3>Simple Evaluation</h3>
+ * <pre>{@code
+ * Producer<PackedCollection<?>> multiply = a.multiply(b);
+ * PackedCollection<?> result = multiply.get().evaluate();
+ * }</pre>
+ *
+ * <h3>In-Place Evaluation</h3>
+ * <pre>{@code
+ * PackedCollection<?> buffer = PackedCollection.create(1000);
+ * transform.get().into(buffer).evaluate();
+ * // buffer modified in-place
+ * }</pre>
+ *
+ * <h3>Streaming Pipeline</h3>
+ * <pre>{@code
+ * AcceleratedComputationEvaluable<PackedCollection<?>> stage1 = ...;
+ * AcceleratedComputationEvaluable<PackedCollection<?>> stage2 = ...;
+ *
+ * stage1.setDownstream(result -> stage2.evaluate(result));
+ * stage1.evaluate();  // Triggers entire pipeline
+ * }</pre>
+ *
+ * @param <T> The type of {@link MemoryData} produced by evaluation
+ * @see AcceleratedComputationOperation
+ * @see Evaluable
+ * @see ProducerComputation
+ * @see StreamingEvaluable
+ */
 public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
 		implements StreamingEvaluable<T>, Evaluable<T> {

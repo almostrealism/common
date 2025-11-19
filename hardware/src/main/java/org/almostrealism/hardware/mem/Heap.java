@@ -29,7 +29,111 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * A collection of {@link Bytes}s stored in a single {@link io.almostrealism.code.Memory} instance.
+ * Thread-local memory arena for temporary allocations with automatic lifecycle management.
+ *
+ * <p>{@link Heap} provides a stack-based arena allocator for short-lived {@link Bytes} allocations.
+ * It uses thread-local storage to avoid synchronization overhead and supports staged allocation
+ * for nested scopes with automatic cleanup.</p>
+ *
+ * <h2>Core Concept</h2>
+ *
+ * <p>Instead of individually allocating many small {@link Bytes} objects, {@link Heap} pre-allocates
+ * a large memory block and suballocates from it:</p>
+ *
+ * <pre>
+ * Traditional Approach (slow):
+ *   Bytes b1 = new Bytes(100);  // Allocation 1
+ *   Bytes b2 = new Bytes(50);   // Allocation 2
+ *   Bytes b3 = new Bytes(200);  // Allocation 3
+ *   Total: 3 allocations
+ *
+ * Heap Approach (fast):
+ *   Heap heap = new Heap(1000);
+ *   Bytes b1 = heap.allocate(100);  // Suballocation (fast)
+ *   Bytes b2 = heap.allocate(50);   // Suballocation (fast)
+ *   Bytes b3 = heap.allocate(200);  // Suballocation (fast)
+ *   Total: 1 allocation, 3 suballocations
+ * </pre>
+ *
+ * <h2>Thread-Local Default Heap</h2>
+ *
+ * <p>{@link Heap} maintains a thread-local default instance accessible via {@link #getDefault()}:</p>
+ * <pre>{@code
+ * // Set default heap for current thread
+ * Heap myHeap = new Heap(10000);
+ * myHeap.use(() -> {
+ *     // All allocations within this scope use myHeap
+ *     Bytes temp = Heap.getDefault().allocate(100);
+ *     // Work with temp...
+ * });
+ * // myHeap auto-restored after scope
+ * }</pre>
+ *
+ * <h2>Staged Allocation</h2>
+ *
+ * <p>Stages create nested allocation scopes that are automatically cleaned up:</p>
+ * <pre>{@code
+ * Heap.stage(() -> {
+ *     // Allocations in this stage
+ *     Bytes temp1 = Heap.getDefault().allocate(100);
+ *     Bytes temp2 = Heap.getDefault().allocate(50);
+ *
+ *     Heap.stage(() -> {
+ *         // Nested stage
+ *         Bytes temp3 = Heap.getDefault().allocate(200);
+ *         // temp3 destroyed on exit
+ *     });
+ *
+ *     // temp1, temp2 still valid here
+ * });
+ * // All stage allocations destroyed
+ * }</pre>
+ *
+ * <h2>Dependency Tracking</h2>
+ *
+ * <p>Heaps track operations and memory created within their scope for automatic cleanup:</p>
+ * <pre>{@code
+ * Heap heap = new Heap(10000);
+ * heap.use(() -> {
+ *     // Track compiled operation
+ *     Runnable op = compileOperation();
+ *     Heap.addCompiled(op);
+ *
+ *     // Track created memory
+ *     PackedCollection<?> data = new PackedCollection<>(100);
+ *     Heap.addCreatedMemory(data);
+ * });
+ * heap.destroy();  // Destroys op and data automatically
+ * }</pre>
+ *
+ * <h2>Common Usage Patterns</h2>
+ *
+ * <h3>Temporary Allocations in Computation</h3>
+ * <pre>{@code
+ * public Evaluable<?> createEvaluable() {
+ *     Heap heap = new Heap(1000);
+ *     return heap.wrap(() -> {
+ *         // Temporary allocations during evaluation
+ *         Bytes workspace = heap.allocate(100);
+ *         // Use workspace...
+ *         return result;
+ *     });
+ * }
+ * }</pre>
+ *
+ * <h3>Scoped Resource Management</h3>
+ * <pre>{@code
+ * Heap.stage(() -> {
+ *     // All allocations and operations tracked
+ *     Bytes temp = Heap.getDefault().allocate(500);
+ *     Runnable op = compileKernel();
+ *     Heap.addOperation(() -> op);
+ *     // Everything auto-destroyed on scope exit
+ * });
+ * }</pre>
+ *
+ * @see Bytes
+ * @see HeapStage
  */
 public class Heap {
 	private static ThreadLocal<Heap> defaultHeap = new ThreadLocal<>();
