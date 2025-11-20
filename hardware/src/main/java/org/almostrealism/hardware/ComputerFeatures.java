@@ -43,7 +43,7 @@ import java.util.Optional;
  *     }
  *
  *     public void runProcess() {
- *         Computation<Void> process = c -> { /* ... */ };
+ *         Computation<Void> process = c -> { return null; };
  *
  *         // Compile to Runnable
  *         Runnable runnable = compileRunnable(process);
@@ -54,7 +54,7 @@ import java.util.Optional;
  *
  * <h2>Delegation to DefaultComputer</h2>
  *
- * <p>All methods delegate to {@link Hardware#getLocalHardware().getComputer()}:</p>
+ * <p>All methods delegate to Hardware.getLocalHardware().getComputer():</p>
  * <pre>{@code
  * // These are equivalent:
  * compileProducer(computation);
@@ -63,7 +63,7 @@ import java.util.Optional;
  *
  * <h2>Thread-Local Hardware</h2>
  *
- * <p>Since {@link Hardware#getLocalHardware()} is thread-local, compilations use the
+ * <p>Since Hardware.getLocalHardware() is thread-local, compilations use the
  * hardware context configured for the current thread:</p>
  * <pre>{@code
  * // Thread 1: Uses default hardware
@@ -78,8 +78,8 @@ import java.util.Optional;
  *
  * <p>Extends {@link HardwareFeatures}, inheriting all its convenience methods:</p>
  * <ul>
- *   <li>{@link HardwareFeatures#enableKernels} - Control kernel compilation</li>
- *   <li>{@link HardwareFeatures#enableDestinations} - Control destination tracking</li>
+ *   <li>enableKernels() - Control kernel compilation</li>
+ *   <li>enableDestinations() - Control destination tracking</li>
  *   <li>Access to common operations like {@code c()}, {@code v()}, etc.</li>
  * </ul>
  *

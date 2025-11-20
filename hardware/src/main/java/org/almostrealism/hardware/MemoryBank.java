@@ -226,7 +226,7 @@ public interface MemoryBank<T extends MemoryData> extends MemoryData, Multiple<T
 	 * <p>This method performs a <strong>data copy</strong>, not a reference assignment. The
 	 * source {@link MemoryData} remains independent after this operation.</p>
 	 *
-	 * <h3>Behavior:</h3>
+	 * <p><strong>Behavior:</strong></p>
 	 * <pre>{@code
 	 * MemoryBank<Vector> bank = Vector.bank(10);
 	 * Vector v = new Vector(1, 2, 3);
@@ -236,13 +236,13 @@ public interface MemoryBank<T extends MemoryData> extends MemoryData, Multiple<T
 	 * v.setX(99);  // Does NOT affect bank.get(5)
 	 * }</pre>
 	 *
-	 * <h3>Memory Transfer:</h3>
+	 * <p><strong>Memory Transfer:</strong></p>
 	 * <p>The method copies {@code value.getMemLength()} doubles from the source to:</p>
 	 * <pre>
 	 * Destination offset = bank.getOffset() + (index * atomicMemLength)
 	 * </pre>
 	 *
-	 * <h3>Validation:</h3>
+	 * <p><strong>Validation:</strong></p>
 	 * <ul>
 	 *   <li>Index must be in range [0, count)</li>
 	 *   <li>Source length must match bank's atomic element length</li>

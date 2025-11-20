@@ -94,9 +94,9 @@ import java.util.stream.Stream;
  *
  * <p>Concrete {@link RAM} implementations must override:</p>
  * <ul>
- *   <li>{@link #getContentPointer()}: Return native memory address</li>
- *   <li>{@link #getSize()}: Return size in bytes</li>
- *   <li>{@link #destroy()}: Free native resources (from {@link Memory} interface)</li>
+ *   <li>getContentPointer(): Return native memory address</li>
+ *   <li>getSize(): Return size in bytes</li>
+ *   <li>destroy(): Free native resources (from Memory interface)</li>
  * </ul>
  *
  * <h2>Equality and Identity</h2>

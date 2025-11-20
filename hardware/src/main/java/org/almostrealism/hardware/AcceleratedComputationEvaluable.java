@@ -36,13 +36,13 @@ import java.util.function.IntFunction;
  *
  * <p>{@link AcceleratedComputationEvaluable} extends {@link AcceleratedComputationOperation} to implement the
  * {@link Evaluable} interface, enabling direct evaluation of computations to produce results. This is the
- * standard way to execute {@link ProducerComputation} instances (created via {@link Producer#get()}) on
+ * standard way to execute {@link ProducerComputation} instances (created via Producer.get()) on
  * hardware accelerators.</p>
  *
  * <h2>Evaluation Pattern</h2>
  *
- * <p>The typical usage pattern involves creating a {@link Producer}, getting its {@link Evaluable},
- * and invoking {@link #evaluate(Object...)}:</p>
+ * <p>The typical usage pattern involves creating a Producer, getting its {@link Evaluable},
+ * and invoking evaluate():</p>
  * <pre>{@code
  * // Create producer
  * Producer<PackedCollection<?>> producer = c(2.0).multiply(c(3.0));

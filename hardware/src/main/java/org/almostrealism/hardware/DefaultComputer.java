@@ -84,7 +84,7 @@ import java.util.function.Supplier;
  * │                                                           │
  * │  Instruction Caches                                      │
  * │  ┌────────────────────────────────────────────┐          │
- * │  │ operationsCache (Map<String, Container>)   │          │
+ * │  │ operationsCache (Map)                      │          │
  * │  │ - Instruction containers (unlimited)        │          │
  * │  └────────────────────────────────────────────┘          │
  * │  ┌────────────────────────────────────────────┐          │

@@ -34,7 +34,7 @@ import java.util.function.Function;
  * <h2>Entry-Based Storage</h2>
  *
  * <p>The cache stores a fixed number of equal-sized entries in contiguous memory:</p>
- * <pre>
+ * <pre>{@code
  * MemoryDataCacheManager cache = MemoryDataCacheManager.create(
  *     4,    // entrySize: 4 elements per entry
  *     100,  // maxEntries: 100 entries
@@ -44,7 +44,7 @@ import java.util.function.Function;
  * Memory Layout:
  * [Entry 0: 4 elements][Entry 1: 4 elements]...[Entry 99: 4 elements]
  *  Total: 400 elements (100 * 4)
- * </pre>
+ * }</pre>
  *
  * <h2>Lazy Initialization</h2>
  *

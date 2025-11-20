@@ -175,7 +175,7 @@ import java.util.stream.Stream;
  *
  * <h2>Integration with AcceleratedOperation</h2>
  *
- * <p>{@link AcceleratedOperation} uses {@link ProcessDetailsFactory} via {@link #getDetailsFactory()}:</p>
+ * <p>{@link AcceleratedOperation} uses {@link ProcessDetailsFactory} via getDetailsFactory():</p>
  * <pre>{@code
  * public class MyAcceleratedOperation extends AcceleratedOperation {
  *     @Override

@@ -332,6 +332,7 @@ import java.util.stream.Stream;
  *
  * <h3>Compiled vs Sequential Execution</h3>
  * <table>
+ *   <caption>Comparison of compiled versus sequential execution modes</caption>
  *   <tr>
  *     <th>Aspect</th>
  *     <th>Compiled (Computation)</th>
