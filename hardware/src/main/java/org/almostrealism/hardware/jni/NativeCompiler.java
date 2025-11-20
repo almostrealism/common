@@ -42,6 +42,202 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * Compiler infrastructure for converting generated C code into native shared libraries loaded via JNI.
+ *
+ * <p>{@link NativeCompiler} is the core compilation engine for Almost Realism's native execution backend.
+ * It orchestrates the following pipeline:</p>
+ * <ol>
+ *   <li><strong>Write C source:</strong> Generates .c files with proper headers and JNI signatures</li>
+ *   <li><strong>Invoke compiler:</strong> Calls native compilers (Clang/GCC) to build shared libraries</li>
+ *   <li><strong>Load via JNI:</strong> Loads compiled .so/.dylib files into the JVM via System.load()</li>
+ *   <li><strong>Track performance:</strong> Measures compilation time for profiling</li>
+ * </ol>
+ *
+ * <h2>Compilation Pipeline</h2>
+ *
+ * <p>When C code is compiled, the following steps occur:</p>
+ * <pre>
+ * 1. Write source file       libName.c (with headers)
+ * 2. Invoke native compiler  clang -shared -o libName.so libName.c
+ * 3. Wait for process        Process.waitFor()
+ * 4. Load library           System.load(libName.so)
+ * 5. Execute via JNI        Native method now available
+ * </pre>
+ *
+ * <h2>Usage Example</h2>
+ *
+ * <pre>{@code
+ * // Create compiler
+ * NativeCompiler compiler = NativeCompiler.factory(Precision.FP64, false).construct();
+ *
+ * // Reserve a target for compilation
+ * NativeInstructionSet target = (NativeInstructionSet) compiler.reserveLibraryTarget();
+ *
+ * // Generate C code (from Scope)
+ * String cCode = generateCCode(scope);
+ *
+ * // Compile and load
+ * compiler.compile(target, cCode);
+ *
+ * // Now target.execute() will call native code via JNI
+ * }</pre>
+ *
+ * <h2>Configuration via Environment Variables</h2>
+ *
+ * <p>The compiler is configured via environment variables:</p>
+ * <table>
+ *   <caption>Native compiler configuration options</caption>
+ *   <tr>
+ *     <th>Variable</th>
+ *     <th>Description</th>
+ *     <th>Default</th>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_LIBS</td>
+ *     <td>Directory for compiled libraries</td>
+ *     <td>~/Library/Extensions (macOS)</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_DATA</td>
+ *     <td>Directory for runtime data</td>
+ *     <td>null (no data dir)</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_LIB_FORMAT</td>
+ *     <td>Library filename format</td>
+ *     <td>lib%NAME%.so (Linux)<br>lib%NAME%.dylib (macOS)</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_NATIVE_COMPILER</td>
+ *     <td>Path to compiler executable</td>
+ *     <td>clang (from PATH)</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_NATIVE_LINKER</td>
+ *     <td>Path to linker (Clang only)</td>
+ *     <td>Default linker</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_COMPILER_LOGGING</td>
+ *     <td>Enable verbose logging</td>
+ *     <td>false</td>
+ *   </tr>
+ * </table>
+ *
+ * <h2>Compiler Selection</h2>
+ *
+ * <p>The factory method automatically selects the appropriate compiler:</p>
+ * <pre>{@code
+ * // Default: Uses Clang from PATH
+ * NativeCompiler compiler = NativeCompiler.factory(Precision.FP64, false).construct();
+ *
+ * // Custom: Specify compiler via environment
+ * System.setProperty("AR_HARDWARE_NATIVE_COMPILER", "/usr/bin/gcc");
+ * NativeCompiler gcc = NativeCompiler.factory(Precision.FP64, false).construct();
+ *
+ * // LLD linker: Use LLVM's lld instead of default linker
+ * System.setProperty("AR_HARDWARE_NATIVE_LINKER", "lld");
+ * NativeCompiler lld = NativeCompiler.factory(Precision.FP64, false).construct();
+ * }</pre>
+ *
+ * <h2>Precision Configuration</h2>
+ *
+ * <p>The {@link Precision} determines C data types:</p>
+ * <ul>
+ *   <li><strong>FP32:</strong> Uses {@code float} in generated code, 4 bytes per element</li>
+ *   <li><strong>FP64:</strong> Uses {@code double} in generated code, 8 bytes per element</li>
+ * </ul>
+ *
+ * <h2>Generated Headers</h2>
+ *
+ * <p>All compiled C files include standard headers plus JNI:</p>
+ * <pre>
+ * #include &lt;stdio.h&gt;
+ * #include &lt;stdlib.h&gt;
+ * #include &lt;string.h&gt;
+ * #include &lt;math.h&gt;
+ * #include &lt;jni.h&gt;
+ * float M_PI_F = M_PI;  // or double for FP64
+ * </pre>
+ *
+ * <p>If OpenCL compatibility is enabled ({@code cl = true}), also includes:</p>
+ * <pre>
+ * #include &lt;OpenCL/cl.h&gt;  // macOS
+ * #include &lt;cl.h&gt;         // Linux
+ * </pre>
+ *
+ * <h2>Library Target Management</h2>
+ *
+ * <p>{@link #reserveLibraryTarget()} allocates pre-generated JNI operation classes:</p>
+ * <pre>{@code
+ * // Reserves org.almostrealism.generated.GeneratedOperation0
+ * BaseGeneratedOperation op1 = compiler.reserveLibraryTarget();
+ *
+ * // Reserves org.almostrealism.generated.GeneratedOperation1
+ * BaseGeneratedOperation op2 = compiler.reserveLibraryTarget();
+ *
+ * // Each gets a unique class name for native linking
+ * }</pre>
+ *
+ * <p>Generated operation classes are pre-compiled Java classes with native method stubs.
+ * The compiler generates matching C implementations with JNI signatures.</p>
+ *
+ * <h2>Compilation Monitoring</h2>
+ *
+ * <p>Enable monitoring to save generated C code for inspection:</p>
+ * <pre>{@code
+ * // Save all instruction sets
+ * HardwareOperator.enableInstructionSetMonitoring = true;
+ *
+ * // Only save large instruction sets (> 50KB)
+ * HardwareOperator.enableLargeInstructionSetMonitoring = true;
+ *
+ * // Saved to: results/jni_instruction_set_N.c
+ * }</pre>
+ *
+ * <h2>Performance Tracking</h2>
+ *
+ * <p>Compilation times are recorded via {@link #compileTime}:</p>
+ * <pre>{@code
+ * // Get compilation metrics
+ * TimingMetric timing = NativeCompiler.compileTime;
+ * double avgMs = timing.getAverage() / 1_000_000.0;
+ * long count = NativeCompiler.getTotalInstructionSets();
+ *
+ * System.out.printf("Compiled %d libraries (avg %.2f ms)\n", count, avgMs);
+ * }</pre>
+ *
+ * <h2>Error Handling</h2>
+ *
+ * <p>Compilation failures throw {@link HardwareException}:</p>
+ * <pre>{@code
+ * try {
+ *     compiler.compile(target, code);
+ * } catch (HardwareException e) {
+ *     // Check if compilation failed
+ *     if (e.getMessage().contains("Native compiler failure")) {
+ *         // Compiler returned non-zero exit code
+ *         // Check compiler logs for details
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ *
+ * <p>The {@link #reserveLibraryTarget()} method is synchronized to ensure unique class names.
+ * Compilation itself is thread-safe, allowing concurrent compilations to different targets.</p>
+ *
+ * <h2>Lifecycle</h2>
+ *
+ * <p>Typically created once per {@link NativeDataContext} and reused for all compilations.
+ * {@link #destroy()} is currently a no-op but may clean up resources in future versions.</p>
+ *
+ * @see NativeComputeContext
+ * @see NativeInstructionSet
+ * @see LinkedLibraryGenerator
+ * @see CompilerCommandProvider
+ */
 public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	public static boolean enableVerbose = SystemUtils.isEnabled("AR_HARDWARE_COMPILER_LOGGING").orElse(false);
 
