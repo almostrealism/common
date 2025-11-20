@@ -58,8 +58,8 @@ import io.almostrealism.code.Computation;
  * <p>The memory length is used during kernel compilation to allocate appropriate buffers:</p>
  * <pre>
  * Compilation:
- * getMemLength() = 1000 → allocate output buffer: 1000 * sizeof(double)
- *                       → kernel iteration count: 1000
+ * getMemLength() = 1000 -> allocate output buffer: 1000 * sizeof(double)
+ *                       -> kernel iteration count: 1000
  * </pre>
  *
  * <h3>Example with Vector Operations</h3>

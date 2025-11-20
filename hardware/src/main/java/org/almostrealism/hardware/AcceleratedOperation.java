@@ -57,13 +57,13 @@ import java.util.List;
  *
  * <p>An accelerated operation progresses through several phases:</p>
  * <pre>
- * 1. Scope Preparation:  prepareScope() → creates ArgumentMap, prepares inputs
- * 2. Compilation:        load() → compiles or retrieves cached kernel/native code
- * 3. Argument Setup:     getProcessDetails() → prepares arguments for execution
- * 4. Preprocessing:      preApply() → aggregates arguments if needed
- * 5. Execution:          operator.accept() → runs kernel/native code
- * 6. Postprocessing:     postApply() → disaggregates results
- * 7. Cleanup:            destroy() → releases resources
+ * 1. Scope Preparation:  prepareScope() -> creates ArgumentMap, prepares inputs
+ * 2. Compilation:        load() -> compiles or retrieves cached kernel/native code
+ * 3. Argument Setup:     getProcessDetails() -> prepares arguments for execution
+ * 4. Preprocessing:      preApply() -> aggregates arguments if needed
+ * 5. Execution:          operator.accept() -> runs kernel/native code
+ * 6. Postprocessing:     postApply() -> disaggregates results
+ * 7. Cleanup:            destroy() -> releases resources
  * </pre>
  *
  * <h2>Argument Mapping and Aggregation</h2>
@@ -82,13 +82,13 @@ import java.util.List;
  *
  * // Before execution:
  * preApply() {
- *     // Copies CPU memory → aggregated GPU buffer
+ *     // Copies CPU memory -> aggregated GPU buffer
  *     argumentMap.getPrepareData().run();
  * }
  *
  * // After execution:
  * postApply() {
- *     // Copies aggregated buffer → original CPU memory
+ *     // Copies aggregated buffer -> original CPU memory
  *     argumentMap.getPostprocessData().run();
  * }
  * }</pre>

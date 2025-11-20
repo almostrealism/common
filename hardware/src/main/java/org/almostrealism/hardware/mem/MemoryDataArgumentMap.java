@@ -52,11 +52,11 @@ import java.util.function.Supplier;
  * incompatible providers, they are automatically aggregated into a single contiguous buffer:</p>
  * <pre>{@code
  * // Without aggregation: 3 separate kernel arguments
- * kernel(cpuMem1, cpuMem2, cpuMem3)  // 3 CPU→GPU transfers
+ * kernel(cpuMem1, cpuMem2, cpuMem3)  // 3 CPU->GPU transfers
  *
  * // With aggregation: Single aggregated argument
  * aggregated = aggregate(cpuMem1, cpuMem2, cpuMem3)
- * kernel(aggregated)  // 1 CPU→GPU transfer
+ * kernel(aggregated)  // 1 CPU->GPU transfer
  * }</pre>
  *
  * <h2>Configuration</h2>

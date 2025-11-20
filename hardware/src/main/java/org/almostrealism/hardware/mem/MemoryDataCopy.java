@@ -55,7 +55,7 @@ import java.util.function.Supplier;
  * );
  *
  * copy.get().run();
- * // Copies: source[50:150] → target[200:300]
+ * // Copies: source[50:150] -> target[200:300]
  * }</pre>
  *
  * <h2>Dynamic Resolution</h2>
@@ -78,7 +78,7 @@ import java.util.function.Supplier;
  *
  * <p>Used extensively for prepare/postprocess phases:</p>
  * <pre>{@code
- * // Prepare: Copy original → temp
+ * // Prepare: Copy original -> temp
  * MemoryDataCopy prepare = new MemoryDataCopy(
  *     "Temp Prep",
  *     originalData,
@@ -88,7 +88,7 @@ import java.util.function.Supplier;
  *
  * // ... kernel execution with temp data ...
  *
- * // Postprocess: Copy temp → original
+ * // Postprocess: Copy temp -> original
  * MemoryDataCopy postprocess = new MemoryDataCopy(
  *     "Temp Post",
  *     tempData,

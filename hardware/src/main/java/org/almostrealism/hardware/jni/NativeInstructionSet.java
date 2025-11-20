@@ -62,7 +62,7 @@ import java.util.stream.Stream;
  *
  * <p>When {@link #apply(long, long, MemoryData...)} is called:</p>
  * <pre>
- * 1. Extract native pointers   MemoryData → RAM.getContentPointer()
+ * 1. Extract native pointers   MemoryData -> RAM.getContentPointer()
  * 2. Extract offsets/sizes      MemoryData.getOffset(), getAtomicMemLength()
  * 3. Optional: Get CL queue     Check for CLComputeContext, get cl_command_queue
  * 4. Call native method        apply(commandQueue, pointers, offsets, ...)
@@ -169,7 +169,7 @@ import java.util.stream.Stream;
  * // Throws NullPointerException if any argument is null
  * RAM[] args = new RAM[] { null, validRAM };
  * instructionSet.apply(args, ...);
- * // → NullPointerException: "Argument 0 is null"
+ * // -> NullPointerException: "Argument 0 is null"
  * }</pre>
  *
  * <h2>Lifecycle</h2>

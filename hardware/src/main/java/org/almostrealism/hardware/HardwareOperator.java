@@ -58,7 +58,7 @@ import java.util.List;
  * 2. prepareArguments() validates and converts to MemoryData[]
  * 3. For each argument:
  *    - Check if memory provider is supported
- *    - If not, reallocate to supported provider (CPU→GPU or vice versa)
+ *    - If not, reallocate to supported provider (CPU->GPU or vice versa)
  * 4. Execute kernel/native function with prepared arguments
  * 5. Record timing metrics
  * </pre>
@@ -68,7 +68,7 @@ import java.util.List;
  * <p>When an argument's memory provider is not supported by this operator, the entire root
  * delegate is automatically reallocated to a supported provider:</p>
  * <pre>{@code
- * // CPU memory → GPU kernel
+ * // CPU memory -> GPU kernel
  * PackedCollection<?> cpuData = PackedCollection.create(1000);  // JVM heap
  * GPUKernel kernel = ...;
  *
@@ -76,7 +76,7 @@ import java.util.List;
  * kernel.accept(new Object[] { cpuData }, null);
  * // 1. Detects JVM heap not supported by GPU
  * // 2. Reallocates root delegate to GPU memory
- * // 3. Copies data CPU → GPU
+ * // 3. Copies data CPU -> GPU
  * // 4. Executes kernel on GPU
  * }</pre>
  *

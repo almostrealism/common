@@ -27,6 +27,130 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Base {@link CompilerCommandProvider} for LLVM-based compilers (Clang, GCC with LLVM backend).
+ *
+ * <p>{@link LlvmCommandProvider} provides common command-line generation logic for compilers
+ * that use LLVM infrastructure. It handles:</p>
+ * <ul>
+ *   <li><strong>Include paths:</strong> Automatic JNI header discovery from JAVA_HOME</li>
+ *   <li><strong>Math optimization:</strong> Configurable optimization levels (-O0, -O3, -ffast-math)</li>
+ *   <li><strong>Platform detection:</strong> macOS vs Linux flag differences</li>
+ *   <li><strong>OpenCL integration:</strong> Optional OpenCL framework linking</li>
+ * </ul>
+ *
+ * <h2>Generated Command Structure</h2>
+ *
+ * <pre>
+ * [compiler] [linker-flags] [opt-flags] [includes] -shared/-dynamiclib [input] -o [output]
+ *
+ * Example (macOS):
+ * clang -O3 -I/Library/Java/.../include -I/Library/Java/.../include/darwin
+ *       -dynamiclib input.c -o output.dylib
+ *
+ * Example (Linux):
+ * gcc -O3 -I/usr/lib/jvm/.../include -I/usr/lib/jvm/.../include/linux
+ *     -shared -fPIC input.c -o output.so
+ * </pre>
+ *
+ * <h2>Math Optimization Levels</h2>
+ *
+ * <p>Configured via {@code AR_HARDWARE_MATH_OPT} environment variable:</p>
+ * <table>
+ *   <caption>Math optimization configuration</caption>
+ *   <tr>
+ *     <th>Value</th>
+ *     <th>Flags</th>
+ *     <th>Description</th>
+ *   </tr>
+ *   <tr>
+ *     <td>enabled (default)</td>
+ *     <td>-O3</td>
+ *     <td>Standard optimization, IEEE 754 compliant</td>
+ *   </tr>
+ *   <tr>
+ *     <td>aggressive</td>
+ *     <td>-O3 -ffast-math</td>
+ *     <td>Fast math, may break IEEE 754 compliance</td>
+ *   </tr>
+ *   <tr>
+ *     <td>none/disabled</td>
+ *     <td>-O0</td>
+ *     <td>No optimization, for debugging</td>
+ *   </tr>
+ * </table>
+ *
+ * <h2>JNI Include Discovery</h2>
+ *
+ * <p>Automatically adds JNI headers from {@code JAVA_HOME}:</p>
+ * <pre>{@code
+ * // Adds:
+ * -I$JAVA_HOME/include
+ * -I$JAVA_HOME/include/darwin    (macOS)
+ * -I$JAVA_HOME/include/linux     (Linux)
+ * -I$JAVA_HOME/include/win32     (Windows)
+ * }</pre>
+ *
+ * <h2>Custom Include/Library Paths</h2>
+ *
+ * <p>For non-local toolchains, additional paths can be configured:</p>
+ * <pre>{@code
+ * // Via environment variables:
+ * AR_HARDWARE_NATIVE_INCLUDES=Contents/Resources/include
+ * AR_HARDWARE_NATIVE_LIBS=Contents/Resources/lib
+ *
+ * // Adds:
+ * -IContents/Resources/include
+ * -LContents/Resources/lib
+ * }</pre>
+ *
+ * <h2>Platform-Specific Flags</h2>
+ *
+ * <ul>
+ *   <li><strong>macOS:</strong> Uses {@code -dynamiclib}, no {@code -fPIC}</li>
+ *   <li><strong>Linux:</strong> Uses {@code -shared -fPIC}</li>
+ * </ul>
+ *
+ * <h2>OpenCL Integration</h2>
+ *
+ * <p>If {@link CLDataContext#enableClNative} is true, adds OpenCL framework:</p>
+ * <pre>{@code
+ * // macOS only:
+ * -framework OpenCL
+ * }</pre>
+ *
+ * <h2>Subclass Customization</h2>
+ *
+ * <p>Subclasses can override {@link #addLinker(List)} to inject linker flags:</p>
+ * <pre>{@code
+ * public class Clang extends LlvmCommandProvider {
+ *     private String linker;
+ *
+ *     @Override
+ *     protected void addLinker(List<String> command) {
+ *         if (linker != null) {
+ *             command.add("-fuse-ld=" + linker);
+ *         }
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Local vs Non-Local Toolchains</h2>
+ *
+ * <pre>{@code
+ * // Local toolchain (e.g., "gcc" from PATH):
+ * new Clang("gcc", true);
+ * // -> Uses relative path, no custom includes
+ *
+ * // Non-local toolchain (e.g., "/opt/llvm/bin/clang"):
+ * new Clang("/opt/llvm/bin/clang", false);
+ * // -> Converts to absolute path, adds custom includes
+ * }</pre>
+ *
+ * @see Clang
+ * @see CompilerCommandProvider
+ * @see NativeCompiler
+ */
 public abstract class LlvmCommandProvider implements CompilerCommandProvider, ConsoleFeatures {
 	private static String includePath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_INCLUDES", "Contents/Resources/include");
 	private static String libPath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS", "Contents/Resources/lib");

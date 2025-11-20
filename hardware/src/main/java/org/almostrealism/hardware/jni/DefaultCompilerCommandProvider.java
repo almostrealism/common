@@ -19,6 +19,36 @@ package org.almostrealism.hardware.jni;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Simple {@link CompilerCommandProvider} for arbitrary compiler executables without flag customization.
+ *
+ * <p>{@link DefaultCompilerCommandProvider} provides minimal command generation for compilers
+ * that don't require LLVM-specific flags. Useful for wrapper scripts or custom build systems.</p>
+ *
+ * <h2>Command Format</h2>
+ *
+ * <pre>
+ * [executable] [input] [output]
+ *
+ * // Or if script format:
+ * [executable] [script] [input] [output]
+ * </pre>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * CompilerCommandProvider provider = new DefaultCompilerCommandProvider(
+ *     "custom_compiler.sh",  // For libraries
+ *     "custom_linker.sh"     // For executables
+ * );
+ *
+ * List<String> command = provider.getCommand("input.c", "output.so", true);
+ * // -> ["custom_compiler.sh", "input.c", "output.so"]
+ * }</pre>
+ *
+ * @see CompilerCommandProvider
+ * @see Clang
+ */
 public class DefaultCompilerCommandProvider implements CompilerCommandProvider {
 	private String libExecutable, exeExecutable;
 	private String libCompiler, exeCompiler;

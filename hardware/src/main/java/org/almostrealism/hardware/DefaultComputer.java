@@ -103,7 +103,7 @@ import java.util.function.Supplier;
  * │  │ - Fixed/Variable count    │                           │
  * │  │ - Sequential (count=1)    │                           │
  * │  │ - Parallel (count>128)    │                           │
- * │  │ → Select CPU or GPU        │                           │
+ * │  │ -> Select CPU or GPU        │                           │
  * │  └───────────────────────────┘                           │
  * └─────────────────────────────────────────────────────────┘
  * </pre>
@@ -123,8 +123,8 @@ import java.util.function.Supplier;
  *   </li>
  *   <li><strong>Execution Mode Classification:</strong>
  *     <ul>
- *       <li><strong>Sequential:</strong> {@code isFixedCount && count == 1} → Prefer CPU</li>
- *       <li><strong>Parallel:</strong> {@code !isFixedCount || count > 128} → Prefer GPU</li>
+ *       <li><strong>Sequential:</strong> {@code isFixedCount && count == 1} -> Prefer CPU</li>
+ *       <li><strong>Parallel:</strong> {@code !isFixedCount || count > 128} -> Prefer GPU</li>
  *     </ul>
  *   </li>
  *   <li><strong>Context Filtering:</strong> Apply active {@link ComputeRequirement}s</li>
@@ -139,12 +139,12 @@ import java.util.function.Supplier;
  *
  * <h3>Example: Context Selection in Action</h3>
  * <pre>{@code
- * // Sequential operation (count=1) → CPU
+ * // Sequential operation (count=1) -> CPU
  * Computation<PackedCollection<?>> single = multiply(v1, v2);  // count=1
  * ComputeContext ctx1 = computer.getContext(single);
  * // Result: NativeDataContext (CPU/JNI)
  *
- * // Parallel operation (count=10000) → GPU
+ * // Parallel operation (count=10000) -> GPU
  * Computation<PackedCollection<?>> parallel = multiply(
  *     v(shape(10000, 3), 0),
  *     v(shape(10000, 3), 1)
@@ -152,7 +152,7 @@ import java.util.function.Supplier;
  * ComputeContext ctx2 = computer.getContext(parallel);
  * // Result: CLDataContext or MetalDataContext (GPU)
  *
- * // Variable count → GPU
+ * // Variable count -> GPU
  * Computation<PackedCollection<?>> variable = multiply(
  *     v(shape(-1, 3), 0),  // count unknown
  *     v(shape(-1, 3), 1)

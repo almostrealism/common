@@ -28,6 +28,91 @@ import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
 
+/**
+ * Specialized {@link CPrintWriter} that generates C code with JNI function signatures and memory access.
+ *
+ * <p>{@link CJNIPrintWriter} extends {@link CPrintWriter} to generate native methods compatible with
+ * Java's JNI (Java Native Interface). It handles:</p>
+ * <ul>
+ *   <li><strong>JNI signatures:</strong> JNIEXPORT/JNICALL function declarations</li>
+ *   <li><strong>Array parameter access:</strong> GetLongArrayElements, GetIntArrayElements</li>
+ *   <li><strong>Parallelism loops:</strong> Automatic loop generation for multi-threaded execution</li>
+ *   <li><strong>Memory accessor integration:</strong> Delegates pointer declarations to {@link JNIMemoryAccessor}</li>
+ * </ul>
+ *
+ * <h2>Generated Function Signature</h2>
+ *
+ * <pre>
+ * JNIEXPORT void JNICALL Java_org_almostrealism_generated_GeneratedOperation0_apply(
+ *     JNIEnv *env,
+ *     jobject obj,
+ *     jlong commandQueue,
+ *     jlongArray arg,
+ *     jintArray offset,
+ *     jintArray size,
+ *     jint count,
+ *     jint global_index,
+ *     jlong global_total
+ * )
+ * </pre>
+ *
+ * <h2>Parallelism Code Generation</h2>
+ *
+ * <p>When parallelism > 1, wraps the kernel body in a for loop:</p>
+ * <pre>{@code
+ * // parallelism = 8:
+ * for (int global_id = global_index; global_id < global_total; global_id += 8) {
+ *     // Kernel body uses global_id to determine which subset to process
+ * }
+ * }</pre>
+ *
+ * <h2>JNI Array Access</h2>
+ *
+ * <p>Extracts native arrays from JNI array parameters:</p>
+ * <pre>
+ * long *argArr = (*env)->GetLongArrayElements(env, arg, 0);
+ * int *offsetArr = (*env)->GetIntArrayElements(env, offset, 0);
+ * int *sizeArr = (*env)->GetIntArrayElements(env, size, 0);
+ *
+ * // ... use arrays ...
+ *
+ * (*env)->ReleaseLongArrayElements(env, arg, argArr, 0);
+ * (*env)->ReleaseIntArrayElements(env, offset, offsetArr, 0);
+ * (*env)->ReleaseIntArrayElements(env, size, sizeArr, 0);
+ * </pre>
+ *
+ * <h2>Memory Accessor Delegation</h2>
+ *
+ * <p>Uses {@link JNIMemoryAccessor} to generate argument pointer declarations:</p>
+ * <pre>{@code
+ * // For each argument:
+ * accessor.copyInline(lang, index, variable, false);
+ * // Generates:
+ * // double *input = ((double *) argArr[0]);
+ * }</pre>
+ *
+ * <h2>Usage in Code Generation</h2>
+ *
+ * <pre>{@code
+ * PrintWriter pw = new PrintWriter(outputStream);
+ * JNIMemoryAccessor accessor = new DefaultJNIMemoryAccessor();
+ *
+ * CJNIPrintWriter writer = new CJNIPrintWriter(
+ *     pw,
+ *     "Java_org_..._GeneratedOperation0_apply",  // Function name
+ *     8,                                          // Parallelism
+ *     new CJNILanguageOperations(Precision.FP64),
+ *     accessor
+ * );
+ *
+ * ScopeEncoder encoder = new ScopeEncoder(w -> writer, Accessibility.EXTERNAL);
+ * String code = encoder.apply(scope);
+ * }</pre>
+ *
+ * @see CPrintWriter
+ * @see JNIMemoryAccessor
+ * @see NativeComputeContext
+ */
 public class CJNIPrintWriter extends CPrintWriter {
 	private JNIMemoryAccessor accessor;
 	private int parallel;

@@ -126,9 +126,9 @@ import java.util.stream.IntStream;
  * <p>Input producers are compiled into kernel argument references:</p>
  * <pre>
  * Computation Graph:        Compiled Kernel:
- * Input.value(1000, 0) →    __global double* arg0
- * Input.value(1000, 1) →    __global double* arg1
- * multiply(0, 1)       →    output[i] = arg0[i] * arg1[i]
+ * Input.value(1000, 0) ->    __global double* arg0
+ * Input.value(1000, 1) ->    __global double* arg1
+ * multiply(0, 1)       ->    output[i] = arg0[i] * arg1[i]
  * </pre>
  *
  * <h2>Performance Notes</h2>

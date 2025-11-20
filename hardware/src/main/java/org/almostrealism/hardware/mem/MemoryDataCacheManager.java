@@ -68,7 +68,7 @@ import java.util.function.Function;
  *
  * // Generate expression referencing entry 5, element 2
  * Expression<?> ref = cache.reference(5, e(2));
- * // Generates: cache_array[5 * 4 + 2] → cache_array[22]
+ * // Generates: cache_array[5 * 4 + 2] -> cache_array[22]
  *
  * // Use in kernel code generation
  * // result = cache_array[22];  // Value: 30

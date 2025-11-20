@@ -45,11 +45,11 @@ import java.util.List;
  * <pre>{@code
  * // Shared library: adds -shared flag
  * command = provider.getCommand("code.c", "lib.so", true);
- * // → ["clang", "-shared", "-fPIC", ..., "code.c"]
+ * // -> ["clang", "-shared", "-fPIC", ..., "code.c"]
  *
  * // Executable: no -shared flag
  * command = provider.getCommand("code.c", "program", false);
- * // → ["clang", "-O3", ..., "code.c"]
+ * // -> ["clang", "-O3", ..., "code.c"]
  * }</pre>
  *
  * <h2>Common Implementations</h2>

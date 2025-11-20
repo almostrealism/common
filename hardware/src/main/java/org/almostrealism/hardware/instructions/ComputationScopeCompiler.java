@@ -53,6 +53,144 @@ import java.util.OptionalLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * Compiles {@link Computation} instances into {@link Scope} objects for hardware execution.
+ *
+ * <p>{@link ComputationScopeCompiler} is the central component that transforms high-level
+ * {@link Computation} objects into low-level {@link Scope} representations suitable for
+ * compilation to native code. It handles:</p>
+ *
+ * <ol>
+ *   <li><strong>Scope generation:</strong> Call {@code Computation.getScope()} to obtain AST</li>
+ *   <li><strong>Argument preparation:</strong> Set up {@link io.almostrealism.code.ArgumentMap} for inputs</li>
+ *   <li><strong>Scope simplification:</strong> Optimize and flatten the scope tree</li>
+ *   <li><strong>Metadata enrichment:</strong> Add shape, signature, and traversal policy</li>
+ *   <li><strong>Kernel structure support:</strong> Manage kernel series and traversal caching</li>
+ * </ol>
+ *
+ * <h2>Compilation Lifecycle</h2>
+ *
+ * <pre>{@code
+ * // Create compiler
+ * Computation<Matrix> computation = add(a, b);
+ * NameProvider nameProvider = () -> "add_operation";
+ * ComputationScopeCompiler<Matrix> compiler =
+ *     new ComputationScopeCompiler<>(computation, nameProvider);
+ *
+ * // Prepare arguments (optional, for Process trees)
+ * ArgumentMap argMap = new ArgumentMap();
+ * compiler.prepareArguments(argMap);
+ *
+ * // Prepare scope inputs
+ * ScopeInputManager inputManager = ...;
+ * compiler.prepareScope(inputManager);
+ *
+ * // Compile to Scope
+ * Scope<Matrix> scope = compiler.compile();
+ *
+ * // Enrich metadata
+ * compiler.postCompile();
+ *
+ * // Check status
+ * if (compiler.isCompiled()) {
+ *     System.out.println("Scope signature: " + compiler.signature());
+ * }
+ *
+ * // Cleanup
+ * compiler.destroy();
+ * }</pre>
+ *
+ * <h2>Kernel Structure Support</h2>
+ *
+ * <p>{@link ComputationScopeCompiler} implements {@link KernelStructureContext} to provide
+ * kernel series and traversal data for GPU optimization:</p>
+ *
+ * <ul>
+ *   <li><strong>{@link org.almostrealism.hardware.kernel.KernelSeriesCache}:</strong> Caches precomputed series data</li>
+ *   <li><strong>{@link org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator}:</strong> Generates traversal patterns</li>
+ * </ul>
+ *
+ * <pre>{@code
+ * // Kernel structure is enabled by default
+ * compiler.isKernelStructureSupported();  // true
+ *
+ * // Access kernel providers
+ * KernelSeriesProvider seriesProvider = compiler.getSeriesProvider();
+ * KernelTraversalProvider traversalProvider = compiler.getTraversalProvider();
+ * }</pre>
+ *
+ * <p><strong>Note:</strong> Kernel structure is disabled for {@link KernelTraversalOperation} to prevent
+ * recursive traversal generation.</p>
+ *
+ * <h2>Signature Generation</h2>
+ *
+ * <p>Implements {@link Signature} to generate unique operation signatures for caching:</p>
+ *
+ * <pre>{@code
+ * String signature = compiler.signature();
+ * // Example: "Add_f64_3_2&distinct=2;"
+ * //   - Operation: Add
+ * //   - Precision: FP64
+ * //   - Shape: 3x2
+ * //   - Distinct arguments: 2
+ * }</pre>
+ *
+ * <h2>Timing and Profiling</h2>
+ *
+ * <p>Supports optional timing via {@code ComputationScopeCompiler.timing}:</p>
+ *
+ * <pre>{@code
+ * // Enable timing
+ * ComputationScopeCompiler.timing = new MyScopeTimingListener();
+ *
+ * // Compile (timing is recorded)
+ * Scope<Matrix> scope = compiler.compile();
+ *
+ * // Timing records:
+ * // - "getScope": Time to call Computation.getScope()
+ * // - "convertRequired": Time to convert arguments to required scopes
+ * }</pre>
+ *
+ * <h2>Verbose Compilation</h2>
+ *
+ * <p>Set {@code AR_HARDWARE_VERBOSE_COMPILE=true} to log compilation events:</p>
+ *
+ * <pre>
+ * export AR_HARDWARE_VERBOSE_COMPILE=true
+ *
+ * // Logs:
+ * // Compiling Add_f64_3_2
+ * // Done compiling Add_f64_3_2
+ * </pre>
+ *
+ * <h2>Error Handling</h2>
+ *
+ * <p>Compilation errors are wrapped in {@link org.almostrealism.hardware.HardwareException}:</p>
+ *
+ * <pre>{@code
+ * try {
+ *     Scope<Matrix> scope = compiler.compile();
+ * } catch (HardwareException e) {
+ *     // Error message includes operation name
+ *     System.err.println(e.getMessage());  // "Cannot compile Add_f64_3_2"
+ * }
+ * }</pre>
+ *
+ * <h2>Shape Validation</h2>
+ *
+ * <p>{@code postCompile()} validates that {@link Scope} metadata matches {@link Computation} shape:</p>
+ *
+ * <pre>{@code
+ * compiler.postCompile();
+ * // Throws IllegalArgumentException if shape mismatch
+ * }</pre>
+ *
+ * @param <T> The type of value produced by the compiled scope
+ * @see Computation
+ * @see Scope
+ * @see KernelStructureContext
+ * @see ScopeInstructionsManager
+ */
 public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		ScopeLifecycle, Destroyable, OperationInfo, Signature, ConsoleFeatures {
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);

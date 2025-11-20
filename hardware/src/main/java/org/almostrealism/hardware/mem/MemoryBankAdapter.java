@@ -103,8 +103,8 @@ import java.util.stream.Stream;
  * [Element 0: 100 bytes][Element 1: 100 bytes]...[Element 9: 100 bytes]
  *  Offset: 0             Offset: 100             Offset: 900
  *
- * get(0) → DelegateSpec(offset=0)   → MyData delegating to bank at offset 0
- * get(5) → DelegateSpec(offset=500) → MyData delegating to bank at offset 500
+ * get(0) -> DelegateSpec(offset=0)   -> MyData delegating to bank at offset 0
+ * get(5) -> DelegateSpec(offset=500) -> MyData delegating to bank at offset 500
  * </pre>
  *
  * <h2>Common Usage Patterns</h2>

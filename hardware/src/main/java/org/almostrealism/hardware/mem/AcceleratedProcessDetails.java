@@ -113,16 +113,16 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // Listeners execute immediately on calling thread
  * details.result(2, lastResult);  // Last argument
- * // → checkReady() → notifyListeners() executes immediately
- * // → Listeners run on current thread
+ * // -> checkReady() -> notifyListeners() executes immediately
+ * // -> Listeners run on current thread
  * }</pre>
  *
  * <h3>Asynchronous (Hardware.isAsync() = true)</h3>
  * <pre>{@code
  * // Listeners execute via Executor
  * details.result(2, lastResult);  // Last argument
- * // → checkReady() → executor.execute(this::notifyListeners)
- * // → Listeners run on executor thread pool
+ * // -> checkReady() -> executor.execute(this::notifyListeners)
+ * // -> Listeners run on executor thread pool
  * }</pre>
  *
  * <h2>Semaphore Integration</h2>
@@ -137,7 +137,7 @@ import java.util.stream.Stream;
  * details.whenReady(() -> kernel3.execute());
  *
  * // After all listeners execute
- * // sem.countDown() called 3 times → semaphore released
+ * // sem.countDown() called 3 times -> semaphore released
  * }</pre>
  *
  * <h2>Memory Replacement Operations</h2>

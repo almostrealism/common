@@ -18,6 +18,58 @@ package org.almostrealism.hardware.instructions;
 
 import java.util.Objects;
 
+/**
+ * {@link ExecutionKey} implementation that identifies operations by function name and argument count.
+ *
+ * <p>{@link DefaultExecutionKey} provides a simple caching strategy based on the compiled function's
+ * signature. Two operations with the same name and argument count are considered identical.</p>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Multi-function scopes:</strong> When a {@link io.almostrealism.scope.Scope} contains multiple
+ *       functions that can be called by name and argument count</li>
+ *   <li><strong>Dynamic dispatch:</strong> Selecting operations at runtime based on argument count</li>
+ *   <li><strong>Overloading:</strong> Supporting multiple versions of the same operation with different arities</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ *
+ * <pre>{@code
+ * // Create keys for different operations
+ * DefaultExecutionKey add2 = new DefaultExecutionKey("add", 2);   // add(a, b)
+ * DefaultExecutionKey add3 = new DefaultExecutionKey("add", 3);   // add(a, b, c)
+ * DefaultExecutionKey mul2 = new DefaultExecutionKey("mul", 2);   // mul(a, b)
+ *
+ * // Retrieve operations from manager
+ * InstructionSetManager<DefaultExecutionKey> manager = ...;
+ * Execution addOp = manager.getOperator(add2);
+ * Execution mulOp = manager.getOperator(mul2);
+ * }</pre>
+ *
+ * <h2>Equality Semantics</h2>
+ *
+ * <p>Two {@link DefaultExecutionKey} instances are equal if and only if they have the same
+ * function name and argument count:</p>
+ *
+ * <pre>{@code
+ * DefaultExecutionKey key1 = new DefaultExecutionKey("matmul", 3);
+ * DefaultExecutionKey key2 = new DefaultExecutionKey("matmul", 3);
+ * DefaultExecutionKey key3 = new DefaultExecutionKey("matmul", 2);
+ *
+ * key1.equals(key2);  // true  - same name and count
+ * key1.equals(key3);  // false - different count
+ * }</pre>
+ *
+ * <h2>Limitations</h2>
+ *
+ * <p>{@link DefaultExecutionKey} cannot distinguish between operations with different argument types
+ * or implementations. For more precise caching, consider {@link ScopeSignatureExecutionKey}.</p>
+ *
+ * @see ExecutionKey
+ * @see InstructionSetManager
+ * @see ComputationInstructionsManager
+ */
 public class DefaultExecutionKey implements ExecutionKey {
 	private String functionName;
 	private int argsCount;

@@ -53,7 +53,7 @@ import java.util.stream.Stream;
  * // ... use memory ...
  *
  * memory = null;  // Only reference lost
- * // Eventually: GC runs → NativeRef enqueued → native memory deallocated
+ * // Eventually: GC runs -> NativeRef enqueued -> native memory deallocated
  * }</pre>
  *
  * <h2>Two-Thread Deallocation Architecture</h2>

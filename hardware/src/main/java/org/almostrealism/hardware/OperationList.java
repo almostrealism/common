@@ -204,7 +204,7 @@ import java.util.stream.Stream;
  * outer.add(backward);
  * outer.add(updateWeights);
  *
- * // Depth = 2 (outer → forward/backward → layers)
+ * // Depth = 2 (outer -> forward/backward -> layers)
  * int depth = outer.getDepth();  // Returns 2
  * }</pre>
  *

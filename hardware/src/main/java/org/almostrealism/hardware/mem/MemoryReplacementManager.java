@@ -40,13 +40,13 @@ import java.util.function.BiConsumer;
  * <p>When a kernel receives arguments from different memory providers, each transfer incurs overhead:</p>
  * <pre>
  * Naive Approach (slow):
- *   arg0: 100 bytes on CPU → GPU transfer 1
- *   arg1: 50 bytes on CPU  → GPU transfer 2
- *   arg2: 200 bytes on CPU → GPU transfer 3
+ *   arg0: 100 bytes on CPU -> GPU transfer 1
+ *   arg1: 50 bytes on CPU  -> GPU transfer 2
+ *   arg2: 200 bytes on CPU -> GPU transfer 3
  *   Total: 3 separate transfers
  *
  * Aggregated Approach (fast):
- *   All CPU arguments → Single contiguous temp buffer → GPU transfer 1
+ *   All CPU arguments -> Single contiguous temp buffer -> GPU transfer 1
  *   Total: 1 transfer for all arguments
  * </pre>
  *
@@ -67,9 +67,9 @@ import java.util.function.BiConsumer;
  *
  * // Execute prepare operations
  * mgr.getPrepare().get().run();
- * // Copies: cpuMem1 → temp[0:100]
- * //         cpuMem2 → temp[100:150]
- * //         cpuMem3 → temp[150:350]
+ * // Copies: cpuMem1 -> temp[0:100]
+ * //         cpuMem2 -> temp[100:150]
+ * //         cpuMem3 -> temp[150:350]
  * }</pre>
  *
  * <h3>2. Kernel Execution</h3>
@@ -82,9 +82,9 @@ import java.util.function.BiConsumer;
  * <p>Copy results back to original memory:</p>
  * <pre>{@code
  * mgr.getPostprocess().get().run();
- * // Copies: temp[0:100] → cpuMem1
- * //         temp[100:150] → cpuMem2
- * //         temp[150:350] → cpuMem3
+ * // Copies: temp[0:100] -> cpuMem1
+ * //         temp[100:150] -> cpuMem2
+ * //         temp[150:350] -> cpuMem3
  * }</pre>
  *
  * <h2>Aggregation Rules</h2>
@@ -116,7 +116,7 @@ import java.util.function.BiConsumer;
  * MemoryData view1 = root.range(0, 100);    // Offset 0
  * MemoryData view2 = root.range(500, 200);  // Offset 500
  *
- * // Both share same root → Single temp allocation
+ * // Both share same root -> Single temp allocation
  * // Temp covers min offset (0) to max offset (700)
  * MemoryData temp = new Bytes(700);  // One allocation for both
  * temp.range(0, 100)    // Replaces view1
@@ -139,9 +139,9 @@ import java.util.function.BiConsumer;
  * // cpuData1, cpuData2 replaced with temp memory
  *
  * // Execute kernel
- * mgr.getPrepare().get().run();      // CPU → temp
+ * mgr.getPrepare().get().run();      // CPU -> temp
  * kernel.execute(kernelArgs);         // Kernel sees temp
- * mgr.getPostprocess().get().run();   // temp → CPU
+ * mgr.getPostprocess().get().run();   // temp -> CPU
  * }</pre>
  *
  * @see AcceleratedProcessDetails

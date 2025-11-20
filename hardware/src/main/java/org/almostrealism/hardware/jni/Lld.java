@@ -16,6 +16,35 @@
 
 package org.almostrealism.hardware.jni;
 
+/**
+ * {@link LlvmCommandProvider} implementation for LLVM's LLD linker.
+ *
+ * <p>{@link Lld} provides a simple wrapper for LLVM's LLD linker, which is faster than
+ * traditional linkers (ld, gold) for large projects. Uses {@code -dynamiclib} flag.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * Lld lld = new Lld();
+ * List<String> command = lld.getCommand("input.c", "output.dylib", true);
+ *
+ * // Generated command:
+ * // lld -O3 -I/path/to/jni/include -dynamiclib input.c -o output.dylib
+ * }</pre>
+ *
+ * <h2>Custom Path</h2>
+ *
+ * <pre>{@code
+ * // From PATH:
+ * Lld local = new Lld();
+ *
+ * // Custom location:
+ * Lld custom = new Lld("/opt/llvm/bin/lld", false);
+ * }</pre>
+ *
+ * @see LlvmCommandProvider
+ * @see Clang
+ */
 public class Lld extends LlvmCommandProvider {
 
 	public Lld() {

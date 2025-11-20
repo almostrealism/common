@@ -16,5 +16,21 @@
 
 package org.almostrealism.hardware.jni;
 
+/**
+ * Default {@link JNIMemoryAccessor} for standard heap memory access via JNI.
+ *
+ * <p>Uses the default {@link JNIMemoryAccessor#copyInline} implementation which generates
+ * straightforward pointer casts from {@code argArr}.</p>
+ *
+ * <h2>Generated Code</h2>
+ *
+ * <pre>
+ * double *arg0 = ((double *) argArr[0]);
+ * float *arg1 = ((float *) argArr[1]);
+ * </pre>
+ *
+ * @see JNIMemoryAccessor
+ * @see CJNIPrintWriter
+ */
 public class DefaultJNIMemoryAccessor implements JNIMemoryAccessor {
 }

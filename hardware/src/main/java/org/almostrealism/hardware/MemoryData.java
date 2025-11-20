@@ -170,7 +170,7 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h3>Hardware Transfer Costs</h3>
- * <p>Data transfer between memory spaces (e.g., CPU → GPU) can be expensive:
+ * <p>Data transfer between memory spaces (e.g., CPU -> GPU) can be expensive:
  * <ul>
  *   <li>Prefer batching: transfer large blocks rather than individual values</li>
  *   <li>Reuse allocations: avoid repeated allocate/deallocate cycles</li>
@@ -230,7 +230,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	/**
 	 * Reallocates this memory data to a different {@link MemoryProvider}, copying existing data.
 	 *
-	 * <p>This is used when moving data between memory spaces (e.g., CPU → GPU). The provider
+	 * <p>This is used when moving data between memory spaces (e.g., CPU -> GPU). The provider
 	 * allocates new memory, copies existing data, and reassigns this {@link MemoryData} to
 	 * reference the new memory.</p>
 	 *

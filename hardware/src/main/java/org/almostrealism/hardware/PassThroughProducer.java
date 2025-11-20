@@ -136,7 +136,7 @@ import java.util.function.Supplier;
  * - Each work item processes one element
  *
  * Exception: If output size != 1 and != N
- *   → IllegalArgumentException at ProcessDetailsFactory.init()
+ *   -> IllegalArgumentException at ProcessDetailsFactory.init()
  * </pre>
  *
  * <h3>Variable-Count Kernel Sizing</h3>

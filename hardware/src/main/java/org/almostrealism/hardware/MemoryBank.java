@@ -33,16 +33,16 @@ import io.almostrealism.uml.Multiple;
  * <p>Instead of allocating separate {@link io.almostrealism.code.Memory} for each element:</p>
  * <pre>
  * BAD: Individual allocations
- * Vector v1 → Memory[100 doubles]
- * Vector v2 → Memory[100 doubles]
- * Vector v3 → Memory[100 doubles]
+ * Vector v1 -> Memory[100 doubles]
+ * Vector v2 -> Memory[100 doubles]
+ * Vector v3 -> Memory[100 doubles]
  * Total: 3 allocations, 3 GPU buffers
  * </pre>
  *
  * <p>{@link MemoryBank} packs elements contiguously:</p>
  * <pre>
  * GOOD: Single bank allocation
- * VectorBank → Memory[300 doubles] = [v1][v2][v3]
+ * VectorBank -> Memory[300 doubles] = [v1][v2][v3]
  *                      ↓     ↓     ↓
  *               offset 0   100   200
  * Total: 1 allocation, 1 GPU buffer
@@ -143,9 +143,9 @@ import io.almostrealism.uml.Multiple;
  *                    ↓                     ↓                     ↓
  *              offset = 0            offset = N            offset = 2N
  *
- * get(0) → view [offset=0, length=N]
- * get(1) → view [offset=N, length=N]
- * get(2) → view [offset=2N, length=N]
+ * get(0) -> view [offset=0, length=N]
+ * get(1) -> view [offset=N, length=N]
+ * get(2) -> view [offset=2N, length=N]
  * </pre>
  *
  * <h2>Performance Considerations</h2>

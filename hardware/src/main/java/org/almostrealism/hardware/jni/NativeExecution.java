@@ -82,7 +82,7 @@ import java.util.stream.Collectors;
  * <p>Work is split across multiple threads based on {@link NativeInstructionSet#setParallelism(int)}:</p>
  * <pre>{@code
  * // Parallelism = 8, work size = 1000
- * // → Submits 8 tasks, each processes portion of 1000 items
+ * // -> Submits 8 tasks, each processes portion of 1000 items
  *
  * // Task 0: globalId = 0 + 0, kernelSize = 1000
  * // Task 1: globalId = 0 + 1, kernelSize = 1000

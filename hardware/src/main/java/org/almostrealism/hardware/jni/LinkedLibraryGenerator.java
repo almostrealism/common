@@ -132,9 +132,9 @@ import java.util.function.Consumer;
  *
  * // When compiling:
  * compiler.compile(target, cCode);
- * // → Writes C source
- * // → Calls generator.generateLibrary()
- * // → Loads resulting library via System.load()
+ * // -> Writes C source
+ * // -> Calls generator.generateLibrary()
+ * // -> Loads resulting library via System.load()
  * }</pre>
  *
  * @see DefaultLinkedLibraryGenerator

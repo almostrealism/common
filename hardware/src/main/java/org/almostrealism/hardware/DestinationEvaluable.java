@@ -108,10 +108,10 @@ import java.util.stream.Stream;
  * MemoryBank<Vector> stage1Out = Vector.bank(1000);
  * MemoryBank<Vector> stage2Out = Vector.bank(1000);
  *
- * // Stage 1: input → stage1Out
+ * // Stage 1: input -> stage1Out
  * new DestinationEvaluable<>(stage1Op, stage1Out).evaluate(inputBank);
  *
- * // Stage 2: stage1Out → stage2Out (reuses stage1Out as input)
+ * // Stage 2: stage1Out -> stage2Out (reuses stage1Out as input)
  * new DestinationEvaluable<>(stage2Op, stage2Out).evaluate(stage1Out);
  *
  * // Final result in stage2Out, no intermediate allocations

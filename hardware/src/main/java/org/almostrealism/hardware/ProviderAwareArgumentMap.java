@@ -50,12 +50,12 @@ import java.util.function.Supplier;
  * Producer<PackedCollection<?>> input2 = Input.value(1000, 0);  // arg 0 (same!)
  *
  * // Without ProviderAwareArgumentMap:
- * map.get(input1) → variable "arg0"
- * map.get(input2) → variable "arg1"  // Wrong! Creates duplicate
+ * map.get(input1) -> variable "arg0"
+ * map.get(input2) -> variable "arg1"  // Wrong! Creates duplicate
  *
  * // With ProviderAwareArgumentMap:
- * map.get(input1) → variable "arg0"
- * map.get(input2) → variable "arg0"  // Correct! Reuses same variable
+ * map.get(input1) -> variable "arg0"
+ * map.get(input2) -> variable "arg0"  // Correct! Reuses same variable
  * }</pre>
  *
  * <h2>Matching Strategies</h2>
@@ -145,7 +145,7 @@ import java.util.function.Supplier;
  *     ↓ delegates to
  * PassThroughProducer (index=0)
  *
- * Map recognizes: Wrapper → PassThrough → argument index 0
+ * Map recognizes: Wrapper -> PassThrough -> argument index 0
  * </pre>
  *
  * <h3>Example:</h3>

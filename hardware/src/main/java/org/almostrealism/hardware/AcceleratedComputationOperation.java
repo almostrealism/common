@@ -78,7 +78,7 @@ import java.util.function.Supplier;
  * );
  *
  * // Compilation happens during prepareScope or first execution
- * op.prepareScope();  // Compiles Computation → Scope → Kernel/Native
+ * op.prepareScope();  // Compiles Computation -> Scope -> Kernel/Native
  * }</pre>
  *
  * <h2>Instruction Set Reuse via Signatures</h2>

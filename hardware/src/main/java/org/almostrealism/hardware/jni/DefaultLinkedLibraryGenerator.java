@@ -19,6 +19,28 @@ package org.almostrealism.hardware.jni;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * Default {@link LinkedLibraryGenerator} that delegates to a {@link CompilerCommandProvider}.
+ *
+ * <p>{@link DefaultLinkedLibraryGenerator} implements the standard compilation flow:
+ * get compiler command, execute via provided executor.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * CompilerCommandProvider provider = new Clang();
+ * LinkedLibraryGenerator generator = new DefaultLinkedLibraryGenerator(provider);
+ *
+ * generator.generateLibrary(
+ *     "code.c",
+ *     "lib.so",
+ *     command -> new ProcessBuilder(command).inheritIO().start().waitFor()
+ * );
+ * }</pre>
+ *
+ * @see LinkedLibraryGenerator
+ * @see CompilerCommandProvider
+ */
 public class DefaultLinkedLibraryGenerator implements LinkedLibraryGenerator {
 	private CompilerCommandProvider commandProvider;
 

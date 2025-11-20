@@ -21,6 +21,60 @@ import org.almostrealism.io.SystemUtils;
 import java.io.File;
 import java.util.List;
 
+/**
+ * {@link LlvmCommandProvider} implementation for Clang/LLVM compiler with optional custom linker support.
+ *
+ * <p>{@link Clang} extends {@link LlvmCommandProvider} to support Clang-specific features,
+ * particularly the ability to use alternative linkers via {@code -fuse-ld}.</p>
+ *
+ * <h2>Default Configuration</h2>
+ *
+ * <pre>{@code
+ * Clang clang = new Clang();
+ * // Uses "gcc" command (actually clang on most systems)
+ * // Platform-appropriate library format:
+ * //   macOS: -dynamiclib
+ * //   Linux: -shared
+ * }</pre>
+ *
+ * <h2>Custom Linker</h2>
+ *
+ * <p>Supports alternative linkers like LLD (LLVM's linker) or gold:</p>
+ * <pre>{@code
+ * Clang clang = new Clang();
+ * clang.setLinker("lld");
+ *
+ * // Generated command includes:
+ * // clang -fuse-ld=lld ...
+ *
+ * // Or with absolute path:
+ * clang.setLinker("/usr/local/bin/lld");
+ * // -> clang -fuse-ld=/usr/local/bin/lld ...
+ * }</pre>
+ *
+ * <h2>Custom Compiler Path</h2>
+ *
+ * <pre>{@code
+ * // Local toolchain (from PATH):
+ * Clang local = new Clang("clang-15", true);
+ *
+ * // Absolute path:
+ * Clang custom = new Clang("/opt/llvm/bin/clang", false);
+ * }</pre>
+ *
+ * <h2>Generated Command Example</h2>
+ *
+ * <pre>
+ * macOS:
+ * clang -fuse-ld=lld -O3 -I/Library/Java/.../include -dynamiclib code.c -o lib.dylib
+ *
+ * Linux:
+ * clang -fuse-ld=lld -O3 -I/usr/lib/jvm/.../include -shared -fPIC code.c -o lib.so
+ * </pre>
+ *
+ * @see LlvmCommandProvider
+ * @see Lld
+ */
 public class Clang extends LlvmCommandProvider {
 	private String linker;
 

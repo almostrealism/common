@@ -43,8 +43,8 @@ import org.almostrealism.hardware.MemoryData;
  *   Bytes floats = new Bytes(400, 4);         // memLength=400, atomicLength=4 (100 floats)
  *   Bytes vectors = new Bytes(1200, 12);      // memLength=1200, atomicLength=12 (100 vec3s)
  *
- *   floats.getCountLong() → 100               // 400 / 4 = 100 elements
- *   vectors.getCountLong() → 100              // 1200 / 12 = 100 elements
+ *   floats.getCountLong() -> 100               // 400 / 4 = 100 elements
+ *   vectors.getCountLong() -> 100              // 1200 / 12 = 100 elements
  * </pre>
  *
  * <h3>Zero-Copy Delegation</h3>

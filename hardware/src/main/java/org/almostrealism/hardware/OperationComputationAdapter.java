@@ -161,11 +161,11 @@ import java.util.stream.Stream;
  *
  * <p>Example:</p>
  * <pre>{@code
- * // Two inputs with count 100 each → getCountLong() = 100
+ * // Two inputs with count 100 each -> getCountLong() = 100
  * OperationComputation<Void> op = new MyOperation(input1, input2);
  *
- * // One input with count 100, one dependency with count 100 → 100
- * // Inputs with different counts → sum
+ * // One input with count 100, one dependency with count 100 -> 100
+ * // Inputs with different counts -> sum
  * }</pre>
  *
  * <h2>Compilation and Execution</h2>
