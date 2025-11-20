@@ -23,6 +23,52 @@ import org.almostrealism.hardware.HardwareException;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * {@link Memory} implementation backed by a disk file for external process data exchange.
+ *
+ * <p>Represents a double array stored in a binary file. Data is lazily loaded into RAM
+ * when first accessed and written back to disk when modified. Used by {@link ExternalInstructionSet}
+ * to transfer data to/from external processes.</p>
+ *
+ * <h2>Lifecycle</h2>
+ *
+ * <ol>
+ *   <li><strong>Allocation:</strong> File location assigned, no data in memory</li>
+ *   <li><strong>Read:</strong> File loaded into memory array on first access</li>
+ *   <li><strong>Write:</strong> Memory array written to file when modified</li>
+ *   <li><strong>Restore:</strong> Memory array discarded, file remains</li>
+ *   <li><strong>Destroy:</strong> File deleted, memory released</li>
+ * </ol>
+ *
+ * <h2>Memory States</h2>
+ *
+ * <ul>
+ *   <li><strong>Unloaded:</strong> {@code data == null}, file exists on disk</li>
+ *   <li><strong>Loaded:</strong> {@code data != null}, in-memory array populated</li>
+ *   <li><strong>Destroyed:</strong> {@code data == null && location == null}, file deleted</li>
+ * </ul>
+ *
+ * <h2>Usage Pattern</h2>
+ *
+ * <pre>{@code
+ * LocalExternalMemory mem = provider.allocate(file, 1000);
+ *
+ * // Lazy load from file
+ * mem.read();  // File → memory array
+ *
+ * // Modify data
+ * mem.data[0] = 42.0;
+ *
+ * // Write back to file
+ * mem.write();  // Memory array → file
+ *
+ * // Free memory but keep file
+ * mem.restore();
+ * }</pre>
+ *
+ * @see LocalExternalMemoryProvider
+ * @see ExternalInstructionSet
+ */
 public class LocalExternalMemory implements Memory {
 	private LocalExternalMemoryProvider provider;
 	protected File location;

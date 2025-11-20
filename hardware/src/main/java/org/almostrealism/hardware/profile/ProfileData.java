@@ -19,6 +19,52 @@ package org.almostrealism.hardware.profile;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Aggregated profiling data for multiple execution runs of a hardware operation.
+ *
+ * <p>Collects timing measurements from repeated executions to calculate average runtime,
+ * total runtime, and execution counts. Used by {@link org.almostrealism.hardware.OperationProfile}
+ * to track performance of {@link org.almostrealism.hardware.HardwareOperator} instances.</p>
+ *
+ * <h2>Metrics Tracked</h2>
+ *
+ * <ul>
+ *   <li><strong>Total Runs:</strong> Number of executions recorded</li>
+ *   <li><strong>Total Runtime:</strong> Sum of all execution durations (nanoseconds)</li>
+ *   <li><strong>Average Runtime:</strong> Mean execution time per run (nanoseconds)</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ *
+ * <pre>{@code
+ * ProfileData profile = new ProfileData();
+ *
+ * // Record multiple runs
+ * for (int i = 0; i < 1000; i++) {
+ *     long start = System.nanoTime();
+ *     operation.run();
+ *     long duration = System.nanoTime() - start;
+ *     profile.addRun(new RunData(duration));
+ * }
+ *
+ * // Analyze performance
+ * System.out.println(profile.getSummaryString());
+ * // Output: "5234.5 nanoseconds average - 1000 executions for 5.2345 seconds total"
+ * }</pre>
+ *
+ * <h2>Typical Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Performance testing:</strong> Measure operation throughput over time</li>
+ *   <li><strong>Warmup detection:</strong> Identify JIT compilation effects</li>
+ *   <li><strong>Comparison:</strong> Compare GPU vs CPU execution times</li>
+ *   <li><strong>Regression testing:</strong> Detect performance degradation</li>
+ * </ul>
+ *
+ * @see RunData
+ * @see org.almostrealism.hardware.OperationProfile
+ * @see org.almostrealism.hardware.HardwareOperator
+ */
 public class ProfileData {
 	private List<RunData> runs;
 

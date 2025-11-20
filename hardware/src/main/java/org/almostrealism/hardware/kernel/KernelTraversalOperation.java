@@ -35,6 +35,62 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * {@link MemoryDataComputation} that precomputes expression values for each kernel index.
+ *
+ * <p>Optimization for complex expressions that are expensive to compute within kernel loops.
+ * Generates a lookup table of expression results for each index, replacing runtime computation
+ * with memory access. Used by {@link KernelTraversalOperationGenerator} to accelerate kernels
+ * with repetitive index-dependent calculations.</p>
+ *
+ * <h2>Optimization Strategy</h2>
+ *
+ * <pre>{@code
+ * // Before optimization:
+ * for (i = 0; i < N; i++) {
+ *     result[i] = complexExpression(i);  // Computed N times
+ * }
+ *
+ * // After optimization with KernelTraversalOperation:
+ * double[] lookupTable = precompute(complexExpression, N);
+ * for (i = 0; i < N; i++) {
+ *     result[i] = lookupTable[i];  // Just memory access
+ * }
+ * }</pre>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Index transformations:</strong> Complex index calculations (e.g., bit-reversal for FFT)</li>
+ *   <li><strong>Twiddle factors:</strong> Trigonometric values in signal processing</li>
+ *   <li><strong>Coordinate transforms:</strong> Repeated geometric transformations</li>
+ *   <li><strong>Polynomial evaluation:</strong> Expensive per-index calculations</li>
+ * </ul>
+ *
+ * <h2>Performance Trade-offs</h2>
+ *
+ * <ul>
+ *   <li><strong>Memory:</strong> Uses {@code N * sizeof(double)} bytes for lookup table</li>
+ *   <li><strong>Computation:</strong> Trades runtime computation for memory bandwidth</li>
+ *   <li><strong>Speedup:</strong> Most effective when expression has 16+ operations</li>
+ *   <li><strong>Limitation:</strong> Only works for fixed-count traversals</li>
+ * </ul>
+ *
+ * <h2>Example</h2>
+ *
+ * <pre>{@code
+ * // Automatic generation via KernelTraversalOperationGenerator
+ * Expression<?> exp = ...;  // Complex index-dependent expression
+ * KernelTraversalOperation<?> op = new KernelTraversalOperation<>();
+ * for (int i = 0; i < count; i++) {
+ *     op.getExpressions().add(exp.withIndex(index, i).getSimplified());
+ * }
+ * // Now op can be used as a precomputed lookup table
+ * }</pre>
+ *
+ * @see KernelTraversalOperationGenerator
+ * @see KernelSeriesCache
+ */
 public class KernelTraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 		implements MemoryDataComputation<T>, ExpressionFeatures {
 	private List<Expression> expressions;

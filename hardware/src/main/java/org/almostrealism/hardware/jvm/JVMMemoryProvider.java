@@ -19,6 +19,72 @@ package org.almostrealism.hardware.jvm;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 
+/**
+ * {@link MemoryProvider} for pure Java heap memory allocation.
+ *
+ * <p>Simplest possible memory provider that allocates standard Java double arrays
+ * on the heap. Used for testing, development, and non-hardware-accelerated scenarios
+ * where {@link org.almostrealism.hardware.mem.Heap} overhead is not needed.</p>
+ *
+ * <h2>Characteristics</h2>
+ *
+ * <ul>
+ *   <li><strong>Storage:</strong> Java heap ({@code double[]})</li>
+ *   <li><strong>Precision:</strong> FP64 only (8 bytes per element)</li>
+ *   <li><strong>Performance:</strong> No native memory overhead, but no hardware acceleration</li>
+ *   <li><strong>GC Integration:</strong> Automatic garbage collection of arrays</li>
+ * </ul>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Testing:</strong> Unit tests that don't require hardware acceleration</li>
+ *   <li><strong>Prototyping:</strong> Quick development without backend setup</li>
+ *   <li><strong>Fallback:</strong> When no hardware backends are available</li>
+ *   <li><strong>Small Data:</strong> Workloads too small to benefit from acceleration</li>
+ * </ul>
+ *
+ * <h2>Comparison to Other Providers</h2>
+ *
+ * <table border="1">
+ *   <tr>
+ *     <th>Provider</th>
+ *     <th>Storage</th>
+ *     <th>Overhead</th>
+ *     <th>Use Case</th>
+ *   </tr>
+ *   <tr>
+ *     <td>JVMMemoryProvider</td>
+ *     <td>Java heap</td>
+ *     <td>None</td>
+ *     <td>Testing, fallback</td>
+ *   </tr>
+ *   <tr>
+ *     <td>{@link org.almostrealism.hardware.mem.Heap}</td>
+ *     <td>Off-heap</td>
+ *     <td>Low</td>
+ *     <td>Temporary memory staging</td>
+ *   </tr>
+ *   <tr>
+ *     <td>{@link org.almostrealism.hardware.cl.CLMemoryProvider}</td>
+ *     <td>GPU memory</td>
+ *     <td>Medium</td>
+ *     <td>GPU computation</td>
+ *   </tr>
+ * </table>
+ *
+ * <h2>Example</h2>
+ *
+ * <pre>{@code
+ * JVMMemoryProvider provider = new JVMMemoryProvider();
+ * Memory mem = provider.allocate(1000);
+ * provider.setMem(mem, 0, data, 0, 1000);
+ * provider.getMem(mem, 0, result, 0, 1000);
+ * }</pre>
+ *
+ * @see JVMMemory
+ * @see org.almostrealism.hardware.mem.Heap
+ */
 public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	public JVMMemoryProvider() { }
 

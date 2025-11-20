@@ -34,6 +34,46 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * {@link InstructionSet} for executing compiled standalone executables via external processes.
+ *
+ * <p>Wraps a compiled C executable that reads {@link MemoryData} from files, performs computation,
+ * and writes results back to files. Used by {@link ExternalComputeContext} for process-based execution.</p>
+ *
+ * <h2>Execution Protocol</h2>
+ *
+ * <ol>
+ *   <li>Write input {@link MemoryData} arrays to temporary directory as binary files (0, 1, 2, ...)</li>
+ *   <li>Write metadata files: sizes, offsets, count</li>
+ *   <li>Launch executable with directory path as argument</li>
+ *   <li>Wait for process completion</li>
+ *   <li>Read modified data from same binary files</li>
+ *   <li>Clean up temporary files</li>
+ * </ol>
+ *
+ * <h2>File Format</h2>
+ *
+ * <pre>
+ * data_dir/
+ *   0          # Binary data for argument 0 (double array)
+ *   1          # Binary data for argument 1
+ *   sizes      # Array of element counts per argument
+ *   offsets    # Array of memory offsets
+ *   count      # Total argument count
+ * </pre>
+ *
+ * <h2>Performance Characteristics</h2>
+ *
+ * <ul>
+ *   <li><strong>Process spawn:</strong> ~10ms overhead per execution</li>
+ *   <li><strong>File I/O:</strong> ~0.5ms per MB of data</li>
+ *   <li><strong>Total overhead:</strong> 10-100× slower than JNI backend</li>
+ *   <li><strong>Use case:</strong> Development/debugging only, not production</li>
+ * </ul>
+ *
+ * @see ExternalComputeContext
+ * @see LocalExternalMemoryProvider
+ */
 public class ExternalInstructionSet implements InstructionSet {
 	private String executable;
 	private Supplier<File> dataDirectory;

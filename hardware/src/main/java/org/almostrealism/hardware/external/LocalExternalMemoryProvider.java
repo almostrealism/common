@@ -30,6 +30,52 @@ import java.nio.ByteBuffer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+/**
+ * {@link MemoryProvider} for file-based memory storage used by external process execution.
+ *
+ * <p>Provides {@link LocalExternalMemory} instances backed by disk files instead of RAM.
+ * Data is lazily loaded from files when needed and written back on demand. Used by
+ * {@link ExternalInstructionSet} to transfer data to/from external processes.</p>
+ *
+ * <h2>Memory Model</h2>
+ *
+ * <ul>
+ *   <li><strong>Lazy Loading:</strong> Data read from file only when accessed (if {@code enableLazyReading})</li>
+ *   <li><strong>Write-Through:</strong> Modifications written to file immediately</li>
+ *   <li><strong>Delegation:</strong> Can replace in-memory data with file-backed storage via {@code reassign()}</li>
+ *   <li><strong>Cleanup:</strong> Files deleted after read (unless lazy reading enabled)</li>
+ * </ul>
+ *
+ * <h2>Binary File Format</h2>
+ *
+ * <p>All data stored as double precision (FP64) in native byte order:</p>
+ * <pre>
+ * [double_0][double_1]...[double_N]
+ * </pre>
+ *
+ * <h2>Usage Pattern</h2>
+ *
+ * <pre>{@code
+ * // Allocate file-backed memory
+ * LocalExternalMemoryProvider provider = new LocalExternalMemoryProvider(() -> tempDir);
+ * Memory mem = provider.allocate(1000);
+ *
+ * // Write data to file
+ * provider.setMem(mem, 0, data, 0, 1000);
+ *
+ * // Read back from file
+ * provider.getMem(mem, 0, result, 0, 1000);
+ * }</pre>
+ *
+ * <h2>Configuration</h2>
+ *
+ * <ul>
+ *   <li><strong>enableLazyReading:</strong> If true, delay file reads until data accessed (default: true)</li>
+ * </ul>
+ *
+ * @see LocalExternalMemory
+ * @see ExternalInstructionSet
+ */
 public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	public static boolean enableLazyReading = true;
 

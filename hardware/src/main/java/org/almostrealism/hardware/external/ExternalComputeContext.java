@@ -32,6 +32,43 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
+/**
+ * {@link io.almostrealism.code.ComputeContext} for external process execution via compiled standalone executables.
+ *
+ * <p>Experimental backend that compiles {@link Scope} to C code wrapped in a standalone executable.
+ * Data is transferred to/from the process using file I/O via {@link LocalExternalMemoryProvider}.</p>
+ *
+ * <h2>Execution Model</h2>
+ *
+ * <ol>
+ *   <li>Compile {@link Scope} to C code with {@code external-wrapper.c} template</li>
+ *   <li>Produce standalone executable using {@link NativeCompiler}</li>
+ *   <li>Launch executable as separate process, passing data directory path</li>
+ *   <li>Process reads input data from binary files, writes results back</li>
+ *   <li>Java reads results from files after process exits</li>
+ * </ol>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Development:</strong> Debug compiled code in isolation without JNI complexity</li>
+ *   <li><strong>Portability:</strong> Ship executables instead of JNI libraries</li>
+ *   <li><strong>External Tools:</strong> Integrate with existing C toolchains</li>
+ * </ul>
+ *
+ * <h2>Limitations</h2>
+ *
+ * <ul>
+ *   <li><strong>Performance:</strong> File I/O overhead (10-100× slower than JNI)</li>
+ *   <li><strong>Process Overhead:</strong> Spawning new process per operation</li>
+ *   <li><strong>No GPU:</strong> CPU-only execution</li>
+ *   <li><strong>Experimental:</strong> Not recommended for production use</li>
+ * </ul>
+ *
+ * @see ExternalInstructionSet
+ * @see LocalExternalMemoryProvider
+ * @see NativeCompiler
+ */
 public class ExternalComputeContext extends AbstractComputeContext {
 	private static final String externalWrapper;
 
