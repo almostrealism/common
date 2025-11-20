@@ -16,6 +16,22 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Wrapper for Metal {@code id<MTLFunction>}.
+ *
+ * <p>Represents a compiled Metal Shading Language (MSL) kernel function.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * MTLFunction func = device.newFunction("myKernel", mslSource);
+ * MTLComputePipelineState pipeline = device.newComputePipelineState(func);
+ * }</pre>
+ *
+ * @see MTLDevice
+ * @see MTLComputePipelineState
+ * @see MetalProgram
+ */
 public class MTLFunction extends MTLObject {
 	public MTLFunction(long nativePointer) {
 		super(nativePointer);

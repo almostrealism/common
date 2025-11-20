@@ -16,6 +16,35 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Functional interface for executing Metal compute commands.
+ *
+ * <p>Provides access to pre-allocated offset/size buffers and the Metal command queue
+ * for encoding and submitting GPU work.</p>
+ *
+ * <h2>Typical Usage</h2>
+ *
+ * <pre>{@code
+ * MetalCommand cmd = (offset, size, queue) -> {
+ *     MTLCommandBuffer cmdBuf = queue.commandBuffer();
+ *     MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+ *
+ *     // Set pipeline, buffers, and dispatch
+ *     encoder.setComputePipelineState(kernel);
+ *     encoder.setBuffer(0, dataBuffer);
+ *     encoder.setBuffer(1, offset);  // Pre-allocated
+ *     encoder.setBuffer(2, size);    // Pre-allocated
+ *     encoder.dispatchThreads(...);
+ *
+ *     encoder.endEncoding();
+ *     cmdBuf.commit();
+ *     cmdBuf.waitUntilCompleted();
+ * };
+ * }</pre>
+ *
+ * @see MetalCommandRunner
+ * @see MetalOperator
+ */
 @FunctionalInterface
 public interface MetalCommand {
 	void run(MTLBuffer offset, MTLBuffer size, MTLCommandQueue queue);

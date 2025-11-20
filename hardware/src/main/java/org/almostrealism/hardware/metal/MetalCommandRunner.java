@@ -20,6 +20,27 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+/**
+ * Executor service for {@link MetalCommand} instances.
+ *
+ * <p>Manages pre-allocated offset and size buffers for kernel arguments and
+ * submits commands to a single-threaded executor.</p>
+ *
+ * <h2>Buffer Management</h2>
+ *
+ * <pre>{@code
+ * // Pre-allocated buffers avoid repeated allocation overhead
+ * MTLBuffer offset;  // int[MAX_ARGS] for argument offsets
+ * MTLBuffer size;    // int[MAX_ARGS] for argument sizes
+ *
+ * // Commands reuse these buffers
+ * offset.setContents(new int[]{0, 10, 20});
+ * size.setContents(new int[]{10, 10, 10});
+ * }</pre>
+ *
+ * @see MetalCommand
+ * @see MetalOperator
+ */
 public class MetalCommandRunner {
 	public static final int MAX_ARGS = 512;
 

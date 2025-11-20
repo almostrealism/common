@@ -20,6 +20,15 @@ import org.almostrealism.hardware.mem.NativeRef;
 
 import java.lang.ref.ReferenceQueue;
 
+/**
+ * {@link NativeRef} for tracking {@link MetalMemory} instances with garbage collection.
+ *
+ * <p>Retains reference to the underlying {@link MTLBuffer} to enable deallocation
+ * when the {@link MetalMemory} becomes unreachable.</p>
+ *
+ * @see MetalMemoryProvider
+ * @see MetalMemory
+ */
 public class MetalMemoryRef extends NativeRef<MetalMemory> {
 	private MTLBuffer buffer;
 

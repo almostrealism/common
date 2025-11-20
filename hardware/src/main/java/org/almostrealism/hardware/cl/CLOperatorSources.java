@@ -29,7 +29,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A wrapper for manually authored OpenCL kernel programs.
+ * Loader for manually-authored OpenCL kernel source files.
+ *
+ * <p>Loads .cl files from resources and compiles them to {@link CLOperatorMap}.
+ * This approach is deprecated in favor of generating OpenCL code from {@link io.almostrealism.scope.Scope}.</p>
+ *
+ * @deprecated Use {@link CLComputeContext#deliver(io.almostrealism.scope.Scope)} for code generation
+ * @see CLComputeContext
  */
 @Deprecated
 public class CLOperatorSources {

@@ -27,6 +27,35 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
+/**
+ * Wrapper for Metal {@code id<MTLBuffer>}.
+ *
+ * <p>Manages GPU-accessible memory buffers supporting FP16/FP32 precision and
+ * shared/managed storage modes.</p>
+ *
+ * <h2>Buffer Creation</h2>
+ *
+ * <pre>{@code
+ * MTLBuffer buffer = device.newBuffer32(1024);  // FP32, 1024 elements
+ * MTLBuffer buffer16 = device.newBuffer16(512); // FP16, 512 elements
+ * MTLBuffer shared = device.newSharedBuffer32("/path/to/file", 1024);
+ * }</pre>
+ *
+ * <h2>Data Transfer</h2>
+ *
+ * <pre>{@code
+ * // Set contents
+ * FloatBuffer data = FloatBuffer.wrap(new float[]{1.0f, 2.0f, 3.0f});
+ * buffer.setContents(data, 0, 3);
+ *
+ * // Get contents
+ * FloatBuffer output = FloatBuffer.allocate(3);
+ * buffer.getContents(output, 0, 3);
+ * }</pre>
+ *
+ * @see MTLDevice
+ * @see MetalMemory
+ */
 public class MTLBuffer extends MTLObject {
 	private final Precision precision;
 	private final boolean shared;

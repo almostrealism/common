@@ -7,11 +7,15 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
 - [Overview](#overview)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
+  - [Key Components](#key-components)
+  - [Backend Packages](#backend-packages)
 - [Core Concepts](#core-concepts)
+- [Memory Management Patterns](#memory-management-patterns)
 - [Environment Configuration](#environment-configuration)
 - [Common Usage Patterns](#common-usage-patterns)
 - [Performance Optimization](#performance-optimization)
 - [Advanced Topics](#advanced-topics)
+- [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -129,6 +133,21 @@ mvn test
 | **MemoryBank** | Collection of MemoryData in single allocation | [MemoryBank.java](src/main/java/org/almostrealism/hardware/MemoryBank.java) |
 | **OperationList** | Composable operation sequences | [OperationList.java](src/main/java/org/almostrealism/hardware/OperationList.java) |
 | **PassThroughProducer** | Dynamic input placeholders | [PassThroughProducer.java](src/main/java/org/almostrealism/hardware/PassThroughProducer.java) |
+
+### Backend Packages
+
+The hardware module includes comprehensive implementations for multiple acceleration backends:
+
+| Backend Package | Purpose | Key Classes |
+|----------------|---------|-------------|
+| **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
+| **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
+| **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
+| **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
+| **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
+| **[instructions](src/main/java/org/almostrealism/hardware/instructions/)** | Kernel compilation and caching | InstructionsManager, InstructionSetCompiler |
+
+> **📚 API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
 
 ## Core Concepts
 

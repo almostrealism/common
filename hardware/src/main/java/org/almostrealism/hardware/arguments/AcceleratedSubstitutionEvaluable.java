@@ -24,6 +24,134 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * {@link Evaluable} wrapper that applies producer substitutions during evaluation.
+ *
+ * <p>{@link AcceleratedSubstitutionEvaluable} wraps an {@link AcceleratedOperationContainer}
+ * and manages a list of {@link io.almostrealism.relation.ProducerSubstitution} instances,
+ * applying them before evaluation and clearing them afterward.</p>
+ *
+ * <h2>Deprecation Notice</h2>
+ *
+ * <p><strong>WARNING:</strong> This class is deprecated along with {@link AcceleratedOperationContainer}.
+ * Modern code should use {@link ProcessArgumentMap} for producer substitution.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * AcceleratedOperation<Matrix> operation = compile(matmul(a, b));
+ * AcceleratedOperationContainer<Matrix> container =
+ *     new AcceleratedOperationContainer<>(operation);
+ *
+ * // Create substitution evaluable
+ * AcceleratedSubstitutionEvaluable<Matrix> evaluable =
+ *     new AcceleratedSubstitutionEvaluable<>(container);
+ *
+ * // Add substitutions
+ * evaluable.addSubstitution(new ProducerSubstitution<>(a, x));
+ * evaluable.addSubstitution(new ProducerSubstitution<>(b, y));
+ *
+ * // Evaluate with substitutions
+ * Matrix result = evaluable.evaluate();  // Computes matmul(x, y)
+ * }</pre>
+ *
+ * <h2>Substitution Lifecycle</h2>
+ *
+ * <p>Ensures substitutions are properly scoped to the evaluation:</p>
+ *
+ * <pre>{@code
+ * @Override
+ * public T evaluate(Object... args) {
+ *     try {
+ *         // 1. Apply substitutions to container
+ *         container.setSubstitutions(substitutions);
+ *
+ *         // 2. Evaluate with substitutions active
+ *         return container.evaluate(args);
+ *     } finally {
+ *         // 3. Always clear substitutions (even on exception)
+ *         container.clearSubstitutions();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Multiple Substitutions</h2>
+ *
+ * <p>Build up a list of substitutions before evaluation:</p>
+ *
+ * <pre>{@code
+ * AcceleratedSubstitutionEvaluable<T> evaluable = ...;
+ *
+ * // Substitute multiple producers
+ * evaluable.addSubstitution(new ProducerSubstitution<>(inputA, newA));
+ * evaluable.addSubstitution(new ProducerSubstitution<>(inputB, newB));
+ * evaluable.addSubstitution(new ProducerSubstitution<>(inputC, newC));
+ *
+ * // All substitutions applied together
+ * T result = evaluable.evaluate();
+ * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ *
+ * <p>Thread-safe through {@link AcceleratedOperationContainer}'s thread-local storage:</p>
+ *
+ * <pre>{@code
+ * AcceleratedSubstitutionEvaluable<T> evaluable = ...;
+ *
+ * // Thread A
+ * AcceleratedSubstitutionEvaluable<T> eval1 = new AcceleratedSubstitutionEvaluable<>(container);
+ * eval1.addSubstitution(subsA);
+ * T resultA = eval1.evaluate();  // Uses subsA
+ *
+ * // Thread B (concurrent)
+ * AcceleratedSubstitutionEvaluable<T> eval2 = new AcceleratedSubstitutionEvaluable<>(container);
+ * eval2.addSubstitution(subsB);
+ * T resultB = eval2.evaluate();  // Uses subsB
+ * }</pre>
+ *
+ * <h2>Exception Safety</h2>
+ *
+ * <p>Substitutions are cleared even if evaluation throws:</p>
+ *
+ * <pre>{@code
+ * try {
+ *     T result = evaluable.evaluate();
+ * } catch (Exception e) {
+ *     // Substitutions have been cleared from container
+ *     // Container is ready for next evaluation
+ * }
+ * }</pre>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Batch processing:</strong> Reuse compiled operation with different data batches</li>
+ *   <li><strong>Parameter sweeps:</strong> Run same operation with different parameters</li>
+ *   <li><strong>Dynamic graphs:</strong> Change computation inputs without recompilation</li>
+ * </ul>
+ *
+ * <h2>Migration to ProcessArgumentMap</h2>
+ *
+ * <pre>{@code
+ * // OLD (deprecated):
+ * AcceleratedSubstitutionEvaluable<T> evaluable =
+ *     new AcceleratedSubstitutionEvaluable<>(container);
+ * evaluable.addSubstitution(new ProducerSubstitution<>(a, x));
+ * T result = evaluable.evaluate();
+ *
+ * // NEW (recommended):
+ * ProcessArgumentMap argMap = new ProcessArgumentMap(process, args);
+ * argMap.put(keyA, x);  // Substitute at position
+ * Evaluable<T> eval = argMap.getEvaluable(arg);
+ * T result = eval.evaluate();
+ * }</pre>
+ *
+ * @param <T> The {@link MemoryData} type produced by evaluation
+ * @deprecated Use {@link ProcessArgumentMap} instead
+ * @see AcceleratedOperationContainer
+ * @see io.almostrealism.relation.ProducerSubstitution
+ * @see ProcessArgumentMap
+ */
 @Deprecated
 public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements Evaluable<T> {
 	private AcceleratedOperationContainer<T> container;

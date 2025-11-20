@@ -23,6 +23,29 @@ import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.Hardware;
 import org.jocl.cl_event;
 
+/**
+ * {@link io.almostrealism.lang.LanguageOperations} for OpenCL C code generation.
+ *
+ * <p>Extends {@link CLanguageOperations} with OpenCL-specific features including kernel indexing,
+ * address space qualifiers (__global, __local), and volatile memory annotations.</p>
+ *
+ * <h2>Kernel Indexing</h2>
+ *
+ * <pre>{@code
+ * // Generated code:
+ * int idx = get_global_id(0);
+ * }</pre>
+ *
+ * <h2>Address Space Qualifiers</h2>
+ *
+ * <pre>{@code
+ * // GLOBAL scope generates: __global float* data
+ * // LOCAL scope generates: __local float* data
+ * }</pre>
+ *
+ * @see OpenCLPrintWriter
+ * @see CLComputeContext
+ */
 public class OpenCLLanguageOperations extends CLanguageOperations {
 
 	public OpenCLLanguageOperations(Precision precision) {

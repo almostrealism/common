@@ -16,6 +16,31 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Wrapper for Metal {@code id<MTLCommandBuffer>}.
+ *
+ * <p>Manages command encoding, submission, and synchronization for GPU work.</p>
+ *
+ * <h2>Typical Workflow</h2>
+ *
+ * <pre>{@code
+ * MTLCommandBuffer cmdBuf = queue.commandBuffer();
+ * MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+ *
+ * // Encode compute commands
+ * encoder.setComputePipelineState(pipeline);
+ * encoder.setBuffer(0, buffer);
+ * encoder.dispatchThreads(...);
+ * encoder.endEncoding();
+ *
+ * // Submit and wait
+ * cmdBuf.commit();
+ * cmdBuf.waitUntilCompleted();
+ * }</pre>
+ *
+ * @see MTLCommandQueue
+ * @see MTLComputeCommandEncoder
+ */
 public class MTLCommandBuffer extends MTLObject {
 	public MTLCommandBuffer(long nativePointer) {
 		super(nativePointer);

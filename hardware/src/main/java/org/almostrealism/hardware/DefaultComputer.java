@@ -70,42 +70,42 @@ import java.util.function.Supplier;
  * <h2>Architecture Overview</h2>
  *
  * <pre>
- * ┌─────────────────────────────────────────────────────────┐
- * │              DefaultComputer                             │
- * ├─────────────────────────────────────────────────────────┤
- * │  Requirements Stack (Thread-Local)                       │
- * │  ┌──────────────┐                                        │
- * │  │ GPU          │ ← Current requirements                 │
- * │  ├──────────────┤                                        │
- * │  │ CPU          │                                        │
- * │  ├──────────────┤                                        │
- * │  │ (default)    │                                        │
- * │  └──────────────┘                                        │
- * │                                                           │
- * │  Instruction Caches                                      │
- * │  ┌────────────────────────────────────────────┐          │
- * │  │ operationsCache (Map)                      │          │
- * │  │ - Instruction containers (unlimited)        │          │
- * │  └────────────────────────────────────────────┘          │
- * │  ┌────────────────────────────────────────────┐          │
- * │  │ processTreeCache (FrequencyCache 500×0.4)  │          │
- * │  │ - Process tree instruction managers         │          │
- * │  └────────────────────────────────────────────┘          │
- * │  ┌────────────────────────────────────────────┐          │
- * │  │ instructionsCache (FrequencyCache 500×0.4) │          │
- * │  │ - Scope instruction managers                │          │
- * │  │ - Auto-destroys evicted managers            │          │
- * │  └────────────────────────────────────────────┘          │
- * │                                                           │
- * │  Context Selection Logic                                 │
- * │  ┌───────────────────────────┐                           │
- * │  │ Analyze Computation:      │                           │
- * │  │ - Fixed/Variable count    │                           │
- * │  │ - Sequential (count=1)    │                           │
- * │  │ - Parallel (count>128)    │                           │
- * │  │ -> Select CPU or GPU        │                           │
- * │  └───────────────────────────┘                           │
- * └─────────────────────────────────────────────────────────┘
+ * -----------------------------------------------------------
+ * -              DefaultComputer                             -
+ * ----------------------------------------------------------
+ * -  Requirements Stack (Thread-Local)                       -
+ * -  ----------------                                        -
+ * -  - GPU          - &lt;- Current requirements                 -
+ * -  ---------------                                        -
+ * -  - CPU          -                                        -
+ * -  ---------------                                        -
+ * -  - (default)    -                                        -
+ * -  ---------------                                        -
+ * -                                                           -
+ * -  Instruction Caches                                      -
+ * -  ----------------------------------------------          -
+ * -  - operationsCache (Map)                      -          -
+ * -  - - Instruction containers (unlimited)        -          -
+ * -  ---------------------------------------------          -
+ * -  ----------------------------------------------          -
+ * -  - processTreeCache (FrequencyCache 500*0.4)  -          -
+ * -  - - Process tree instruction managers         -          -
+ * -  ---------------------------------------------          -
+ * -  ----------------------------------------------          -
+ * -  - instructionsCache (FrequencyCache 500*0.4) -          -
+ * -  - - Scope instruction managers                -          -
+ * -  - - Auto-destroys evicted managers            -          -
+ * -  ---------------------------------------------          -
+ * -                                                           -
+ * -  Context Selection Logic                                 -
+ * -  -----------------------------                           -
+ * -  - Analyze Computation:      -                           -
+ * -  - - Fixed/Variable count    -                           -
+ * -  - - Sequential (count=1)    -                           -
+ * -  - - Parallel (count>128)    -                           -
+ * -  - -> Select CPU or GPU        -                           -
+ * -  ----------------------------                           -
+ * ----------------------------------------------------------
  * </pre>
  *
  * <h2>Context Selection Strategy</h2>
@@ -277,12 +277,12 @@ import java.util.function.Supplier;
  * <h3>Container Creation Flow</h3>
  * <pre>
  * 1. Check operationsCache for key
- *    ├─ Found: Reuse container
- *    │         Create substitution evaluable
- *    │         Apply argument substitutions
- *    │         Return delegated producer
- *    │
- *    └─ Not Found: Create new container
+ *    - Found: Reuse container
+ *    -         Create substitution evaluable
+ *    -         Apply argument substitutions
+ *    -         Return delegated producer
+ *    -
+ *    - Not Found: Create new container
  *                  Apply function to arguments
  *                  Extract/apply instruction managers
  *                  Create AcceleratedOperationContainer

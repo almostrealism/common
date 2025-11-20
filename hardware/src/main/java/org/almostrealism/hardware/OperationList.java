@@ -120,14 +120,14 @@ import java.util.stream.Stream;
  *   <li><strong>All operations are Computations:</strong> Every element must implement
  *       {@link Computation} or be an {@link OperationList} that is itself compilable</li>
  *   <li><strong>Compilation is enabled:</strong> Constructor parameter {@code enableCompilation} is true</li>
- *   <li><strong>Depth is within limits:</strong> Nested {@link OperationList} depth ≤ {@code maxDepth} (default: 500)</li>
+ *   <li><strong>Depth is within limits:</strong> Nested {@link OperationList} depth &lt;= {@code maxDepth} (default: 500)</li>
  * </ol>
  *
  * <p><strong>Example - Non-Compilable List:</strong></p>
  * <pre>{@code
  * OperationList ops = new OperationList();
- * ops.add(computation1);  // Computation ✓
- * ops.add(() -> {         // Not a Computation ✗
+ * ops.add(computation1);  // Computation check
+ * ops.add(() -> {         // Not a Computation x
  *     return () -> System.out.println("Not compilable");
  * });
  *
@@ -179,7 +179,7 @@ import java.util.stream.Stream;
  * <pre>{@code
  * OperationList assignments = new OperationList();
  * assignments.add(memLength, sourceProducer, destinationProducer);
- * // Equivalent to: destinationProducer ← sourceProducer
+ * // Equivalent to: destinationProducer <- sourceProducer
  * assignments.get().run();
  * }</pre>
  *

@@ -25,6 +25,39 @@ import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.util.ResourceBundle;
 
+/**
+ * JNI bridge to native Metal framework (libMTL.dylib).
+ *
+ * <p>Provides static native methods for Metal device, buffer, command queue, and kernel operations.
+ * Loads the native library from classpath resources on initialization.</p>
+ *
+ * <h2>Library Loading</h2>
+ *
+ * <pre>{@code
+ * // Automatically extracts libMTL.dylib to temp directory and loads it
+ * // No manual initialization required
+ * }</pre>
+ *
+ * <h2>Device Operations</h2>
+ *
+ * <pre>{@code
+ * long device = MTL.createSystemDefaultDevice();
+ * int maxWidth = MTL.maxThreadgroupWidth(device);
+ * }</pre>
+ *
+ * <h2>Buffer Operations</h2>
+ *
+ * <pre>{@code
+ * long buffer = MTL.createBuffer32(device, 1024);
+ * MTL.setBufferContents32(buffer, floatBuffer, 0, length);
+ * MTL.getBufferContents32(buffer, outputBuffer, 0, length);
+ * MTL.releaseBuffer(buffer);
+ * }</pre>
+ *
+ * @see MTLDevice
+ * @see MTLBuffer
+ * @see MTLCommandQueue
+ */
 public class MTL {
 	static {
 		System.getProperty("java.io.tmpdir");

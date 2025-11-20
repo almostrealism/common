@@ -18,6 +18,40 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Precision;
 
+/**
+ * Wrapper for Metal {@code id<MTLDevice>}.
+ *
+ * <p>Provides access to Metal GPU device capabilities and creates command queues,
+ * buffers, and compute pipeline states.</p>
+ *
+ * <h2>Device Creation</h2>
+ *
+ * <pre>{@code
+ * MTLDevice device = MTLDevice.createSystemDefaultDevice();
+ * }</pre>
+ *
+ * <h2>Threadgroup Capabilities</h2>
+ *
+ * <pre>{@code
+ * int maxWidth = device.maxThreadgroupWidth();   // e.g., 1024
+ * int maxHeight = device.maxThreadgroupHeight(); // e.g., 1024
+ * int maxDepth = device.maxThreadgroupDepth();   // e.g., 64
+ * }</pre>
+ *
+ * <h2>Resource Creation</h2>
+ *
+ * <pre>{@code
+ * MTLCommandQueue queue = device.newCommandQueue();
+ * MTLBuffer buffer = device.newBuffer32(1024);
+ * MTLFunction func = device.newFunction("myKernel", mslSource);
+ * MTLComputePipelineState pipeline = device.newComputePipelineState(func);
+ * }</pre>
+ *
+ * @see MTLCommandQueue
+ * @see MTLBuffer
+ * @see MTLFunction
+ * @see MTLComputePipelineState
+ */
 public class MTLDevice extends MTLObject {
 	public MTLDevice(long nativePointer) {
 		super(nativePointer);

@@ -26,6 +26,33 @@ import org.almostrealism.c.CLanguageOperations;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * {@link io.almostrealism.lang.LanguageOperations} for Metal Shading Language (MSL) code generation.
+ *
+ * <p>Extends {@link CLanguageOperations} with Metal-specific syntax including address space
+ * qualifiers (device/thread), kernel attributes, and buffer bindings.</p>
+ *
+ * <h2>Address Space Qualifiers</h2>
+ *
+ * <pre>{@code
+ * // GLOBAL scope generates: device float* data [[buffer(0)]]
+ * // LOCAL scope generates: thread float* data
+ * }</pre>
+ *
+ * <h2>Kernel Parameters</h2>
+ *
+ * <pre>{@code
+ * // Generated kernel signature:
+ * kernel void matmul(
+ *     device float* arg0 [[buffer(0)]],
+ *     uint global_id [[thread_position_in_grid]],
+ *     uint global_count [[threads_per_grid]]
+ * )
+ * }</pre>
+ *
+ * @see MetalPrintWriter
+ * @see MetalComputeContext
+ */
 public class MetalLanguageOperations extends CLanguageOperations {
 	public static boolean enableThreadScope = false;
 

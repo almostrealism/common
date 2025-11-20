@@ -16,6 +16,29 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Wrapper for Metal {@code id<MTLComputePipelineState>}.
+ *
+ * <p>Represents a compiled compute kernel ready for execution, providing threadgroup
+ * size limits and SIMD execution width.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * MTLComputePipelineState pipeline = device.newComputePipelineState(function);
+ *
+ * // Query kernel limits
+ * int maxThreads = pipeline.maxTotalThreadsPerThreadgroup(); // e.g., 1024
+ * int simdWidth = pipeline.threadExecutionWidth();           // e.g., 32
+ *
+ * // Use in encoder
+ * encoder.setComputePipelineState(pipeline);
+ * }</pre>
+ *
+ * @see MTLFunction
+ * @see MTLDevice
+ * @see MTLComputeCommandEncoder
+ */
 public class MTLComputePipelineState extends MTLObject {
 	public MTLComputePipelineState(long nativePointer) {
 		super(nativePointer);

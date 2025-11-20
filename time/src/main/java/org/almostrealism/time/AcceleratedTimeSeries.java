@@ -46,7 +46,7 @@ import java.util.function.Supplier;
  * <h3>Cursor Management</h3>
  * <pre>
  * Position 0: [beginCursor, endCursor]
- * Position 1: [time1, value1]  ← First data point
+ * Position 1: [time1, value1]  <- First data point
  * Position 2: [time2, value2]
  * ...
  * Position N: [timeN, valueN]
@@ -159,9 +159,9 @@ import java.util.function.Supplier;
  * <pre>
  * Operation         CPU Time    GPU Time    Speedup
  * ----------------- ----------  ----------  --------
- * Batch Add (1000)  10ms        0.5ms       20×
- * Interpolation     50µs        5µs         10×
- * Purge (10000)     100ms       5ms         20×
+ * Batch Add (1000)  10ms        0.5ms       20*
+ * Interpolation     50micros        5micros         10*
+ * Purge (10000)     100ms       5ms         20*
  * </pre>
  *
  * <h2>Caching</h2>

@@ -44,6 +44,199 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
+/**
+ * {@link DataContext} implementation for OpenCL backend providing CPU/GPU hardware acceleration.
+ *
+ * <p>{@link CLDataContext} manages the lifecycle of OpenCL devices, contexts, memory providers,
+ * and compute contexts for hardware-accelerated computation. It supports:</p>
+ * <ul>
+ *   <li><strong>Device selection:</strong> CPU or GPU execution</li>
+ *   <li><strong>Memory management:</strong> Multiple memory provider strategies (host, device, heap)</li>
+ *   <li><strong>Compute contexts:</strong> Thread-local OpenCL or native C compilation</li>
+ *   <li><strong>Lazy initialization:</strong> Resources allocated on first use</li>
+ * </ul>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * // Create context for GPU execution
+ * CLDataContext context = new CLDataContext(
+ *     "GPU",                    // Name
+ *     1024 * 1024 * 1024,      // 1GB max reservation
+ *     1024 * 1024,             // 1MB off-heap threshold
+ *     CLMemoryProvider.Location.DEVICE
+ * );
+ *
+ * context.init();
+ *
+ * // Access memory provider
+ * MemoryProvider<RAM> memory = context.getMemoryProvider();
+ *
+ * // Use for computation
+ * ComputeContext<MemoryData> compute = context.getComputeContexts().get(0);
+ * }</pre>
+ *
+ * <h2>Device Selection</h2>
+ *
+ * <p>Automatically selects OpenCL devices (CPU or GPU):</p>
+ *
+ * <pre>{@code
+ * // identifyDevices() finds best available devices:
+ * // 1. Main device: CPU (CL_DEVICE_TYPE_CPU) for memory operations
+ * // 2. Kernel device: GPU (CL_DEVICE_TYPE_GPU) for compute kernels (optional)
+ *
+ * if (kernelDevice != null) {
+ *     // Dual-queue mode: CPU for memory, GPU for kernels
+ * } else {
+ *     // Single-queue mode: CPU for both
+ * }
+ * }</pre>
+ *
+ * <h2>Memory Provider Strategies</h2>
+ *
+ * <p>Supports multiple memory allocation strategies via {@link CLMemoryProvider.Location}:</p>
+ *
+ * <pre>{@code
+ * // DEVICE: Allocate on GPU device memory
+ * CLDataContext device = new CLDataContext(
+ *     "GPU", maxMem, threshold, CLMemoryProvider.Location.DEVICE);
+ *
+ * // HOST: Use host-pinned memory (faster transfers)
+ * CLDataContext host = new CLDataContext(
+ *     "CPU", maxMem, threshold, CLMemoryProvider.Location.HOST);
+ *
+ * // HEAP: Use Java heap arrays
+ * CLDataContext heap = new CLDataContext(
+ *     "Heap", maxMem, threshold, CLMemoryProvider.Location.HEAP);
+ *
+ * // DELEGATE: Delegate to another memory provider
+ * CLDataContext delegate = new CLDataContext(
+ *     "Delegate", maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
+ * delegate.setDelegateMemoryProvider(customProvider);
+ * }</pre>
+ *
+ * <h2>Lazy Initialization</h2>
+ *
+ * <p>Resources are initialized on first access:</p>
+ *
+ * <pre>{@code
+ * CLDataContext context = new CLDataContext(...);
+ * context.init();  // Sets up start callback
+ *
+ * // First access triggers OpenCL initialization
+ * Precision p = context.getPrecision();  // Calls start()
+ * // -> Identifies devices
+ * // -> Creates cl_context
+ * // -> Creates command queues
+ * // -> Initializes memory providers
+ *
+ * // Subsequent access reuses initialized resources
+ * }</pre>
+ *
+ * <h2>Compute Context Management</h2>
+ *
+ * <p>Provides thread-local {@link ComputeContext} instances:</p>
+ *
+ * <pre>{@code
+ * // Get default compute context for current thread
+ * List<ComputeContext<MemoryData>> contexts = context.getComputeContexts();
+ * ComputeContext<MemoryData> cc = contexts.get(0);
+ *
+ * // Compile and execute operation
+ * Scope<Void> scope = myComputation.getScope(cc);
+ * InstructionSet instructions = cc.deliver(scope);
+ * }</pre>
+ *
+ * <h2>Temporary Compute Context</h2>
+ *
+ * <p>Execute code with specific {@link ComputeRequirement}:</p>
+ *
+ * <pre>{@code
+ * // Temporarily use native C compilation
+ * T result = context.computeContext(() -> {
+ *     // Code here uses CLNativeComputeContext
+ *     return compile(myOperation).evaluate();
+ * }, ComputeRequirement.C);
+ *
+ * // Enable profiling
+ * T result = context.computeContext(() -> {
+ *     // Profiling enabled for this execution
+ *     return operation.evaluate();
+ * }, ComputeRequirement.PROFILING);
+ * }</pre>
+ *
+ * <h2>Memory Provider Selection</h2>
+ *
+ * <p>Selects memory provider based on allocation size:</p>
+ *
+ * <pre>{@code
+ * // Small allocations (<= offHeapSize) use JVM heap
+ * MemoryProvider<?> small = context.getMemoryProvider(1024);
+ * // Returns JVMMemoryProvider
+ *
+ * // Large allocations use CLMemoryProvider
+ * MemoryProvider<?> large = context.getMemoryProvider(10 * 1024 * 1024);
+ * // Returns CLMemoryProvider
+ * }</pre>
+ *
+ * <h2>Device Memory Scope</h2>
+ *
+ * <p>Force all allocations to use device memory:</p>
+ *
+ * <pre>{@code
+ * T result = context.deviceMemory(() -> {
+ *     // All memory allocations use CLMemoryProvider
+ *     // regardless of size
+ *     return operation.evaluate();
+ * });
+ * }</pre>
+ *
+ * <h2>Device Information</h2>
+ *
+ * <p>Access device capabilities:</p>
+ *
+ * <pre>{@code
+ * DeviceInfo main = context.getMainDeviceInfo();
+ * System.out.println("Cores: " + main.getCores());
+ * System.out.println("Clock: " + main.getClockMhz() + " MHz");
+ * System.out.println("Global Memory: " + main.getGlobalMem() + " bytes");
+ *
+ * DeviceInfo kernel = context.getKernelDeviceInfo();
+ * // GPU device info (if available)
+ * }</pre>
+ *
+ * <h2>Precision Selection</h2>
+ *
+ * <p>Automatically selects FP32 for GPU, FP64 for CPU:</p>
+ *
+ * <pre>{@code
+ * // With kernel device (GPU)
+ * precision = Precision.FP32;  // 32-bit floats
+ *
+ * // Without kernel device (CPU only)
+ * precision = Precision.FP64;  // 64-bit doubles
+ * }</pre>
+ *
+ * <h2>Lifecycle Management</h2>
+ *
+ * <pre>{@code
+ * CLDataContext context = new CLDataContext(...);
+ * context.init();
+ *
+ * try {
+ *     // Use context for computation
+ * } finally {
+ *     context.destroy();
+ *     // -> Destroys all compute contexts
+ *     // -> Releases memory providers
+ *     // -> Releases OpenCL context
+ * }
+ * }</pre>
+ *
+ * @see CLComputeContext
+ * @see CLMemoryProvider
+ * @see CLMemory
+ */
 public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	public static boolean enableClNative = SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
 

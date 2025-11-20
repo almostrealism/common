@@ -37,9 +37,9 @@ import java.util.List;
  * <h2>Operation Pattern</h2>
  * <p>All comparison computations follow this general pattern:</p>
  * <pre>
- * result[i] = (left[i] ⊙ right[i]) ? positive[i] : negative[i]
+ * result[i] = (left[i] O right[i]) ? positive[i] : negative[i]
  * </pre>
- * <p>where ⊙ is a relational operator implemented by subclasses (e.g., {@code <, >, <=, >=, ==}).</p>
+ * <p>where O is a relational operator implemented by subclasses (e.g., {@code <, >, <=, >=, ==}).</p>
  *
  * <h2>Four-Operand Structure</h2>
  * <p>Comparison computations take four producer inputs:</p>

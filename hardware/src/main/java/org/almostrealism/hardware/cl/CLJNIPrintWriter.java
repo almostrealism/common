@@ -34,6 +34,34 @@ import org.jocl.cl_mem;
 import java.util.List;
 import java.util.stream.IntStream;
 
+/**
+ * {@link org.almostrealism.io.PrintWriter} for OpenCL JNI native code generation.
+ *
+ * <p>Generates JNI C code that calls OpenCL APIs (clEnqueueReadBuffer, clEnqueueWriteBuffer)
+ * to transfer data between Java and OpenCL device memory.</p>
+ *
+ * <h2>Generated Argument Handling</h2>
+ *
+ * <pre>{@code
+ * // Argument reads generate:
+ * long *argArr = (*env)->GetLongArrayElements(env, arg, 0);      // cl_mem pointers
+ * int *offsetArr = (*env)->GetIntArrayElements(env, offset, 0);  // Offsets
+ * int *sizeArr = (*env)->GetIntArrayElements(env, size, 0);      // Sizes
+ *
+ * // Allocate host buffers
+ * float *arg0 = (float*) malloc(4 * sizeArr[0]);
+ *
+ * // Read from device
+ * clEnqueueReadBuffer(commandQueue, (cl_mem) argArr[0], CL_TRUE,
+ *                     4 * offsetArr[0], 4 * sizeArr[0], arg0, 0, NULL, NULL);
+ *
+ * // After computation, write back:
+ * clEnqueueWriteBuffer(...);
+ * }</pre>
+ *
+ * @see CLJNILanguageOperations
+ * @see CLNativeComputeContext
+ */
 public class CLJNIPrintWriter extends CJNIPrintWriter {
 	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism, LanguageOperations lang) {
 		super(p, topLevelMethodName, parallelism, lang, new DefaultJNIMemoryAccessor());

@@ -62,7 +62,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>Your {@link Scope} contains multiple functions</li>
  *   <li>You need to select operations dynamically by name and argument count</li>
- *   <li>You want to share a single compiled {@link InstructionSet} across multiple operations</li>
+ *   <li>You want to share a single compiled {@link io.almostrealism.code.InstructionSet} across multiple operations</li>
  * </ul>
  *
  * <p>For single-function scopes or signature-based caching, use {@link ScopeInstructionsManager}

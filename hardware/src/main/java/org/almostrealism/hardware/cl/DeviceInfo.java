@@ -5,6 +5,28 @@ import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
 
+/**
+ * OpenCL device capabilities and hardware specifications.
+ *
+ * <p>Queries and stores device information from {@link org.jocl.cl_device_id}
+ * including compute units, memory sizes, and work group limits.</p>
+ *
+ * <h2>Queried Properties</h2>
+ *
+ * <pre>{@code
+ * DeviceInfo info = new DeviceInfo(device);
+ *
+ * long cores = info.getCores();              // CL_DEVICE_MAX_COMPUTE_UNITS
+ * long clock = info.getClockMhz();           // CL_DEVICE_MAX_CLOCK_FREQUENCY
+ * long globalMem = info.getGlobalMem();      // CL_DEVICE_GLOBAL_MEM_SIZE
+ * long localMem = info.getLocalMem();        // CL_DEVICE_LOCAL_MEM_SIZE
+ * long maxAlloc = info.getMaxAlloc();        // CL_DEVICE_MAX_MEM_ALLOC_SIZE
+ * long workGroup = info.getWorkGroupSize();  // CL_DEVICE_MAX_WORK_GROUP_SIZE
+ * }</pre>
+ *
+ * @see CLDataContext#getMainDeviceInfo()
+ * @see CLDataContext#getKernelDeviceInfo()
+ */
 public class DeviceInfo {
 	private long cores;
 	private long clockMhz;

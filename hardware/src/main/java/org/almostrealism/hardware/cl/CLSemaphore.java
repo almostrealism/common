@@ -23,6 +23,27 @@ import org.jocl.cl_event;
 
 import java.util.function.Consumer;
 
+/**
+ * {@link Semaphore} implementation backed by OpenCL {@link cl_event}.
+ *
+ * <p>Enables synchronization between OpenCL operations by wrapping {@link cl_event}
+ * and waiting for event completion with optional profiling.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * cl_event event = new cl_event();
+ * CL.clEnqueueNDRangeKernel(..., event);
+ *
+ * CLSemaphore sem = new CLSemaphore(metadata, context, event, profile);
+ *
+ * // Wait for kernel completion
+ * sem.waitFor();  // Calls processEvent(event, profile)
+ * }</pre>
+ *
+ * @see CLComputeContext#processEvent(cl_event, Consumer)
+ * @see Semaphore
+ */
 public class CLSemaphore implements Semaphore {
 	private OperationMetadata requester;
 	private CLComputeContext context;

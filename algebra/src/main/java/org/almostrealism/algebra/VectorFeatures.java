@@ -336,7 +336,7 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	/**
-	 * Normalizes a vector to unit length: v̂ = v / ||v||.
+	 * Normalizes a vector to unit length: v_hat = v / ||v||.
 	 * The resulting vector has the same direction as the input but magnitude 1.
 	 *
 	 * @param value  the vector producer

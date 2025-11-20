@@ -37,6 +37,42 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+/**
+ * {@link io.almostrealism.code.MemoryProvider} for Metal GPU memory management.
+ *
+ * <p>Allocates and manages {@link MetalMemory} backed by {@link MTLBuffer}, supporting
+ * shared and managed storage modes, automatic reference counting, and efficient transfers.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * MetalMemoryProvider provider = ...;
+ *
+ * // Allocate Metal buffer
+ * MetalMemory mem = provider.allocate(1024);
+ *
+ * // Memory transfers
+ * float[] data = {1.0f, 2.0f, 3.0f};
+ * provider.setMem(mem, 0, data, 0, 3);
+ *
+ * float[] result = new float[3];
+ * provider.getMem(mem, 0, result, 0, 3);
+ * }</pre>
+ *
+ * <h2>Storage Modes</h2>
+ *
+ * <pre>{@code
+ * // Shared mode: CPU/GPU accessible (default)
+ * MetalMemoryProvider shared = new MetalMemoryProvider(ctx, 4, maxMem, false);
+ *
+ * // Managed mode: Explicit synchronization
+ * MetalMemoryProvider managed = new MetalMemoryProvider(ctx, 4, maxMem, true);
+ * }</pre>
+ *
+ * @see MetalMemory
+ * @see MTLBuffer
+ * @see MetalDataContext
+ */
 public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	public static boolean enableLargeAllocationLogging =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);

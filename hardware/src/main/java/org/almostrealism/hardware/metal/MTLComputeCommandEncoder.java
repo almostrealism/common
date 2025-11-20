@@ -16,6 +16,43 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Wrapper for Metal {@code id<MTLComputeCommandEncoder>}.
+ *
+ * <p>Encodes compute kernel dispatch commands into a {@link MTLCommandBuffer}.</p>
+ *
+ * <h2>Encoding Workflow</h2>
+ *
+ * <pre>{@code
+ * MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+ *
+ * // Set pipeline and buffers
+ * encoder.setComputePipelineState(pipeline);
+ * encoder.setBuffer(0, inputBuffer);
+ * encoder.setBuffer(1, outputBuffer);
+ *
+ * // Dispatch threadgroups
+ * encoder.dispatchThreadgroups(
+ *     256, 1, 1,  // Threadgroup size
+ *     4, 1, 1     // Grid size (4 threadgroups)
+ * );
+ *
+ * encoder.endEncoding();
+ * }</pre>
+ *
+ * <h2>Dispatch Methods</h2>
+ *
+ * <pre>{@code
+ * // dispatchThreads: Specify total thread count, Metal calculates threadgroups
+ * encoder.dispatchThreads(groupW, groupH, groupD, totalW, totalH, totalD);
+ *
+ * // dispatchThreadgroups: Specify threadgroup count explicitly
+ * encoder.dispatchThreadgroups(groupW, groupH, groupD, gridW, gridH, gridD);
+ * }</pre>
+ *
+ * @see MTLCommandBuffer
+ * @see MTLComputePipelineState
+ */
 public class MTLComputeCommandEncoder extends MTLObject {
 	public MTLComputeCommandEncoder(long nativePointer) {
 		super(nativePointer);

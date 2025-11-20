@@ -36,17 +36,132 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
- * A {@link HardwareEvaluable} is a {@link Evaluable} that can be evaluated
- * for a {@link MemoryBank} with one operation. The default implementation
- * of this {@link MemoryBank} evaluation simply delegates to the normal
- * {@link #evaluate(Object[])} method for each element of the
- * {@link MemoryBank} (@see {@link DestinationEvaluable#evaluate(Object[])}).
- * <br>
- * {@link HardwareEvaluable} also optionally provides for short-circuiting,
- * when the process can be evaluated in an alternative way when not using
- * kernel operations.
+ * Wrapper {@link Evaluable} that provides hardware-accelerated execution with optional short-circuit evaluation.
  *
- * @author  Michael Murray
+ * <p>{@link HardwareEvaluable} serves as the primary execution wrapper for compiled hardware operations.
+ * It manages:</p>
+ * <ul>
+ *   <li><strong>Kernel execution:</strong> Context-specific compiled operations</li>
+ *   <li><strong>Short-circuit evaluation:</strong> Alternative CPU-based evaluation path</li>
+ *   <li><strong>Destination routing:</strong> Direct-to-memory evaluation via {@link DestinationEvaluable}</li>
+ *   <li><strong>Streaming support:</strong> Async evaluation with downstream consumers</li>
+ * </ul>
+ *
+ * <h2>Dual Execution Paths</h2>
+ *
+ * <p>{@link HardwareEvaluable} supports two evaluation strategies:</p>
+ *
+ * <pre>{@code
+ * // 1. Kernel execution (GPU/native code)
+ * Evaluable<Matrix> kernel = compiledOperation;
+ *
+ * // 2. Short-circuit (pure CPU evaluation)
+ * Evaluable<Matrix> shortCircuit = cpuFallback;
+ *
+ * HardwareEvaluable<Matrix> evaluable =
+ *     new HardwareEvaluable<>(() -> kernel, destination, shortCircuit, true);
+ *
+ * // Uses short-circuit if available, otherwise kernel
+ * Matrix result = evaluable.evaluate();
+ * }</pre>
+ *
+ * <h2>Context-Specific Kernels</h2>
+ *
+ * <p>Kernels are wrapped in {@link ContextSpecific} for thread-local compilation caching:</p>
+ *
+ * <pre>{@code
+ * // Different threads may have different compiled versions
+ * ContextSpecific<Evaluable<T>> kernel = evaluable.getKernel();
+ *
+ * // Thread A: Gets OpenCL kernel
+ * Evaluable<T> kernelA = kernel.getValue();
+ *
+ * // Thread B: Gets JNI kernel
+ * Evaluable<T> kernelB = kernel.getValue();
+ * }</pre>
+ *
+ * <h2>Destination-Based Evaluation</h2>
+ *
+ * <p>When used with {@link MemoryBank}, routes output directly to pre-allocated memory:</p>
+ *
+ * <pre>{@code
+ * MemoryBank destination = new MemoryBank(1024);
+ *
+ * // Create evaluable with destination
+ * Evaluable<Matrix> withDest = evaluable.withDestination(destination);
+ *
+ * // Evaluate directly into destination
+ * withDest.evaluate();  // Writes to destination
+ *
+ * // Or use into() method
+ * evaluable.into(destination).evaluate();
+ * }</pre>
+ *
+ * <h2>Destination Processor</h2>
+ *
+ * <p>Optional transformation of destination before evaluation:</p>
+ *
+ * <pre>{@code
+ * evaluable.setDestinationProcessor(bank -> {
+ *     // Transform destination (e.g., select subset)
+ *     return bank.range(0, 512);
+ * });
+ *
+ * // Processor is applied before writing
+ * evaluable.withDestination(fullBank).evaluate();
+ * }</pre>
+ *
+ * <h2>Streaming Evaluation</h2>
+ *
+ * <p>Supports async execution with downstream consumers:</p>
+ *
+ * <pre>{@code
+ * HardwareEvaluable<Matrix> evaluable = ...;
+ *
+ * // Set downstream consumer
+ * evaluable.setDownstream(result -> {
+ *     System.out.println("Result: " + result);
+ * });
+ *
+ * // Async request
+ * evaluable.request(args);  // Calls downstream when done
+ *
+ * // Or create async variant
+ * StreamingEvaluable<Matrix> async = evaluable.async(executor);
+ * }</pre>
+ *
+ * <h2>Short-Circuit Use Cases</h2>
+ *
+ * <p>Short-circuit evaluation is useful for:</p>
+ * <ul>
+ *   <li><strong>Small data:</strong> CPU evaluation faster than kernel launch overhead</li>
+ *   <li><strong>Debugging:</strong> CPU-based evaluation easier to inspect</li>
+ *   <li><strong>Fallback:</strong> When hardware acceleration unavailable</li>
+ * </ul>
+ *
+ * <h2>Resource Management</h2>
+ *
+ * <p>Destroying releases the context-specific kernel cache:</p>
+ *
+ * <pre>{@code
+ * evaluable.destroy();
+ * // Releases all thread-local compiled kernels
+ * }</pre>
+ *
+ * <h2>ArgumentList Integration</h2>
+ *
+ * <p>Implements {@link ArgumentList} to expose operation structure:</p>
+ *
+ * <pre>{@code
+ * int argCount = evaluable.getArgsCount();
+ * Collection<Argument<? extends T>> children = evaluable.getChildren();
+ * }</pre>
+ *
+ * @param <T> The type of value produced by evaluation
+ * @see DestinationEvaluable
+ * @see ContextSpecific
+ * @see StreamingEvaluable
+ * @author Michael Murray
  */
 public class HardwareEvaluable<T> implements
 		Evaluable<T>, StreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {

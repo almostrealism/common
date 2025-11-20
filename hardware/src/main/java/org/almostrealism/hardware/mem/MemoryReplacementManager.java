@@ -93,7 +93,7 @@ import java.util.function.BiConsumer;
  * <ul>
  *   <li>Argument is {@link MemoryData} (not primitive)</li>
  *   <li>Provider differs from target provider</li>
- *   <li>Size ≤ aggregationThreshold (default: 1MB)</li>
+ *   <li>Size &lt;= aggregationThreshold (default: 1MB)</li>
  *   <li>No custom memory ordering (would break aggregation)</li>
  * </ul>
  *

@@ -20,6 +20,15 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.jocl.cl_event;
 
+/**
+ * {@link io.almostrealism.lang.LanguageOperations} for OpenCL JNI code generation.
+ *
+ * <p>Extends {@link CJNILanguageOperations} to include OpenCL-specific JNI methods
+ * (clEnqueueWriteBuffer, clEnqueueReadBuffer, clWaitForEvents) and type mappings.</p>
+ *
+ * @see CLJNIPrintWriter
+ * @see CLNativeComputeContext
+ */
 public class CLJNILanguageOperations extends CJNILanguageOperations {
 	public CLJNILanguageOperations(Precision precision) {
 		super(precision);

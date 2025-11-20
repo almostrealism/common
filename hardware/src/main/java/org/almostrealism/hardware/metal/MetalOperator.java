@@ -30,7 +30,25 @@ import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 /**
- * {@link MetalOperator}s are intended to be used with {@link ThreadLocal}.
+ * {@link HardwareOperator} that executes compiled Metal compute kernels.
+ *
+ * <p>Wraps {@link MTLComputePipelineState} and manages threadgroup sizing,
+ * argument encoding, and kernel dispatch on Metal GPU. Thread-local to avoid synchronization.</p>
+ *
+ * <h2>Threadgroup Sizing</h2>
+ *
+ * <pre>{@code
+ * // Automatic sizing based on kernel limits
+ * int workgroup = operator.getWorkgroupSize();
+ * // Uses kernel.maxTotalThreadsPerThreadgroup() and threadExecutionWidth()
+ *
+ * int[] dimensions = operator.getWorkgroupDimensions();
+ * // Returns [simdWidth, workgroupSize/simdWidth, 1]
+ * }</pre>
+ *
+ * @see MetalOperatorMap
+ * @see MTLComputePipelineState
+ * @see HardwareOperator
  */
 public class MetalOperator extends HardwareOperator {
 	public static boolean enableDispatchThreadgroups = false;

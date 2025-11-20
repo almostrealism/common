@@ -130,10 +130,10 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
  * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max reservation = 2^MEMORY_SCALE × 64MB</p>
- * <p><strong>Default:</strong> 4 (i.e., 2^4 × 64MB = 1GB)</p>
+ * <p><strong>Formula:</strong> Max reservation = 2^MEMORY_SCALE * 64MB</p>
+ * <p><strong>Default:</strong> 4 (i.e., 2^4 * 64MB = 1GB)</p>
  * <pre>
- * # Allow 4GB max reservation (2^6 × 64MB = 4GB)
+ * # Allow 4GB max reservation (2^6 * 64MB = 4GB)
  * export AR_HARDWARE_MEMORY_SCALE=6
  * </pre>
  *

@@ -142,7 +142,7 @@ import java.util.function.Supplier;
  * <p>Handles delegation chains where {@link PassThroughProducer}s are wrapped:</p>
  * <pre>
  * Wrapper Producer
- *     ↓ delegates to
+ *     v delegates to
  * PassThroughProducer (index=0)
  *
  * Map recognizes: Wrapper -> PassThrough -> argument index 0

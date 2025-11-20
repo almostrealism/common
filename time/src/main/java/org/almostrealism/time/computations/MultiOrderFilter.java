@@ -228,7 +228,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase<PackedCo
 	 * @param shape The output shape (typically matches series shape)
 	 * @param series Producer providing the input signal
 	 * @param coefficients Producer providing the filter coefficients
-	 * @throws UnsupportedOperationException if series or coefficients have size ≤ 1
+	 * @throws UnsupportedOperationException if series or coefficients have size <= 1
 	 */
 	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> coefficients) {
 		super("multiOrderFilter", shape, series, coefficients);

@@ -47,6 +47,144 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
 
+/**
+ * {@link OperationComputationAdapter} that assigns computed values to a destination memory location.
+ *
+ * <p>{@link Assignment} generates code of the form {@code output[i] = value[i]} for each element.
+ * It supports:</p>
+ * <ul>
+ *   <li><strong>Vectorized assignment:</strong> Multiple values per kernel invocation</li>
+ *   <li><strong>Adaptive memory length:</strong> Adjusts to kernel parallelism</li>
+ *   <li><strong>Short-circuit optimization:</strong> Direct evaluation when possible</li>
+ *   <li><strong>Shape preservation:</strong> Maintains traversal policy from input</li>
+ * </ul>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * // Create assignment: output = input * 2
+ * Producer<PackedCollection> output = output();
+ * Producer<PackedCollection> value = multiply(input(), c(2.0));
+ *
+ * Assignment<PackedCollection> assign =
+ *     new Assignment<>(1, output, value);  // memLength = 1
+ *
+ * // Compile and execute
+ * Runnable operation = assign.get();
+ * operation.run();  // Writes to output
+ * }</pre>
+ *
+ * <h2>Memory Length (Vectorization)</h2>
+ *
+ * <p>The {@code memLength} parameter controls how many values each kernel thread processes:</p>
+ *
+ * <pre>{@code
+ * // memLength = 1: Each thread processes 1 value
+ * Assignment<T> scalar = new Assignment<>(1, output, value);
+ * // Generated code: output[global_id] = value[global_id];
+ *
+ * // memLength = 4: Each thread processes 4 values
+ * Assignment<T> vectorized = new Assignment<>(4, output, value);
+ * // Generated code:
+ * // output[global_id * 4 + 0] = value[global_id * 4 + 0];
+ * // output[global_id * 4 + 1] = value[global_id * 4 + 1];
+ * // output[global_id * 4 + 2] = value[global_id * 4 + 2];
+ * // output[global_id * 4 + 3] = value[global_id * 4 + 3];
+ * }</pre>
+ *
+ * <h2>Adaptive Memory Length</h2>
+ *
+ * <p>When {@code enableAdaptiveMemLength = true} (default), the memory length automatically
+ * adjusts to match kernel parallelism:</p>
+ *
+ * <pre>{@code
+ * // Total work: 1024 elements
+ * // Kernel maximum: 256 threads
+ * // memLength = 1 (specified)
+ * // Adaptive memLength = 1024 / 256 = 4
+ *
+ * Assignment<T> assign = new Assignment<>(1, output, value);
+ * // With 256 threads, automatically processes 4 elements per thread
+ * }</pre>
+ *
+ * <h2>Short-Circuit Optimization</h2>
+ *
+ * <p>When the value is already an {@link AcceleratedOperation} or {@link io.almostrealism.relation.Provider},
+ * assignment can bypass scope generation and use {@link DestinationEvaluable} directly:</p>
+ *
+ * <pre>{@code
+ * // Value is an accelerated operation
+ * Producer<T> value = acceleratedMultiply(a, b);
+ *
+ * Assignment<T> assign = new Assignment<>(1, output, value);
+ *
+ * // Short-circuit: Uses DestinationEvaluable instead of compiling new scope
+ * Runnable operation = assign.get();  // Returns DestinationEvaluable
+ * }</pre>
+ *
+ * <p><strong>Note:</strong> Short-circuit is disabled for aggregation targets when
+ * {@code enableAggregatedShortCircuit = false} to avoid double aggregation.</p>
+ *
+ * <h2>Generated Scope Structure</h2>
+ *
+ * <pre>{@code
+ * // For memLength = 2:
+ * void assign(double *arg0, double *arg1) {
+ *     int idx = global_id * 2;
+ *
+ *     // Assignment 0
+ *     arg0[idx + 0] = arg1[idx + 0];
+ *
+ *     // Assignment 1
+ *     arg0[idx + 1] = arg1[idx + 1];
+ * }
+ * }</pre>
+ *
+ * <h2>Traversable Expressions</h2>
+ *
+ * <p>Supports {@link TraversableExpression} for complex memory layouts:</p>
+ *
+ * <pre>{@code
+ * // Multi-dimensional output
+ * TraversableExpression out = TraversableExpression.traverse(output);
+ *
+ * // Generated:
+ * // out.getValueAt(global_id * memLength + i) = value[i];
+ * }</pre>
+ *
+ * <h2>Shape Metadata</h2>
+ *
+ * <p>Preserves shape from input producer:</p>
+ *
+ * <pre>{@code
+ * Producer<PackedCollection> shaped = shaped(3, 4);  // 3x4 shape
+ * Assignment<T> assign = new Assignment<>(1, output, shaped);
+ *
+ * // Metadata contains shape (3, 4)
+ * TraversalPolicy shape = assign.getMetadata().getShape();
+ * }</pre>
+ *
+ * <h2>Signature Generation</h2>
+ *
+ * <pre>{@code
+ * String signature = assign.signature();
+ * // Example: "assign4->Multiply_f64_3_2"
+ * //   - memLength = 4
+ * //   - Value signature: Multiply_f64_3_2
+ * }</pre>
+ *
+ * <h2>Configuration Options</h2>
+ *
+ * <ul>
+ *   <li><strong>enableAdaptiveMemLength:</strong> Auto-adjust memLength to kernel parallelism (default: true)</li>
+ *   <li><strong>enableAggregatedShortCircuit:</strong> Allow short-circuit for aggregation targets (default: false)</li>
+ * </ul>
+ *
+ * @param <T> The {@link MemoryData} type being assigned
+ * @see OperationComputationAdapter
+ * @see DestinationEvaluable
+ * @see TraversableExpression
+ */
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableAdaptiveMemLength = true;
 	public static boolean enableAggregatedShortCircuit = false;

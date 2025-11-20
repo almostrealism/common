@@ -20,6 +20,24 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
+/**
+ * {@link CPrintWriter} for Metal Shading Language (MSL) code generation.
+ *
+ * <p>Configures the print writer with Metal-specific language operations and kernel prefixes.</p>
+ *
+ * <h2>Kernel Prefixes</h2>
+ *
+ * <pre>{@code
+ * // External scope (kernel entry point):
+ * [[kernel]] void myKernel(...)
+ *
+ * // Internal scope (helper functions):
+ * void myHelper(...)
+ * }</pre>
+ *
+ * @see MetalLanguageOperations
+ * @see MetalComputeContext
+ */
 public class MetalPrintWriter extends CPrintWriter {
 
 	public MetalPrintWriter(PrintWriter p) {

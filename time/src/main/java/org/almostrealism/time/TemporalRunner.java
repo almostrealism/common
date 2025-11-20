@@ -131,8 +131,8 @@ import java.util.stream.Stream;
  *
  * <h3>Setup Cost Amortization</h3>
  * <pre>
- * Cost without buffering:  N × (setup + tick)
- * Cost with buffering:     1 × setup + N × tick
+ * Cost without buffering:  N * (setup + tick)
+ * Cost with buffering:     1 * setup + N * tick
  *
  * For N=1000 iterations:
  *   Without buffering: 1000 setups + 1000 ticks
@@ -140,7 +140,7 @@ import java.util.stream.Stream;
  * </pre>
  *
  * <h3>Optimization Impact</h3>
- * <p>Optimization can provide 2-10× speedup by:</p>
+ * <p>Optimization can provide 2-10* speedup by:</p>
  * <ul>
  *   <li>Fusing operations to reduce kernel launches</li>
  *   <li>Eliminating redundant memory transfers</li>

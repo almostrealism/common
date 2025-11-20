@@ -20,6 +20,28 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+/**
+ * Base class for Metal object wrappers that track native pointer and release state.
+ *
+ * <p>Provides common lifecycle management for {@link MTLDevice}, {@link MTLBuffer},
+ * {@link MTLCommandQueue}, and other Metal resources.</p>
+ *
+ * <h2>Lifecycle Pattern</h2>
+ *
+ * <pre>{@code
+ * MTLObject obj = ...;
+ * long ptr = obj.getNativePointer();  // Get native pointer
+ *
+ * // Use object...
+ *
+ * obj.release();  // Mark as released
+ * // Further operations throw IllegalStateException
+ * }</pre>
+ *
+ * @see MTLDevice
+ * @see MTLBuffer
+ * @see MTLCommandQueue
+ */
 public abstract class MTLObject implements ConsoleFeatures {
 	private long nativePointer;
 	private boolean released;

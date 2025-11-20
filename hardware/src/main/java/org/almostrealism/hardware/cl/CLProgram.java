@@ -23,6 +23,42 @@ import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
+/**
+ * Wrapper for OpenCL {@link cl_program} with compilation and metadata management.
+ *
+ * <p>{@link CLProgram} represents a compiled OpenCL program created from source code,
+ * providing access to the {@link cl_program} object and associated metadata.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * String source = "__kernel void add(...) { ... }";
+ * CLProgram prog = CLProgram.create(context, metadata, source);
+ *
+ * // Compile the program
+ * prog.compile();
+ *
+ * // Access compiled program
+ * cl_program clProg = prog.getProgram();
+ *
+ * // Create kernels from program
+ * cl_kernel kernel = CL.clCreateKernel(clProg, "add", null);
+ * }</pre>
+ *
+ * <h2>Compilation Error Handling</h2>
+ *
+ * <pre>{@code
+ * try {
+ *     prog.compile();
+ * } catch (HardwareException e) {
+ *     // Exception includes full source code for debugging
+ *     System.out.println(e.getSource());
+ * }
+ * }</pre>
+ *
+ * @see CLOperatorMap
+ * @see CLComputeContext
+ */
 public class CLProgram implements OperationInfo {
 	private CLComputeContext ctx;
 	private cl_program prog;

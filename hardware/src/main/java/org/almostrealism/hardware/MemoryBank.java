@@ -43,7 +43,7 @@ import io.almostrealism.uml.Multiple;
  * <pre>
  * GOOD: Single bank allocation
  * VectorBank -> Memory[300 doubles] = [v1][v2][v3]
- *                      ↓     ↓     ↓
+ *                      v     v     v
  *               offset 0   100   200
  * Total: 1 allocation, 1 GPU buffer
  * </pre>
@@ -140,7 +140,7 @@ import io.almostrealism.uml.Multiple;
  * For MemoryBank&lt;T&gt; where each T has atomic length N:
  *
  * Bank Memory: [T0 element 0...N-1][T1 element 0...N-1][T2 element 0...N-1]...
- *                    ↓                     ↓                     ↓
+ *                    v                     v                     v
  *              offset = 0            offset = N            offset = 2N
  *
  * get(0) -> view [offset=0, length=N]

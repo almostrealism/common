@@ -32,6 +32,36 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
+ *
+ * <p>Compiles {@link Scope} to Metal Shading Language (MSL), creates {@link MTLComputePipelineState},
+ * and executes kernels on Metal GPU.</p>
+ *
+ * <h2>Metal Shading Language Generation</h2>
+ *
+ * <pre>{@code
+ * MetalComputeContext context = ...;
+ * Scope<Matrix> scope = operation.getScope(context);
+ *
+ * // Generates MSL code:
+ * // #include <metal_stdlib>
+ * // kernel void matmul(...) { ... }
+ *
+ * MetalOperatorMap instructions = (MetalOperatorMap) context.deliver(scope);
+ * }</pre>
+ *
+ * <h2>Command Queue Management</h2>
+ *
+ * <pre>{@code
+ * MTLCommandQueue queue = context.getQueue();         // Main queue
+ * MTLCommandQueue fast = context.getFastQueue();      // Fast queue (if enabled)
+ * }</pre>
+ *
+ * @see MetalDataContext
+ * @see MetalOperator
+ * @see MTLDevice
+ */
 public class MetalComputeContext extends AbstractComputeContext implements ConsoleFeatures {
 	public static boolean enableFastQueue = false;
 

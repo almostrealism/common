@@ -31,9 +31,54 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
- * Wrapper for a {@link cl_program} that contains the {@link CLOperator}s.
+ * {@link InstructionSet} implementation that maps kernel names to {@link CLOperator} instances.
  *
- * @author  Michael Murray
+ * <p>{@link CLOperatorMap} wraps a compiled OpenCL {@link cl_program} and provides thread-local
+ * access to {@link CLOperator} instances for each kernel function.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * CLOperatorMap map = new CLOperatorMap(context, metadata, source, profile);
+ * // Compiles source to cl_program during construction
+ *
+ * // Get operator for kernel function
+ * CLOperator matmul = map.get("matmul", 3);  // 3 arguments
+ * matmul.accept(args);
+ *
+ * // Thread-local operators
+ * // Each thread gets its own CLOperator instance
+ * }</pre>
+ *
+ * <h2>Thread-Local Operators</h2>
+ *
+ * <p>Operators are stored per-thread to avoid synchronization:</p>
+ *
+ * <pre>{@code
+ * // Thread A
+ * CLOperator op1 = map.get("kernel");  // Creates new operator
+ * op1.accept(args);
+ *
+ * // Thread B (concurrent)
+ * CLOperator op2 = map.get("kernel");  // Creates separate operator
+ * op2.accept(args);  // No synchronization needed
+ * }</pre>
+ *
+ * <h2>Exception Processing</h2>
+ *
+ * <p>Converts {@link CLException} to {@link HardwareException} with source context:</p>
+ *
+ * <pre>{@code
+ * // When kernel creation fails:
+ * throw new HardwareException(
+ *     "\"invalidKernel\" is not a valid kernel name",
+ *     clException,
+ *     prog.getSource());  // Includes full source for debugging
+ * }</pre>
+ *
+ * @see CLOperator
+ * @see CLProgram
+ * @see InstructionSet
  */
 public class CLOperatorMap implements InstructionSet, BiFunction<String, CLException, HardwareException> {
 	private CLComputeContext context;

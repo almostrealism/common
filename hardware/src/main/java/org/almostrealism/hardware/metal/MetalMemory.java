@@ -18,6 +18,14 @@ package org.almostrealism.hardware.metal;
 
 import org.almostrealism.hardware.mem.RAM;
 
+/**
+ * {@link RAM} backed by Metal {@link MTLBuffer}.
+ *
+ * <p>Wraps a Metal GPU buffer for use with {@link MetalMemoryProvider}.</p>
+ *
+ * @see MetalMemoryProvider
+ * @see MTLBuffer
+ */
 public class MetalMemory extends RAM {
 	private final MTLBuffer mem;
 	private final long size;

@@ -45,7 +45,7 @@ import java.util.List;
  *
  * <ul>
  *   <li><b>Argument Preparation:</b> Validates and converts arguments to {@link MemoryData}</li>
- *   <li><b>Memory Migration:</b> Automatically moves data between memory providers (CPU↔GPU) as needed</li>
+ *   <li><b>Memory Migration:</b> Automatically moves data between memory providers (CPU&lt;-&gt;GPU) as needed</li>
  *   <li><b>Work Size Management:</b> Configures parallel execution size via {@link #setGlobalWorkSize}</li>
  *   <li><b>Execution Timing:</b> Records metrics for profiling and performance analysis</li>
  *   <li><b>Compilation Tracking:</b> Maintains global CPU/GPU compilation and execution statistics</li>

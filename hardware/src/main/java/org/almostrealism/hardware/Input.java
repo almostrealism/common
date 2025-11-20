@@ -220,7 +220,7 @@ public class Input {
 	 *
 	 * // When evaluating, provide all arguments including 0 and 1
 	 * result.get().evaluate(arg0, arg1, arg2, arg3, arg4);
-	 * //                    skip  skip  ↑use  ↑use  ↑use
+	 * //                    skip  skip  ^use  ^use  ^use
 	 * }</pre>
 	 *
 	 * @param memLength The number of elements in each argument

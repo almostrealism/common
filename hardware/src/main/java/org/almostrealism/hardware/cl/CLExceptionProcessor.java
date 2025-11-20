@@ -22,6 +22,34 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
+/**
+ * Processes {@link CLException} instances into typed {@link HardwareException} subclasses.
+ *
+ * <p>Converts OpenCL error codes (CL_INVALID_CONTEXT, CL_INVALID_VALUE) into specific
+ * exception types with enhanced error messages and debugging context.</p>
+ *
+ * <h2>Exception Mapping</h2>
+ *
+ * <pre>{@code
+ * CL_INVALID_CONTEXT -> InvalidContextException or MismatchedContextException
+ * CL_INVALID_VALUE   -> InvalidValueException (with index/length details)
+ * Other errors       -> HardwareException (with source code if available)
+ * }</pre>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * try {
+ *     CL.clEnqueueWriteBuffer(...);
+ * } catch (CLException e) {
+ *     throw CLExceptionProcessor.process(e, provider, srcIdx, destIdx, length);
+ * }
+ * }</pre>
+ *
+ * @see InvalidContextException
+ * @see InvalidValueException
+ * @see MismatchedContextException
+ */
 public class CLExceptionProcessor {
 	public static HardwareException process(CLException e, CLComputeContext ctx, String msg, String src) {
 		HardwareException ex;

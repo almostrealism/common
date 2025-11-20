@@ -162,7 +162,7 @@ import java.util.stream.Collectors;
  * <h2>Limitations</h2>
  *
  * <ul>
- *   <li><strong>Work size:</strong> Must be ≤ Integer.MAX_VALUE</li>
+ *   <li><strong>Work size:</strong> Must be &lt;= Integer.MAX_VALUE</li>
  *   <li><strong>Work offset:</strong> Must be 0 if parallelism > 1</li>
  *   <li><strong>Blocking:</strong> Currently blocks waiting for completion (TODO: make async)</li>
  * </ul>

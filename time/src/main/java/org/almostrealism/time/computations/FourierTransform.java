@@ -68,7 +68,7 @@ import java.util.List;
  *
  * <h2>Algorithm Details</h2>
  * <ul>
- *   <li><strong>Radix-4:</strong> Primary decomposition (when size ≥ 4)</li>
+ *   <li><strong>Radix-4:</strong> Primary decomposition (when size >= 4)</li>
  *   <li><strong>Radix-2:</strong> Fallback for smaller sizes or recursion</li>
  *   <li><strong>Cooley-Tukey:</strong> Divide-and-conquer recursive approach</li>
  *   <li><strong>In-place:</strong> Minimal memory overhead</li>
@@ -170,12 +170,12 @@ import java.util.List;
  * <h2>Mathematical Background</h2>
  * <p>Forward FFT formula:</p>
  * <pre>
- * X[k] = Σ(n=0 to N-1) x[n] * e^(-i*2π*k*n/N)
+ * X[k] = Sigma(n=0 to N-1) x[n] * e^(-i*2pi*k*n/N)
  * </pre>
  *
  * <p>Inverse FFT formula:</p>
  * <pre>
- * x[n] = (1/N) * Σ(k=0 to N-1) X[k] * e^(i*2π*k*n/N)
+ * x[n] = (1/N) * Sigma(k=0 to N-1) X[k] * e^(i*2pi*k*n/N)
  * </pre>
  *
  * <h2>Normalization</h2>

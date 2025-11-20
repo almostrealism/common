@@ -32,6 +32,33 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+/**
+ * Compiled Metal Shading Language (MSL) program containing a {@link MTLFunction}.
+ *
+ * <p>Wraps Metal function compilation from source code and creates {@link MTLComputePipelineState}
+ * instances for kernel execution.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * MetalProgram prog = MetalProgram.create(context, metadata, "myKernel", mslSource);
+ * prog.compile();  // Compiles MSL source into MTLFunction
+ *
+ * // Create pipeline state for execution
+ * MTLComputePipelineState pipeline = prog.newComputePipelineState();
+ * }</pre>
+ *
+ * <h2>Instruction Set Monitoring</h2>
+ *
+ * <pre>{@code
+ * HardwareOperator.enableInstructionSetMonitoring = true;
+ * // Generated MSL source written to results/mtl_instruction_set_N.c
+ * }</pre>
+ *
+ * @see MTLFunction
+ * @see MTLComputePipelineState
+ * @see MetalComputeContext
+ */
 public class MetalProgram implements OperationInfo, Signature, Destroyable, ConsoleFeatures {
 
 	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");

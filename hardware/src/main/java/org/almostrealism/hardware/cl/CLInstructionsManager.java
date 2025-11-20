@@ -24,6 +24,29 @@ import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * {@link org.almostrealism.hardware.instructions.InstructionSetManager} for OpenCL backend.
+ *
+ * <p>Manages {@link CLOperator} instances indexed by {@link DefaultExecutionKey} (function name + arg count),
+ * with thread-local caching for thread-safe execution.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * CLInstructionsManager manager = new CLInstructionsManager(computeContext, MyClass.class);
+ *
+ * // Get operator for function
+ * DefaultExecutionKey key = new DefaultExecutionKey("matmul", 3);
+ * CLOperator op = (CLOperator) manager.getOperator(key);
+ *
+ * // Execute
+ * op.accept(args);
+ * }</pre>
+ *
+ * @see CLOperator
+ * @see CLComputeContext
+ * @see org.almostrealism.hardware.instructions.InstructionSetManager
+ */
 public class CLInstructionsManager extends AbstractInstructionSetManager<DefaultExecutionKey> {
 	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
 

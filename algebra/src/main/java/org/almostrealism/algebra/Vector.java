@@ -55,7 +55,7 @@ import java.util.function.Supplier;
  * </p>
  * <ul>
  *   <li><strong>Cartesian</strong>: Standard (x, y, z) coordinates</li>
- *   <li><strong>Spherical</strong>: (r, θ, φ) where r = distance from origin, θ = angle from Z axis, φ = angle from XY plane</li>
+ *   <li><strong>Spherical</strong>: (r, theta, phi) where r = distance from origin, theta = angle from Z axis, phi = angle from XY plane</li>
  * </ul>
  *
  * <h2>Usage Examples</h2>
@@ -65,7 +65,7 @@ import java.util.function.Supplier;
  * // Cartesian coordinates
  * Vector v1 = new Vector(1.0, 2.0, 3.0);
  *
- * // Spherical coordinates (r=1, θ=π/4, φ=π/6)
+ * // Spherical coordinates (r=1, theta=pi/4, phi=pi/6)
  * Vector v2 = new Vector(1.0, Math.PI/4, Math.PI/6, Vector.SPHERICAL_COORDINATES);
  *
  * // Copy constructor
@@ -178,12 +178,12 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 	 * </p>
 	 * <ul>
 	 *   <li>x = r (distance from origin)</li>
-	 *   <li>y = θ (theta, angle from positive Z axis in radians)</li>
-	 *   <li>z = φ (phi, angle from positive XY plane in radians)</li>
+	 *   <li>y = theta (theta, angle from positive Z axis in radians)</li>
+	 *   <li>z = phi (phi, angle from positive XY plane in radians)</li>
 	 * </ul>
 	 * <p>
 	 * Spherical coordinates are converted to Cartesian using:
-	 * x = r.sin(θ).cos(φ), y = r.sin(θ).sin(φ), z = r.cos(θ)
+	 * x = r.sin(theta).cos(phi), y = r.sin(theta).sin(phi), z = r.cos(theta)
 	 * </p>
 	 *
 	 * @param x        Cartesian X coordinate or spherical distance from origin
@@ -806,7 +806,7 @@ public class Vector extends PackedCollection<Vector> implements VectorFeatures, 
 
 	/**
 	 * Performs component-wise multiplication of two vectors and stores the result in dest.
-	 * This is the Hadamard product: dest = v1 ⊙ v2
+	 * This is the Hadamard product: dest = v1 O v2
 	 *
 	 * @param dest  the destination vector to store the result
 	 * @param v1    the first vector

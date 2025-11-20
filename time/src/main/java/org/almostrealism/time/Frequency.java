@@ -88,10 +88,10 @@ package org.almostrealism.time;
  *
  * <h2>Relationship Formulas</h2>
  * <pre>
- * BPM = Hz × 60
+ * BPM = Hz * 60
  * Hz = BPM / 60
  * Wavelength = 1 / Hz (in seconds)
- * Time for n cycles = n × Wavelength
+ * Time for n cycles = n * Wavelength
  * </pre>
  *
  * <h2>Musical Note Frequencies</h2>
@@ -131,7 +131,7 @@ public class Frequency {
 	/**
 	 * Returns the frequency converted to Beats Per Minute (BPM).
 	 *
-	 * <p>Conversion formula: BPM = Hz × 60</p>
+	 * <p>Conversion formula: BPM = Hz * 60</p>
 	 *
 	 * @return The frequency in beats per minute
 	 */

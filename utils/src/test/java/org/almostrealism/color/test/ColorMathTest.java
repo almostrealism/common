@@ -83,7 +83,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 	 * <p>Operation: For each scalar in the input batch:
 	 * <ul>
 	 *   <li>if value > 0.0, return white (1,1,1)</li>
-	 *   <li>if value ≤ 0.0, return black (0,0,0)</li>
+	 *   <li>if value <= 0.0, return black (0,0,0)</li>
 	 * </ul></p>
 	 *
 	 * <p>Input values: [0.0, -1.0, 1.0, -0.1, 0.1]</p>

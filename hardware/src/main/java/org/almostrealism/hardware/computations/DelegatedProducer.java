@@ -31,6 +31,128 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Wrapper {@link Producer} that delegates to another producer while enriching metadata.
+ *
+ * <p>{@link DelegatedProducer} creates a new {@link Process} node that wraps an existing
+ * producer, useful for:</p>
+ * <ul>
+ *   <li><strong>Metadata enrichment:</strong> Add custom descriptions to operations</li>
+ *   <li><strong>Direct delegation:</strong> Pass through original {@link Evaluable}</li>
+ *   <li><strong>Indirect delegation:</strong> Hide implementation details</li>
+ *   <li><strong>Process tree construction:</strong> Create hierarchical computation graphs</li>
+ * </ul>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * // Wrap existing producer
+ * Producer<Matrix> original = multiply(a, b);
+ *
+ * // Create delegated producer with enriched metadata
+ * DelegatedProducer<Matrix> wrapper =
+ *     new DelegatedProducer<>(original);  // Direct delegation
+ *
+ * // Metadata shows: "delegate(MatMul_f64_3_2)"
+ * String description = wrapper.getMetadata().getShortDescription();
+ * }</pre>
+ *
+ * <h2>Direct vs Indirect Delegation</h2>
+ *
+ * <p>The {@code directDelegate} flag controls how the {@link Evaluable} is exposed:</p>
+ *
+ * <pre>{@code
+ * // Direct delegation (default): Returns original Evaluable
+ * DelegatedProducer<T> direct = new DelegatedProducer<>(op, true);
+ * Evaluable<T> eval1 = direct.get();  // Returns op.get() directly
+ *
+ * // Indirect delegation: Hides original Evaluable
+ * DelegatedProducer<T> indirect = new DelegatedProducer<>(op, false);
+ * Evaluable<T> eval2 = indirect.get();  // Returns lambda wrapper
+ * }</pre>
+ *
+ * <p>Indirect delegation is useful when you want to hide information about the
+ * original evaluable's structure from the caller.</p>
+ *
+ * <h2>Metadata Enrichment</h2>
+ *
+ * <p>Automatically wraps child metadata with "delegate(...)" prefix:</p>
+ *
+ * <pre>{@code
+ * // Original operation
+ * Producer<T> matmul = matmul(a, b);  // Metadata: "MatMul_f64_3_2"
+ *
+ * // Wrapped operation
+ * DelegatedProducer<T> wrapper = new DelegatedProducer<>(matmul);
+ * // Display name: "delegate(MatMul_f64_3_2)"
+ * // Short description: "DelegatedProducer(MatMul_f64_3_2)"
+ * }</pre>
+ *
+ * <h2>Custom Metadata Extension</h2>
+ *
+ * <p>Subclasses can override {@code extendDescription()} for custom formatting:</p>
+ *
+ * <pre>{@code
+ * public class MyDelegatedProducer<T> extends DelegatedProducer<T> {
+ *     @Override
+ *     protected String extendDescription(String description, boolean brief) {
+ *         if (brief) {
+ *             return "custom(" + description + ")";
+ *         } else {
+ *             return "Custom wrapper for " + description;
+ *         }
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Process Tree Integration</h2>
+ *
+ * <p>Integrates with {@link Process} hierarchy:</p>
+ *
+ * <pre>{@code
+ * DelegatedProducer<T> wrapper = new DelegatedProducer<>(op);
+ *
+ * // If op is a Process, it becomes a child
+ * Collection<Process<?, ?>> children = wrapper.getChildren();
+ * // Returns: [op] if op instanceof Process, else []
+ * }</pre>
+ *
+ * <h2>Countable Delegation</h2>
+ *
+ * <p>Count properties are forwarded to the wrapped producer:</p>
+ *
+ * <pre>{@code
+ * long count = wrapper.getCountLong();  // Delegates to Countable.countLong(op)
+ * boolean fixed = wrapper.isFixedCount();  // Delegates to Countable.isFixedCount(op)
+ * }</pre>
+ *
+ * <h2>Signature Generation</h2>
+ *
+ * <p>Generates signature based on delegation properties:</p>
+ *
+ * <pre>{@code
+ * String signature = wrapper.signature();
+ * // Returns: "delegate|1024|true"
+ * //   - Count: 1024
+ * //   - Fixed count: true
+ * }</pre>
+ *
+ * <p><strong>Note:</strong> Returns {@code null} for aggregation targets to avoid
+ * signature conflicts (see {@link org.almostrealism.hardware.mem.MemoryDataArgumentMap}).</p>
+ *
+ * <h2>Limitations</h2>
+ *
+ * <ul>
+ *   <li><strong>getOutputSize():</strong> Throws {@link UnsupportedOperationException}</li>
+ *   <li><strong>generate():</strong> Throws {@link UnsupportedOperationException}</li>
+ *   <li><strong>isolate():</strong> Returns {@code this} (no isolation)</li>
+ * </ul>
+ *
+ * @param <T> The type of value produced
+ * @see Producer
+ * @see Process
+ * @see OperationMetadata
+ */
 public class DelegatedProducer<T> implements
 		Process<Process<?, ?>, Evaluable<? extends T>>,
 		Producer<T>, Countable, Signature,

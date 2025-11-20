@@ -20,6 +20,25 @@ import io.almostrealism.code.Precision;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
+/**
+ * {@link org.almostrealism.io.PrintWriter} for OpenCL kernel code generation.
+ *
+ * <p>Generates OpenCL C code with "__kernel void" function prefix and
+ * {@link OpenCLLanguageOperations} for language-specific constructs.</p>
+ *
+ * <h2>Generated Code Example</h2>
+ *
+ * <pre>{@code
+ * __kernel void matmul(__global float* arg0, int arg0_offset, int arg0_size,
+ *                      __global float* arg1, int arg1_offset, int arg1_size) {
+ *     int idx = get_global_id(0);
+ *     // kernel body...
+ * }
+ * }</pre>
+ *
+ * @see OpenCLLanguageOperations
+ * @see CLComputeContext
+ */
 public class OpenCLPrintWriter extends CPrintWriter {
 
 	public OpenCLPrintWriter(PrintWriter p, Precision precision) {

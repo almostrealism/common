@@ -16,6 +16,23 @@
 
 package org.almostrealism.hardware.metal;
 
+/**
+ * Wrapper for Metal {@code id<MTLCommandQueue>}.
+ *
+ * <p>Creates {@link MTLCommandBuffer} instances for submitting GPU work.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * MTLCommandQueue queue = device.newCommandQueue();
+ * MTLCommandBuffer cmdBuf = queue.commandBuffer();
+ * // Encode commands...
+ * cmdBuf.commit();
+ * }</pre>
+ *
+ * @see MTLDevice
+ * @see MTLCommandBuffer
+ */
 public class MTLCommandQueue extends MTLObject {
 	private MTLDevice device;
 

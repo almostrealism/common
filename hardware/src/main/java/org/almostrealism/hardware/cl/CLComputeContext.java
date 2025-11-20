@@ -42,6 +42,167 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * {@link io.almostrealism.code.ComputeContext} implementation for OpenCL kernel compilation and execution.
+ *
+ * <p>{@link CLComputeContext} manages OpenCL resources including command queues, kernel compilation,
+ * and execution profiling. It compiles {@link Scope} instances into OpenCL kernels and manages their
+ * execution lifecycle.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * CLDataContext dataContext = ...;
+ * cl_context ctx = ...;
+ * CLComputeContext computeContext = new CLComputeContext(dataContext, ctx);
+ * computeContext.init(mainDevice, kernelDevice, true);  // Enable profiling
+ *
+ * // Compile scope to OpenCL kernels
+ * Scope<Matrix> scope = operation.getScope(computeContext);
+ * InstructionSet instructions = computeContext.deliver(scope);
+ *
+ * // Execute compiled kernel
+ * Operator op = instructions.get("functionName");
+ * op.accept(args);
+ * }</pre>
+ *
+ * <h2>Command Queue Management</h2>
+ *
+ * <p>Maintains multiple command queues for different operations:</p>
+ *
+ * <pre>{@code
+ * // Main queue: General operations and memory transfers
+ * cl_command_queue main = computeContext.getClQueue();
+ *
+ * // Fast queue: Specialized fast path (if enabled)
+ * cl_command_queue fast = computeContext.getFastClQueue();
+ *
+ * // Kernel queue: Dedicated GPU kernel execution (if available)
+ * cl_command_queue kernel = computeContext.getKernelClQueue();
+ *
+ * // Dynamic queue selection based on work size
+ * cl_command_queue selected = computeContext.getClQueue(isKernelOp);
+ * }</pre>
+ *
+ * <h2>Scope Compilation</h2>
+ *
+ * <p>Compiles {@link Scope} to OpenCL C code:</p>
+ *
+ * <pre>{@code
+ * @Override
+ * public InstructionSet deliver(Scope scope) {
+ *     StringBuffer buf = new StringBuffer();
+ *
+ *     // Add FP64 pragma if needed
+ *     if (enableFp64) buf.append("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n");
+ *
+ *     // Encode scope to OpenCL C
+ *     ScopeEncoder enc = new ScopeEncoder(
+ *         p -> new OpenCLPrintWriter(p, precision),
+ *         Accessibility.EXTERNAL);
+ *     buf.append(enc.apply(scope));
+ *
+ *     // Compile to cl_program and create operator map
+ *     return new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profile);
+ * }
+ * }</pre>
+ *
+ * <h2>Profiling Support</h2>
+ *
+ * <p>Tracks kernel execution time when profiling is enabled:</p>
+ *
+ * <pre>{@code
+ * // Initialize with profiling
+ * computeContext.init(device, null, true);  // profiling = true
+ *
+ * // Execution automatically records timing
+ * op.accept(args);  // Timing added to ProfileData
+ *
+ * // View profiling results
+ * computeContext.logProfiles();
+ * // Output:
+ * //   Top Total Durations:
+ * //     - matmul: 45.2ms (1000 runs, avg 45.2us)
+ * //     - add: 12.3ms (5000 runs, avg 2.46us)
+ * }</pre>
+ *
+ * <h2>Event Processing</h2>
+ *
+ * <p>Waits for OpenCL events and extracts profiling data:</p>
+ *
+ * <pre>{@code
+ * cl_event event = new cl_event();
+ * CL.clEnqueueNDRangeKernel(..., event);
+ *
+ * processEvent(event, profile);
+ * // -> clWaitForEvents(event)
+ * // -> Extract CL_PROFILING_COMMAND_START/END
+ * // -> profile.accept(new RunData(duration))
+ * // -> clReleaseEvent(event)
+ * }</pre>
+ *
+ * <h2>Multi-Queue Mode</h2>
+ *
+ * <p>Optional fast queue for performance optimization (experimental):</p>
+ *
+ * <pre>{@code
+ * // Enable fast queue (off by default due to consistency issues)
+ * CLComputeContext.enableFastQueue = true;
+ *
+ * // Creates separate queue for certain operations
+ * if (enableFastQueue) {
+ *     fastQueue = CL.clCreateCommandQueue(ctx, device, flags, null);
+ * }
+ *
+ * // WARNING: Known issues with argument caching when enabled
+ * }</pre>
+ *
+ * <h2>FP64 Extension</h2>
+ *
+ * <p>Automatically adds OpenCL FP64 extension pragma:</p>
+ *
+ * <pre>{@code
+ * // When precision is FP64
+ * String code = computeContext.deliver(scope);
+ * // Prepends: #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+ * }</pre>
+ *
+ * <h2>Profile Reporting</h2>
+ *
+ * <p>Detailed profiling statistics:</p>
+ *
+ * <pre>{@code
+ * computeContext.logProfiles();
+ * // Output:
+ * // Profiler Results:
+ * //   Top Total Durations:
+ * //     - conv2d: 1.23s (100 runs, avg 12.3ms, stddev 2.1ms)
+ * //     - matmul: 450ms (500 runs, avg 900us, stddev 150us)
+ * //   Top Execution Count:
+ * //     - add: 10000 runs, total 50ms
+ * //     - multiply: 8000 runs, total 40ms
+ * }</pre>
+ *
+ * <h2>Lifecycle Management</h2>
+ *
+ * <pre>{@code
+ * CLComputeContext context = new CLComputeContext(dc, ctx);
+ * context.init(mainDevice, kernelDevice, profiling);
+ *
+ * try {
+ *     // Compile and execute kernels
+ * } finally {
+ *     context.destroy();
+ *     // -> Logs profiling results (if enabled)
+ *     // -> Destroys all instruction sets
+ *     // -> Releases command queues
+ * }
+ * }</pre>
+ *
+ * @see CLDataContext
+ * @see CLOperatorMap
+ * @see CLOperator
+ */
 public class CLComputeContext extends AbstractComputeContext {
 	/**
 	 * Note: Using multiple queues, by enabling this flag, appears to cause some

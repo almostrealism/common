@@ -28,6 +28,113 @@ import org.almostrealism.hardware.mem.Bytes;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+/**
+ * {@link OperationComputationAdapter} that generates conditional early return based on a control value.
+ *
+ * <p>{@link Abort} creates a conditional return statement in compiled code, allowing kernel
+ * threads to exit early when a control flag is set. This is useful for:</p>
+ * <ul>
+ *   <li><strong>Conditional execution:</strong> Skip computation when not needed</li>
+ *   <li><strong>Error handling:</strong> Abort on invalid inputs</li>
+ *   <li><strong>Optimization:</strong> Early exit when result is known</li>
+ * </ul>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * // Create control flag
+ * MemoryData control = new Bytes(1);
+ * control.setMem(0.0);  // 0 = continue, >0 = abort
+ *
+ * // Create abort operation
+ * Abort abort = new Abort(control);
+ *
+ * // Compile to scope
+ * Scope<Void> scope = abort.getScope(context);
+ * }</pre>
+ *
+ * <h2>Generated Code</h2>
+ *
+ * <p>For a control value at {@code arg[0]}:</p>
+ *
+ * <pre>{@code
+ * void kernel() {
+ *     if (arg[0] > 0) { return; }
+ *     // Continue with remaining computation...
+ * }
+ * }</pre>
+ *
+ * <h2>Control Value Semantics</h2>
+ *
+ * <ul>
+ *   <li><strong>value &lt;= 0:</strong> Continue execution</li>
+ *   <li><strong>value &gt; 0:</strong> Early return (abort)</li>
+ * </ul>
+ *
+ * <pre>{@code
+ * // Continue execution
+ * control.setMem(0.0);
+ * abort.get().run();  // Kernel continues
+ *
+ * // Abort execution
+ * control.setMem(1.0);
+ * abort.get().run();  // Kernel returns early
+ * }</pre>
+ *
+ * <h2>Supplier-Based Control</h2>
+ *
+ * <p>Control value can be provided via {@link java.util.function.Supplier}:</p>
+ *
+ * <pre>{@code
+ * // Dynamic control value
+ * Abort abort = new Abort(() -> shouldAbort ? errorFlag : null);
+ *
+ * // null values use fallback (always continue)
+ * }</pre>
+ *
+ * <h2>Fallback Behavior</h2>
+ *
+ * <p>When control supplier returns {@code null}, uses static fallback (value = 0.0):</p>
+ *
+ * <pre>{@code
+ * // Fallback: Never aborts
+ * private static MemoryData abortFallback;
+ * static {
+ *     abortFallback = new Bytes(1);
+ *     abortFallback.setMem(0.0);
+ * }
+ * }</pre>
+ *
+ * <h2>Use Cases</h2>
+ *
+ * <ul>
+ *   <li><strong>Convergence checking:</strong> Stop iterations when converged</li>
+ *   <li><strong>Bounds checking:</strong> Abort on out-of-range inputs</li>
+ *   <li><strong>Conditional computation:</strong> Skip expensive operations when not needed</li>
+ *   <li><strong>Error propagation:</strong> Abort entire kernel batch on error</li>
+ * </ul>
+ *
+ * <h2>Example: Conditional Gradient Descent</h2>
+ *
+ * <pre>{@code
+ * // Check convergence
+ * MemoryData converged = checkConvergence(gradientNorm);
+ *
+ * // Abort if converged
+ * Abort abort = new Abort(converged);
+ *
+ * // Combined computation
+ * Computation<Void> step = sequence(
+ *     abort,              // Early return if converged
+ *     updateWeights(),    // Only runs if not converged
+ *     updateGradient()
+ * );
+ * }</pre>
+ *
+ * @see OperationComputationAdapter
+ * @see io.almostrealism.scope.HybridScope
+ * @see ExpressionFeatures
+ */
 public class Abort extends OperationComputationAdapter<MemoryData> implements ExpressionFeatures {
 	private static MemoryData abortFallback;
 

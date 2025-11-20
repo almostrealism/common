@@ -42,6 +42,162 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
+/**
+ * {@link MemoryProvider} implementation for OpenCL memory management.
+ *
+ * <p>{@link CLMemoryProvider} allocates and manages {@link CLMemory} backed by OpenCL {@link cl_mem}
+ * objects, supporting multiple allocation strategies and efficient memory transfers.</p>
+ *
+ * <h2>Allocation Strategies</h2>
+ *
+ * <p>Supports four memory location strategies via {@link Location}:</p>
+ *
+ * <pre>{@code
+ * // DEVICE: Allocate on GPU device memory
+ * CLMemoryProvider device = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.DEVICE);
+ *
+ * // HOST: Use host-pinned memory (CL_MEM_ALLOC_HOST_PTR)
+ * CLMemoryProvider host = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.HOST);
+ *
+ * // HEAP: Use Java heap arrays (CL_MEM_USE_HOST_PTR)
+ * CLMemoryProvider heap = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.HEAP);
+ *
+ * // DELEGATE: Delegate to another memory provider
+ * CLMemoryProvider delegate = new CLMemoryProvider(
+ *     context, queue, 4, maxMem, Location.DELEGATE);
+ * }</pre>
+ *
+ * <h2>Memory Allocation</h2>
+ *
+ * <pre>{@code
+ * CLMemoryProvider provider = ...;
+ *
+ * // Allocate 1024 floats
+ * CLMemory mem = provider.allocate(1024);
+ *
+ * // Allocate with host pointer (zero-copy)
+ * NativeBuffer buffer = ...;
+ * CLMemory mem = provider.allocate(1024, buffer);
+ * // Uses CL_MEM_USE_HOST_PTR for zero-copy access
+ * }</pre>
+ *
+ * <h2>Memory Transfers</h2>
+ *
+ * <p>Efficient memory copy operations:</p>
+ *
+ * <pre>{@code
+ * // Host to device
+ * float[] data = {1.0f, 2.0f, 3.0f};
+ * provider.setMem(clMem, 0, data, 0, 3);
+ *
+ * // Device to host
+ * float[] result = new float[3];
+ * provider.getMem(clMem, 0, result, 0, 3);
+ *
+ * // Device to device (zero-copy on same device)
+ * provider.setMem(destMem, 0, srcMem, 0, length);
+ * // Uses clEnqueueCopyBuffer
+ * }</pre>
+ *
+ * <h2>Precision Handling</h2>
+ *
+ * <p>Automatically converts between FP32/FP64:</p>
+ *
+ * <pre>{@code
+ * // Provider with FP64 precision
+ * CLMemoryProvider fp64 = new CLMemoryProvider(..., 8, ...);
+ *
+ * // Writing float[] converts to double[]
+ * float[] f = {1.0f, 2.0f};
+ * fp64.setMem(mem, 0, f, 0, 2);  // Converts to double[]
+ *
+ * // Reading to float[] converts from double[]
+ * float[] result = new float[2];
+ * fp64.getMem(mem, 0, result, 0, 2);  // Converts from double[]
+ * }</pre>
+ *
+ * <h2>Heap-Based Memory</h2>
+ *
+ * <p>Maintains heap for host pointer tracking:</p>
+ *
+ * <pre>{@code
+ * // When Location.HEAP is used:
+ * PointerAndObject<?> ptr = PointerAndObject.forLength(numberSize, len);
+ * cl_mem mem = CL.clCreateBuffer(ctx, CL_MEM_USE_HOST_PTR, size,
+ *     ptr.getPointer(), null);
+ * heap.put(mem, ptr);  // Track for later retrieval
+ *
+ * // Can retrieve heap data directly without transfer
+ * Object heapData = heap.get(mem).getObject();
+ * }</pre>
+ *
+ * <h2>Direct Reallocation</h2>
+ *
+ * <p>Optimized reallocation with {@link NativeBuffer}:</p>
+ *
+ * <pre>{@code
+ * // Enable direct reallocation (default: true)
+ * CLMemoryProvider.enableDirectReallocation = true;
+ *
+ * // Reallocation reuses host buffer
+ * NativeBuffer src = ...;
+ * RAM newMem = provider.reallocate(src, offset, length);
+ * // Uses CL_MEM_USE_HOST_PTR to avoid copy
+ * }</pre>
+ *
+ * <h2>NativeBuffer Adapters</h2>
+ *
+ * <p>Registered adapters enable {@link NativeBuffer} interop:</p>
+ *
+ * <pre>{@code
+ * // Adapter for reading CLMemory to NativeBuffer
+ * NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+ *     (mem, offset, source, srcOffset, length) -> {
+ *         Pointer dst = Pointer.to(mem.getBuffer());
+ *         clEnqueueReadBuffer(queue, source.getMem(), ...);
+ *     });
+ *
+ * // Adapter for direct access to heap data
+ * NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+ *     (mem, offset, length) -> {
+ *         return heap.get(mem.getMem()).getObject();
+ *     });
+ * }</pre>
+ *
+ * <h2>Memory Tracking</h2>
+ *
+ * <pre>{@code
+ * // Current memory usage
+ * long used = provider.getAllocatedMemory();
+ *
+ * // Tracks all allocations
+ * CLMemory mem1 = provider.allocate(1024);  // memoryUsed += 4096
+ * CLMemory mem2 = provider.allocate(2048);  // memoryUsed += 8192
+ *
+ * // Deallocates and updates tracking
+ * provider.deallocate(1024, mem1);  // memoryUsed -= 4096
+ * }</pre>
+ *
+ * <h2>Metrics</h2>
+ *
+ * <p>Automatic metrics collection:</p>
+ *
+ * <pre>{@code
+ * // Distribution metrics
+ * CLMemoryProvider.allocationSizes.getStats();    // Allocation size distribution
+ * CLMemoryProvider.deallocationSizes.getStats();  // Deallocation size distribution
+ *
+ * // Timing metrics
+ * CLMemoryProvider.ioTime.getSummary();  // setMem/getMem timing
+ * }</pre>
+ *
+ * @see CLMemory
+ * @see CLDataContext
+ * @see MemoryProvider
+ */
 public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableDirectReallocation = true;
 	public static boolean enableLargeAllocationLogging =

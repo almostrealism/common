@@ -26,6 +26,45 @@ import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
+/**
+ * {@link io.almostrealism.code.ComputeContext} that compiles to native C code with OpenCL memory operations.
+ *
+ * <p>Generates JNI C code that uses OpenCL APIs for memory transfers (clEnqueueReadBuffer, clEnqueueWriteBuffer)
+ * while executing computation logic in compiled native code. Provides CPU execution with OpenCL memory.</p>
+ *
+ * <h2>Usage</h2>
+ *
+ * <pre>{@code
+ * NativeCompiler compiler = NativeCompiler.factory(Precision.FP32, true).construct();
+ * CLNativeComputeContext context = new CLNativeComputeContext(dataContext, compiler);
+ *
+ * // Compile scope to native code
+ * Scope<T> scope = computation.getScope(context);
+ * NativeInstructionSet instructions = (NativeInstructionSet) context.deliver(scope);
+ * }</pre>
+ *
+ * <h2>Generated Code</h2>
+ *
+ * <p>Uses {@link CLJNIPrintWriter} to generate JNI code with OpenCL memory operations:</p>
+ *
+ * <pre>{@code
+ * // Generated JNI function:
+ * JNIEXPORT void JNICALL Java_..._execute(...) {
+ *     // Read from OpenCL memory
+ *     clEnqueueReadBuffer(queue, clMem, ...);
+ *
+ *     // Execute native computation
+ *     compute(data, ...);
+ *
+ *     // Write back to OpenCL memory
+ *     clEnqueueWriteBuffer(queue, clMem, ...);
+ * }
+ * }</pre>
+ *
+ * @see CLJNIPrintWriter
+ * @see CLJNILanguageOperations
+ * @see NativeCompiler
+ */
 public class CLNativeComputeContext extends AbstractComputeContext {
 	private NativeCompiler compiler;
 

@@ -25,10 +25,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@link MetalOperatorMap} manages a {@link MetalProgram} and
- * the associated {@link MetalOperator}s.
+ * {@link InstructionSet} that maps kernel names to thread-local {@link MetalOperator} instances.
  *
- * @author  Michael Murray
+ * <p>Wraps a compiled {@link MetalProgram} and provides thread-safe access to Metal kernel operators.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * MetalOperatorMap map = new MetalOperatorMap(context, metadata, funcName, source);
+ * // Compiles Metal source during construction
+ *
+ * MetalOperator op = map.get("matmul", 3);  // 3 arguments
+ * op.accept(args);
+ *
+ * // Thread-local: Each thread gets its own operator instance
+ * }</pre>
+ *
+ * @see MetalOperator
+ * @see MetalProgram
+ * @see InstructionSet
  */
 public class MetalOperatorMap implements InstructionSet {
 	private MetalComputeContext context;

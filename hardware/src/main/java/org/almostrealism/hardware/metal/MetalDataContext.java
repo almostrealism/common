@@ -33,6 +33,40 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
+/**
+ * {@link io.almostrealism.code.DataContext} for Apple Metal GPU backend.
+ *
+ * <p>Manages Metal {@link MTLDevice}, {@link MetalMemoryProvider}, and {@link MetalComputeContext}
+ * for GPU-accelerated computation on macOS and iOS platforms.</p>
+ *
+ * <h2>Basic Usage</h2>
+ *
+ * <pre>{@code
+ * MetalDataContext context = new MetalDataContext(
+ *     "Metal",
+ *     1024 * 1024 * 1024,  // 1GB max
+ *     1024 * 1024);         // 1MB threshold
+ * context.init();
+ *
+ * MTLDevice device = context.getDevice();
+ * MetalMemoryProvider memory = (MetalMemoryProvider) context.getMemoryProvider();
+ * }</pre>
+ *
+ * <h2>Precision Support</h2>
+ *
+ * <pre>{@code
+ * // Default: FP32
+ * Precision p = context.getPrecision();  // FP32
+ *
+ * // Enable FP16: Set environment variable
+ * // AR_HARDWARE_PRECISION=FP16
+ * Precision p = context.getPrecision();  // FP16
+ * }</pre>
+ *
+ * @see MetalComputeContext
+ * @see MetalMemoryProvider
+ * @see MTLDevice
+ */
 public class MetalDataContext extends HardwareDataContext {
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
