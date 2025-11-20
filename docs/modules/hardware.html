@@ -76,35 +76,35 @@
                 <h3>Core Abstractions</h3>
                 <div class="class-list">
                     <div class="class-item">
-                        <h4>Hardware</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/Hardware.html">Hardware</a></h4>
                         <p>Global configuration and initialization. Entry point for accessing compute contexts and memory providers.</p>
                     </div>
                     <div class="class-item">
-                        <h4>HardwareOperator</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/HardwareOperator.html">HardwareOperator</a></h4>
                         <p>Base class for compiled kernel execution. Manages argument preparation, memory migration, and work size configuration.</p>
                     </div>
                     <div class="class-item">
-                        <h4>DefaultComputer</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/DefaultComputer.html">DefaultComputer</a></h4>
                         <p>Compilation and caching coordinator. Thread-local compute requirements stack with signature-based kernel caching.</p>
                     </div>
                     <div class="class-item">
-                        <h4>MemoryData</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a></h4>
                         <p>Hardware-accessible data abstraction. Unified interface for heap, off-heap, and device memory with traversal policies.</p>
                     </div>
                     <div class="class-item">
-                        <h4>MemoryBank</h4>
-                        <p>Collection of MemoryData in single allocation. Enables batch operations with single GPU transfer.</p>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/MemoryBank.html">MemoryBank</a></h4>
+                        <p>Collection of <a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> in single allocation. Enables batch operations with single GPU transfer.</p>
                     </div>
                     <div class="class-item">
-                        <h4>PassThroughProducer</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a></h4>
                         <p>Dynamic input placeholders. Enables kernel reuse with different data at evaluation time.</p>
                     </div>
                     <div class="class-item">
-                        <h4>OperationList</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a></h4>
                         <p>Composable operation sequences. Can compile multiple operations into single kernel or execute sequentially.</p>
                     </div>
                     <div class="class-item">
-                        <h4>AcceleratedOperation</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/AcceleratedOperation.html">AcceleratedOperation</a></h4>
                         <p>Hardware-accelerated computation base. Compiles Scope to backend-specific code (OpenCL C, MSL, JNI C).</p>
                     </div>
                 </div>
@@ -112,27 +112,27 @@
                 <h3>Memory Management</h3>
                 <div class="class-list">
                     <div class="class-item">
-                        <h4>MemoryProvider</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/MemoryProvider.html">MemoryProvider</a></h4>
                         <p>Allocates and manages hardware memory. Provider-specific implementations for OpenCL, Metal, and heap memory.</p>
                     </div>
                     <div class="class-item">
-                        <h4>Heap</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/Heap.html">Heap</a></h4>
                         <p>Thread-local arena allocation. Efficient staging for temporary memory with automatic cleanup.</p>
                     </div>
                     <div class="class-item">
-                        <h4>RAM</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/RAM.html">RAM</a></h4>
                         <p>Base class for native memory. Provides pointer-based access to off-heap allocations.</p>
                     </div>
                     <div class="class-item">
-                        <h4>Bytes</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/Bytes.html">Bytes</a></h4>
                         <p>Fixed-size memory block. Fundamental building block with delegation support for zero-copy views.</p>
                     </div>
                     <div class="class-item">
-                        <h4>MemoryDataAdapter</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/MemoryDataAdapter.html">MemoryDataAdapter</a></h4>
                         <p>Delegation and versioning. Creates zero-copy views and caches memory across providers.</p>
                     </div>
                     <div class="class-item">
-                        <h4>MemoryReplacementManager</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/MemoryReplacementManager.html">MemoryReplacementManager</a></h4>
                         <p>Three-phase memory substitution. Handles CPU→GPU transfers with aggregation and root grouping.</p>
                     </div>
                 </div>
@@ -140,15 +140,15 @@
                 <h3>Context Management</h3>
                 <div class="class-list">
                     <div class="class-item">
-                        <h4>DataContext</h4>
-                        <p>Backend-specific data management. Provides MemoryProvider and ComputeContext for a hardware backend.</p>
+                        <h4><a href="../apidocs/io/almostrealism/code/DataContext.html">DataContext</a></h4>
+                        <p>Backend-specific data management. Provides <a href="../apidocs/org/almostrealism/hardware/mem/MemoryProvider.html">MemoryProvider</a> and <a href="../apidocs/io/almostrealism/code/ComputeContext.html">ComputeContext</a> for a hardware backend.</p>
                     </div>
                     <div class="class-item">
-                        <h4>ComputeContext</h4>
+                        <h4><a href="../apidocs/io/almostrealism/code/ComputeContext.html">ComputeContext</a></h4>
                         <p>Kernel compilation and execution. Converts Scope to backend code and manages instruction caching.</p>
                     </div>
                     <div class="class-item">
-                        <h4>ContextSpecific</h4>
+                        <h4><a href="../apidocs/org/almostrealism/hardware/ctx/ContextSpecific.html">ContextSpecific</a></h4>
                         <p>Thread-local context binding. Ensures operations use correct backend context.</p>
                     </div>
                 </div>
@@ -158,37 +158,51 @@
                 <h2>Hardware Backends</h2>
 
                 <div class="backend-card">
-                    <h4>🖥️ OpenCL Backend (cl package - 21 classes)</h4>
+                    <h4>🖥️ OpenCL Backend (<a href="../apidocs/org/almostrealism/hardware/cl/package-summary.html">cl package</a> - 21 classes)</h4>
                     <p><strong>Purpose:</strong> Cross-platform GPU/CPU acceleration via OpenCL 1.2+</p>
-                    <p><strong>Key Classes:</strong> CLDataContext, CLMemoryProvider, CLOperator, CLProgram</p>
+                    <p><strong>Key Classes:</strong>
+                        <a href="../apidocs/org/almostrealism/hardware/cl/CLDataContext.html">CLDataContext</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/cl/CLMemoryProvider.html">CLMemoryProvider</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/cl/CLOperator.html">CLOperator</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/cl/CLProgram.html">CLProgram</a>
+                    </p>
                     <p><strong>Use Case:</strong> General-purpose GPU acceleration on NVIDIA, AMD, Intel GPUs</p>
                     <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=cl</span> or <span class="env-var">gpu</span></p>
                     <ul>
                         <li>Supports CPU fallback mode</li>
                         <li>Multiple allocation strategies (DEVICE, HOST, HEAP, DELEGATE)</li>
-                        <li>JNI-based native compilation option (CLJNIPrintWriter)</li>
+                        <li>JNI-based native compilation option (<a href="../apidocs/org/almostrealism/hardware/cl/CLJNIPrintWriter.html">CLJNIPrintWriter</a>)</li>
                         <li>Exception mapping for CL_INVALID_CONTEXT, CL_INVALID_VALUE</li>
                     </ul>
                 </div>
 
                 <div class="backend-card">
-                    <h4>🍎 Metal Backend (metal package - 23 classes)</h4>
+                    <h4>🍎 Metal Backend (<a href="../apidocs/org/almostrealism/hardware/metal/package-summary.html">metal package</a> - 23 classes)</h4>
                     <p><strong>Purpose:</strong> Apple Silicon GPU acceleration via Metal Shading Language</p>
-                    <p><strong>Key Classes:</strong> MetalDataContext, MetalMemoryProvider, MetalOperator, MTLDevice</p>
+                    <p><strong>Key Classes:</strong>
+                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalDataContext.html">MetalDataContext</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryProvider.html">MetalMemoryProvider</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a>
+                    </p>
                     <p><strong>Use Case:</strong> High-performance computation on macOS/iOS with M1/M2/M3 chips</p>
                     <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=mtl</span> or <span class="env-var">gpu</span></p>
                     <ul>
                         <li>FP16/FP32 precision support</li>
                         <li>Shared memory mode for unified memory architecture</li>
                         <li>Threadgroup sizing with SIMD width optimization</li>
-                        <li>JNI wrappers for MTLDevice, MTLBuffer, MTLCommandQueue, etc.</li>
+                        <li>JNI wrappers for <a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a>, <a href="../apidocs/org/almostrealism/hardware/metal/MTLBuffer.html">MTLBuffer</a>, <a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandQueue.html">MTLCommandQueue</a>, etc.</li>
                     </ul>
                 </div>
 
                 <div class="backend-card">
-                    <h4>⚡ JNI Backend (jni package - 15 classes)</h4>
+                    <h4>⚡ JNI Backend (<a href="../apidocs/org/almostrealism/hardware/jni/package-summary.html">jni package</a> - 15 classes)</h4>
                     <p><strong>Purpose:</strong> Fast CPU execution via runtime-compiled native C code</p>
-                    <p><strong>Key Classes:</strong> NativeCompiler, NativeExecution, NativeDataContext</p>
+                    <p><strong>Key Classes:</strong>
+                        <a href="../apidocs/org/almostrealism/hardware/jni/NativeCompiler.html">NativeCompiler</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/jni/NativeExecution.html">NativeExecution</a>,
+                        <a href="../apidocs/org/almostrealism/hardware/jni/NativeDataContext.html">NativeDataContext</a>
+                    </p>
                     <p><strong>Use Case:</strong> CPU-bound workloads, development, systems without GPU support</p>
                     <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=native</span> or <span class="env-var">cpu</span></p>
                     <ul>
@@ -231,59 +245,59 @@
             <section id="classes">
                 <h2>Key Classes Deep Dive</h2>
 
-                <h3>Hardware</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/Hardware.html">Hardware</a></h3>
                 <p>Global configuration singleton managing backend selection and initialization.</p>
                 <ul>
                     <li><strong>Backend Selection:</strong> Environment-driven (AR_HARDWARE_DRIVER)</li>
-                    <li><strong>DataContext Factory:</strong> Creates CLDataContext, MetalDataContext, or NativeDataContext</li>
+                    <li><strong>DataContext Factory:</strong> Creates <a href="../apidocs/org/almostrealism/hardware/cl/CLDataContext.html">CLDataContext</a>, <a href="../apidocs/org/almostrealism/hardware/metal/MetalDataContext.html">MetalDataContext</a>, or <a href="../apidocs/org/almostrealism/hardware/jni/NativeDataContext.html">NativeDataContext</a></li>
                     <li><strong>Memory Scale:</strong> Configures max memory via AR_HARDWARE_MEMORY_SCALE</li>
                     <li><strong>Precision:</strong> FP32 vs FP64 via AR_HARDWARE_PRECISION</li>
-                    <li><strong>Thread-Local Computer:</strong> Per-thread DefaultComputer instances</li>
+                    <li><strong>Thread-Local Computer:</strong> Per-thread <a href="../apidocs/org/almostrealism/hardware/DefaultComputer.html">DefaultComputer</a> instances</li>
                 </ul>
 
-                <h3>DefaultComputer</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/DefaultComputer.html">DefaultComputer</a></h3>
                 <p>Compilation coordinator with multi-level caching and compute requirements management.</p>
                 <ul>
                     <li><strong>Requirements Stack:</strong> Thread-local stack of ComputeRequirement (CPU/GPU/AUTO)</li>
                     <li><strong>Signature Caching:</strong> Cache by operation signature hash</li>
-                    <li><strong>Provider Tracking:</strong> Monitors last-used MemoryProvider per operation</li>
+                    <li><strong>Provider Tracking:</strong> Monitors last-used <a href="../apidocs/org/almostrealism/hardware/mem/MemoryProvider.html">MemoryProvider</a> per operation</li>
                     <li><strong>Lazy Compilation:</strong> Defers kernel compilation until first evaluation</li>
                 </ul>
 
-                <h3>PassThroughProducer</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a></h3>
                 <p>Represents dynamic input arguments for kernel reuse.</p>
                 <ul>
                     <li><strong>Argument Index:</strong> References evaluation argument by position (0, 1, 2, ...)</li>
                     <li><strong>Traversal Policy:</strong> Supports fixed and variable-count policies</li>
                     <li><strong>Kernel Reuse:</strong> Same kernel works with different data</li>
-                    <li><strong>Memory Destination:</strong> Optional MemoryDataDestinationProducer for pre-allocated outputs</li>
+                    <li><strong>Memory Destination:</strong> Optional <a href="../apidocs/org/almostrealism/hardware/mem/MemoryDataDestinationProducer.html">MemoryDataDestinationProducer</a> for pre-allocated outputs</li>
                 </ul>
 
-                <h3>MemoryBank</h3>
-                <p>Collection of MemoryData elements in a single contiguous allocation.</p>
+                <h3><a href="../apidocs/org/almostrealism/hardware/MemoryBank.html">MemoryBank</a></h3>
+                <p>Collection of <a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> elements in a single contiguous allocation.</p>
                 <ul>
                     <li><strong>Single GPU Transfer:</strong> Entire bank transfers as one operation</li>
-                    <li><strong>Factory Methods:</strong> Vector.bank(n), PackedCollection.bank(count, size)</li>
+                    <li><strong>Factory Methods:</strong> Vector.bank(n), <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a>.bank(count, size)</li>
                     <li><strong>Get/Set:</strong> Access individual elements via index</li>
                     <li><strong>Delegation:</strong> Each element is a zero-copy view into bank</li>
                 </ul>
 
-                <h3>OperationList</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a></h3>
                 <p>Composable sequence of operations with compilation support.</p>
                 <ul>
-                    <li><strong>Compilation Criteria:</strong> All elements must be Computation, depth ≤ maxDepth</li>
+                    <li><strong>Compilation Criteria:</strong> All elements must be <a href="../apidocs/io/almostrealism/code/Computation.html">Computation</a>, depth ≤ maxDepth</li>
                     <li><strong>Dual Execution:</strong> Compiled (single kernel) or Sequential (multiple kernels)</li>
                     <li><strong>Compute Requirements:</strong> Per-list GPU/CPU preferences</li>
                     <li><strong>Flattening:</strong> Nested lists can be flattened to reduce depth</li>
                     <li><strong>Isolation:</strong> Optional operation isolation for debugging</li>
                 </ul>
 
-                <h3>Heap</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/mem/Heap.html">Heap</a></h3>
                 <p>Thread-local arena allocator for efficient temporary memory.</p>
                 <ul>
                     <li><strong>Staged Allocation:</strong> Nested stages with automatic cleanup</li>
-                    <li><strong>Thread-Local Default:</strong> Heap.getDefault() per thread</li>
-                    <li><strong>Scope-Based:</strong> heap.use(() -> {...}) for automatic management</li>
+                    <li><strong>Thread-Local Default:</strong> <code>Heap.getDefault()</code> per thread</li>
+                    <li><strong>Scope-Based:</strong> <code>heap.use(() -> {...})</code> for automatic management</li>
                     <li><strong>Performance:</strong> Single large allocation instead of many small ones</li>
                 </ul>
             </section>
@@ -378,12 +392,12 @@
                 <h3>Best Practices</h3>
                 <ol>
                     <li><strong>Cache kernels with instruct():</strong> First call compiles, subsequent calls reuse</li>
-                    <li><strong>Use PassThroughProducer for dynamic inputs:</strong> Compile once, evaluate many times</li>
-                    <li><strong>Minimize CPU↔GPU transfers:</strong> Compose operations on GPU via OperationList</li>
+                    <li><strong>Use <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a> for dynamic inputs:</strong> Compile once, evaluate many times</li>
+                    <li><strong>Minimize CPU↔GPU transfers:</strong> Compose operations on GPU via <a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a></li>
                     <li><strong>Batch operations:</strong> Process arrays instead of scalars</li>
-                    <li><strong>Use MemoryBank for collections:</strong> Single transfer for entire collection</li>
+                    <li><strong>Use <a href="../apidocs/org/almostrealism/hardware/MemoryBank.html">MemoryBank</a> for collections:</strong> Single transfer for entire collection</li>
                     <li><strong>Choose appropriate backend:</strong> Metal for Apple Silicon, OpenCL for cross-platform, JNI for CPU</li>
-                    <li><strong>Profile before optimizing:</strong> Use OperationProfile to measure actual bottlenecks</li>
+                    <li><strong>Profile before optimizing:</strong> Use <a href="../apidocs/org/almostrealism/hardware/OperationProfile.html">OperationProfile</a> to measure actual bottlenecks</li>
                 </ol>
             </section>
 
@@ -400,48 +414,48 @@ export AR_HARDWARE_PRECISION=FP32  # or FP64
 export AR_HARDWARE_MEMORY_SCALE=4  # 1GB (default)</code></pre>
 
                 <h3>Basic Hardware-Accelerated Computation</h3>
-                <pre><code class="language-java">import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.relation.Producer;
+                <pre><code class="language-java">import org.almostrealism.hardware.<a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a>;
+import org.almostrealism.collect.<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a>;
+import io.almostrealism.relation.<a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a>;
 
-public class Example implements HardwareFeatures {
+public class Example implements <a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a> {
     public void run() {
         // Create data
-        PackedCollection<?> a = new PackedCollection<>(1000);
-        PackedCollection<?> b = new PackedCollection<>(1000);
+        <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> a = new <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><>(1000);
+        <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> b = new <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><>(1000);
 
         // Build computation (NOT executed yet)
-        Producer<?> result = multiply(p(a), p(b));
+        <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> result = multiply(p(a), p(b));
 
         // Compile to hardware kernel and execute
-        PackedCollection<?> output = result.get().evaluate();
+        <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> output = result.get().evaluate();
     }
 }</code></pre>
 
-                <h3>Kernel Reuse with PassThroughProducer</h3>
-                <pre><code class="language-java">public class FilterProcessor implements HardwareFeatures {
-    private Evaluable<?> cachedFilter;
+                <h3>Kernel Reuse with <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a></h3>
+                <pre><code class="language-java">public class FilterProcessor implements <a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a> {
+    private <a href="../apidocs/io/almostrealism/relation/Evaluable.html">Evaluable</a><?> cachedFilter;
 
     public void setup() {
         // Create filter with dynamic input (argument 0)
-        Producer<?> input = v(shape(1000), 0);
-        Producer<?> filtered = lowPass(input, c(5000.0), 44100, 40);
+        <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> input = v(shape(1000), 0);
+        <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> filtered = lowPass(input, c(5000.0), 44100, 40);
 
         // Compile once
         cachedFilter = filtered.get();
     }
 
-    public void process(PackedCollection<?> data) {
+    public void process(<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> data) {
         // Reuse compiled kernel with different data
-        PackedCollection<?> result = (PackedCollection<?>) cachedFilter.evaluate(data);
+        <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> result = (<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?>)cachedFilter.evaluate(data);
         // No recompilation overhead!
     }
 }</code></pre>
 
-                <h3>Memory Bank for Batch Operations</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/MemoryBank.html">MemoryBank</a> for Batch Operations</h3>
                 <pre><code class="language-java">// Single allocation for 1000 vectors
-MemoryBank<PackedCollection<?>> vectors =
-    new MemoryBankAdapter<>(1000, 3, ...);
+<a href="../apidocs/org/almostrealism/hardware/MemoryBank.html">MemoryBank</a><<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?>> vectors =
+    new <a href="../apidocs/org/almostrealism/hardware/MemoryBankAdapter.html">MemoryBankAdapter</a><>(1000, 3, ...);
 
 // Populate
 for (int i = 0; i < 1000; i++) {
@@ -451,26 +465,26 @@ for (int i = 0; i < 1000; i++) {
 }
 
 // Transfer entire bank to GPU as single operation
-Producer<?> p = cp(vectors);
-PackedCollection<?> result = operation.get().evaluate();
+<a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> p = cp(vectors);
+<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> result = operation.get().evaluate();
 // Much faster than 1000 individual transfers!</code></pre>
 
-                <h3>OperationList Composition</h3>
+                <h3><a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a> Composition</h3>
                 <pre><code class="language-java">// Compose multiple operations into single kernel
-OperationList pipeline = new OperationList("Audio Pipeline");
+<a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a> pipeline = new <a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a>("Audio Pipeline");
 pipeline.add(normalize);
 pipeline.add(lowPassFilter);
 pipeline.add(gainAdjust);
 
-// If all operations are Computations, compiles to single kernel
+// If all operations are <a href="../apidocs/io/almostrealism/code/Computation.html">Computation</a>s, compiles to single kernel
 Runnable compiled = pipeline.get();
 compiled.run();  // Executes entire pipeline on GPU</code></pre>
 
                 <h3>Backend-Specific Requirements</h3>
-                <pre><code class="language-java">DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+                <pre><code class="language-java"><a href="../apidocs/org/almostrealism/hardware/DefaultComputer.html">DefaultComputer</a> computer = <a href="../apidocs/org/almostrealism/hardware/Hardware.html">Hardware</a>.getLocalHardware().getComputer();
 
 // Force GPU execution
-computer.pushRequirements(List.of(ComputeRequirement.GPU));
+computer.pushRequirements(List.of(<a href="../apidocs/org/almostrealism/hardware/ComputeRequirement.html">ComputeRequirement</a>.GPU));
 try {
     heavyComputation.get().run();  // Runs on GPU
 } finally {
@@ -478,14 +492,14 @@ try {
 }
 
 // Or set per-operation
-OperationList gpuOps = new OperationList();
-gpuOps.setComputeRequirements(List.of(ComputeRequirement.GPU));
+<a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a> gpuOps = new <a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a>();
+gpuOps.setComputeRequirements(List.of(<a href="../apidocs/org/almostrealism/hardware/ComputeRequirement.html">ComputeRequirement</a>.GPU));
 gpuOps.add(matrixMultiply);
 gpuOps.get().run();  // GPU only</code></pre>
 
                 <h3>Instruction Caching Pattern</h3>
-                <pre><code class="language-java">public class CachedOperations implements HardwareFeatures {
-    public Producer<?> scale(Producer<?> input, double factor) {
+                <pre><code class="language-java">public class CachedOperations implements <a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a> {
+    public <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> scale(<a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> input, double factor) {
         // Cached by signature: "scale_2x" + hash(input shape)
         return instruct("scale",
             args -> multiply(args[0], c(factor)),
@@ -494,8 +508,8 @@ gpuOps.get().run();  // GPU only</code></pre>
     }
 
     public void demo() {
-        Producer<?> data1 = p(new PackedCollection<>(1000));
-        Producer<?> data2 = p(new PackedCollection<>(1000));
+        <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> data1 = p(new <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><>(1000));
+        <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> data2 = p(new <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><>(1000));
 
         // First call: compiles
         scale(data1, 2.0).get().evaluate();
@@ -507,10 +521,10 @@ gpuOps.get().run();  // GPU only</code></pre>
 
                 <h3>Zero-Copy Memory Views</h3>
                 <pre><code class="language-java">// Original 10000-element collection
-PackedCollection<?> original = new PackedCollection<>(10000);
+<a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><?> original = new <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">PackedCollection</a><>(10000);
 
 // Zero-copy view of elements 100-200
-MemoryData view = new Bytes(100, original, 100);
+<a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> view = new <a href="../apidocs/org/almostrealism/hardware/mem/Bytes.html">Bytes</a>(100, original, 100);
 
 // Modifications to view affect original
 view.setMem(0, 42.0);
@@ -532,7 +546,7 @@ export AR_HARDWARE_DRIVER=*</code></pre>
                 <h3>Common Issues</h3>
 
                 <div class="warning">
-                    <strong>Error:</strong> <code>NoClassDefFoundError: Could not initialize class org.almostrealism.collect.PackedCollection</code><br>
+                    <strong>Error:</strong> <code>NoClassDefFoundError: Could not initialize class <a href="../apidocs/org/almostrealism/collect/PackedCollection.html">org.almostrealism.collect.PackedCollection</a></code><br>
                     <strong>Cause:</strong> Missing AR_HARDWARE_LIBS or AR_HARDWARE_DRIVER environment variables<br>
                     <strong>Solution:</strong>
                     <pre>export AR_HARDWARE_LIBS=/tmp/ar_libs/
@@ -542,18 +556,18 @@ export AR_HARDWARE_DRIVER=native</pre>
                 <div class="warning">
                     <strong>Issue:</strong> Slow first execution<br>
                     <strong>Expected:</strong> First call takes 100-1000ms (kernel compilation), subsequent calls take 1-10ms<br>
-                    <strong>Solution:</strong> Use instruct() pattern or PassThroughProducer to amortize compilation cost
+                    <strong>Solution:</strong> Use instruct() pattern or <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a> to amortize compilation cost
                 </div>
 
                 <div class="warning">
-                    <strong>Issue:</strong> OperationList not compiling to single kernel<br>
-                    <strong>Cause:</strong> Mixed Computation and non-Computation operations, or depth &gt; maxDepth<br>
+                    <strong>Issue:</strong> <a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a> not compiling to single kernel<br>
+                    <strong>Cause:</strong> Mixed <a href="../apidocs/io/almostrealism/code/Computation.html">Computation</a> and non-<a href="../apidocs/io/almostrealism/code/Computation.html">Computation</a> operations, or depth &gt; maxDepth<br>
                     <strong>Check:</strong> <code>boolean canCompile = ops.isComputation();</code><br>
                     <strong>Solution:</strong> Separate compiled and non-compiled operations, or flatten deep lists
                 </div>
 
                 <div class="warning">
-                    <strong>Error:</strong> <code>HardwareException: Memory Max Reached</code><br>
+                    <strong>Error:</strong> <code><a href="../apidocs/org/almostrealism/hardware/HardwareException.html">HardwareException</a>: Memory Max Reached</code><br>
                     <strong>Cause:</strong> Insufficient GPU memory allocation<br>
                     <strong>Solution:</strong>
                     <pre>export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
@@ -570,7 +584,7 @@ export AR_HARDWARE_MEMORY_LOCATION=host</pre>
 
                 <div class="warning">
                     <strong>Issue:</strong> OpenCL compilation errors<br>
-                    <strong>Debug:</strong> Enable kernel logging: <code>HardwareOperator.enableKernelLog = true;</code><br>
+                    <strong>Debug:</strong> Enable kernel logging: <code><a href="../apidocs/org/almostrealism/hardware/HardwareOperator.html">HardwareOperator</a>.enableKernelLog = true;</code><br>
                     <strong>Check:</strong> Generated kernels in results/instruction_set_*.cl<br>
                     <strong>Common causes:</strong> Precision mismatch (FP64 on FP32-only GPU), unsupported operations
                 </div>
