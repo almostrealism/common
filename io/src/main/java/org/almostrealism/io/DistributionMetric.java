@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 
 public class DistributionMetric extends MetricBase {
+	public static int MAX_SUMMARY_ENTRIES = 50;
+
 	private double scale;
 	private double threshold;
 
@@ -83,6 +85,7 @@ public class DistributionMetric extends MetricBase {
 
 		getEntries().entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
+				.limit(MAX_SUMMARY_ENTRIES)
 				.forEachOrdered(entry -> {
 					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
 							(int) (100 * entry.getValue() / all)));
