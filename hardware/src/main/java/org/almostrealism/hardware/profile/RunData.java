@@ -50,19 +50,34 @@ package org.almostrealism.hardware.profile;
  * </ul>
  *
  * @see ProfileData
- * @see org.almostrealism.hardware.OperationProfile
+ * @see io.almostrealism.profile.OperationProfile
  */
 public class RunData {
 	private long durationNanos;
 
+	/**
+	 * Creates run data with the specified execution duration.
+	 *
+	 * @param durationNanos Execution duration in nanoseconds
+	 */
 	public RunData(long durationNanos) {
 		setDurationNanos(durationNanos);
 	}
 
+	/**
+	 * Returns the execution duration in nanoseconds.
+	 *
+	 * @return Duration in nanoseconds
+	 */
 	public long getDurationNanos() {
 		return durationNanos;
 	}
 
+	/**
+	 * Sets the execution duration in nanoseconds.
+	 *
+	 * @param durationNanos Duration in nanoseconds
+	 */
 	public void setDurationNanos(long durationNanos) {
 		this.durationNanos = durationNanos;
 	}

@@ -129,6 +129,15 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	private FrequencyCache<String, Expression> expressions;
 	private Set<String> matchFailures;
 
+	/**
+	 * Creates a series cache for the specified operation.
+	 *
+	 * @param metadata Operation metadata for identification
+	 * @param count Number of elements in the traversal
+	 * @param fixed Whether the count is fixed at compile time
+	 * @param cacheManager Manager for storing cached sequences (null to disable caching)
+	 * @throws IllegalArgumentException if cache manager entry size doesn't match count
+	 */
 	public KernelSeriesCache(OperationMetadata metadata, int count, boolean fixed, MemoryDataCacheManager cacheManager) {
 		if (cacheManager != null && count != cacheManager.getEntrySize()) {
 			throw new IllegalArgumentException();
@@ -143,16 +152,38 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.matchFailures = new TreeSet<>();
 	}
 
+	/**
+	 * Returns the operation metadata.
+	 *
+	 * @return Metadata identifying this operation
+	 */
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
+	/**
+	 * Returns whether sequences can be computed for this cache.
+	 *
+	 * <p>Computation requires fixed count and count within limits.</p>
+	 *
+	 * @return True if sequence computation is enabled
+	 */
 	public boolean isComputable() { return fixed && count <= ScopeSettings.maxKernelSeriesCount; }
 
+	/**
+	 * Returns the maximum sequence length if known.
+	 *
+	 * @return Optional containing count if fixed, empty otherwise
+	 */
 	@Override
 	public OptionalInt getMaximumLength() {
 		return fixed ? OptionalInt.of(count) : OptionalInt.empty();
 	}
 
+	/**
+	 * Returns the limit on sequence computation complexity.
+	 *
+	 * @return Maximum complexity allowed for sequence detection
+	 */
 	@Override
 	public long getSequenceComputationLimit() {
 		return Math.min(
@@ -160,6 +191,17 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 				ScopeSettings.sequenceComputationLimit);
 	}
 
+	/**
+	 * Attempts to recognize and replace an expression with a cached series.
+	 *
+	 * <p>Checks if the expression has been seen before and returns a cached
+	 * series representation if available. Otherwise attempts to detect a sequence
+	 * pattern and cache it.</p>
+	 *
+	 * @param exp Expression to analyze
+	 * @param index Loop index variable
+	 * @return Series expression if pattern detected, original expression otherwise
+	 */
 	@Override
 	public Expression getSeries(Expression exp, Index index) {
 		if (!isComputable() || exp.isSingleIndexMasked()) {
@@ -180,6 +222,20 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		return result;
 	}
 
+	/**
+	 * Detects and caches arithmetic/geometric sequence patterns.
+	 *
+	 * <p>Analyzes the expression to identify repeating patterns across indices.
+	 * If a pattern is found and meets complexity thresholds, stores it in the
+	 * cache and returns a reference to the cached sequence.</p>
+	 *
+	 * @param index Loop index expression
+	 * @param exp Supplier of expression string representation
+	 * @param sequence Supplier of detected index sequence
+	 * @param isInt Whether the result should be integer type
+	 * @param nodes Supplier of expression complexity (node count)
+	 * @return Cached series expression, or null if no pattern detected
+	 */
 	@Override
 	public Expression getSeries(Expression index, Supplier<String> exp,
 								Supplier<IndexSequence> sequence,
@@ -238,14 +294,35 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		return result;
 	}
 
+	/**
+	 * Destroys the cache and releases all cached sequences.
+	 *
+	 * <p>Deallocates memory used by cached sequence data.</p>
+	 */
 	@Override
 	public void destroy() {
 		cacheManager.destroy();
 	}
 
+	/**
+	 * Returns the console for logging.
+	 *
+	 * @return Hardware console instance
+	 */
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Factory method to create a series cache for a computation.
+	 *
+	 * <p>Automatically determines whether caching should be enabled based on
+	 * count and configuration. If enabled, creates a cache manager for storing
+	 * detected sequences.</p>
+	 *
+	 * @param c Computation to create cache for
+	 * @param variableFactory Factory for creating array variables from memory
+	 * @return New series cache instance
+	 */
 	public static KernelSeriesCache create(Computation<?> c, Function<MemoryData, ArrayVariable<?>> variableFactory) {
 		int count = Countable.count(c);
 		boolean fixed = Countable.isFixedCount(c);

@@ -92,18 +92,44 @@ public class ExternalComputeContext extends AbstractComputeContext {
 
 	private NativeCompiler compiler;
 
+	/**
+	 * Creates an external compute context for process-based execution.
+	 *
+	 * @param dc Data context providing memory management
+	 * @param compiler Native compiler for generating standalone executables
+	 */
 	public ExternalComputeContext(NativeDataContext dc, NativeCompiler compiler) {
 		super(dc);
 		this.compiler = compiler;
 	}
 
+	/**
+	 * Returns the language operations for C code generation.
+	 *
+	 * @return C language operations configured for external accessibility
+	 */
 	@Override
 	public LanguageOperations getLanguage() {
 		return new CLanguageOperations(getDataContext().getPrecision(), true, false);
 	}
 
+	/**
+	 * Returns the native compiler used to generate executable binaries.
+	 *
+	 * @return The {@link NativeCompiler} instance
+	 */
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
+	/**
+	 * Compiles a {@link Scope} to a standalone executable wrapped with file I/O.
+	 *
+	 * <p>Generates C code from the scope, wraps it with the external-wrapper.c template
+	 * for file-based argument passing, compiles to a native executable, and returns
+	 * an {@link ExternalInstructionSet} that manages process execution.</p>
+	 *
+	 * @param scope The computation scope to compile
+	 * @return Instruction set that executes the compiled external process
+	 */
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		NativeInstructionSet inst = getNativeCompiler().reserveLibraryTarget();

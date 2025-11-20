@@ -81,6 +81,15 @@ public class LocalExternalMemory implements Memory {
 		this.len = len;
 	}
 
+	/**
+	 * Lazily loads data from the backing file into memory.
+	 *
+	 * <p>If data is already loaded, this method returns immediately.
+	 * Otherwise, reads the binary file into the internal double array
+	 * and deletes the file after reading.</p>
+	 *
+	 * @throws HardwareException if file read fails
+	 */
 	public void read() {
 		if (data != null) return;
 
@@ -94,6 +103,14 @@ public class LocalExternalMemory implements Memory {
 		}
 	}
 
+	/**
+	 * Writes the in-memory data to the backing file.
+	 *
+	 * <p>If data is not loaded in memory, this method returns immediately.
+	 * Otherwise, writes the internal double array to the binary file.</p>
+	 *
+	 * @throws HardwareException if file write fails
+	 */
 	public void write() {
 		if (data == null) return;
 
@@ -104,13 +121,30 @@ public class LocalExternalMemory implements Memory {
 		}
 	}
 
+	/**
+	 * Discards the in-memory data while keeping the backing file.
+	 *
+	 * <p>Sets the internal data array to null, freeing memory.
+	 * The file remains on disk and can be re-read later with {@link #read()}.</p>
+	 */
 	public void restore() {
 		this.data = null;
 	}
 
+	/**
+	 * Returns the memory provider that allocated this memory.
+	 *
+	 * @return The {@link LocalExternalMemoryProvider} instance
+	 */
 	@Override
 	public MemoryProvider getProvider() { return provider; }
 
+	/**
+	 * Completely destroys this memory, deleting the backing file.
+	 *
+	 * <p>Discards in-memory data, deletes the file, and clears the location reference.
+	 * After calling this method, the memory cannot be used again.</p>
+	 */
 	public void destroy() {
 		this.data = null;
 		this.location.delete();

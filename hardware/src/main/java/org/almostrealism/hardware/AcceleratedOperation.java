@@ -204,15 +204,24 @@ import java.util.List;
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
 							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
 
+	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
 
+	/** Timing metric for operator retrieval from instruction set managers. */
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
+	/** Timing metric for argument processing and preparation. */
 	public static TimingMetric processArgumentsMetric =  console.timing("processArguments");
+	/** Timing metric for the accept() method that dispatches kernel execution. */
 	public static TimingMetric acceptMetric = console.timing("accept");
+	/** Timing metric for kernel evaluation including GPU dispatch. */
 	public static TimingMetric evaluateKernelMetric = console.timing("evaluateKernel");
+	/** Timing metric for overall evaluation time. */
 	public static TimingMetric evaluateMetric = console.timing("evaluate");
+	/** Timing metric for kernel creation and compilation. */
 	public static TimingMetric kernelCreateMetric = console.timing("kernelCreate");
+	/** Timing metric for non-kernel (CPU) evaluation. */
 	public static TimingMetric nonKernelEvalMetric = console.timing("nonKernelEval");
+	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
@@ -231,25 +240,77 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		this.kernel = kernel;
 	}
 
+	/**
+	 * Returns the {@link ComputeContext} this operation executes within.
+	 *
+	 * @return The compute context (OpenCL, Metal, JNI, etc.)
+	 */
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
+	/**
+	 * Returns the {@link InstructionSetManager} responsible for compiling and caching this operation.
+	 *
+	 * <p>The instruction set manager coordinates kernel compilation, caching, and retrieval of
+	 * compiled {@link Execution}s. Implementations determine whether instruction sets are
+	 * reused across instances or operation-specific.</p>
+	 *
+	 * @param <K> The execution key type
+	 * @return The instruction set manager for this operation
+	 */
 	public abstract <K extends ExecutionKey> InstructionSetManager<K> getInstructionSetManager();
 
+	/**
+	 * Returns the {@link ExecutionKey} that uniquely identifies this operation's compiled form.
+	 *
+	 * <p>The execution key is used to look up compiled {@link Execution}s within the
+	 * {@link InstructionSetManager}. Different key types support different caching strategies:
+	 * {@link io.almostrealism.hardware.instructions.ScopeSignatureExecutionKey} for signature-based
+	 * reuse, {@link io.almostrealism.hardware.instructions.DefaultExecutionKey} for per-operation caching.</p>
+	 *
+	 * @param <K> The execution key type
+	 * @return The execution key for this operation
+	 */
 	public abstract <K extends ExecutionKey> K getExecutionKey();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
 	}
 
+	/**
+	 * Returns the argument list for this operation.
+	 *
+	 * <p>Implements {@link io.almostrealism.relation.Producer#getChildren()} by delegating
+	 * to {@link #getArguments()}.</p>
+	 *
+	 * @return The list of arguments
+	 */
 	@Override
 	public List<Argument<? extends T>> getChildren() {
 		return getArguments();
 	}
 
+	/**
+	 * Creates aggregated input memory for kernel execution.
+	 *
+	 * <p>Aggregated inputs combine multiple separate memory allocations into a single
+	 * contiguous buffer, improving GPU kernel performance by reducing memory indirection.</p>
+	 *
+	 * @param memLength Total memory length in bytes
+	 * @param atomicLength Atomic memory length (element size) in bytes
+	 * @return Allocated aggregated input memory on the device
+	 */
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
 		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
 	}
 
+	/**
+	 * Returns whether this operation uses aggregated input memory.
+	 *
+	 * <p>Operations with many small inputs benefit from aggregation, which reduces
+	 * kernel launch overhead and improves memory access patterns on GPU.</p>
+	 *
+	 * @return true if inputs are aggregated, false otherwise
+	 */
 	public abstract boolean isAggregatedInput();
 
 	protected abstract int getOutputArgumentIndex();
@@ -298,23 +359,49 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Prepares arguments for this operation by adding them to the argument map.
+	 *
+	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all inputs.</p>
+	 *
+	 * @param map The argument map to populate
+	 */
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 	}
 
+	/**
+	 * Executes pre-application data preparation.
+	 *
+	 * <p>Runs the prepare data runnable from the argument map, which typically
+	 * handles memory transfers and argument packing before kernel dispatch.</p>
+	 */
 	public void preApply() {
 		if (argumentMap != null) {
 			argumentMap.getPrepareData().get().run();
 		}
 	}
 
+	/**
+	 * Executes post-application data processing.
+	 *
+	 * <p>Runs the postprocess data runnable from the argument map, which typically
+	 * handles result retrieval and memory cleanup after kernel execution.</p>
+	 */
 	public void postApply() {
 		if (argumentMap != null) {
 			argumentMap.getPostprocessData().get().run();
 		}
 	}
 
+	/**
+	 * Executes this operation synchronously.
+	 *
+	 * <p>Applies any compute requirements, dispatches the kernel with no arguments,
+	 * and waits for completion. This is the primary entry point for executing
+	 * compiled operations.</p>
+	 */
 	@Override
 	public void run() {
 		try {
@@ -331,6 +418,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Sets the argument evaluator for argument substitution.
+	 *
+	 * <p>The evaluator allows runtime substitution of arguments when reusing
+	 * compiled operations with different input data (e.g., in instruction containers).</p>
+	 *
+	 * @param evaluator The argument evaluator to use
+	 * @throws UnsupportedOperationException if a details factory is already set
+	 */
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) {
 		this.evaluator = evaluator;
 

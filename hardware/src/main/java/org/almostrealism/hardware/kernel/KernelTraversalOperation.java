@@ -96,6 +96,12 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 	private List<Expression> expressions;
 	private MemoryDataDestinationProducer destination;
 
+	/**
+	 * Creates a new kernel traversal operation with an empty expression list.
+	 *
+	 * <p>Expressions should be added to {@link #getExpressions()} to populate
+	 * the lookup table values.</p>
+	 */
 	public KernelTraversalOperation() {
 		this.expressions = new ArrayList<>();
 		this.destination = new MemoryDataDestinationProducer<>(this, i -> new Bytes(expressions.size()));
@@ -103,17 +109,48 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 		init();
 	}
 
+	/**
+	 * Returns the list of expressions to precompute.
+	 *
+	 * <p>Used by {@link KernelTraversalOperationGenerator} to populate the lookup table.</p>
+	 *
+	 * @return Mutable list of expressions, one per index value
+	 */
 	protected List<Expression> getExpressions() { return expressions; }
 
+	/**
+	 * Returns the memory length (number of precomputed values).
+	 *
+	 * @return Number of expressions in the lookup table
+	 */
 	@Override
 	public int getMemLength() { return expressions.size(); }
 
+	/**
+	 * Returns the count for this computation (always 1).
+	 *
+	 * @return 1 (single lookup table output)
+	 */
 	@Override
 	public long getCountLong() { return 1; }
 
+	/**
+	 * Returns whether this computation has a fixed count.
+	 *
+	 * @return Always true (fixed-size lookup table)
+	 */
 	@Override
 	public boolean isFixedCount() { return true; }
 
+	/**
+	 * Generates the computation scope that assigns precomputed expression values.
+	 *
+	 * <p>Creates a scope that assigns each expression result to the corresponding
+	 * index in the output array.</p>
+	 *
+	 * @param context Kernel structure context for code generation
+	 * @return Scope containing assignments for all precomputed values
+	 */
 	@Override
 	public Scope<T> getScope(KernelStructureContext context) {
 		Scope<T> scope = super.getScope(context);
@@ -126,6 +163,14 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 		return scope;
 	}
 
+	/**
+	 * Compiles and returns an evaluable for this lookup table operation.
+	 *
+	 * <p>Compiles the expression assignments to hardware code and returns
+	 * an evaluable that computes the lookup table values.</p>
+	 *
+	 * @return Compiled evaluable that generates the lookup table
+	 */
 	@Override
 	public Evaluable<T> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);

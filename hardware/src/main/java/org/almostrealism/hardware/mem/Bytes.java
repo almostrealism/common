@@ -141,10 +141,29 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		init(mem);
 	}
 
+	/**
+	 * Creates a simple byte buffer with no atomic structure.
+	 *
+	 * <p>Equivalent to {@code new Bytes(memLength, memLength)}.</p>
+	 *
+	 * @param memLength The total size in bytes
+	 */
 	public Bytes(int memLength) {
 		this(memLength, memLength);
 	}
 
+	/**
+	 * Creates a typed array with fixed-size elements.
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * Bytes floats = new Bytes(400, 4);  // 100 floats (4 bytes each)
+	 * }</pre>
+	 *
+	 * @param memLength Total size in bytes (must be multiple of atomicLength)
+	 * @param atomicLength Size of each element in bytes
+	 * @throws IllegalArgumentException if memLength is not a multiple of atomicLength
+	 */
 	public Bytes(int memLength, int atomicLength) {
 		if (atomicLength == 0) {
 			throw new IllegalArgumentException();
@@ -159,10 +178,27 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		init();
 	}
 
+	/**
+	 * Creates a zero-copy view into existing memory (simple).
+	 *
+	 * <p>Equivalent to {@code new Bytes(memLength, memLength, delegate, delegateOffset)}.</p>
+	 *
+	 * @param memLength Size of the view in bytes
+	 * @param delegate The memory to delegate to
+	 * @param delegateOffset Offset into the delegate memory
+	 */
 	public Bytes(int memLength, MemoryData delegate, int delegateOffset) {
 		this(memLength, memLength, delegate, delegateOffset);
 	}
 
+	/**
+	 * Creates a zero-copy typed array view into existing memory.
+	 *
+	 * @param memLength Size of the view in bytes
+	 * @param atomicLength Size of each element in bytes
+	 * @param delegate The memory to delegate to
+	 * @param delegateOffset Offset into the delegate memory
+	 */
 	public Bytes(int memLength, int atomicLength, MemoryData delegate, int delegateOffset) {
 		this.atomicLength = atomicLength;
 		this.memLength = memLength;
@@ -190,10 +226,30 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		return memLength;
 	}
 
+	/**
+	 * Creates a zero-copy view of a range within this {@link Bytes}.
+	 *
+	 * <p>The returned {@link Bytes} delegates to this instance, sharing the same
+	 * underlying memory. Modifications to the view affect the original.</p>
+	 *
+	 * @param start Starting offset in bytes
+	 * @param length Length of the range in bytes
+	 * @return A zero-copy view into this memory
+	 * @throws IllegalArgumentException if range is out of bounds
+	 */
 	public Bytes range(int start, int length) {
 		return range(start, length, length);
 	}
 
+	/**
+	 * Creates a zero-copy typed array view of a range within this {@link Bytes}.
+	 *
+	 * @param start Starting offset in bytes
+	 * @param length Length of the range in bytes
+	 * @param atomicLength Element size for the view
+	 * @return A zero-copy view with specified atomic structure
+	 * @throws IllegalArgumentException if range is out of bounds
+	 */
 	public Bytes range(int start, int length, int atomicLength) {
 		if (start < 0 || start + length > getMemLength()) {
 			throw new IllegalArgumentException();
@@ -202,6 +258,15 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		return new Bytes(length, atomicLength, this, start);
 	}
 
+	/**
+	 * Wraps existing {@link Memory} in a {@link Bytes} instance.
+	 *
+	 * <p>Used internally to wrap provider-allocated memory.</p>
+	 *
+	 * @param mem The memory to wrap
+	 * @param memLength The size of the memory in bytes
+	 * @return A {@link Bytes} wrapping the given memory
+	 */
 	public static Bytes of(Memory mem, int memLength) {
 		return new Bytes(mem, memLength);
 	}

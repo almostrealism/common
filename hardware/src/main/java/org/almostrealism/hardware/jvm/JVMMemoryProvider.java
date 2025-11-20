@@ -86,14 +86,34 @@ import io.almostrealism.code.MemoryProvider;
  * @see org.almostrealism.hardware.mem.Heap
  */
 public class JVMMemoryProvider implements MemoryProvider<Memory> {
+	/**
+	 * Creates a JVM memory provider for Java heap allocation.
+	 */
 	public JVMMemoryProvider() { }
 
+	/**
+	 * Returns the provider name for identification.
+	 *
+	 * @return "JVM" to indicate Java heap storage
+	 */
 	@Override
 	public String getName() { return "JVM"; }
 
+	/**
+	 * Returns the size of each number in bytes.
+	 *
+	 * @return 8 (FP64 double precision)
+	 */
 	@Override
 	public int getNumberSize() { return 8; }
 
+	/**
+	 * Allocates Java heap memory for the specified number of elements.
+	 *
+	 * @param size Number of doubles to allocate (must be positive)
+	 * @return {@link JVMMemory} backed by a Java double array
+	 * @throws IllegalArgumentException if size is not positive
+	 */
 	@Override
 	public Memory allocate(int size) {
 		if (size <= 0)
@@ -101,11 +121,29 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 		return new JVMMemory(this, size);
 	}
 
+	/**
+	 * Deallocates Java heap memory by destroying the memory instance.
+	 *
+	 * @param size Size of the memory (ignored)
+	 * @param mem Memory to deallocate
+	 */
 	@Override
 	public void deallocate(int size, Memory mem) {
 		((JVMMemory) mem).destroy();
 	}
 
+	/**
+	 * Copies data from source memory to destination memory.
+	 *
+	 * <p>If both source and destination are {@link JVMMemory}, performs
+	 * direct array copy. Otherwise, converts source to array first.</p>
+	 *
+	 * @param mem Destination memory
+	 * @param offset Destination offset
+	 * @param source Source memory
+	 * @param srcOffset Source offset
+	 * @param length Number of elements to copy
+	 */
 	@Override
 	public void setMem(Memory mem, int offset, Memory source, int srcOffset, int length) {
 		if (source instanceof JVMMemory) {
@@ -119,6 +157,15 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/**
+	 * Copies data from double array to memory.
+	 *
+	 * @param mem Destination memory
+	 * @param offset Destination offset
+	 * @param source Source array
+	 * @param srcOffset Source array offset
+	 * @param length Number of elements to copy
+	 */
 	@Override
 	public void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
 		JVMMemory dest = (JVMMemory) mem;
@@ -127,6 +174,17 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/**
+	 * Copies data from memory to double array.
+	 *
+	 * @param mem Source memory
+	 * @param sOffset Source memory offset
+	 * @param out Destination array
+	 * @param oOffset Destination array offset
+	 * @param length Number of elements to copy
+	 * @throws IllegalArgumentException if source offset is negative
+	 * @throws ArrayIndexOutOfBoundsException if bounds are exceeded
+	 */
 	@Override
 	public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
 		JVMMemory src = (JVMMemory) mem;
@@ -146,6 +204,11 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 		}
 	}
 
+	/**
+	 * Destroys the provider and all allocated memory.
+	 *
+	 * <p>Currently not implemented - memory is garbage collected automatically.</p>
+	 */
 	@Override
 	public void destroy() {
 		// TODO  Destroy all JVMMemory

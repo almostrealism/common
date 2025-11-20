@@ -73,34 +73,100 @@ import org.jocl.CLException;
 public class HardwareException extends RuntimeException {
 	private String program;
 
+	/**
+	 * Creates a hardware exception with a descriptive message.
+	 *
+	 * @param message Description of the hardware error
+	 */
 	public HardwareException(String message) {
 		super(message);
 	}
 
+	/**
+	 * Creates a hardware exception wrapping another hardware exception.
+	 *
+	 * @param message Description of the hardware error
+	 * @param cause The underlying hardware exception
+	 */
 	public HardwareException(String message, HardwareException cause) {
 		super(message, cause);
 	}
 
+	/**
+	 * Creates a hardware exception wrapping a general exception.
+	 *
+	 * @param message Description of the hardware error
+	 * @param cause The underlying exception
+	 */
 	public HardwareException(String message, Exception cause) {
 		super(message, cause);
 	}
 
+	/**
+	 * Creates a hardware exception wrapping an OpenCL exception.
+	 *
+	 * @param message Description of the hardware error
+	 * @param cause The underlying OpenCL exception
+	 */
 	public HardwareException(String message, CLException cause) {
 		super(message, cause);
 	}
 
+	/**
+	 * Creates a hardware exception with program source code context.
+	 *
+	 * <p>Use this constructor when compilation fails to preserve the source code
+	 * that failed to compile, enabling better error reporting and debugging.</p>
+	 *
+	 * @param message Description of the hardware error
+	 * @param cause The underlying OpenCL exception
+	 * @param program The program source code that failed to compile
+	 */
 	public HardwareException(String message, CLException cause, String program) {
 		super(message, cause);
 		this.program = program;
 	}
 
+	/**
+	 * Creates a hardware exception for buffer size errors.
+	 *
+	 * <p>Automatically formats the error message based on the OpenCL error code
+	 * and buffer size, providing clear diagnostics for memory allocation failures.</p>
+	 *
+	 * @param e The OpenCL exception
+	 * @param bufferSize The requested buffer size in bytes
+	 */
 	public HardwareException(CLException e, long bufferSize) {
 		this(messageForBuffer(e, bufferSize), e);
 	}
 
+	/**
+	 * Returns the program source code associated with this exception.
+	 *
+	 * @return The program source, or null if not available
+	 */
 	public String getProgram() { return program; }
+
+	/**
+	 * Sets the program source code for this exception.
+	 *
+	 * @param program The program source code that caused the error
+	 */
 	public void setProgram(String program) { this.program = program; }
 
+	/**
+	 * Formats a buffer-related error message from an OpenCL exception.
+	 *
+	 * <p>Provides clear error messages for common buffer size issues:</p>
+	 * <ul>
+	 *   <li>CL_INVALID_BUFFER_SIZE: Includes the invalid buffer size</li>
+	 *   <li>Other errors: Returns the original OpenCL error message</li>
+	 * </ul>
+	 *
+	 * @param e The OpenCL exception
+	 * @param bufferSize The requested buffer size in bytes
+	 * @return A formatted error message
+	 */
 	public static String messageForBuffer(CLException e, long bufferSize) {
 		if ("CL_INVALID_BUFFER_SIZE".equals(e.getMessage())) {
 			return "Buffer size of " + bufferSize + " bytes is invalid";

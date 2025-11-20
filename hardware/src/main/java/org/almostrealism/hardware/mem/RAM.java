@@ -159,10 +159,21 @@ public abstract class RAM implements Memory {
 
 	private final StackTraceElement[] allocationStackTrace;
 
+	/**
+	 * Creates a {@link RAM} instance with default allocation tracking.
+	 *
+	 * <p>Captures the allocation stack trace based on {@link #allocationTraceFrames}
+	 * configuration (default: 16 frames).</p>
+	 */
 	protected RAM() {
 		this(allocationTraceFrames);
 	}
 
+	/**
+	 * Creates a {@link RAM} instance with explicit trace frame count.
+	 *
+	 * @param traceFrames Number of stack frames to capture (0 to disable tracking)
+	 */
 	protected RAM(int traceFrames) {
 		if (traceFrames > 0) {
 			allocationStackTrace = Stream.of(Thread.currentThread().getStackTrace())
@@ -172,20 +183,59 @@ public abstract class RAM implements Memory {
 		}
 	}
 
+	/**
+	 * Returns the pointer to the container object.
+	 *
+	 * <p>By default delegates to {@link #getContentPointer()}. Override if
+	 * container and content pointers differ (e.g., for wrapper objects).</p>
+	 *
+	 * @return The container pointer
+	 */
 	public long getContainerPointer() {
 		return getContentPointer();
 	}
 
+	/**
+	 * Returns the pointer to the actual memory content.
+	 *
+	 * <p>Subclasses must override this to provide the native memory address.</p>
+	 *
+	 * @return The content pointer (native memory address)
+	 * @throws UnsupportedOperationException if not implemented by subclass
+	 */
 	public long getContentPointer() {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns the size of this memory allocation in bytes.
+	 *
+	 * <p>Subclasses must override this to provide the allocation size.</p>
+	 *
+	 * @return The size in bytes
+	 * @throws UnsupportedOperationException if not implemented by subclass
+	 */
 	public long getSize() { throw new UnsupportedOperationException(); }
 
+	/**
+	 * Returns the captured allocation stack trace.
+	 *
+	 * <p>Returns null if allocation tracking is disabled
+	 * ({@link #allocationTraceFrames} = 0).</p>
+	 *
+	 * @return The stack trace from allocation time, or null if tracking disabled
+	 */
 	public StackTraceElement[] getAllocationStackTrace() {
 		return allocationStackTrace;
 	}
 
+	/**
+	 * Returns whether this memory is still active (not destroyed).
+	 *
+	 * <p>Default implementation returns true. Override if subclass tracks lifecycle.</p>
+	 *
+	 * @return true if active, false if destroyed
+	 */
 	public boolean isActive() { return true; }
 
 	@Override

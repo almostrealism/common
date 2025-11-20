@@ -497,6 +497,20 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 				(key, mgr) -> mgr.destroy());
 	}
 
+	/**
+	 * Selects the optimal {@link ComputeContext} for the given computation.
+	 *
+	 * <p>Implements intelligent context selection based on computation characteristics:</p>
+	 * <ul>
+	 *   <li>Sequential operations (count=1): Prefer CPU contexts</li>
+	 *   <li>Parallel operations (count>128 or variable): Prefer GPU contexts</li>
+	 *   <li>Active {@link ComputeRequirement}s are applied to filter contexts</li>
+	 * </ul>
+	 *
+	 * @param c The computation to select a context for
+	 * @return The optimal compute context
+	 * @throws RuntimeException if no contexts are available
+	 */
 	@Override
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
 		long count = Countable.countLong(c);
@@ -522,22 +536,84 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns the currently active {@link ComputeRequirement}s for this thread.
+	 *
+	 * <p>Requirements are maintained in a thread-local stack. Returns the top
+	 * of the stack, or an empty list if no requirements are active.</p>
+	 *
+	 * @return The active requirements, or empty list if none
+	 */
 	public List<ComputeRequirement> getActiveRequirements() {
 		return requirements.get().isEmpty() ? Collections.emptyList() : requirements.get().peek();
 	}
 
+	/**
+	 * Pushes new {@link ComputeRequirement}s onto the thread-local stack.
+	 *
+	 * <p>All subsequent context selections will respect these requirements
+	 * until they are popped via {@link #popRequirements()}.</p>
+	 *
+	 * <p><strong>Always use try-finally to ensure balanced push/pop:</strong></p>
+	 * <pre>{@code
+	 * computer.pushRequirements(List.of(ComputeRequirement.GPU));
+	 * try {
+	 *     operation.get().run();
+	 * } finally {
+	 *     computer.popRequirements();
+	 * }
+	 * }</pre>
+	 *
+	 * @param requirements The requirements to activate
+	 */
 	public void pushRequirements(List<ComputeRequirement> requirements) {
 		this.requirements.get().push(requirements);
 	}
 
+	/**
+	 * Pops the most recently pushed {@link ComputeRequirement}s from the stack.
+	 *
+	 * <p>Restores the previous requirements (or no requirements if stack becomes empty).</p>
+	 *
+	 * <p><strong>Warning:</strong> Always call this in a finally block to avoid
+	 * imbalanced stack state.</p>
+	 */
 	public void popRequirements() {
 		this.requirements.get().pop();
 	}
 
+	/**
+	 * Returns a {@link ProcessTreeInstructionsManager} for the given key, creating if absent.
+	 *
+	 * <p>Managers are cached in a frequency-based cache (capacity: 500, eviction: 0.4).
+	 * Accessing a manager updates its frequency count, making it less likely to be evicted.</p>
+	 *
+	 * @param key Unique identifier for this instruction manager
+	 * @return The instruction manager for this key
+	 */
 	public ProcessTreeInstructionsManager getProcessTreeInstructionsManager(String key) {
 		return processTreeCache.computeIfAbsent(key, k -> new ProcessTreeInstructionsManager());
 	}
 
+	/**
+	 * Returns a {@link ScopeInstructionsManager} for the given signature, creating if absent.
+	 *
+	 * <p>Scope instruction managers compile and cache kernels for operations with matching
+	 * signatures. This enables cross-instance kernel reuse when multiple operations share
+	 * the same structure.</p>
+	 *
+	 * <p>Managers are cached with automatic eviction (capacity: 500, eviction: 0.4).
+	 * Evicted managers are destroyed, but accessing them again recreates the manager.</p>
+	 *
+	 * <p>Access listener ensures that using any {@link io.almostrealism.code.InstructionSet}
+	 * from the manager updates the cache frequency or restores an evicted entry.</p>
+	 *
+	 * @param signature Unique signature identifying the operation structure
+	 * @param computation The computation to manage (used for Process tree substitution if applicable)
+	 * @param context The compute context for compilation
+	 * @param scope Supplier of the scope to compile
+	 * @return The instruction manager for this signature
+	 */
 	public ScopeInstructionsManager<ScopeSignatureExecutionKey> getScopeInstructionsManager(String signature,
 																							Computation<?> computation,
 																							ComputeContext<?> context,
@@ -607,11 +683,46 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Compiles a void {@link Computation} into an executable {@link Runnable}.
+	 *
+	 * <p>The computation is wrapped in an {@link AcceleratedComputationOperation} and
+	 * registered with {@link Heap} for automatic cleanup. The runnable is compiled once
+	 * and can be executed repeatedly.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * Computation<Void> assignment = a(memLength, destination, source);
+	 * Runnable executable = computer.compileRunnable(assignment);
+	 * executable.run();  // Executes on hardware
+	 * }</pre>
+	 *
+	 * @param c The void computation to compile
+	 * @return Executable runnable
+	 */
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
 		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
 	}
 
+	/**
+	 * Compiles a value-producing {@link Computation} into an {@link Evaluable}.
+	 *
+	 * <p><strong>Important:</strong> This method bypasses any {@code postProcessOutput}
+	 * method defined in the computation. If post-processing is needed, use
+	 * {@link io.almostrealism.relation.Producer#get()} instead.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * Computation<PackedCollection<?>> multiply = ...;
+	 * Evaluable<PackedCollection<?>> evaluable = computer.compileProducer(multiply);
+	 * PackedCollection<?> result = evaluable.evaluate();
+	 * }</pre>
+	 *
+	 * @param c The computation to compile
+	 * @param <T> The result type
+	 * @return Evaluable that produces values
+	 */
 	// TODO  The Computation may have a postProcessOutput method that will not be called
 	// TODO  when using this method of creating an Evaluable from it. Ideally, that feature
 	// TODO  of the Computation would be recognized, and applied after evaluation, so that
@@ -621,6 +732,23 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		return new AcceleratedComputationEvaluable<>(getContext(c), c);
 	}
 
+	/**
+	 * Extracts the original {@link Computation} from a compiled {@link Runnable}.
+	 *
+	 * <p>Only works for runnables created via {@link #compileRunnable(Computation)}.
+	 * Other runnables return {@link Optional#empty()}.</p>
+	 *
+	 * <p>Use cases:</p>
+	 * <ul>
+	 *   <li>Debugging: Inspect computation structure after compilation</li>
+	 *   <li>Recompilation: Compile same computation for different context</li>
+	 *   <li>Analysis: Extract metadata and dependencies</li>
+	 * </ul>
+	 *
+	 * @param r The runnable to decompile
+	 * @param <T> The computation's result type
+	 * @return The original computation, or empty if not available
+	 */
 	@Override
 	public <T> Optional<Computation<T>> decompile(Runnable r) {
 		if (r instanceof AcceleratedComputationOperation) {
@@ -630,6 +758,16 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Extracts the original {@link Computation} from a compiled {@link Evaluable}.
+	 *
+	 * <p>Only works for evaluables created via {@link #compileProducer(Computation)}.
+	 * Other evaluables return {@link Optional#empty()}.</p>
+	 *
+	 * @param p The evaluable to decompile
+	 * @param <T> The evaluable's result type
+	 * @return The original computation, or empty if not available
+	 */
 	@Override
 	public <T> Optional<Computation<T>> decompile(Evaluable<T> p) {
 		if (p instanceof AcceleratedComputationEvaluable) {

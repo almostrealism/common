@@ -66,13 +66,43 @@ package org.almostrealism.hardware.kernel;
  * @see org.almostrealism.hardware.metal.MetalOperator
  */
 public interface KernelWork {
+	/**
+	 * Returns the total number of work items to execute.
+	 *
+	 * @return Global work size (total threads/items)
+	 */
 	long getGlobalWorkSize();
+
+	/**
+	 * Sets the total number of work items to execute.
+	 *
+	 * @param globalWorkSize Global work size (total threads/items)
+	 */
 	void setGlobalWorkSize(long globalWorkSize);
 
+	/**
+	 * Returns the workgroup size (local work size).
+	 *
+	 * <p>Default implementation returns 1 (no workgroup parallelism).
+	 * Override to specify GPU block size or workgroup dimensions.</p>
+	 *
+	 * @return Number of work items per workgroup
+	 */
 	default int getWorkgroupSize() {
 		return 1;
 	}
 
+	/**
+	 * Returns the starting index offset for the work range.
+	 *
+	 * @return Global work offset (starting index)
+	 */
 	long getGlobalWorkOffset();
+
+	/**
+	 * Sets the starting index offset for the work range.
+	 *
+	 * @param globalWorkOffset Global work offset (starting index)
+	 */
 	void setGlobalWorkOffset(long globalWorkOffset);
 }

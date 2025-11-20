@@ -188,26 +188,85 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	private IntFunction<Multiple<T>> destinationFactory;
 	private Consumer<T> downstream;
 
+	/**
+	 * Creates an evaluable for the specified computation on the given context.
+	 *
+	 * <p>Initializes the accelerated operation with the computation and enables
+	 * compilation. The evaluable will be ready to execute after compilation.</p>
+	 *
+	 * @param context The {@link ComputeContext} to execute on (OpenCL, Metal, JNI, etc.)
+	 * @param c The {@link Computation} to evaluate
+	 */
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
 		super(context, c, true);
 	}
 
+	/**
+	 * Returns the underlying {@link ProducerComputation} for this evaluable.
+	 *
+	 * <p>Casts the computation to {@link ProducerComputation} (which produces values)
+	 * rather than the base {@link Computation} type.</p>
+	 *
+	 * @return The producer computation being evaluated
+	 */
 	@Override
 	public ProducerComputation<T> getComputation() {
 		return (ProducerComputation<T>) super.getComputation();
 	}
 
+	/**
+	 * Returns whether this evaluable produces a constant value.
+	 *
+	 * <p>Constant evaluables always produce the same result regardless of input.
+	 * This enables optimizations like result caching and compilation skipping.</p>
+	 *
+	 * @return true if the underlying computation is constant, false otherwise
+	 */
 	@Override
 	public boolean isConstant() { return getComputation().isConstant(); }
 
+	/**
+	 * Returns the custom destination factory for creating output memory.
+	 *
+	 * <p>If set, this factory is used by {@link #createDestination(int)} to allocate
+	 * output memory instead of the default allocation strategy.</p>
+	 *
+	 * @return The destination factory, or null if using default allocation
+	 */
 	public IntFunction<Multiple<T>> getDestinationFactory() {
 		return destinationFactory;
 	}
 
+	/**
+	 * Sets a custom destination factory for output memory allocation.
+	 *
+	 * <p>The factory receives the requested size and returns a {@link Multiple}
+	 * containing the allocated memory. This allows custom memory management
+	 * strategies (pooling, specialized allocators, etc.).</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * evaluable.setDestinationFactory(size ->
+	 *     new PackedCollection(size, () -> customHeap.allocate(size))
+	 * );
+	 * }</pre>
+	 *
+	 * @param destinationFactory The factory to use for allocating output memory
+	 */
 	public void setDestinationFactory(IntFunction<Multiple<T>> destinationFactory) {
 		this.destinationFactory = destinationFactory;
 	}
 
+	/**
+	 * Creates a destination {@link Multiple} for storing evaluation results.
+	 *
+	 * <p>If a custom {@link #destinationFactory} is set, uses that factory to create
+	 * the destination. Otherwise, delegates to {@link Evaluable#createDestination(int)}
+	 * for default allocation behavior.</p>
+	 *
+	 * @param size The number of elements in the destination
+	 * @return A {@link Multiple} containing the allocated destination memory
+	 */
 	@Override
 	public Multiple<T> createDestination(int size) {
 		if (getDestinationFactory() == null) {
@@ -217,11 +276,43 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		return getDestinationFactory().apply(size);
 	}
 
+	/**
+	 * Returns an {@link Evaluable} that writes results into the specified destination.
+	 *
+	 * <p>Creates a {@link DestinationEvaluable} wrapper that evaluates this computation
+	 * directly into the provided {@link MemoryBank}, avoiding intermediate allocations.
+	 * This enables zero-copy in-place evaluation.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * PackedCollection<?> buffer = PackedCollection.create(1000);
+	 * producer.get().into(buffer).evaluate();
+	 * // buffer now contains the result
+	 * }</pre>
+	 *
+	 * @param destination The {@link MemoryBank} to write results into
+	 * @return An evaluable that evaluates into the destination
+	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
 		return new DestinationEvaluable(this, (MemoryBank) destination);
 	}
 
+	/**
+	 * Performs post-compilation setup for this evaluable.
+	 *
+	 * <p>After the hardware kernel is compiled, this method identifies the output argument
+	 * and registers its index and offset with the {@link ScopeInstructionsManager}. This
+	 * allows {@link #evaluate(Object...)} to extract the result from the correct argument
+	 * after kernel execution.</p>
+	 *
+	 * <p>The output variable is determined by analyzing the computation's variable bindings.
+	 * The root delegate of the output variable is located in the argument list, and its
+	 * index and offset are stored for later result extraction.</p>
+	 *
+	 * @throws IllegalArgumentException if no output variable is found or if the output
+	 *         variable is not one of the kernel arguments
+	 */
 	@Override
 	public synchronized void postCompile() {
 		super.postCompile();
@@ -267,6 +358,27 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		}
 	}
 
+	/**
+	 * Evaluates this computation synchronously with the specified arguments.
+	 *
+	 * <p>Executes the compiled hardware kernel, waits for completion, and extracts
+	 * the result from the output argument. The kernel is compiled on-demand if not
+	 * already compiled.</p>
+	 *
+	 * <p>Execution flow:</p>
+	 * <ol>
+	 *   <li>Ensures the kernel is compiled ({@link #confirmLoad()})</li>
+	 *   <li>Retrieves output argument index and offset from instruction manager</li>
+	 *   <li>Dispatches the kernel via {@link #apply(Object, Object[])}</li>
+	 *   <li>Waits for kernel completion</li>
+	 *   <li>Extracts result from output argument via {@link #postProcessOutput}</li>
+	 *   <li>Validates result (checks for NaN if monitoring enabled)</li>
+	 * </ol>
+	 *
+	 * @param args The input arguments for the computation
+	 * @return The evaluated result of type T
+	 * @throws HardwareException if kernel execution fails
+	 */
 	@Override
 	public T evaluate(Object... args) {
 		confirmLoad();
@@ -285,6 +397,22 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		}
 	}
 
+	/**
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 *
+	 * <p>Dispatches the kernel without blocking, registering a callback that extracts the
+	 * result and pushes it to {@link #downstream} upon completion. This enables non-blocking
+	 * streaming pipelines.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * evaluable.setDownstream(result -> processResult(result));
+	 * evaluable.request(args);  // Non-blocking, result sent to downstream
+	 * }</pre>
+	 *
+	 * @param args The input arguments for the computation
+	 * @throws NullPointerException if {@link #downstream} is not set
+	 */
 	@Override
 	public void request(Object[] args) {
 		confirmLoad();
@@ -299,6 +427,23 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		});
 	}
 
+	/**
+	 * Sets the downstream consumer for streaming evaluation results.
+	 *
+	 * <p>Once set, {@link #request(Object[])} will push results to this consumer
+	 * upon completion. The downstream can only be set once per evaluable instance.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * evaluable.setDownstream(result -> {
+	 *     // Process result asynchronously
+	 *     logger.info("Received: " + result);
+	 * });
+	 * }</pre>
+	 *
+	 * @param consumer The consumer to receive evaluation results
+	 * @throws UnsupportedOperationException if downstream is already set
+	 */
 	@Override
 	public void setDownstream(Consumer<T> consumer) {
 		if (downstream != null) {
@@ -308,6 +453,17 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		this.downstream = consumer;
 	}
 
+	/**
+	 * Returns this evaluable configured for asynchronous execution.
+	 *
+	 * <p>Since {@link AcceleratedComputationEvaluable} already supports asynchronous
+	 * execution via {@link #request(Object[])}, this method simply returns {@code this}.
+	 * The provided executor is not used, as hardware kernel dispatch is already
+	 * non-blocking.</p>
+	 *
+	 * @param executor The executor (ignored, hardware dispatch is inherently async)
+	 * @return This evaluable instance
+	 */
 	@Override
 	public StreamingEvaluable<T> async(Executor executor) {
 		return this;
