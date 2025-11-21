@@ -724,8 +724,24 @@ public final class Hardware {
 		return done.size();
 	}
 
+	/**
+	 * Returns the name of this hardware instance.
+	 *
+	 * <p>Typically "local" for the singleton instance. Used for logging and identification.</p>
+	 *
+	 * @return The hardware instance name
+	 */
 	public String getName() { return name; }
 
+	/**
+	 * Returns the effective precision for computations across all contexts.
+	 *
+	 * <p>When multiple backends are configured, returns the lowest precision (largest epsilon)
+	 * among all contexts to ensure numerical compatibility. For example, if CL is FP32 and
+	 * JNI is FP64, this returns FP32.</p>
+	 *
+	 * @return The effective precision for all operations
+	 */
 	public Precision getPrecision() {
 		Precision precision = Precision.FP64;
 
@@ -738,12 +754,53 @@ public final class Hardware {
 		return precision;
 	}
 
+	/**
+	 * Returns the singleton {@link Hardware} instance for this process.
+	 *
+	 * <p>The instance is initialized during class loading based on environment variables.
+	 * All Almost Realism code should use this singleton for hardware access.</p>
+	 *
+	 * @return The local hardware singleton
+	 */
 	public static Hardware getLocalHardware() { return local; }
 
+	/**
+	 * Returns the {@link DefaultComputer} managing compilation and execution.
+	 *
+	 * <p>The computer coordinates all hardware contexts and provides high-level
+	 * operation execution services.</p>
+	 *
+	 * @return The default computer instance
+	 */
 	public DefaultComputer getComputer() { return computer; }
 
+	/**
+	 * Sets the maximum nesting depth for {@link OperationList} compilation.
+	 *
+	 * <p>Deeper nesting allows more operations to be batched together but increases
+	 * compilation time. Default is 500.</p>
+	 *
+	 * @param depth The maximum depth (typically 100-1000)
+	 */
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
+	/**
+	 * Returns the epsilon value for floating-point comparisons.
+	 *
+	 * <p>By default, uses FP32 epsilon even for FP64 precision unless
+	 * {@code AR_HARDWARE_EPSILON_64=true}. This provides more lenient
+	 * equality checks suitable for hardware computations.</p>
+	 *
+	 * <p>Usage:</p>
+	 * <pre>{@code
+	 * double eps = Hardware.getLocalHardware().epsilon();
+	 * if (Math.abs(a - b) < eps) {
+	 *     // Values are approximately equal
+	 * }
+	 * }</pre>
+	 *
+	 * @return The epsilon threshold for approximate equality
+	 */
 	public double epsilon() {
 		double eps = getPrecision().epsilon();
 
@@ -754,6 +811,26 @@ public final class Hardware {
 		return eps;
 	}
 
+	/**
+	 * Attaches an {@link OperationProfile} to collect timing data globally.
+	 *
+	 * <p>Once assigned, all hardware operations, compilations, and scope evaluations
+	 * will report their timing to the profile. Pass null to disable profiling.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * OperationProfile profile = new DefaultProfile();
+	 * Hardware.getLocalHardware().assignProfile(profile);
+	 *
+	 * // Run operations - timing is automatically collected
+	 * computation.get().run();
+	 *
+	 * // Analyze results
+	 * System.out.println("Total time: " + profile.getTotalTime());
+	 * }</pre>
+	 *
+	 * @param profile The profile to collect timing data, or null to disable
+	 */
 	public void assignProfile(OperationProfile profile) {
 		if (profile == null) {
 			clearProfile();
@@ -767,6 +844,11 @@ public final class Hardware {
 		}
 	}
 
+	/**
+	 * Removes any attached profiling, disabling timing collection.
+	 *
+	 * <p>Equivalent to calling {@link #assignProfile(OperationProfile)} with null.</p>
+	 */
 	public void clearProfile() {
 		HardwareOperator.timingListener = null;
 		AbstractComputeContext.compilationTimingListener = null;
@@ -776,16 +858,41 @@ public final class Hardware {
 		Expression.timing = null;
 	}
 
+	/**
+	 * Registers a {@link ContextListener} to receive context lifecycle events.
+	 *
+	 * <p>Listeners are stored via {@link WeakReference}, so callers must maintain
+	 * a strong reference elsewhere or the listener will be garbage collected.</p>
+	 *
+	 * <p>Events include context creation ({@link ContextListener#contextStarted})
+	 * and destruction ({@link ContextListener#contextDestroyed}).</p>
+	 *
+	 * @param l The listener to register
+	 */
 	public synchronized void addContextListener(ContextListener l) {
 		contextListeners.add(new WeakReference<>(l));
 	}
 
+	/**
+	 * Unregisters a {@link ContextListener}.
+	 *
+	 * <p>Also cleans up any garbage-collected weak references.</p>
+	 *
+	 * @param l The listener to remove
+	 */
 	public synchronized void removeContextListener(ContextListener l) {
 		synchronized (contextListeners) {
 			contextListeners.removeIf(c -> c.get() == null || c.get() == l);
 		}
 	}
 
+	/**
+	 * Applies an action to each registered {@link ContextListener}.
+	 *
+	 * <p>Automatically removes any garbage-collected weak references during iteration.</p>
+	 *
+	 * @param c The action to apply to each listener
+	 */
 	public synchronized void forEachContextListener(Consumer<ContextListener> c) {
 		synchronized (contextListeners) {
 			contextListeners.removeIf(v -> v.get() == null);
@@ -796,6 +903,30 @@ public final class Hardware {
 		}
 	}
 
+	/**
+	 * Executes a {@link Callable} in an isolated {@link DataContext}.
+	 *
+	 * <p>Creates a temporary context matching the current backend type, executes the
+	 * callable, and destroys the context. All memory allocated within the callable is
+	 * automatically cleaned up.</p>
+	 *
+	 * <p><strong>Important:</strong> Data must be copied out before the callable returns,
+	 * as the temporary context is destroyed afterward.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * PackedCollection<?> result = Hardware.getLocalHardware().dataContext(() -> {
+	 *     PackedCollection<?> temp = new PackedCollection<>(1000);
+	 *     temp.fill(Math::random);
+	 *     return temp.copy();  // Must copy before returning
+	 * });
+	 * }</pre>
+	 *
+	 * @param exec The callable to execute in the isolated context
+	 * @param <T> The return type
+	 * @return The result of the callable
+	 * @throws RuntimeException if the callable throws an exception
+	 */
 	public <T> T dataContext(Callable<T> exec) {
 		DataContext<MemoryData> next, current = explicitDataCtx.get();
 
@@ -835,6 +966,33 @@ public final class Hardware {
 		}
 	}
 
+	/**
+	 * Executes a {@link Callable} with a specific {@link ComputeContext} preference.
+	 *
+	 * <p>Forces all operations within the callable to use a context matching the
+	 * specified requirements. Useful for forcing GPU or CPU execution for specific code blocks.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * // Force GPU execution
+	 * Hardware.getLocalHardware().computeContext(() -> {
+	 *     computation.get().run();  // Runs on GPU
+	 *     return null;
+	 * }, ComputeRequirement.GPU);
+	 *
+	 * // Force CPU execution
+	 * Hardware.getLocalHardware().computeContext(() -> {
+	 *     computation.get().run();  // Runs on CPU
+	 *     return null;
+	 * }, ComputeRequirement.CPU);
+	 * }</pre>
+	 *
+	 * @param exec The callable to execute
+	 * @param expectations Requirements for context selection
+	 * @param <T> The return type
+	 * @return The result of the callable
+	 * @throws RuntimeException if no context meets the requirements
+	 */
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		return Optional.ofNullable(getDataContext(false, false, expectations))
 				.map(dc -> {
@@ -850,12 +1008,41 @@ public final class Hardware {
 				.orElseThrow(() -> new RuntimeException("No DataContext meets the provided ComputeRequirements"));
 	}
 
+	/**
+	 * Returns whether asynchronous execution is enabled.
+	 *
+	 * <p>Controlled by {@code AR_HARDWARE_ASYNC} environment variable (default: true).</p>
+	 *
+	 * @return true if async execution is enabled
+	 */
 	public boolean isAsync() { return async; }
 
+	/**
+	 * Returns whether memory is volatile (stored in JVM heap).
+	 *
+	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}.</p>
+	 *
+	 * @return true if memory is volatile
+	 */
 	public boolean isMemoryVolatile() { return memVolatile; }
 
+	/**
+	 * Returns the memory scale exponent for maximum allocation size.
+	 *
+	 * <p>Max reservation = 2^MEMORY_SCALE * 64MB. Default is 4 (1GB).</p>
+	 *
+	 * @return The memory scale exponent
+	 */
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
+	/**
+	 * Returns the off-heap buffer size for the specified backend.
+	 *
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 1024 bytes).</p>
+	 *
+	 * @param type The backend type (currently unused)
+	 * @return The off-heap buffer size in bytes
+	 */
 	public int getOffHeapSize(ComputeRequirement type) {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
@@ -864,10 +1051,41 @@ public final class Hardware {
 		}
 	}
 
+	/**
+	 * Returns all configured {@link DataContext}s.
+	 *
+	 * <p>Includes all backends initialized based on {@code AR_HARDWARE_DRIVER}.
+	 * The list is unmodifiable.</p>
+	 *
+	 * @return Unmodifiable list of all data contexts
+	 */
 	public List<DataContext<MemoryData>> getAllDataContexts() {
 		return Collections.unmodifiableList(contexts);
 	}
 
+	/**
+	 * Returns a {@link DataContext} matching the specified requirements.
+	 *
+	 * <p>If no requirements are specified and no explicit context is set,
+	 * returns the first configured context. Otherwise selects a context
+	 * matching all requirements.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * // Get default context
+	 * DataContext<MemoryData> ctx = hardware.getDataContext();
+	 *
+	 * // Get GPU context
+	 * DataContext<MemoryData> gpu = hardware.getDataContext(ComputeRequirement.GPU);
+	 *
+	 * // Get OpenCL specifically
+	 * DataContext<MemoryData> cl = hardware.getDataContext(ComputeRequirement.CL);
+	 * }</pre>
+	 *
+	 * @param requirements Optional requirements for context selection
+	 * @return A matching data context
+	 * @throws UnsupportedOperationException if no context matches requirements
+	 */
 	public DataContext<MemoryData> getDataContext(ComputeRequirement... requirements) {
 		if (requirements.length == 0 && explicitComputeCtx.get() == null) {
 			return contexts.get(0);
@@ -876,6 +1094,31 @@ public final class Hardware {
 		return getDataContext(false, false, requirements);
 	}
 
+	/**
+	 * Returns a {@link DataContext} with detailed selection criteria.
+	 *
+	 * <p>Allows fine-grained control over context selection with preference hints:</p>
+	 * <ul>
+	 *   <li><strong>sequential:</strong> Prefer CPU/JNI backend for sequential execution</li>
+	 *   <li><strong>accelerator:</strong> Prefer GPU backends (Metal, then OpenCL)</li>
+	 *   <li><strong>requirements:</strong> Must satisfy all specified requirements</li>
+	 * </ul>
+	 *
+	 * <p>Selection priority:</p>
+	 * <ol>
+	 *   <li>If explicit context set via {@link #computeContext} or {@link #dataContext}, use it</li>
+	 *   <li>If only one context available, use it (with warning if requirements don't match)</li>
+	 *   <li>Filter contexts by requirements</li>
+	 *   <li>If accelerator=true, prefer Metal > OpenCL</li>
+	 *   <li>If sequential=true, prefer JNI</li>
+	 *   <li>Return first matching context</li>
+	 * </ol>
+	 *
+	 * @param sequential Prefer sequential/CPU execution
+	 * @param accelerator Prefer GPU execution
+	 * @param requirements Required capabilities
+	 * @return A matching data context, or null if none match
+	 */
 	public DataContext<MemoryData> getDataContext(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
 		ComputeContext<MemoryData> cc = explicitComputeCtx.get();
 		DataContext<MemoryData> ctx = cc == null ? explicitDataCtx.get() : cc.getDataContext();
@@ -929,19 +1172,62 @@ public final class Hardware {
 		return filtered.get(0);
 	}
 
+	/**
+	 * Returns the default {@link ComputeContext}.
+	 *
+	 * <p>Equivalent to calling {@link #getComputeContext(ComputeRequirement...)} with no requirements.</p>
+	 *
+	 * @return The default compute context
+	 */
 	public ComputeContext<MemoryData> getComputeContext() {
 		return getComputeContexts(false, false).get(0);
 	}
 
+	/**
+	 * Returns a {@link ComputeContext} matching the specified requirements.
+	 *
+	 * @param requirements Required capabilities
+	 * @return A matching compute context
+	 * @throws RuntimeException if no context meets requirements
+	 */
 	public ComputeContext<MemoryData> getComputeContext(ComputeRequirement... requirements) {
 		return getComputeContexts(false, false, requirements).get(0);
 	}
 
+	/**
+	 * Returns all {@link ComputeContext}s for a {@link DataContext} matching the criteria.
+	 *
+	 * <p>A {@link DataContext} may provide multiple {@link ComputeContext}s (e.g., different
+	 * optimization levels or profiling variants).</p>
+	 *
+	 * @param sequential Prefer sequential/CPU execution
+	 * @param accelerator Prefer GPU execution
+	 * @param requirements Required capabilities
+	 * @return List of compute contexts from the selected data context
+	 * @throws RuntimeException if no data context is available
+	 */
 	public List<ComputeContext<MemoryData>> getComputeContexts(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
 		return Optional.ofNullable(getDataContext(sequential, accelerator, requirements)).map(dc -> dc.getComputeContexts())
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 
+	/**
+	 * Returns a {@link MemoryProvider} suitable for allocating the specified number of elements.
+	 *
+	 * <p>The provider is obtained from the default {@link DataContext} and can allocate
+	 * memory for the current precision (FP32 or FP64).</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * MemoryProvider<?> provider = Hardware.getLocalHardware().getMemoryProvider(1000);
+	 * Memory mem = provider.allocate(1000);  // 1000 doubles
+	 * }</pre>
+	 *
+	 * @param size Number of double-precision elements to allocate
+	 * @return A memory provider from the default context
+	 * @throws HardwareException if size * precision bytes exceeds Integer.MAX_VALUE
+	 * @throws RuntimeException if no data context is available
+	 */
 	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
 		long total = size;
 		total *= getPrecision().bytes();
@@ -954,6 +1240,14 @@ public final class Hardware {
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 
+	/**
+	 * Returns the native buffer memory provider if NIO memory is enabled.
+	 *
+	 * <p>Only available when {@code AR_HARDWARE_NIO_MEMORY=true}. Provides direct
+	 * native buffer allocation for shared memory between backends.</p>
+	 *
+	 * @return The NIO memory provider, or null if not enabled
+	 */
 	public MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
 		return nioMemory;
 	}

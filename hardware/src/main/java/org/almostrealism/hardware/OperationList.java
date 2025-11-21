@@ -485,9 +485,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, Destroyable, ComputerFeatures {
+	/** Enable logging of operation list execution (controlled by AR_HARDWARE_RUN_LOGGING environment variable). */
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
+
+	/** Enable automatic optimization of operation lists before execution. */
 	public static boolean enableAutomaticOptimization = false;
+
+	/** Enable segmenting of large operation lists into smaller batches. */
 	public static boolean enableSegmenting = false;
+
+	/** Enable non-uniform compilation where operations with different counts can be compiled together. */
 	public static boolean enableNonUniformCompilation = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
@@ -511,22 +518,51 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	private OperationProfile profile;
 	private List<ComputeRequirement> requirements;
 
+	/**
+	 * Creates an empty operation list with no description.
+	 */
 	public OperationList() { this(null); }
 
+	/**
+	 * Creates an empty operation list with a description and compilation enabled.
+	 *
+	 * @param description Human-readable description of this operation list
+	 */
 	public OperationList(String description) { this(description, true); }
 
+	/**
+	 * Creates an empty operation list with explicit compilation control.
+	 *
+	 * @param description Human-readable description of this operation list
+	 * @param enableCompilation Whether to enable compilation to hardware kernels
+	 */
 	public OperationList(String description, boolean enableCompilation) {
 		this.enableCompilation = enableCompilation;
 		this.functionName = "operations_" + functionCount++;
 		this.description = description;
 	}
 
+	/**
+	 * Sets the function name for this operation list (used in compiled code).
+	 *
+	 * @param name The function name
+	 */
 	@Override
 	public void setFunctionName(String name) { this.functionName = name; }
 
+	/**
+	 * Returns the function name for this operation list.
+	 *
+	 * @return The function name
+	 */
 	@Override
 	public String getFunctionName() { return this.functionName; }
 
+	/**
+	 * Returns the operation metadata for profiling and identification.
+	 *
+	 * @return The operation metadata
+	 */
 	@Override
 	public OperationMetadata getMetadata() {
 		if (metadata == null) {
@@ -536,22 +572,71 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return metadata;
 	}
 
+	/**
+	 * Returns the operation profile for timing collection.
+	 *
+	 * @return The operation profile, or null if not set
+	 */
 	public OperationProfile getProfile() { return profile; }
+
+	/**
+	 * Sets the operation profile for timing collection.
+	 *
+	 * @param profile The operation profile to use
+	 */
 	public void setProfile(OperationProfile profile) { this.profile = profile; }
 
+	/**
+	 * Sets compute requirements for context selection.
+	 *
+	 * <p>These requirements are pushed onto the computer's requirement stack
+	 * during execution to force specific backend selection (GPU, CPU, etc.).</p>
+	 *
+	 * @param requirements The compute requirements
+	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
+	/**
+	 * Returns the compute requirements for this operation list.
+	 *
+	 * @return The compute requirements, or null if none specified
+	 */
 	@Override
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 
+	/**
+	 * Adds a compiled operation supplier to this list.
+	 *
+	 * <p>The supplier is resolved when the operation list is executed.</p>
+	 *
+	 * @param op Supplier of the compiled runnable
+	 */
 	public void addCompiled(Supplier<Runnable> op) {
 		add(() -> op.get());
 	}
 
+	/**
+	 * Adds an assignment operation to this list.
+	 *
+	 * <p>Creates an {@link Assignment} that copies data from producer to destination.</p>
+	 *
+	 * @param memLength Memory length for the assignment
+	 * @param producer Source producer
+	 * @param destination Destination producer
+	 * @param <T> The memory data type
+	 */
 	public <T extends MemoryData> void add(int memLength, Producer<T> producer, Producer<T> destination) {
 		add(new Assignment<>(memLength, destination, producer));
 	}
 
+	/**
+	 * Returns the count for this operation list.
+	 *
+	 * <p>If the list is uniform (all operations have the same count), returns
+	 * that count. Otherwise returns 1.</p>
+	 *
+	 * @return The operation count
+	 */
 	@Override
 	public long getCountLong() {
 		if (count == null) {
@@ -567,11 +652,25 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return count;
 	}
 
+	/**
+	 * Compiles and returns a runnable for this operation list.
+	 *
+	 * <p>Automatically selects the best execution strategy (compilation,
+	 * optimization, or sequential execution) based on list characteristics.</p>
+	 *
+	 * @return Runnable that executes all operations in this list
+	 */
 	@Override
 	public Runnable get() {
 		return get(getProfile());
 	}
 
+	/**
+	 * Compiles and returns a runnable with explicit profiling.
+	 *
+	 * @param profile The operation profile for timing collection, or null
+	 * @return Runnable that executes all operations in this list
+	 */
 	public Runnable get(OperationProfile profile) {
 		if (isFunctionallyEmpty()) return () -> { };
 
@@ -611,6 +710,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 	}
 
+	/**
+	 * Returns whether this list can be compiled as a single computation.
+	 *
+	 * <p>Returns true if compilation is enabled, depth is within limits,
+	 * and all operations (including nested OperationLists) implement
+	 * {@link Computation}. Compiled operation lists execute as a single
+	 * hardware kernel dispatch.</p>
+	 *
+	 * @return true if this list can be compiled to a hardware kernel
+	 */
 	public boolean isComputation() {
 		if (!enableCompilation) return false;
 		if (getDepth() > maxDepth) return false;
@@ -626,6 +735,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		return nonComputations == 0;
 	}
 
+	/**
+	 * Prepares arguments for all operations in this list.
+	 *
+	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all operations.
+	 * If an abort flag is set, also prepares the abort operation.</p>
+	 *
+	 * @param map The argument map to populate
+	 */
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		ScopeLifecycle.prepareArguments(stream(), map);
@@ -636,6 +753,15 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 	}
 
+	/**
+	 * Prepares scope for all operations in this list.
+	 *
+	 * <p>Delegates to {@link ScopeLifecycle#prepareScope} for all operations.
+	 * If an abort flag is set, also prepares the abort operation's scope.</p>
+	 *
+	 * @param manager The scope input manager
+	 * @param context The kernel structure context
+	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(stream(), manager, context);
@@ -646,6 +772,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 	}
 
+	/**
+	 * Returns the combined scope for all operations in this list.
+	 *
+	 * <p>Concatenates the scopes from all operations into a single scope
+	 * for compilation into a single hardware kernel.</p>
+	 *
+	 * @param context The kernel structure context
+	 * @return Combined scope containing all operations
+	 * @throws IllegalArgumentException if not all operations are compilable
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		if (!isComputation()) {
@@ -840,6 +976,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 	}
 
+	/**
+	 * Returns a human-readable description of this operation list.
+	 *
+	 * @return Description including operation count and requirements
+	 */
 	@Override
 	public String describe() {
 		return Optional.ofNullable(getMetadata().getShortDescription()).orElse("") +
@@ -847,26 +988,55 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				(getComputeRequirements() == null ? "" : Arrays.toString(getComputeRequirements().toArray()));
 	}
 
+	/**
+	 * Returns a collector that accumulates runnables into an {@link OperationList}.
+	 *
+	 * @return Stream collector for building operation lists
+	 */
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {
 		return Collectors.toCollection(OperationList::new);
 	}
 
+	/**
+	 * Sets the thread-local abort flag for operation cancellation.
+	 *
+	 * @param flag Memory data flag for signaling abort
+	 */
 	public static void setAbortFlag(MemoryData flag) { abortFlag.set(flag); }
 
+	/**
+	 * Returns the current thread's abort flag.
+	 *
+	 * @return The abort flag, or null if not set
+	 */
 	public static MemoryData getAbortFlag() { return abortFlag.get(); }
 
+	/**
+	 * Removes the abort flag for the current thread.
+	 */
 	public static void removeAbortFlag() { abortFlag.remove(); }
 
 	protected static void setMaxDepth(int depth) { maxDepth = depth; }
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
+	/**
+	 * Compiled runner for executing a sequence of operations with metadata and timing support.
+	 */
 	public static class Runner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 		private List<ComputeRequirement> requirements;
 		private OperationTimingListener timingListener;
 
+		/**
+		 * Creates a runner for the specified operations.
+		 *
+		 * @param metadata Operation metadata for identification
+		 * @param run List of runnables to execute sequentially
+		 * @param requirements Compute requirements (may be null)
+		 * @param timingListener Timing listener for profiling (may be null)
+		 */
 		public Runner(OperationMetadata metadata, List<Runnable> run,
 					  List<ComputeRequirement> requirements,
 					  OperationTimingListener timingListener) {
@@ -876,11 +1046,24 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			this.timingListener = timingListener;
 		}
 
+		/**
+		 * Returns the operation metadata.
+		 *
+		 * @return The metadata
+		 */
 		@Override
 		public OperationMetadata getMetadata() { return metadata; }
 
+		/**
+		 * Returns the list of operations to execute.
+		 *
+		 * @return List of runnables
+		 */
 		public List<Runnable> getOperations() { return run; }
 
+		/**
+		 * Executes all operations in sequence with compute requirements and timing.
+		 */
 		@Override
 		public void run() {
 			try {
@@ -906,11 +1089,19 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			}
 		}
 
+		/**
+		 * Returns a description of this runner.
+		 *
+		 * @return The short description from metadata
+		 */
 		@Override
 		public String describe() {
 			return getMetadata().getShortDescription();
 		}
 
+		/**
+		 * Destroys all operations and releases resources.
+		 */
 		@Override
 		public void destroy() {
 			if (run == null) return;
@@ -919,6 +1110,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			run = null;
 		}
 
+		/**
+		 * Returns the console for logging.
+		 *
+		 * @return The hardware console
+		 */
 		@Override
 		public Console console() { return Hardware.console; }
 	}

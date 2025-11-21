@@ -124,6 +124,24 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		this.variables = new IdentityHashMap<>();
 	}
 
+	/**
+	 * Attempts to optimize an expression by generating a lookup table operation.
+	 *
+	 * <p>If the expression is sufficiently complex (≥{@link #minimumChildren} nodes),
+	 * creates a {@link KernelTraversalOperation} that precomputes all index values
+	 * and replaces the expression with an array reference.</p>
+	 *
+	 * <p>Returns the original expression if:</p>
+	 * <ul>
+	 *   <li>Generation is disabled ({@link #enableGeneration} = false)</li>
+	 *   <li>Count is not fixed at compile time</li>
+	 *   <li>Expression complexity is below threshold</li>
+	 *   <li>Maximum cache entries reached</li>
+	 * </ul>
+	 *
+	 * @param expression Expression to potentially optimize
+	 * @return Array reference to lookup table if optimized, original expression otherwise
+	 */
 	@Override
 	public Expression<?> generateReordering(Expression<?> expression) {
 		long start = System.nanoTime();
@@ -156,15 +174,35 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		}
 	}
 
+	/**
+	 * Destroys all generated traversal operations and clears caches.
+	 *
+	 * <p>Releases resources used by cached lookup table operations.</p>
+	 */
 	@Override
 	public void destroy() {
 		operations.forEach((k, v) -> v.destroy());
 		operations.clear();
 	}
 
+	/**
+	 * Returns the console for logging.
+	 *
+	 * @return Accelerated operation console instance
+	 */
 	@Override
 	public Console console() { return AcceleratedOperation.console; }
 
+	/**
+	 * Factory method to create a generator for a computation.
+	 *
+	 * <p>Determines traversal count and whether it's fixed, then creates
+	 * a generator configured for that computation.</p>
+	 *
+	 * @param c Computation to create generator for
+	 * @param variableFactory Factory for creating array variables from producers
+	 * @return New traversal operation generator
+	 */
 	public static KernelTraversalOperationGenerator create(Computation<?> c, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
 		int count = Countable.count(c);
 		boolean fixed = Countable.isFixedCount(c);

@@ -68,22 +68,52 @@ import java.util.List;
 public class ProfileData {
 	private List<RunData> runs;
 
+	/**
+	 * Creates a new profile data collector with no recorded runs.
+	 */
 	public ProfileData() {
 		this.runs = new ArrayList<>();
 	}
 
+	/**
+	 * Adds a single run measurement to the profile.
+	 *
+	 * @param run The run data containing execution duration
+	 */
 	public void addRun(RunData run) { runs.add(run); }
 
+	/**
+	 * Returns the total number of recorded execution runs.
+	 *
+	 * @return Count of runs added to this profile
+	 */
 	public int getTotalRuns() { return runs.size(); }
 
+	/**
+	 * Returns the average execution time across all runs.
+	 *
+	 * @return Average runtime in nanoseconds
+	 */
 	public double getAverageRuntimeNanos() {
 		return getTotalRuntimeNanos() / runs.size();
 	}
 
+	/**
+	 * Returns the sum of all execution times.
+	 *
+	 * @return Total runtime in nanoseconds across all runs
+	 */
 	public double getTotalRuntimeNanos() {
 		return runs.stream().mapToDouble(RunData::getDurationNanos).sum();
 	}
 
+	/**
+	 * Returns a human-readable summary of the profiling data.
+	 *
+	 * <p>Format: "{average} nanoseconds average - {count} executions for {total} seconds total"</p>
+	 *
+	 * @return Summary string with average time, execution count, and total time
+	 */
 	public String getSummaryString() {
 		int count = runs.size();
 		double totalSeconds = getTotalRuntimeNanos() * Math.pow(10, -6);

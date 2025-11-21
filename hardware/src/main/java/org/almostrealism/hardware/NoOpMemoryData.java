@@ -127,29 +127,69 @@ import io.almostrealism.collect.TraversalOrdering;
  * @see MemoryData
  */
 public class NoOpMemoryData implements MemoryData {
+	/**
+	 * Returns null (no memory allocated).
+	 *
+	 * @return null
+	 */
 	@Override
 	public Memory getMem() { return null; }
 
+	/**
+	 * No-op reassignment (ignored).
+	 *
+	 * @param mem The memory to reassign (ignored)
+	 */
 	@Override
 	public void reassign(Memory mem) { }
 
+	/**
+	 * Returns zero (no memory length).
+	 *
+	 * @return 0
+	 */
 	@Override
 	public int getMemLength() {
 		return 0;
 	}
 
+	/**
+	 * No-op delegate assignment (ignored).
+	 *
+	 * @param m The delegate memory data (ignored)
+	 * @param offset The offset (ignored)
+	 * @param order The traversal ordering (ignored)
+	 */
 	@Override
 	public void setDelegate(MemoryData m, int offset, TraversalOrdering order) { }
 
+	/**
+	 * Returns null (no delegate).
+	 *
+	 * @return null
+	 */
 	@Override
 	public MemoryData getDelegate() { return null; }
 
+	/**
+	 * Returns zero (no delegate offset).
+	 *
+	 * @return 0
+	 */
 	@Override
 	public int getDelegateOffset() { return 0; }
 
+	/**
+	 * Returns null (no traversal ordering).
+	 *
+	 * @return null
+	 */
 	@Override
 	public TraversalOrdering getDelegateOrdering() { return null; }
 
+	/**
+	 * No-op destroy (safe to call multiple times).
+	 */
 	@Override
 	public void destroy() { }
 }

@@ -68,6 +68,9 @@ import java.util.stream.Stream;
  * @see MTLDevice
  */
 public class MetalDataContext extends HardwareDataContext {
+	/**
+	 * True if FP16 (half precision) mode is enabled via AR_HARDWARE_PRECISION=FP16 environment variable.
+	 */
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
 	private final int offHeapSize;
@@ -81,18 +84,36 @@ public class MetalDataContext extends HardwareDataContext {
 
 	private Runnable start;
 
+	/**
+	 * Creates a Metal data context with specified memory limits.
+	 *
+	 * @param name Display name for this context
+	 * @param maxReservation Maximum memory in elements (not bytes) that can be allocated
+	 * @param offHeapSize Threshold in elements below which JVM heap is used instead of Metal buffers
+	 */
 	public MetalDataContext(String name, long maxReservation, int offHeapSize) {
 		super(name, maxReservation);
 		this.offHeapSize = offHeapSize;
 		this.computeContext = new ThreadLocal<>();
 	}
 
+	/**
+	 * Initializes the data context by setting up JVM fallback memory provider.
+	 *
+	 * <p>Defers Metal device initialization until first use (lazy initialization).</p>
+	 */
 	@Override
 	public void init() {
 		altRam = new JVMMemoryProvider();
 		start = this::start;
 	}
 
+	/**
+	 * Identifies and initializes the Metal device.
+	 *
+	 * <p>Creates the system default Metal device if not already initialized.
+	 * Called lazily on first access to the device or memory providers.</p>
+	 */
 	protected void identifyDevices() {
 		if (mainDevice != null) return;
 
@@ -125,19 +146,44 @@ public class MetalDataContext extends HardwareDataContext {
 		return cc;
 	}
 
+	/**
+	 * Returns the precision mode for this context.
+	 *
+	 * @return {@link Precision#FP16} if AR_HARDWARE_PRECISION=FP16, otherwise {@link Precision#FP32}
+	 */
 	@Override
 	public Precision getPrecision() { return fp16 ? Precision.FP16 : Precision.FP32; }
 
+	/**
+	 * Returns the Metal device for this context.
+	 *
+	 * <p>Triggers lazy initialization if not yet started.</p>
+	 *
+	 * @return The {@link MTLDevice} instance for the system default GPU
+	 */
 	public MTLDevice getDevice() {
 		if (start != null) start.run();
 		return mainDevice;
 	}
 
+	/**
+	 * Returns the list of memory providers for this context.
+	 *
+	 * @return List containing the main Metal memory provider
+	 */
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
 		return List.of(mainRam);
 	}
 
+	/**
+	 * Returns or creates the shared memory provider for memory-mapped buffers.
+	 *
+	 * <p>Creates a {@link MetalMemoryProvider} in shared mode for CPU/GPU accessible
+	 * memory backed by memory-mapped files.</p>
+	 *
+	 * @return {@link MetalMemoryProvider} in shared storage mode
+	 */
 	@Override
 	protected MemoryProvider getSharedMemoryProvider() {
 		return Optional.ofNullable(super.getSharedMemoryProvider())
@@ -145,18 +191,47 @@ public class MetalDataContext extends HardwareDataContext {
 						getMaxReservation() * getPrecision().bytes(), true));
 	}
 
+	/**
+	 * Returns the primary Metal memory provider.
+	 *
+	 * <p>Triggers lazy initialization if not yet started.</p>
+	 *
+	 * @return {@link MetalMemoryProvider} for Metal GPU buffers
+	 */
 	public MemoryProvider<MetalMemory> getMemoryProvider() {
 		if (start != null) start.run();
 		return mainRam;
 	}
 
+	/**
+	 * Returns the alternative JVM heap memory provider.
+	 *
+	 * <p>Used for small allocations below the {@code offHeapSize} threshold
+	 * to avoid GPU memory overhead.</p>
+	 *
+	 * @return {@link JVMMemoryProvider} for heap-based memory
+	 */
 	public MemoryProvider<Memory> getAltMemoryProvider() {
 		return altRam;
 	}
 
+	/**
+	 * Returns the memory provider for kernel arguments.
+	 *
+	 * @return The main Metal memory provider
+	 */
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
 
+	/**
+	 * Returns the appropriate memory provider based on allocation size.
+	 *
+	 * <p>Selects JVM heap for small allocations (below {@code offHeapSize}),
+	 * Metal buffers for larger allocations, or a custom provider if configured.</p>
+	 *
+	 * @param size Allocation size in elements
+	 * @return Either {@link MetalMemoryProvider} or {@link JVMMemoryProvider}
+	 */
 	@Override
 	public MemoryProvider<?> getMemoryProvider(int size) {
 		IntFunction<MemoryProvider<?>> supply = getMemoryProviderSupply();
@@ -167,6 +242,14 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 	}
 
+	/**
+	 * Returns the compute contexts for the current thread.
+	 *
+	 * <p>Creates a new {@link MetalComputeContext} if none exists for the current thread.
+	 * Each thread maintains its own compute context via {@link ThreadLocal}.</p>
+	 *
+	 * @return List containing the thread's {@link MetalComputeContext}
+	 */
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContext.get() == null) {
@@ -177,6 +260,20 @@ public class MetalDataContext extends HardwareDataContext {
 		return List.of(computeContext.get());
 	}
 
+	/**
+	 * Executes a callable within a specific compute context scope.
+	 *
+	 * <p>Creates a temporary {@link MetalComputeContext} with the specified requirements,
+	 * executes the callable, then destroys the context. The original context is restored
+	 * after execution.</p>
+	 *
+	 * @param <T> Return type of the callable
+	 * @param exec The callable to execute
+	 * @param expectations Compute requirements (PROFILING, C, etc.)
+	 * @return Result from the callable
+	 * @throws UnsupportedOperationException if PROFILING or C requirements are specified
+	 * @throws RuntimeException if execution fails
+	 */
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		ComputeContext current = computeContext.get();
 		ComputeContext next = createContext(expectations);
@@ -202,6 +299,18 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 	}
 
+	/**
+	 * Executes a callable with all memory allocations forced to Metal device memory.
+	 *
+	 * <p>Overrides the normal size-based memory provider selection to always use
+	 * Metal buffers, even for small allocations. Useful for ensuring all data
+	 * resides on the GPU during execution.</p>
+	 *
+	 * @param <T> Return type of the callable
+	 * @param exec The callable to execute
+	 * @return Result from the callable
+	 * @throws RuntimeException if execution fails
+	 */
 	@Override
 	public <T> T deviceMemory(Callable<T> exec) {
 		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
@@ -219,6 +328,12 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 	}
 
+	/**
+	 * Destroys this data context and releases all Metal resources.
+	 *
+	 * <p>Destroys all compute contexts, releases memory providers, and frees
+	 * the Metal device. After calling destroy, this context cannot be used.</p>
+	 */
 	@Override
 	public void destroy() {
 		// TODO  Destroy any other compute contexts

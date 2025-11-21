@@ -210,26 +210,120 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		this.id = idCount++;
 	}
 
+	/**
+	 * Returns the global work size (number of parallel executions).
+	 *
+	 * <p>For GPU kernels, this is the number of work items (threads) to execute in parallel.
+	 * For CPU operations, this is typically 1.</p>
+	 *
+	 * @return The number of parallel executions
+	 */
 	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
+
+	/**
+	 * Sets the global work size (number of parallel executions).
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * HardwareOperator kernel = ...;
+	 * kernel.setGlobalWorkSize(1024);  // Process 1024 elements in parallel
+	 * kernel.accept(args, null);
+	 * }</pre>
+	 *
+	 * @param globalWorkSize The number of parallel executions
+	 */
 	@Override
 	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
 
+	/**
+	 * Returns the global work offset (starting index for parallel execution).
+	 *
+	 * <p>Allows processing a subset of data by offsetting the work item IDs.
+	 * Typically 0 (process from beginning).</p>
+	 *
+	 * @return The starting offset for work item IDs
+	 */
 	@Override
 	public long getGlobalWorkOffset() { return globalWorkOffset; }
+
+	/**
+	 * Sets the global work offset (starting index for parallel execution).
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * kernel.setGlobalWorkSize(1000);
+	 * kernel.setGlobalWorkOffset(5000);  // Process indices 5000-5999
+	 * kernel.accept(args, null);
+	 * }</pre>
+	 *
+	 * @param globalWorkOffset The starting offset for work item IDs
+	 */
 	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
+	/**
+	 * Returns the unique ID of this operator.
+	 *
+	 * @return The operator ID
+	 */
 	protected long getId() { return id; }
 
+	/**
+	 * Returns whether this operator executes on GPU or CPU.
+	 *
+	 * <p>Used for metrics tracking and context selection.</p>
+	 *
+	 * @return true if this is a GPU operator (OpenCL, Metal), false for CPU (JNI)
+	 */
 	public abstract boolean isGPU();
 
+	/**
+	 * Returns the list of supported memory providers for this operator.
+	 *
+	 * <p>Arguments with unsupported memory providers will be automatically
+	 * reallocated to a supported provider during {@link #prepareArguments}.</p>
+	 *
+	 * @return List of memory providers this operator can directly access
+	 */
 	public abstract List<MemoryProvider<? extends Memory>> getSupportedMemory();
 
+	/**
+	 * Returns the human-readable hardware backend name.
+	 *
+	 * <p>Used for logging and debugging. Examples: "OpenCL", "Metal", "JNI".</p>
+	 *
+	 * @return The backend name
+	 */
 	protected abstract String getHardwareName();
 
+	/**
+	 * Returns the number of arguments this operator expects.
+	 *
+	 * @return The argument count
+	 */
 	protected abstract int getArgCount();
 
+	/**
+	 * Prepares arguments for execution by validating and converting to {@link MemoryData}.
+	 *
+	 * <p>Performs automatic memory migration if an argument's memory provider is not
+	 * supported by this operator. Migration copies the entire root delegate to a
+	 * supported provider.</p>
+	 *
+	 * <p>Validation:</p>
+	 * <ul>
+	 *   <li>All arguments must be non-null</li>
+	 *   <li>All arguments must be {@link MemoryData} instances</li>
+	 *   <li>Argument count must match expected count</li>
+	 * </ul>
+	 *
+	 * @param argCount Expected number of arguments
+	 * @param args The arguments to prepare
+	 * @return Array of validated {@link MemoryData} arguments
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if any argument is not {@link MemoryData}
+	 */
 	protected MemoryData[] prepareArguments(int argCount, Object[] args) {
 		long start = System.nanoTime();
 
@@ -289,10 +383,29 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 	}
 
+	/**
+	 * Records the execution duration of a {@link Runnable} via the timing listener.
+	 *
+	 * <p>Automatically updates global GPU/CPU operation counts and timing statistics.
+	 * If no timing listener is attached, the runnable executes without timing overhead.</p>
+	 *
+	 * @param semaphore Optional semaphore providing operation metadata
+	 * @param r The runnable to execute and time
+	 */
 	protected void recordDuration(Semaphore semaphore, Runnable r) {
 		recordDuration(semaphore, r, true);
 	}
 
+	/**
+	 * Records the execution duration of a {@link Runnable} with optional statistics tracking.
+	 *
+	 * <p>Allows disabling global operation counting (e.g., for internal operations like
+	 * memory reallocation that shouldn't count as user operations).</p>
+	 *
+	 * @param semaphore Optional semaphore providing operation metadata
+	 * @param r The runnable to execute and time
+	 * @param countOp Whether to increment global operation counts
+	 */
 	protected void recordDuration(Semaphore semaphore, Runnable r, boolean countOp) {
 		long duration = -1;
 
@@ -318,14 +431,36 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		}
 	}
 
+	/**
+	 * Returns a human-readable description of this operator.
+	 *
+	 * <p>Format: "{DisplayName} ({WorkSize}x)"</p>
+	 *
+	 * <p>Example: "VectorAdd (1024x)"</p>
+	 *
+	 * @return A description string
+	 */
 	@Override
 	public String describe() {
 		return getMetadata().getDisplayName() + " (" + getGlobalWorkSize() + "x)";
 	}
 
+	/**
+	 * Returns the console for logging.
+	 *
+	 * @return Hardware console instance
+	 */
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Records a compilation event for global statistics tracking.
+	 *
+	 * <p>Increments either {@link #gpuCompileCount} or {@link #cpuCompileCount}
+	 * depending on the backend type.</p>
+	 *
+	 * @param gpu true if this is a GPU compilation, false for CPU
+	 */
 	public static void recordCompilation(boolean gpu) {
 		if (gpu) {
 			gpuCompileCount++;
@@ -334,6 +469,21 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		}
 	}
 
+	/**
+	 * Executes a {@link Runnable} with verbose logging temporarily enabled.
+	 *
+	 * <p>Enables {@link #enableVerboseLog} and {@link NativeCompiler#enableVerbose}
+	 * for the duration of the runnable, then restores original settings.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * HardwareOperator.verboseLog(() -> {
+	 *     kernel.accept(args, null);  // Logs detailed execution info
+	 * });
+	 * }</pre>
+	 *
+	 * @param r The runnable to execute with verbose logging
+	 */
 	public static void verboseLog(Runnable r) {
 		boolean log = enableVerboseLog;
 		boolean compilerLog = NativeCompiler.enableVerbose;

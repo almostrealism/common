@@ -187,10 +187,34 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	private Executor executor;
 	private Consumer<T> downstream;
 
+	/**
+	 * Creates a destination evaluable that writes results to the specified {@link MemoryBank}.
+	 *
+	 * <p>The evaluable will execute synchronously when {@link #evaluate(Object...)} is called.</p>
+	 *
+	 * @param operation The evaluable to wrap
+	 * @param destination The memory bank to write results into
+	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination) {
 		this(operation, destination, null, null);
 	}
 
+	/**
+	 * Creates a destination evaluable with an executor for asynchronous execution.
+	 *
+	 * <p>Validates that the operation is suitable for destination-based evaluation:</p>
+	 * <ul>
+	 *   <li>Throws {@link UnsupportedOperationException} if operation is {@link HardwareEvaluable}
+	 *       (use HardwareEvaluable directly instead)</li>
+	 *   <li>Warns if operation is not {@link AcceleratedOperation} or {@link Provider}
+	 *       (will use slower element-wise iteration)</li>
+	 * </ul>
+	 *
+	 * @param operation The evaluable to wrap
+	 * @param destination The memory bank to write results into
+	 * @param executor The executor for asynchronous operations (null for synchronous)
+	 * @throws UnsupportedOperationException if operation is a {@link HardwareEvaluable}
+	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
 								Executor executor) {
 		this(operation, destination, executor, null);
@@ -213,9 +237,34 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		this.downstream = downstream;
 	}
 
+	/**
+	 * Executes the evaluation with no arguments (implements {@link Runnable}).
+	 *
+	 * <p>Delegates to {@link #evaluate(Object...)} with an empty argument array.</p>
+	 */
 	@Override
 	public void run() { evaluate(); }
 
+	/**
+	 * Evaluates the wrapped operation and writes results to the destination bank.
+	 *
+	 * <p>Uses one of three execution strategies:</p>
+	 * <ol>
+	 *   <li><b>Provider strategy:</b> If operation is a {@link Provider}, delegates to
+	 *       {@code operation.into(destination).evaluate(args)} for efficient evaluation</li>
+	 *   <li><b>Kernel strategy:</b> If operation is an {@link AcceleratedOperation} kernel,
+	 *       dispatches a single hardware kernel that writes directly to destination</li>
+	 *   <li><b>Element-wise strategy:</b> Otherwise, iterates over destination elements,
+	 *       evaluating operation for each element and writing results individually</li>
+	 * </ol>
+	 *
+	 * <p>For element-wise strategy, arguments must be {@link MemoryBank}s with matching counts.
+	 * The operation is called as: {@code result[i] = operation.evaluate(args[0].get(i), args[1].get(i), ...)}.</p>
+	 *
+	 * @param args The input arguments (typically {@link MemoryBank}s for element-wise evaluation)
+	 * @return The destination bank containing the results
+	 * @throws HardwareException if evaluation fails
+	 */
 	@Override
 	public T evaluate(Object... args) {
 		if (operation instanceof Provider<T>) {
@@ -255,6 +304,22 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		return (T) destination;
 	}
 
+	/**
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 *
+	 * <p>Dispatches the kernel without blocking, registering a callback that pushes the
+	 * destination bank to {@link #downstream} upon completion. Only supported for
+	 * {@link AcceleratedOperation} kernels.</p>
+	 *
+	 * <p>Example:</p>
+	 * <pre>{@code
+	 * destEval.setDownstream(result -> processResult(result));
+	 * destEval.request(new Object[] { inputBank });  // Non-blocking
+	 * }</pre>
+	 *
+	 * @param args The input arguments ({@link MemoryData} instances)
+	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
+	 */
 	@Override
 	public void request(Object[] args) {
 		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
@@ -266,6 +331,15 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		}
 	}
 
+	/**
+	 * Sets the downstream consumer for streaming evaluation results.
+	 *
+	 * <p>Once set, {@link #request(Object[])} will push the destination bank to this
+	 * consumer upon completion. The downstream can only be set once per evaluable instance.</p>
+	 *
+	 * @param consumer The consumer to receive the destination bank after evaluation
+	 * @throws UnsupportedOperationException if downstream is already set
+	 */
 	@Override
 	public void setDownstream(Consumer<T> consumer) {
 		if (downstream != null) {
@@ -275,11 +349,30 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		this.downstream = consumer;
 	}
 
+	/**
+	 * Returns a new {@link DestinationEvaluable} configured for asynchronous execution.
+	 *
+	 * <p>Creates a new instance with the specified executor for async operations.
+	 * The executor is not currently used but enables future async execution support.</p>
+	 *
+	 * @param executor The executor for asynchronous operations
+	 * @return A new async-enabled destination evaluable
+	 */
 	@Override
 	public StreamingEvaluable<T> async(Executor executor) {
 		return new DestinationEvaluable<>(operation, destination, executor);
 	}
 
+	/**
+	 * Provides a replacement value when the operation evaluates to null.
+	 *
+	 * <p>Called during element-wise evaluation when {@code operation.evaluate(args)} returns null.
+	 * Delegates to the operation if it implements {@link NullProcessor}.</p>
+	 *
+	 * @param o The element arguments that produced a null result
+	 * @return A replacement value (never null)
+	 * @throws NullPointerException if operation is not a {@link NullProcessor}
+	 */
 	public T replaceNull(Object[] o) {
 		if (operation instanceof NullProcessor) {
 			return (T) ((NullProcessor) operation).replaceNull(o);
@@ -288,11 +381,22 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		}
 	}
 
+	/**
+	 * Destroys this evaluable and releases the wrapped operation if it's {@link Destroyable}.
+	 *
+	 * <p>Note: The destination {@link MemoryBank} is not destroyed, as it may be reused
+	 * across multiple evaluations.</p>
+	 */
 	@Override
 	public void destroy() {
 		Destroyable.destroy(operation);
 	}
 
+	/**
+	 * Returns the {@link Console} for logging output.
+	 *
+	 * @return The hardware console
+	 */
 	@Override
 	public Console console() { return Hardware.console; }
 }

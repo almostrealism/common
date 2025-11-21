@@ -223,6 +223,14 @@ public abstract class OperationComputationAdapter<T>
 		extends ComputationBase<T, Void, Runnable>
 		implements OperationComputation<Void>, ComputerFeatures {
 
+	/**
+	 * Creates an operation computation with the specified input producers.
+	 *
+	 * <p>Registers the input producers and calls {@link #init()} for subclass initialization.
+	 * Input producers are accessed during scope generation and evaluation.</p>
+	 *
+	 * @param inputArgs The input producers consumed by this operation
+	 */
 	@SafeVarargs
 	public OperationComputationAdapter(Producer<T>... inputArgs) {
 		this.setInputs(inputArgs);
@@ -237,6 +245,21 @@ public abstract class OperationComputationAdapter<T>
 		return Collections.emptyList();
 	}
 
+	/**
+	 * Returns the operation count inferred from inputs and dependencies.
+	 *
+	 * <p>Count inference strategy:</p>
+	 * <ol>
+	 *   <li>If all inputs/dependencies have the same count, returns that count</li>
+	 *   <li>If inputs/dependencies have different counts, returns their sum (treats as sequence)</li>
+	 *   <li>If no dependent computations exist, returns 1 (single operation)</li>
+	 *   <li>If dependent computations exist and have the same count, returns that count</li>
+	 *   <li>Otherwise, throws {@link UnsupportedOperationException}</li>
+	 * </ol>
+	 *
+	 * @return The inferred operation count
+	 * @throws UnsupportedOperationException if count cannot be inferred
+	 */
 	@Override
 	public long getCountLong() {
 		// Try to find a value suitable to the inputs and the dependent computations
@@ -267,6 +290,22 @@ public abstract class OperationComputationAdapter<T>
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Compiles this operation to a {@link Runnable} for execution.
+	 *
+	 * <p>Delegates to {@link ComputerFeatures#compileRunnable(Computation)} to compile
+	 * the operation. If the result is an {@link AcceleratedOperation}, calls {@link AcceleratedOperation#load()}
+	 * to prepare the compiled kernel for execution.</p>
+	 *
+	 * <p>The returned runnable may be:</p>
+	 * <ul>
+	 *   <li>{@link AcceleratedOperation} - Hardware-accelerated kernel</li>
+	 *   <li>{@link OperationList} - Sequence of operations</li>
+	 *   <li>Plain {@link Runnable} - CPU-based execution</li>
+	 * </ul>
+	 *
+	 * @return A compiled runnable that executes this operation
+	 */
 	@Override
 	public Runnable get() {
 		Runnable r = compileRunnable(this);

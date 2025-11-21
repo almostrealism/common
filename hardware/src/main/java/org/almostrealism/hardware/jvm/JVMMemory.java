@@ -60,14 +60,31 @@ public class JVMMemory implements Memory {
 	private JVMMemoryProvider provider;
 	protected double data[];
 
+	/**
+	 * Creates Java heap memory with the specified length.
+	 *
+	 * @param provider The memory provider that allocated this memory
+	 * @param len Number of doubles to allocate
+	 */
 	public JVMMemory(JVMMemoryProvider provider, int len) {
 		this.provider = provider;
 		this.data = new double[len];
 	}
 
+	/**
+	 * Returns the memory provider that allocated this memory.
+	 *
+	 * @return The {@link JVMMemoryProvider} instance
+	 */
 	@Override
 	public MemoryProvider getProvider() { return provider; }
 
+	/**
+	 * Destroys this memory by clearing the internal array reference.
+	 *
+	 * <p>Sets the data array to null, allowing garbage collection.
+	 * After calling this method, the memory cannot be used again.</p>
+	 */
 	public void destroy() {
 		this.data = null;
 	}

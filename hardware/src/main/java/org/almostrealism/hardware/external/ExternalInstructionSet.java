@@ -78,11 +78,28 @@ public class ExternalInstructionSet implements InstructionSet {
 	private String executable;
 	private Supplier<File> dataDirectory;
 
+	/**
+	 * Creates an instruction set that executes via external process.
+	 *
+	 * @param executable Path to the compiled standalone executable
+	 * @param dataDirectory Supplier of temporary directory for I/O files
+	 */
 	public ExternalInstructionSet(String executable, Supplier<File> dataDirectory) {
 		this.executable = executable;
 		this.dataDirectory = dataDirectory;
 	}
 
+	/**
+	 * Returns an execution that runs the external process with file-based I/O.
+	 *
+	 * <p>Creates temporary directory, writes arguments as binary files, executes
+	 * the external process passing directory path, reads results from files, and
+	 * cleans up temporary data.</p>
+	 *
+	 * @param function Function name (unused for external execution)
+	 * @param argCount Number of {@link MemoryData} arguments
+	 * @return Execution that launches external process
+	 */
 	@Override
 	public Execution get(String function, int argCount) {
 		return (args, dependsOn) -> {

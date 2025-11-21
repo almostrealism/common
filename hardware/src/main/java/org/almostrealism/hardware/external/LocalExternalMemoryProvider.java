@@ -83,25 +83,59 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 
 	private Supplier<File> location;
 
+	/**
+	 * Creates a file-based memory provider.
+	 *
+	 * @param location Supplier of file locations for memory allocation
+	 */
 	public LocalExternalMemoryProvider(Supplier<File> location) {
 		this.location = location;
 	}
 
+	/**
+	 * Returns the provider name for identification.
+	 *
+	 * @return "DISK" to indicate file-backed storage
+	 */
 	@Override
 	public String getName() { return "DISK"; }
 
+	/**
+	 * Returns the size of each number in bytes.
+	 *
+	 * @return 8 (FP64 double precision)
+	 */
 	@Override
 	public int getNumberSize() { return 8; }
 
+	/**
+	 * Allocates file-backed memory at the configured location.
+	 *
+	 * @param size Number of doubles to allocate
+	 * @return {@link LocalExternalMemory} backed by a file
+	 */
 	@Override
 	public Memory allocate(int size) {
 		return allocate(location.get(), size);
 	}
 
+	/**
+	 * Allocates file-backed memory at a specific file location.
+	 *
+	 * @param location File path for the memory storage
+	 * @param size Number of doubles to allocate
+	 * @return {@link LocalExternalMemory} backed by the specified file
+	 */
 	public Memory allocate(File location, int size) {
 		return new LocalExternalMemory(this, location, size);
 	}
 
+	/**
+	 * Deallocates file-backed memory by destroying the backing file.
+	 *
+	 * @param size Size of the memory (ignored)
+	 * @param mem Memory to deallocate
+	 */
 	@Override
 	public void deallocate(int size, Memory mem) {
 		((LocalExternalMemory) mem).destroy();

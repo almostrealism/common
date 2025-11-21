@@ -144,24 +144,57 @@ public class Heap {
 	private HeapStage root;
 	private Stack<HeapStage> stages;
 
+	/**
+	 * Creates a heap with the specified root size and default stage size (rootSize / 4).
+	 *
+	 * @param size The root allocation size in bytes
+	 */
 	public Heap(int size) {
 		this(null, size, size / 4);
 	}
 
+	/**
+	 * Creates a heap with explicit root and stage sizes.
+	 *
+	 * @param rootSize The root allocation size in bytes
+	 * @param stageSize The size for each nested stage in bytes
+	 */
 	public Heap(int rootSize, int stageSize) {
 		this(null, rootSize, stageSize);
 	}
 
+	/**
+	 * Creates a heap using a specific memory provider.
+	 *
+	 * @param memory The memory provider for allocations (null for default)
+	 * @param rootSize The root allocation size in bytes
+	 * @param stageSize The size for each nested stage in bytes
+	 */
 	public Heap(MemoryProvider memory, int rootSize, int stageSize) {
 		this.memory = memory;
 		this.stageSize = stageSize;
 		this.root = new HeapStage(rootSize);
 	}
 
+	/**
+	 * Returns the currently active heap stage (top of stack, or root if no stages).
+	 *
+	 * @return The active heap stage
+	 */
 	public HeapStage getStage() {
 		return (stages == null || stages.isEmpty()) ? root : stages.peek();
 	}
 
+	/**
+	 * Allocates memory from the current heap stage.
+	 *
+	 * <p>Returns a {@link Bytes} instance backed by this heap's memory.
+	 * The allocation is destroyed when the current stage is destroyed.</p>
+	 *
+	 * @param count Number of bytes to allocate
+	 * @return Allocated bytes backed by this heap
+	 * @throws IllegalArgumentException if insufficient space remains in the current stage
+	 */
 	public Bytes allocate(int count) {
 		return getStage().allocate(count);
 	}
@@ -327,10 +360,26 @@ public class Heap {
 		}
 	}
 
+	/**
+	 * Returns the thread-local default heap, or null if none is set.
+	 *
+	 * @return The default heap for this thread
+	 */
 	public static Heap getDefault() {
 		return defaultHeap.get();
 	}
 
+	/**
+	 * Executes a {@link Runnable} in a nested heap stage.
+	 *
+	 * <p>Creates a new stage on the default heap, executes the runnable,
+	 * and automatically destroys the stage (and all allocations within it)
+	 * when the runnable completes.</p>
+	 *
+	 * <p>If no default heap is set, the runnable executes without staging.</p>
+	 *
+	 * @param r The runnable to execute in a staged context
+	 */
 	public static void stage(Runnable r) {
 		Heap defaultHeap = getDefault();
 
@@ -347,6 +396,15 @@ public class Heap {
 		}
 	}
 
+	/**
+	 * Adds an operation to the current heap's dependency list for automatic cleanup.
+	 *
+	 * <p>Operations added are destroyed when the heap is destroyed.</p>
+	 *
+	 * @param operation The operation to track
+	 * @param <T> The operation type
+	 * @return The same operation (for chaining)
+	 */
 	public static <T> Supplier<T> addOperation(Supplier<T> operation) {
 		if (getDefault() != null) {
 			getDefault().getDependentOperations().add(operation);
@@ -355,6 +413,15 @@ public class Heap {
 		return operation;
 	}
 
+	/**
+	 * Adds a compiled operation to the current heap's dependency list.
+	 *
+	 * <p>The operation is destroyed when the heap is destroyed.</p>
+	 *
+	 * @param operation The compiled operation to track
+	 * @param <T> The operation type
+	 * @return The same operation (for chaining)
+	 */
 	public static <T extends OperationAdapter> T addCompiled(T operation) {
 		if (getDefault() != null) {
 			getDefault().getCompiledDependencies().add(operation);
@@ -363,6 +430,15 @@ public class Heap {
 		return operation;
 	}
 
+	/**
+	 * Adds memory data to the current heap's dependency list for automatic cleanup.
+	 *
+	 * <p>The memory is destroyed when the heap is destroyed.</p>
+	 *
+	 * @param memory The memory to track
+	 * @param <T> The memory type
+	 * @return The same memory (for chaining)
+	 */
 	public static <T extends MemoryData> T addCreatedMemory(T memory) {
 		if (getDefault() != null) {
 			getDefault().getCreatedMemory().add(memory);

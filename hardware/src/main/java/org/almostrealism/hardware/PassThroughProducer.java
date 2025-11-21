@@ -301,6 +301,12 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	private TraversalPolicy shape;
 	private int argIndex;
 
+	/**
+	 * Creates a pass-through producer for a specific argument index.
+	 *
+	 * @param shape The traversal shape for this producer
+	 * @param argIndex The zero-based index of the argument to pass through
+	 */
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
 		this();
 		this.shape = shape;
@@ -312,26 +318,64 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this)));
 	}
 
+	/**
+	 * Returns the traversal shape for this producer.
+	 *
+	 * @return The traversal policy defining dimensions and iteration
+	 */
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
+	/**
+	 * Returns the argument index this producer references.
+	 *
+	 * @return Zero-based argument index
+	 */
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
+	/**
+	 * Returns the memory length in bytes.
+	 *
+	 * @return The size from the traversal shape
+	 */
 	@Override
 	public int getMemLength() { return getShape().getSize(); }
 
+	/**
+	 * Returns the count for parallel execution.
+	 *
+	 * @return The count from the traversal shape
+	 */
 	@Override
 	public long getCountLong() { return getShape().getCountLong(); }
 
+	/**
+	 * Returns whether the count is fixed at compile time.
+	 *
+	 * @return true if the shape has a fixed count
+	 */
 	@Override
 	public boolean isFixedCount() { return getShape().isFixedCount(); }
 
+	/**
+	 * Returns a new producer with traversal along the specified axis.
+	 *
+	 * @param axis The axis index to traverse
+	 * @return New pass-through producer with traversed shape
+	 */
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {
 		return reshape(getShape().traverse(axis));
 	}
 
+	/**
+	 * Returns a new producer with a reshaped traversal policy.
+	 *
+	 * @param shape The new shape (must have same total size)
+	 * @return New pass-through producer with reshaped policy
+	 * @throws UnsupportedOperationException if total sizes don't match
+	 */
 	@Override
 	public PassThroughProducer<T> reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getShape().getTotalSize()) {
@@ -341,12 +385,23 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return new PassThroughProducer<>(shape, argIndex);
 	}
 
+	/**
+	 * Prepares arguments by adding this producer to the argument map.
+	 *
+	 * @param map The argument map to populate
+	 */
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 		map.add(this);
 	}
 
+	/**
+	 * Prepares scope by creating an argument variable for this pass-through.
+	 *
+	 * @param manager The scope input manager
+	 * @param context The kernel structure context
+	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
@@ -356,11 +411,23 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		setArguments(args);
 	}
 
+	/**
+	 * Pass-through producers do not generate scopes.
+	 *
+	 * @param context The kernel structure context
+	 * @return Never returns
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public Scope<T> getScope(KernelStructureContext context) {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns an evaluable that passes through the argument at the referenced index.
+	 *
+	 * @return Evaluable that returns {@code args[argIndex]}
+	 */
 	@Override
 	public Evaluable<T> get() {
 		return args -> (T) args[argIndex];
@@ -379,6 +446,14 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return getArgumentVariables().get(index);
 	}
 
+	/**
+	 * Returns an expression for the value at the specified index.
+	 *
+	 * <p>For fixed count producers, wraps the index using modulo to stay within bounds.</p>
+	 *
+	 * @param index The index expression
+	 * @return Expression referencing the argument variable at that index
+	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		if (isFixedCount()) {
@@ -391,21 +466,52 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return (Expression) getArgumentVariables().get(0).reference(index);
 	}
 
+	/**
+	 * Returns an expression for the value at a kernel-relative index.
+	 *
+	 * <p>Computes the absolute index as {@code kernel() * memLength + index}.</p>
+	 *
+	 * @param index The relative index expression
+	 * @return Expression referencing the argument variable at the absolute index
+	 */
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return (Expression) getArgumentVariables().get(0).reference(kernel().multiply(getMemLength()).add(index));
 	}
 
+	/**
+	 * Pass-through producers have no unique non-zero offset.
+	 *
+	 * @param globalIndex The global index
+	 * @param localIndex The local index
+	 * @param targetIndex The target index
+	 * @return Always null
+	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		return null;
 	}
 
+	/**
+	 * Returns this producer unchanged (pass-through has no children to regenerate).
+	 *
+	 * @param children The children list (ignored)
+	 * @return This producer
+	 */
 	@Override
 	public PassThroughProducer<T> generate(List<Process<?, ?>> children) {
 		return this;
 	}
 
+	/**
+	 * Returns whether this producer matches another algebraic expression.
+	 *
+	 * <p>Matches if the other is a {@link ProducerArgumentReference} with the same argument index.</p>
+	 *
+	 * @param other The expression to match against
+	 * @param <A> The algebraic type
+	 * @return true if both reference the same argument index
+	 */
 	@Override
 	public <A extends Algebraic> boolean matches(A other) {
 		if ((other instanceof ProducerArgumentReference)) {
@@ -422,11 +528,21 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		return false;
 	}
 
+	/**
+	 * Returns a unique signature string for this producer.
+	 *
+	 * @return Signature in the format "param(index{shapeDetail})"
+	 */
 	@Override
 	public String signature() {
 		return "param(" + getReferencedArgumentIndex() + "{" + getShape().toStringDetail() + "})";
 	}
 
+	/**
+	 * Returns a hash code based on the argument index.
+	 *
+	 * @return The argument index as hash code
+	 */
 	@Override
 	public int hashCode() {
 		return getReferencedArgumentIndex();
