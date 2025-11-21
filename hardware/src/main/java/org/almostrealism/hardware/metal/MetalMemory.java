@@ -31,27 +31,64 @@ public class MetalMemory extends RAM {
 	private final long size;
 	private final MetalMemoryProvider provider;
 
+	/**
+	 * Creates Metal memory wrapping a Metal buffer.
+	 *
+	 * @param provider The {@link MetalMemoryProvider} managing this memory
+	 * @param mem The {@link MTLBuffer} providing GPU storage
+	 * @param size Size in bytes
+	 */
 	protected MetalMemory(MetalMemoryProvider provider, MTLBuffer mem, long size) {
 		this.provider = provider;
 		this.mem = mem;
 		this.size = size;
 	}
 
+	/**
+	 * Returns the underlying Metal buffer.
+	 *
+	 * @return The {@link MTLBuffer} instance
+	 */
 	protected MTLBuffer getMem() { return mem; }
 
+	/**
+	 * Checks if the underlying Metal buffer is still active and not released.
+	 *
+	 * @return True if buffer exists and has not been released
+	 */
 	public boolean isActive() {
 		return mem != null && !mem.isReleased();
 	}
 
+	/**
+	 * Returns the size of this memory region in bytes.
+	 *
+	 * @return Memory size in bytes
+	 */
 	@Override
 	public long getSize() { return size; }
 
+	/**
+	 * Returns the native pointer to the Metal buffer container.
+	 *
+	 * @return Native {@code id<MTLBuffer>} pointer
+	 */
 	@Override
 	public long getContainerPointer() { return mem.getNativePointer(); }
 
+	/**
+	 * Returns the native pointer to the buffer's content memory.
+	 *
+	 * @return Native pointer to buffer contents
+	 */
 	@Override
 	public long getContentPointer() { return mem.getContentPointer(); }
 
+	/**
+	 * Returns the memory provider managing this Metal memory.
+	 *
+	 * @return The {@link MetalMemoryProvider} instance
+	 */
 	@Override
 	public MetalMemoryProvider getProvider() { return provider; }
 }

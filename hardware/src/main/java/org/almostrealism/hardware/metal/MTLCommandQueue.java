@@ -36,19 +36,41 @@ package org.almostrealism.hardware.metal;
 public class MTLCommandQueue extends MTLObject {
 	private MTLDevice device;
 
+	/**
+	 * Creates a command queue wrapper for a native pointer.
+	 *
+	 * @param device The {@link MTLDevice} owning this queue
+	 * @param nativePointer Native Metal command queue pointer
+	 */
 	public MTLCommandQueue(MTLDevice device, long nativePointer) {
 		super(nativePointer);
 		this.device = device;
 	}
 
+	/**
+	 * Returns the Metal device that owns this queue.
+	 *
+	 * @return The {@link MTLDevice} instance
+	 */
 	public MTLDevice getDevice() { return device; }
 
+	/**
+	 * Creates a new command buffer for encoding GPU commands.
+	 *
+	 * <p>Command buffers are one-time-use and must be committed after encoding.</p>
+	 *
+	 * @return New {@link MTLCommandBuffer} instance
+	 * @throws IllegalStateException if queue has been released
+	 */
 	public MTLCommandBuffer commandBuffer() {
 		if (isReleased()) throw new IllegalStateException();
 
 		return new MTLCommandBuffer(MTL.commandBuffer(getNativePointer()));
 	}
 
+	/**
+	 * Releases this command queue and frees native Metal resources.
+	 */
 	@Override
 	public void release() {
 		if (!isReleased()) {

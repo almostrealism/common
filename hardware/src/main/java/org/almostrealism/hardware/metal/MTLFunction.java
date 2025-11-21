@@ -33,6 +33,11 @@ package org.almostrealism.hardware.metal;
  * @see MetalProgram
  */
 public class MTLFunction extends MTLObject {
+	/**
+	 * Creates a Metal function wrapper for a native pointer.
+	 *
+	 * @param nativePointer Native Metal function pointer
+	 */
 	public MTLFunction(long nativePointer) {
 		super(nativePointer);
 	}
