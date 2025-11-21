@@ -63,10 +63,25 @@ import java.util.stream.IntStream;
  * @see CLNativeComputeContext
  */
 public class CLJNIPrintWriter extends CJNIPrintWriter {
+	/**
+	 * Creates a new CLJNIPrintWriter for generating OpenCL JNI native code.
+	 *
+	 * @param p                   the underlying print writer for output
+	 * @param topLevelMethodName  the name of the top-level JNI method being generated
+	 * @param parallelism         the degree of parallelism for execution
+	 * @param lang                the language operations for type and precision handling
+	 */
 	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, int parallelism, LanguageOperations lang) {
 		super(p, topLevelMethodName, parallelism, lang, new DefaultJNIMemoryAccessor());
 	}
 
+	/**
+	 * Renders JNI code to read arguments from OpenCL device memory into host buffers.
+	 * Generates code to extract cl_mem pointers, allocate host memory, and call
+	 * clEnqueueReadBuffer for each argument.
+	 *
+	 * @param arguments  the list of array variables to read from device memory
+	 */
 	@Override
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		println(new ExpressionAssignment<long[]>(true,
@@ -112,6 +127,12 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 				.forEach(super::println);
 	}
 
+	/**
+	 * Renders JNI code to write results back to OpenCL device memory and free host buffers.
+	 * Generates clEnqueueWriteBuffer calls followed by free() for each argument.
+	 *
+	 * @param arguments  the list of array variables to write back to device memory
+	 */
 	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		IntStream.range(0, arguments.size())
@@ -122,10 +143,25 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		super.renderArgumentWrites(arguments);
 	}
 
+	/**
+	 * Creates a method call to free the memory allocated for the given variable.
+	 *
+	 * @param variable  the array variable whose memory should be freed
+	 * @return a Method representing the free() call
+	 */
 	protected Method<Void> free(ArrayVariable<?> variable) {
 		return new Method(Void.class, "free", new InstanceReference<>(variable));
 	}
 
+	/**
+	 * Creates a clEnqueueReadBuffer or clEnqueueWriteBuffer method call for transferring
+	 * data between host and OpenCL device memory.
+	 *
+	 * @param index     the index of the argument in the argument arrays
+	 * @param variable  the array variable being transferred
+	 * @param write     true for clEnqueueWriteBuffer, false for clEnqueueReadBuffer
+	 * @return a Method representing the OpenCL enqueue buffer call
+	 */
 	protected Method<Void> clEnqueueBuffer(int index, ArrayVariable<?> variable, boolean write) {
 		int size = getLanguage().getPrecision().bytes();
 

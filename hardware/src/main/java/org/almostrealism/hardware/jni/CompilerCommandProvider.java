@@ -79,5 +79,15 @@ import java.util.List;
  * @see NativeCompiler
  */
 public interface CompilerCommandProvider {
+	/**
+	 * Generates the command-line arguments for invoking the compiler.
+	 *
+	 * <p>The returned list is suitable for passing to {@link ProcessBuilder}.</p>
+	 *
+	 * @param inputFile  the path to the C source file to compile
+	 * @param outputFile the path where the compiled output should be written
+	 * @param lib        true to build a shared library, false for an executable
+	 * @return a list of command-line arguments starting with the compiler executable
+	 */
 	List<String> getCommand(String inputFile, String outputFile, boolean lib);
 }

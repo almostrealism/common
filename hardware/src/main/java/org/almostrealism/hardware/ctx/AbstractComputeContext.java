@@ -120,8 +120,11 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	public static int threadId = 0;
 
+	/** The data context for memory operations. */
 	private final T dc;
+	/** Thread pool for asynchronous kernel operations. */
 	private final Executor executor;
+	/** Thread group containing all executor threads for identification. */
 	private final ThreadGroup executorGroup;
 
 	/**

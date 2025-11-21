@@ -136,6 +136,7 @@ import java.util.function.Supplier;
  * @see ExpressionFeatures
  */
 public class Abort extends OperationComputationAdapter<MemoryData> implements ExpressionFeatures {
+	/** Fallback memory data with value 0.0, used when the control supplier returns null (never aborts). */
 	private static MemoryData abortFallback;
 
 	static {
@@ -143,14 +144,35 @@ public class Abort extends OperationComputationAdapter<MemoryData> implements Ex
 		abortFallback.setMem(0.0);
 	}
 
+	/**
+	 * Constructs an Abort operation with a fixed control value.
+	 *
+	 * @param control memory data containing the control value; if value > 0, execution aborts
+	 */
 	public Abort(MemoryData control) {
 		super(() -> new Provider(control));
 	}
 
+	/**
+	 * Constructs an Abort operation with a dynamic control value supplier.
+	 *
+	 * <p>If the supplier returns {@code null}, a fallback value of 0.0 is used,
+	 * meaning execution will continue.</p>
+	 *
+	 * @param control supplier providing the control memory data; may return null
+	 */
 	public Abort(Supplier<MemoryData> control) {
 		super(() -> args -> Optional.ofNullable(control.get()).orElse(abortFallback));
 	}
 
+	/**
+	 * Generates the scope containing the conditional return statement.
+	 *
+	 * <p>Produces code of the form: {@code if (arg[0] > 0) { return; }}</p>
+	 *
+	 * @param context the kernel structure context for code generation
+	 * @return a scope containing the conditional abort logic
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);

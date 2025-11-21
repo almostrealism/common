@@ -45,11 +45,26 @@ import java.util.function.Consumer;
  * @see Semaphore
  */
 public class CLSemaphore implements Semaphore {
+	/** Metadata identifying the operation that requested this semaphore. */
 	private OperationMetadata requester;
+
+	/** The compute context for processing events. */
 	private CLComputeContext context;
+
+	/** The OpenCL event to wait for. */
 	private cl_event event;
+
+	/** Optional consumer for profiling data when the event completes. */
 	private Consumer<RunData> profile;
 
+	/**
+	 * Constructs a new CLSemaphore for the specified OpenCL event.
+	 *
+	 * @param requester the metadata identifying the requesting operation
+	 * @param context   the compute context for event processing
+	 * @param event     the OpenCL event to synchronize on
+	 * @param profile   optional consumer for profiling data, or {@code null}
+	 */
 	public CLSemaphore(OperationMetadata requester, CLComputeContext context,
 					   cl_event event, Consumer<RunData> profile) {
 		this.requester = requester;
@@ -58,14 +73,30 @@ public class CLSemaphore implements Semaphore {
 		this.profile = profile;
 	}
 
+	/**
+	 * Returns the underlying OpenCL event.
+	 *
+	 * @return the OpenCL event
+	 */
 	public cl_event getEvent() { return event; }
 
+	/** Returns the metadata identifying the operation that requested this semaphore. */
 	@Override
 	public OperationMetadata getRequester() { return requester; }
 
+	/**
+	 * Blocks until the OpenCL event completes.
+	 * If a profile consumer was provided, it receives profiling data after completion.
+	 */
 	@Override
 	public void waitFor() { context.processEvent(event, profile); }
 
+	/**
+	 * Creates a new semaphore with the same event but different requester metadata.
+	 *
+	 * @param requester the new requester metadata
+	 * @return a new CLSemaphore with the updated requester
+	 */
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
 		return new CLSemaphore(requester, context, event, profile);

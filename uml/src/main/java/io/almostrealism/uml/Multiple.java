@@ -34,6 +34,7 @@ package io.almostrealism.uml;
  *
  * <h2>Comparison with Related Interfaces</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Interface</th>
  *     <th>Purpose</th>

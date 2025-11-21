@@ -39,7 +39,6 @@ import java.util.OptionalInt;
  *   <li>Filtered iteration - iterating over elements that match certain criteria</li>
  *   <li>Index remapping - translating between different index spaces</li>
  * </ul>
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

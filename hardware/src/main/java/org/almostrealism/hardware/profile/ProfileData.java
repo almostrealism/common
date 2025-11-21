@@ -23,7 +23,7 @@ import java.util.List;
  * Aggregated profiling data for multiple execution runs of a hardware operation.
  *
  * <p>Collects timing measurements from repeated executions to calculate average runtime,
- * total runtime, and execution counts. Used by {@link org.almostrealism.hardware.OperationProfile}
+ * total runtime, and execution counts. Used by {@link org.almostrealism.hardware.profile.ProfileData}
  * to track performance of {@link org.almostrealism.hardware.HardwareOperator} instances.</p>
  *
  * <h2>Metrics Tracked</h2>
@@ -62,7 +62,7 @@ import java.util.List;
  * </ul>
  *
  * @see RunData
- * @see org.almostrealism.hardware.OperationProfile
+ * @see org.almostrealism.hardware.profile.ProfileData
  * @see org.almostrealism.hardware.HardwareOperator
  */
 public class ProfileData {

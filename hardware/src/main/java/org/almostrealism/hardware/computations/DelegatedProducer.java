@@ -157,20 +157,45 @@ public class DelegatedProducer<T> implements
 		Process<Process<?, ?>, Evaluable<? extends T>>,
 		Producer<T>, Countable, Signature,
 		OperationInfo {
+	/** The wrapped producer being delegated to. */
 	protected Producer<T> op;
+
+	/** Whether to expose the original evaluable directly or wrap it. */
 	protected boolean direct;
+
+	/** Operation metadata for profiling and display. */
 	protected OperationMetadata metadata;
 
+	/**
+	 * Creates a delegated producer with direct delegation enabled.
+	 *
+	 * @param op the producer to wrap
+	 */
 	public DelegatedProducer(Producer<T> op) {
 		this(op, true);
 	}
 
+	/**
+	 * Creates a delegated producer with the specified delegation mode.
+	 *
+	 * @param op             the producer to wrap
+	 * @param directDelegate true to return the original evaluable directly,
+	 *                       false to wrap it in a lambda
+	 */
 	public DelegatedProducer(Producer<T> op, boolean directDelegate) {
 		this.op = op;
 		this.direct = directDelegate;
 		prepareMetadata();
 	}
 
+	/**
+	 * Extends the description with delegation prefix.
+	 *
+	 * @param description the original description to extend
+	 * @param brief       true for brief format (e.g., "delegate(...)"),
+	 *                    false for full format (e.g., "ClassName(...)")
+	 * @return the extended description string
+	 */
 	protected String extendDescription(String description, boolean brief) {
 		if (brief) {
 			return "delegate(" + description + ")";
@@ -179,6 +204,13 @@ public class DelegatedProducer<T> implements
 		}
 	}
 
+	/**
+	 * Initializes the operation metadata based on the wrapped producer.
+	 *
+	 * <p>If the wrapped producer implements {@link OperationInfo}, creates
+	 * metadata with extended descriptions. Otherwise, creates generic
+	 * delegation metadata.</p>
+	 */
 	protected void prepareMetadata() {
 		if (op instanceof OperationInfo) {
 			OperationMetadata child = ((OperationInfo) op).getMetadata();
@@ -192,14 +224,29 @@ public class DelegatedProducer<T> implements
 		}
 	}
 
+	/** Returns the operation metadata for this delegated producer. */
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
+	/**
+	 * Returns the child processes of this delegated producer.
+	 *
+	 * @return a list containing the wrapped producer if it is a Process, otherwise an empty list
+	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return op instanceof Process ? List.of((Process<?, ?>) op) : Collections.emptyList();
 	}
 
+	/**
+	 * Returns the evaluable from the wrapped producer.
+	 *
+	 * <p>In direct mode, returns the original evaluable directly. In indirect mode,
+	 * wraps the original evaluable's evaluate method in a lambda to hide the
+	 * underlying implementation details.</p>
+	 *
+	 * @return the evaluable for this producer
+	 */
 	@Override
 	public Evaluable<T> get() {
 		if (direct) {
@@ -212,34 +259,73 @@ public class DelegatedProducer<T> implements
 		}
 	}
 
+	/**
+	 * Returns the count of elements produced by the wrapped producer.
+	 *
+	 * @return the element count delegated from the wrapped producer
+	 */
 	@Override
 	public long getCountLong() {
 		return Countable.countLong(op);
 	}
 
+	/**
+	 * Returns whether the wrapped producer has a fixed element count.
+	 *
+	 * @return true if the count is fixed, false otherwise
+	 */
 	@Override
 	public boolean isFixedCount() {
 		return Countable.isFixedCount(op);
 	}
 
+	/**
+	 * Not supported for delegated producers.
+	 *
+	 * @return never returns normally
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public long getOutputSize() {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Not supported for delegated producers.
+	 *
+	 * @param children the child processes
+	 * @return never returns normally
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns this producer unchanged since delegation is already isolated.
+	 *
+	 * @return this delegated producer
+	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return this;
 	}
 
+	/**
+	 * Destroys the wrapped producer if it implements {@link Destroyable}.
+	 */
 	@Override
 	public void destroy() { Destroyable.destroy(op); }
 
+	/**
+	 * Returns a signature string for this delegated producer.
+	 *
+	 * <p>Returns null for aggregation targets (see {@link MemoryDataArgumentMap#isAggregationTarget(Object)})
+	 * since their signatures depend on additional context not available here.</p>
+	 *
+	 * @return a signature string in format "delegate|count|isFixedCount", or null for aggregation targets
+	 */
 	@Override
 	public String signature() {
 		if (MemoryDataArgumentMap.isAggregationTarget(op)) {
@@ -253,6 +339,11 @@ public class DelegatedProducer<T> implements
 		return "delegate|" + getCountLong() + "|" + isFixedCount();
 	}
 
+	/**
+	 * Returns a human-readable description of the wrapped producer.
+	 *
+	 * @return the description of the wrapped producer
+	 */
 	@Override
 	public String describe() {
 		return Describable.describe(op);

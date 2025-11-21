@@ -132,9 +132,17 @@ import org.almostrealism.hardware.MemoryData;
  * @see RAM
  */
 public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
+	/** Size in bytes of a single element/atom. */
 	private final int atomicLength;
+	/** Total size in bytes of the underlying memory. */
 	private final int memLength;
 
+	/**
+	 * Creates a Bytes instance wrapping existing memory.
+	 *
+	 * @param mem       the memory to wrap
+	 * @param memLength the size of the memory in bytes
+	 */
 	private Bytes(Memory mem, int memLength) {
 		this.atomicLength = memLength;
 		this.memLength = memLength;
@@ -205,22 +213,38 @@ public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 		setDelegate(delegate, delegateOffset);
 	}
 
+	/**
+	 * Not supported. Throws {@link UnsupportedOperationException}.
+	 *
+	 * @param index The index (unused)
+	 * @param value The value (unused)
+	 * @throws UnsupportedOperationException always
+	 */
 	@Override
 	public void set(int index, Bytes value) {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Returns a zero-copy view of the element at the given index.
+	 *
+	 * @param index The element index
+	 * @return A {@link Bytes} view at offset {@code index * atomicLength}
+	 */
 	@Override
 	public Bytes get(int index) {
 		return range(index * getAtomicMemLength(), getAtomicMemLength());
 	}
 
+	/** Returns the number of elements ({@code memLength / atomicLength}). */
 	@Override
 	public long getCountLong() { return getMemLength() / getAtomicMemLength(); }
 
+	/** Returns the size of a single element in bytes. */
 	@Override
 	public int getAtomicMemLength() { return atomicLength; }
 
+	/** Returns the total memory size in bytes. */
 	@Override
 	public int getMemLength() {
 		return memLength;

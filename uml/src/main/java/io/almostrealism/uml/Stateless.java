@@ -128,6 +128,7 @@ import java.lang.annotation.Target;
  *
  * <h2>Stateless vs Other Annotations</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Annotation</th>
  *     <th>State</th>

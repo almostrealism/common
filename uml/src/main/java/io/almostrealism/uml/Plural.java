@@ -36,6 +36,7 @@ package io.almostrealism.uml;
  *
  * <h2>Comparison with Multiple</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Aspect</th>
  *     <th>Plural&lt;T&gt;</th>

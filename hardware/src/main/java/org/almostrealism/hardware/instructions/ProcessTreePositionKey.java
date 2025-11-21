@@ -105,12 +105,19 @@ import java.util.Objects;
  * @see io.almostrealism.compute.Process
  */
 public class ProcessTreePositionKey implements ExecutionKey, Describable {
+	/** The position array representing the path through the Process tree. */
 	private final int[] position;
 
+	/**
+	 * Creates a new position key for the specified tree position.
+	 *
+	 * @param position the child indices representing the path from root to this operation
+	 */
 	public ProcessTreePositionKey(int... position) {
 		this.position = position;
 	}
 
+	/** Returns the position array. */
 	public int[] getPosition() {
 		return position;
 	}
@@ -127,11 +134,23 @@ public class ProcessTreePositionKey implements ExecutionKey, Describable {
 		return new ProcessTreePositionKey(newPosition);
 	}
 
+	/**
+	 * Returns a human-readable description of this position.
+	 *
+	 * @return the position as a string array representation
+	 */
 	@Override
 	public String describe() {
 		return Arrays.toString(position);
 	}
 
+	/**
+	 * Compares this key to another object for equality.
+	 * Two keys are equal if their position arrays are element-wise equal.
+	 *
+	 * @param o the object to compare
+	 * @return true if the objects are equal, false otherwise
+	 */
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
@@ -139,6 +158,11 @@ public class ProcessTreePositionKey implements ExecutionKey, Describable {
 		return Objects.deepEquals(position, that.position);
 	}
 
+	/**
+	 * Returns a hash code based on the position array.
+	 *
+	 * @return the hash code
+	 */
 	@Override
 	public int hashCode() {
 		return Arrays.hashCode(position);

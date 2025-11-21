@@ -193,24 +193,48 @@ import java.util.stream.Collectors;
  */
 public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		ScopeLifecycle, Destroyable, OperationInfo, Signature, ConsoleFeatures {
+	/** Enables verbose logging during compilation when set to {@code true}. */
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
 
+	/** Optional listener for recording scope compilation timing metrics. */
 	public static ScopeTimingListener timing;
 
+	/** The computation being compiled into a scope. */
 	private Computation<T> computation;
+
+	/** Provider for generating unique names during scope compilation. */
 	private NameProvider nameProvider;
 
+	/** Cache for kernel series data used in GPU optimization. */
 	private KernelSeriesCache kernelSeriesCache;
+
+	/** Generator for kernel traversal operations. */
 	private KernelTraversalOperationGenerator traversalGenerator;
+
+	/** Cached maximum kernel count for this computation. */
 	private OptionalLong kernelMaximum;
 
+	/** The compiled scope, or {@code null} if not yet compiled. */
 	private Scope<T> scope;
 
+	/**
+	 * Constructs a new compiler for the specified computation.
+	 *
+	 * @param computation  the computation to compile into a scope
+	 * @param nameProvider provider for generating unique argument names
+	 */
 	public ComputationScopeCompiler(Computation<T> computation, NameProvider nameProvider) {
 		this.computation = computation;
 		this.nameProvider = nameProvider;
 	}
 
+	/**
+	 * Checks if kernel structure optimization is supported for this computation.
+	 * Returns {@code false} for {@link KernelTraversalOperation} to prevent recursive
+	 * traversal generation, {@code true} for all other computations.
+	 *
+	 * @return {@code true} if kernel structure optimization is supported
+	 */
 	public boolean isKernelStructureSupported() {
 		if (computation instanceof KernelTraversalOperation) {
 			// Kernel traversal caching should not be recursively
@@ -222,13 +246,29 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		return true;
 	}
 
+	/**
+	 * Returns the computation being compiled.
+	 *
+	 * @return the computation
+	 */
 	public Computation<T> getComputation() { return computation; }
 
+	/**
+	 * Returns the operation metadata from the underlying computation.
+	 *
+	 * @return the {@link OperationMetadata} if the computation implements {@link OperationInfo}, otherwise {@code null}
+	 */
 	@Override
 	public OperationMetadata getMetadata() {
 		return computation instanceof OperationInfo ? ((OperationInfo) computation).getMetadata() : null;
 	}
 
+	/**
+	 * Returns the compute requirements for this compilation.
+	 * Delegates to the compiled scope if available, otherwise to the computation.
+	 *
+	 * @return the list of compute requirements
+	 */
 	@Override
 	public List<ComputeRequirement> getComputeRequirements() {
 		if (scope != null) return scope.getComputeRequirements();
@@ -239,6 +279,13 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		return OperationInfo.super.getComputeRequirements();
 	}
 
+	/**
+	 * Returns the maximum kernel count for this computation.
+	 * The value is cached after the first call. Returns an empty optional
+	 * if the computation does not have a fixed count.
+	 *
+	 * @return the maximum kernel count, or empty if not fixed
+	 */
 	@Override
 	public OptionalLong getKernelMaximum() {
 		if (kernelMaximum == null) {
@@ -249,26 +296,53 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		return kernelMaximum;
 	}
 
+	/**
+	 * Returns the kernel series provider for GPU optimization.
+	 *
+	 * @return the {@link KernelSeriesProvider} if kernel structure is supported, otherwise {@code null}
+	 */
 	@Override
 	public KernelSeriesProvider getSeriesProvider() {
 		return isKernelStructureSupported() ? kernelSeriesCache : null;
 	}
 
+	/**
+	 * Returns the kernel traversal provider for GPU optimization.
+	 *
+	 * @return the {@link KernelTraversalProvider} if kernel structure is supported, otherwise {@code null}
+	 */
 	@Override
 	public KernelTraversalProvider getTraversalProvider() {
 		return isKernelStructureSupported() ? traversalGenerator : null;
 	}
 
+	/**
+	 * Prepares arguments for compilation by delegating to the underlying computation.
+	 *
+	 * @param map the argument map to populate
+	 */
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		ScopeLifecycle.super.prepareArguments(map);
 		getComputation().prepareArguments(map);
 	}
 
+	/**
+	 * Prepares the scope inputs using this compiler as the kernel structure context.
+	 *
+	 * @param manager the scope input manager
+	 */
 	public void prepareScope(ScopeInputManager manager) {
 		prepareScope(manager, this);
 	}
 
+	/**
+	 * Prepares scope inputs and initializes kernel caches.
+	 * Creates the kernel series cache and traversal generator for GPU optimization.
+	 *
+	 * @param manager the scope input manager
+	 * @param context the kernel structure context
+	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		ScopeLifecycle.super.prepareScope(manager, context);
@@ -280,6 +354,10 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 				data -> manager.argumentForInput(nameProvider).apply((Supplier<Evaluable<?>>) data));
 	}
 
+	/**
+	 * Resets cached arguments and clears the kernel maximum cache.
+	 * Should be called when the computation's arguments change.
+	 */
 	@Override
 	public void resetArguments() {
 		ScopeLifecycle.super.resetArguments();
@@ -287,8 +365,21 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		this.kernelMaximum = null;
 	}
 
+	/**
+	 * Returns the compiled scope, or {@code null} if not yet compiled.
+	 *
+	 * @return the compiled scope, or null
+	 */
 	public Scope<T> getScope() { return scope; }
 
+	/**
+	 * Compiles the computation into a scope.
+	 * Performs scope generation, argument conversion, and simplification.
+	 * Records timing metrics if a timing listener is configured.
+	 *
+	 * @return the compiled scope
+	 * @throws HardwareException if compilation fails
+	 */
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
 			warn("Attempting to compile an operation which was already compiled");
@@ -324,6 +415,12 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		}
 	}
 
+	/**
+	 * Performs post-compilation processing including shape validation and signature assignment.
+	 * Validates that the scope metadata shape matches the computation shape if applicable.
+	 *
+	 * @throws IllegalArgumentException if there is a shape mismatch between scope and computation
+	 */
 	public synchronized void postCompile() {
 		if (getComputation() instanceof Shape) {
 			TraversalPolicy shape = scope.getMetadata().getShape();
@@ -339,8 +436,19 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		scope.setMetadata(scope.getMetadata().withSignature(signature()));
 	}
 
+	/**
+	 * Returns {@code true} if the computation has been compiled into a scope.
+	 *
+	 * @return true if compiled, false otherwise
+	 */
 	public boolean isCompiled() { return scope != null; }
 
+	/**
+	 * Generates a unique signature for this compilation.
+	 * For {@link Process} computations, appends the distinct child count to the signature.
+	 *
+	 * @return the signature string, or {@code null} if metadata has no signature
+	 */
 	@Override
 	public String signature() {
 		String signature = getMetadata().getSignature();
@@ -358,6 +466,10 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		return signature;
 	}
 
+	/**
+	 * Releases resources held by this compiler including the compiled scope,
+	 * kernel series cache, and traversal generator.
+	 */
 	@Override
 	public void destroy() {
 		scope = null;
@@ -373,6 +485,12 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		}
 	}
 
+	/**
+	 * Returns a description of this compiler.
+	 * Delegates to the computation's description if it implements {@link Describable}.
+	 *
+	 * @return the description string
+	 */
 	@Override
 	public String describe() {
 		if (getComputation() instanceof Describable) {
@@ -382,6 +500,7 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		}
 	}
 
+	/** Returns the console for logging output. */
 	@Override
 	public Console console() { return Hardware.console; }
 }

@@ -57,7 +57,6 @@ import java.util.stream.Stream;
  *   <li>Support automatic differentiation</li>
  *   <li>Enable parallel execution</li>
  * </ul>
- * </p>
  *
  * <h2>Key Capabilities</h2>
  * <ul>

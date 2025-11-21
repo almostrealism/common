@@ -42,12 +42,24 @@ import java.util.function.Consumer;
  * @see CompilerCommandProvider
  */
 public class DefaultLinkedLibraryGenerator implements LinkedLibraryGenerator {
+	/** The compiler command provider for generating compilation commands. */
 	private CompilerCommandProvider commandProvider;
 
+	/**
+	 * Creates a new linked library generator with the specified command provider.
+	 *
+	 * @param commandProvider the provider for compiler commands
+	 */
 	public DefaultLinkedLibraryGenerator(CompilerCommandProvider commandProvider) {
 		this.commandProvider = commandProvider;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Generates a shared library by delegating to the command provider to obtain
+	 * the compiler command, then executing it via the provided executor.</p>
+	 */
 	@Override
 	public void generateLibrary(String inputFile, String outputFile, Consumer<List<String>> commandExecutor) {
 		commandExecutor.accept(commandProvider.getCommand(inputFile, outputFile, true));

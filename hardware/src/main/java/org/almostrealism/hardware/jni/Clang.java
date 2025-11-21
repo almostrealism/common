@@ -76,20 +76,45 @@ import java.util.List;
  * @see Lld
  */
 public class Clang extends LlvmCommandProvider {
+	/** The custom linker name or path to use with {@code -fuse-ld}, or null for default linker. */
 	private String linker;
 
+	/**
+	 * Creates a new Clang instance with default settings.
+	 * Uses "gcc" as the compiler command with platform-appropriate
+	 * library format (dynamiclib for macOS, shared for Linux).
+	 */
 	public Clang() {
 		this("gcc", true);
 	}
 
+	/**
+	 * Creates a new Clang instance with the specified compiler path.
+	 *
+	 * @param path           the compiler command or path
+	 * @param localToolchain true to use the local toolchain from PATH,
+	 *                       false to use an absolute path
+	 */
 	public Clang(String path, boolean localToolchain) {
 		super(path, SystemUtils.isMacOS() ? "dynamiclib" : "shared", localToolchain);
 	}
 
+	/**
+	 * Returns the custom linker name or path, or null if using the default linker.
+	 *
+	 * @return the linker name or path, or null
+	 */
 	public String getLinker() {
 		return linker;
 	}
 
+	/**
+	 * Sets the linker to use via Clang's {@code -fuse-ld} option.
+	 * If the specified path exists as a file, the absolute path is used;
+	 * otherwise, the value is passed directly to {@code -fuse-ld}.
+	 *
+	 * @param linker the linker name (e.g., "lld", "gold") or absolute path
+	 */
 	public void setLinker(String linker) {
 		File ld = new File(linker);
 
@@ -100,6 +125,11 @@ public class Clang extends LlvmCommandProvider {
 		}
 	}
 
+	/**
+	 * Adds the custom linker flag to the command if a linker has been set.
+	 *
+	 * @param command the command list to add the linker flag to
+	 */
 	@Override
 	protected void addLinker(List<String> command) {
 		if (linker != null) {

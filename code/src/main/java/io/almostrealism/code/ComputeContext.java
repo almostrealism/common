@@ -27,7 +27,7 @@ public interface ComputeContext<MEM> {
 	/**
 	 * Deliver the specified {@link Scope} to the compute engine represented by this
 	 * {@link ComputeContext}. The resulting {@link InstructionSet} can be used to
-	 * obtain the actual compute functionality, with each entrypoint in the {@link Scope
+	 * obtain the actual compute functionality, with each entrypoint in the {@link Scope}
 	 * represented as a unique {@link java.util.function.Consumer}.
 	 */
 	InstructionSet deliver(Scope scope);

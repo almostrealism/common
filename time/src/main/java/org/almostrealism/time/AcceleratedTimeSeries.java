@@ -46,7 +46,7 @@ import java.util.function.Supplier;
  * <h3>Cursor Management</h3>
  * <pre>
  * Position 0: [beginCursor, endCursor]
- * Position 1: [time1, value1]  <- First data point
+ * Position 1: [time1, value1]  &lt;- First data point
  * Position 2: [time2, value2]
  * ...
  * Position N: [timeN, valueN]
@@ -184,6 +184,7 @@ import java.util.function.Supplier;
  *
  * <h2>Comparison with TimeSeries</h2>
  * <table border="1">
+ * <caption>Table</caption>
  * <tr><th>Feature</th><th>TimeSeries</th><th>AcceleratedTimeSeries</th></tr>
  * <tr><td>Storage</td><td>TreeSet + HashMap</td><td>PackedCollection (GPU-accessible)</td></tr>
  * <tr><td>Max Size</td><td>Limited by heap</td><td>10M+ entries default</td></tr>

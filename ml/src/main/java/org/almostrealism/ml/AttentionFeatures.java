@@ -50,6 +50,7 @@ import java.util.function.Function;
  * <h2>Supported Architectures</h2>
  * <p>These methods support various transformer variants:</p>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Model Family</th>
  *     <th>Features Used</th>

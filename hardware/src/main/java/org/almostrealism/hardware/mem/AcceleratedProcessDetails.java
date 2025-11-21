@@ -159,16 +159,35 @@ import java.util.stream.Stream;
  */
 public class AcceleratedProcessDetails implements ConsoleFeatures {
 
+	/** Original unprocessed arguments, potentially containing nulls for async results. */
 	private Object[] originalArguments;
+
+	/** Final processed arguments after memory replacement, ready for kernel execution. */
 	private Object[] arguments;
+
+	/** Number of work items for kernel execution (global work size). */
 	private int kernelSize;
 
+	/** Manages memory substitutions and prepare/postprocess operations. */
 	private MemoryReplacementManager replacementManager;
 
+	/** Executes completion listeners asynchronously when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
+
+	/** Optional semaphore for coordinating kernel execution completion. */
 	private DefaultLatchSemaphore semaphore;
+
+	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
 
+	/**
+	 * Creates a new process details instance with the specified configuration.
+	 *
+	 * @param args                Original arguments (may contain nulls for async results)
+	 * @param kernelSize          Number of work items for kernel execution
+	 * @param replacementManager  Manages memory substitutions
+	 * @param executor            Executes listeners asynchronously if {@link Hardware#isAsync()}
+	 */
 	public AcceleratedProcessDetails(Object[] args, int kernelSize,
 									 MemoryReplacementManager replacementManager,
 									 Executor executor) {
@@ -179,22 +198,79 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		this.listeners = new ArrayList<>();
 	}
 
+	/**
+	 * Returns the {@link OperationList} for prepare operations before kernel execution.
+	 *
+	 * @return the prepare operations
+	 */
 	public OperationList getPrepare() { return replacementManager.getPrepare(); }
+
+	/**
+	 * Returns the {@link OperationList} for postprocess operations after kernel execution.
+	 *
+	 * @return the postprocess operations
+	 */
 	public OperationList getPostprocess() { return replacementManager.getPostprocess(); }
+
+	/**
+	 * Returns true if there are no memory replacements to perform.
+	 *
+	 * @return true if no replacements needed, false otherwise
+	 */
 	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
+	/**
+	 * Returns the {@link Semaphore} for coordinating kernel completion, or null if not set.
+	 *
+	 * @return the semaphore, or null if not set
+	 */
 	public Semaphore getSemaphore() { return semaphore; }
+
+	/**
+	 * Sets the {@link Semaphore} for coordinating kernel completion notifications.
+	 *
+	 * @param semaphore the semaphore to set
+	 */
 	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
 
+	/**
+	 * Returns the processed arguments as a typed array.
+	 *
+	 * @param generator Function to create the array of the desired type
+	 * @param <A>       Array element type
+	 * @return Typed array of processed arguments
+	 */
 	public <A> A[] getArguments(IntFunction<A[]> generator) {
 		return Stream.of(getArguments()).toArray(generator);
 	}
 
+	/**
+	 * Returns the processed arguments ready for kernel execution, or null if not yet ready.
+	 *
+	 * @return the processed arguments array, or null
+	 */
 	public Object[] getArguments() { return arguments; }
+
+	/**
+	 * Returns the original unprocessed arguments, potentially containing nulls.
+	 *
+	 * @return the original arguments array
+	 */
 	public Object[] getOriginalArguments() { return originalArguments; }
 
+	/**
+	 * Returns the number of work items for kernel execution (global work size).
+	 *
+	 * @return the kernel size
+	 */
 	public int getKernelSize() { return kernelSize; }
 
+	/**
+	 * Notifies all registered listeners that arguments are ready.
+	 *
+	 * <p>Executes each listener and counts down the semaphore (if set) after each execution.
+	 * This method is synchronized to prevent concurrent notification.</p>
+	 */
 	private synchronized void notifyListeners() {
 		listeners.forEach(r -> {
 			try {
@@ -209,6 +285,17 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		listeners.clear();
 	}
 
+	/**
+	 * Checks if all arguments are ready and triggers listener notification if so.
+	 *
+	 * <p>If all arguments are available (no nulls in originalArguments), this method:
+	 * <ol>
+	 * <li>Processes arguments via {@link MemoryReplacementManager#processArguments}</li>
+	 * <li>Notifies listeners either synchronously or asynchronously based on {@link Hardware#isAsync()}</li>
+	 * </ol>
+	 *
+	 * <p>This method is synchronized to ensure atomic check-and-notify behavior.</p>
+	 */
 	protected synchronized void checkReady() {
 		if (!isReady()) return;
 
@@ -223,10 +310,27 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns true if all original arguments are available (no null values).
+	 *
+	 * @return true if all arguments are ready for processing, false otherwise
+	 */
 	public boolean isReady() {
 		return Stream.of(originalArguments).noneMatch(Objects::isNull);
 	}
 
+	/**
+	 * Sets an asynchronous result for the specified argument index.
+	 *
+	 * <p>This method is called when an async computation completes and provides its result.
+	 * After setting the result, it checks if all arguments are now available and triggers
+	 * listener notification if so.</p>
+	 *
+	 * @param index  the argument index to set (0-based)
+	 * @param result the result value to set at the specified index
+	 * @throws IllegalArgumentException if a result has already been set for this index
+	 * @throws IllegalStateException    if all arguments are already available
+	 */
 	public void result(int index, Object result) {
 		if (originalArguments[index] != null) {
 			throw new IllegalArgumentException("Duplicate result for argument index " + index);
@@ -241,11 +345,26 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		checkReady();
 	}
 
+	/**
+	 * Registers a listener to be notified when all arguments are ready.
+	 *
+	 * <p>If all arguments are already available, the listener may execute immediately
+	 * (synchronously or asynchronously based on {@link Hardware#isAsync()}).
+	 * Otherwise, the listener is queued and will execute when the last argument
+	 * is provided via {@link #result(int, Object)}.</p>
+	 *
+	 * @param r the listener to execute when all arguments are ready
+	 */
 	public synchronized void whenReady(Runnable r) {
 		this.listeners.add(r);
 		checkReady();
 	}
 
+	/**
+	 * Returns the console for logging hardware-related messages.
+	 *
+	 * @return the hardware console
+	 */
 	@Override
 	public Console console() { return Hardware.console; }
 }

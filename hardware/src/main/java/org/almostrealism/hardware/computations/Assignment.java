@@ -186,11 +186,22 @@ import java.util.function.Supplier;
  * @see TraversableExpression
  */
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+	/** Controls automatic adjustment of memory length to match kernel parallelism. */
 	public static boolean enableAdaptiveMemLength = true;
+	/** Controls whether short-circuit optimization is allowed for aggregation targets. */
 	public static boolean enableAggregatedShortCircuit = false;
 
+	/** Number of values each kernel thread processes. */
 	private final int memLength;
 
+	/**
+	 * Creates a new assignment operation.
+	 *
+	 * @param memLength the number of values each kernel thread processes
+	 * @param result    the destination producer where values will be written
+	 * @param value     the source producer providing values to assign
+	 * @throws IllegalArgumentException if memLength exceeds {@link ScopeSettings#maxStatements}
+	 */
 	public Assignment(int memLength, Producer<T> result, Producer<T> value) {
 		super(result, value);
 		this.memLength = memLength;
@@ -201,6 +212,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 	}
 
+	/**
+	 * Prepares metadata for this assignment, including shape information from the destination.
+	 *
+	 * @param metadata the base metadata to augment
+	 * @return metadata with shape information if the destination provides it
+	 */
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
 		metadata = super.prepareMetadata(metadata);
@@ -212,11 +229,18 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return metadata;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 	}
 
+	/**
+	 * Prepares the scope by setting up inputs and purging unused variables.
+	 *
+	 * @param manager the scope input manager
+	 * @param context the kernel structure context
+	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
@@ -224,11 +248,26 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		purgeVariables();
 	}
 
+	/**
+	 * Returns the count from the destination producer if it is countable, otherwise 1.
+	 *
+	 * @return the number of elements to process
+	 */
 	@Override
 	public long getCountLong() {
 		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCountLong() : 1;
 	}
 
+	/**
+	 * Generates the assignment scope with value-to-destination assignment statements.
+	 *
+	 * <p>Creates assignment statements for each element based on the memory length,
+	 * adapting to kernel context when {@code enableAdaptiveMemLength} is true.</p>
+	 *
+	 * @param context the kernel structure context for index generation
+	 * @return a scope containing the assignment statements
+	 * @throws UnsupportedOperationException if count mismatch cannot be resolved
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Scope<Void> scope = super.getScope(context);
@@ -272,6 +311,15 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return scope;
 	}
 
+	/**
+	 * Returns a runnable that performs the assignment operation.
+	 *
+	 * <p>Attempts short-circuit optimization using {@link DestinationEvaluable} when the
+	 * value is an {@link AcceleratedOperation} or {@link Provider}. Falls back to
+	 * standard scope compilation when shapes don't match or aggregation would cause issues.</p>
+	 *
+	 * @return a runnable that executes the assignment
+	 */
 	@Override
 	public Runnable get() {
 		Supplier<Evaluable<? extends T>> out = getInputs().get(0);
@@ -323,6 +371,15 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return super.get();
 	}
 
+	/**
+	 * Optimizes the given process within this assignment's context.
+	 *
+	 * <p>Skips optimization for the destination process to preserve its structure.</p>
+	 *
+	 * @param ctx     the process context
+	 * @param process the process to optimize
+	 * @return the optimized process, or unchanged if it's the destination
+	 */
 	@Override
 	public Process<Process<?, ?>, Runnable> optimize(ProcessContext ctx, Process<Process<?, ?>, Runnable> process) {
 		if (process == (Supplier) getInputs().get(0))
@@ -331,6 +388,14 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return super.optimize(ctx, process);
 	}
 
+	/**
+	 * Isolates the given process within this assignment's context.
+	 *
+	 * <p>Skips isolation for the destination process to preserve its structure.</p>
+	 *
+	 * @param process the process to isolate
+	 * @return the isolated process, or unchanged if it's the destination
+	 */
 	@Override
 	public Process<Process<?, ?>, Runnable> isolate(Process<Process<?, ?>, Runnable> process) {
 		if (process == (Supplier) getInputs().get(0))
@@ -339,6 +404,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return super.isolate(process);
 	}
 
+	/**
+	 * Generates a new assignment with the given child processes.
+	 *
+	 * @param children list containing exactly 2 processes: destination and value
+	 * @return a new Assignment with the given children, or this instance if children size is not 2
+	 */
 	@Override
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
@@ -352,6 +423,13 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return result;
 	}
 
+	/**
+	 * Returns a unique signature for this assignment operation.
+	 *
+	 * <p>Format: "assign{memLength}->{valueSignature}"</p>
+	 *
+	 * @return the signature string, or null if destination or value lacks a signature
+	 */
 	@Override
 	public String signature() {
 		if (Signature.of(getInputs().get(0)) == null) {
@@ -367,6 +445,11 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return "assign" + memLength + "->" + signature;
 	}
 
+	/**
+	 * Returns a human-readable description of this assignment.
+	 *
+	 * @return description in format "{shortDescription} ({count}x{memLength})"
+	 */
 	@Override
 	public String describe() {
 		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";

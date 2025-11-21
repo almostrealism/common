@@ -479,14 +479,27 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
+	/** The hardware instance this computer is associated with. */
 	private Hardware hardware;
 
+	/** Thread-local stack of compute requirements for context selection. */
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
 
+	/** Cache of operation containers for instruction reuse (unlimited capacity). */
 	private Map<String, OperationContainer> operationsCache;
+
+	/** Frequency-based cache of process tree instruction managers (capacity: 500, eviction: 0.4). */
 	private FrequencyCache<String, ProcessTreeInstructionsManager> processTreeCache;
+
+	/** Frequency-based cache of scope instruction managers with auto-destroy on eviction. */
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
 
+	/**
+	 * Constructs a new DefaultComputer associated with the given hardware instance.
+	 * Initializes all caches and sets up eviction listeners for resource cleanup.
+	 *
+	 * @param hardware the hardware instance to associate with this computer
+	 */
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(Stack::new);
@@ -640,6 +653,24 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 				});
 	}
 
+	/**
+	 * Creates or retrieves a cached operation container for the given key.
+	 *
+	 * <p>If a container exists for the key, reuses it with argument substitution.
+	 * Otherwise, creates a new container by applying the function to arguments,
+	 * extracting instruction patterns, and caching the result.</p>
+	 *
+	 * @param <P>          the process type
+	 * @param <T>          the result type
+	 * @param <V>          the process implementation type
+	 * @param <M>          the memory data type
+	 * @param key          unique key for caching this operation pattern
+	 * @param func         function that creates the producer from arguments
+	 * @param substitution function to create substitutions between template and actual arguments
+	 * @param delegate     function to create a delegated producer from result and evaluable
+	 * @param args         the arguments to apply
+	 * @return a producer that uses the cached or newly created container
+	 */
 	public <P extends Process<?, ?>, T, V extends Process<P, T>, M extends MemoryData>
 			Producer<M> createContainer(String key,
 								Function<Producer[], Producer<M>> func,
@@ -674,6 +705,20 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		return delegate.apply(container.result, () -> evaluable);
 	}
 
+	/**
+	 * Applies or replaces instruction managers for the given process.
+	 *
+	 * <p>If the key already exists in the process tree cache, replaces
+	 * existing patterns in the process. Otherwise, extracts patterns
+	 * from the process and caches them.</p>
+	 *
+	 * @param <P>     the process type
+	 * @param <T>     the result type
+	 * @param <V>     the process implementation type
+	 * @param key     unique key for the instruction manager
+	 * @param process the process to apply instruction management to
+	 * @return the process with instruction management applied
+	 */
 	public <P extends Process<?, ?>, T, V extends Process<P, T>> Process<P, T>
 			applyInstructionsManager(String key, V process) {
 		if (processTreeCache.containsKey(key)) {
@@ -777,14 +822,30 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		}
 	}
 
+	/** Returns the console for logging output. */
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Internal container for caching operation patterns with their arguments and results.
+	 */
 	class OperationContainer {
+		/** The accelerated operation container holding the compiled operation. */
 		private AcceleratedOperationContainer container;
+
+		/** The template arguments used when the container was created. */
 		private Producer arguments[];
+
+		/** The result producer from the original operation. */
 		private Producer result;
 
+		/**
+		 * Constructs a new operation container.
+		 *
+		 * @param container the accelerated operation container
+		 * @param arguments the template arguments
+		 * @param result    the result producer
+		 */
 		public OperationContainer(AcceleratedOperationContainer container, Producer arguments[], Producer result) {
 			this.container = container;
 			this.arguments = arguments;

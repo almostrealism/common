@@ -396,6 +396,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * size is based on the size of a double, it indicates the number of double values
 	 * to skip over to get to the location in the {@link Memory} where data should be
 	 * kept.
+	 *
+	 * @param m      The delegate {@link MemoryData} whose memory will be used
+	 * @param offset The offset in doubles from the start of the delegate's memory
 	 */
 	default void setDelegate(MemoryData m, int offset) {
 		if (m == this) {
@@ -411,6 +414,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * size is based on the size of a double, it indicates the number of double values
 	 * to skip over to get to the location in the {@link Memory} where data should be
 	 * kept.
+	 *
+	 * @param m      The delegate {@link MemoryData} whose memory will be used
+	 * @param offset The offset in doubles from the start of the delegate's memory
+	 * @param order  The traversal ordering for accessing the delegate's memory, or null for default
 	 */
 	void setDelegate(MemoryData m, int offset, TraversalOrdering order);
 

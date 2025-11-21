@@ -56,7 +56,7 @@ import java.util.function.Function;
  * <p>Linear interpolation between two points:</p>
  * <pre>
  * Given points: (t1, v1) and (t2, v2)
- * Query time: t (where t1 <= t <= t2)
+ * Query time: t (where t1 &lt;= t &lt;= t2)
  *
  * Interpolated value:
  * v(t) = v1 + ((t - t1) / (t2 - t1)) * (v2 - v1)
@@ -161,6 +161,7 @@ import java.util.function.Function;
  *
  * <h2>Comparison with CPU Interpolation</h2>
  * <table border="1">
+ * <caption>Table</caption>
  * <tr><th>Feature</th><th>CPU (valueAt)</th><th>GPU (Interpolate)</th></tr>
  * <tr><td>Speed</td><td>~50micros per query</td><td>~5micros per query</td></tr>
  * <tr><td>Batch Processing</td><td>Sequential</td><td>Parallel (1000s simultaneous)</td></tr>

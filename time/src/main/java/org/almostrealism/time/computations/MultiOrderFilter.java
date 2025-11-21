@@ -205,6 +205,7 @@ import java.util.List;
  *
  * <h2>Comparison with IIR Filters</h2>
  * <table border="1">
+ * <caption>Table</caption>
  * <tr><th>Feature</th><th>FIR (This class)</th><th>IIR</th></tr>
  * <tr><td>Stability</td><td>Always stable</td><td>Can become unstable</td></tr>
  * <tr><td>Phase Response</td><td>Linear (no distortion)</td><td>Non-linear</td></tr>

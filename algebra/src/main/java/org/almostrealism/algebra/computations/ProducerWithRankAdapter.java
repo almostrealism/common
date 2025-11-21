@@ -39,7 +39,6 @@ import java.util.stream.Stream;
  *   <li>Selecting the highest-ranked option</li>
  *   <li>Sorting operations based on rank</li>
  * </ul>
- * </p>
  *
  * <p>
  * The rank is typically a scalar value representing:
@@ -48,7 +47,6 @@ import java.util.stream.Stream;
  *   <li>Distance metric (lower = better)</li>
  *   <li>Priority value</li>
  * </ul>
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

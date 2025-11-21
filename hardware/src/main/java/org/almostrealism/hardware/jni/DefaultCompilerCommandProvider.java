@@ -50,9 +50,27 @@ import java.util.List;
  * @see Clang
  */
 public class DefaultCompilerCommandProvider implements CompilerCommandProvider {
-	private String libExecutable, exeExecutable;
-	private String libCompiler, exeCompiler;
+	/** The executable to use for library compilation, or {@code null} if using libCompiler directly. */
+	private String libExecutable;
 
+	/** The executable to use for executable compilation, or {@code null} if using exeCompiler directly. */
+	private String exeExecutable;
+
+	/** The compiler script or path for library compilation. */
+	private String libCompiler;
+
+	/** The compiler script or path for executable compilation. */
+	private String exeCompiler;
+
+	/**
+	 * Creates a new compiler command provider with the specified compilers.
+	 *
+	 * <p>If a compiler path contains a dot (e.g., "compile.sh"), the extension
+	 * is treated as the executable name and the full path as a script argument.</p>
+	 *
+	 * @param libCompiler the compiler script or path for shared library compilation
+	 * @param exeCompiler the compiler script or path for executable compilation
+	 */
 	public DefaultCompilerCommandProvider(String libCompiler, String exeCompiler) {
 		if (libCompiler != null) {
 			this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
@@ -66,6 +84,12 @@ public class DefaultCompilerCommandProvider implements CompilerCommandProvider {
 		this.exeCompiler = exeCompiler;
 	}
 
+	/**
+	 * Returns the executable to invoke for compilation.
+	 *
+	 * @param lib true for library compilation, false for executable compilation
+	 * @return the executable command or path
+	 */
 	protected String getExecutable(boolean lib) {
 		if (lib) {
 			if (libExecutable != null) return libExecutable;
@@ -76,6 +100,14 @@ public class DefaultCompilerCommandProvider implements CompilerCommandProvider {
 		}
 	}
 
+	/**
+	 * Returns the arguments to pass to the compiler executable.
+	 *
+	 * @param inputFile  the input source file path
+	 * @param outputFile the output file path
+	 * @param lib        true for library compilation, false for executable compilation
+	 * @return the list of arguments (may include script path, input, and output)
+	 */
 	protected List<String> getArguments(String inputFile, String outputFile, boolean lib) {
 		List<String> command = new ArrayList<>();
 		if (lib) {
@@ -88,6 +120,7 @@ public class DefaultCompilerCommandProvider implements CompilerCommandProvider {
 		return command;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public List<String> getCommand(String inputFile, String outputFile, boolean lib) {
 		List<String> command = new ArrayList<>();

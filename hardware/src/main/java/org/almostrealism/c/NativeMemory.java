@@ -19,25 +19,49 @@ package org.almostrealism.c;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.mem.RAM;
 
+/**
+ * {@link RAM} implementation backed by JNI-allocated native memory.
+ *
+ * <p>{@link NativeMemory} wraps a native memory pointer allocated via JNI malloc,
+ * providing access to CPU memory for native code execution.</p>
+ *
+ * @see NativeMemoryProvider
+ * @see RAM
+ */
 public class NativeMemory extends RAM {
+	/** The memory provider that allocated this buffer. */
 	private final MemoryProvider provider;
+
+	/** The native pointer to the allocated memory. */
 	private final long nativePointer;
+
+	/** The size of this memory allocation in bytes. */
 	private final long size;
 
+	/**
+	 * Creates a new NativeMemory wrapping a native memory pointer.
+	 *
+	 * @param provider      the memory provider that allocated this buffer
+	 * @param nativePointer the native pointer to the allocated memory
+	 * @param size          the size of the allocation in bytes
+	 */
 	public NativeMemory(MemoryProvider provider, long nativePointer, long size) {
 		this.provider = provider;
 		this.nativePointer = nativePointer;
 		this.size = size;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public MemoryProvider getProvider() { return provider; }
 
+	/** {@inheritDoc} */
 	@Override
 	public long getContentPointer() {
 		return nativePointer;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public long getSize() { return size; }
 }

@@ -218,7 +218,7 @@ public abstract class Expression<T> implements
 	 * generate all possible results (eg, the range) for this expression. Note
 	 * that this may return an empty {@link Optional} even in cases where it is
 	 * possible to determine the domain, if the resulting {@link Set} would
-	 * contain more than {@value ScopeSettings#indexOptionLimit} elements or if
+	 * contain more than {@link ScopeSettings#indexOptionLimit} elements or if
 	 * some members of the {@link Set} would exceed {@link Integer#MAX_VALUE}.
 	 */
 	public Optional<Set<Integer>> getIndexOptions(Index index) {

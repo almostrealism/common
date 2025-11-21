@@ -181,10 +181,16 @@ import java.util.stream.Stream;
  */
 public class DestinationEvaluable<T extends MemoryBank> implements
 		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
+	/** The wrapped evaluable operation that produces results. */
 	private Evaluable<T> operation;
+
+	/** The memory bank where results are written. */
 	private MemoryBank destination;
 
+	/** Optional executor for asynchronous operations. */
 	private Executor executor;
+
+	/** Optional consumer to receive results after evaluation. */
 	private Consumer<T> downstream;
 
 	/**
@@ -229,6 +235,14 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		}
 	}
 
+	/**
+	 * Internal constructor for creating a DestinationEvaluable with all components.
+	 *
+	 * @param operation   the operation to evaluate
+	 * @param destination the memory bank for results
+	 * @param executor    the executor for async operations
+	 * @param downstream  optional consumer for results
+	 */
 	private DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
 								Executor executor, Consumer<T> downstream) {
 		this.operation = operation;

@@ -65,6 +65,7 @@ import java.util.function.Supplier;
  * @see SuppliedValue
  */
 public class DefaultContextSpecific<T> extends ContextSpecific<T> {
+	/** Predicate to validate cached values, or null if all cached values are valid. */
 	private Predicate<T> valid;
 
 	/**

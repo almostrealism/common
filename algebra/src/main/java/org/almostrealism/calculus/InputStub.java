@@ -53,7 +53,6 @@ import java.util.List;
  *   <li>Maintains identity through unique metadata IDs for matching during gradient assembly</li>
  *   <li>Supports reshape and traverse operations to maintain compatibility</li>
  * </ul>
- * </p>
  *
  * <h2>Usage in Chain Rule</h2>
  * <pre>{@code

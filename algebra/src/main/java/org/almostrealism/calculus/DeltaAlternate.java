@@ -30,7 +30,6 @@ import org.almostrealism.collect.PackedCollection;
  *   <li>Custom operations where the standard chain rule doesn't apply cleanly</li>
  *   <li>Optimized gradient computations for specific mathematical functions</li>
  * </ul>
- * </p>
  *
  * <h2>Usage</h2>
  * <p>

@@ -106,6 +106,7 @@ import java.util.TreeSet;
  *
  * <h2>Comparison with AcceleratedTimeSeries</h2>
  * <table border="1">
+ * <caption>Table</caption>
  * <tr><th>Feature</th><th>TimeSeries</th><th>AcceleratedTimeSeries</th></tr>
  * <tr><td>Storage</td><td>TreeSet + HashMap</td><td>PackedCollection (GPU-accessible)</td></tr>
  * <tr><td>Thread Safety</td><td>Synchronized</td><td>Manual synchronization required</td></tr>

@@ -31,23 +31,23 @@ import java.util.List;
  * returning conditional values based on the comparison result.
  *
  * <p>This class extends {@link CollectionComparisonComputation} to implement the less-than
- * relational operator with optional equality checking (<=). It evaluates the comparison for each
+ * relational operator with optional equality checking (&lt;=). It evaluates the comparison for each
  * corresponding element pair and selects between true and false values accordingly.</p>
  *
  * <h2>Mathematical Operation</h2>
  * <p>For input collections A (left) and B (right), the computation produces:</p>
  * <pre>
  * if includeEqual == false:
- *   result[i] = (A[i] < B[i]) ? trueValue[i] : falseValue[i]
+ *   result[i] = (A[i] &lt; B[i]) ? trueValue[i] : falseValue[i]
  * if includeEqual == true:
- *   result[i] = (A[i] <= B[i]) ? trueValue[i] : falseValue[i]
+ *   result[i] = (A[i] &lt;= B[i]) ? trueValue[i] : falseValue[i]
  * </pre>
  *
  * <h2>Conditional Value Selection</h2>
  * <p>Unlike boolean comparison operations that return 0 or 1, this computation allows
  * specifying arbitrary values for true and false outcomes. This enables patterns like:</p>
  * <ul>
- *   <li>Clipping: return threshold if < threshold, else return original value</li>
+ *   <li>Clipping: return threshold if &lt; threshold, else return original value</li>
  *   <li>Masking: return value if condition met, else return 0</li>
  *   <li>Selection: choose between two different computations based on comparison</li>
  * </ul>

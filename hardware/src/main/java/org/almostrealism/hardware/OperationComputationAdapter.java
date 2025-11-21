@@ -240,6 +240,8 @@ public abstract class OperationComputationAdapter<T>
 	/**
 	 * A {@link List} of any {@link Computation}s that this operation depends on
 	 * in addition to those which result from the {@link #getInputs() inputs}.
+	 *
+	 * @return List of dependent computations, or an empty list if none
 	 */
 	protected List<Computation<?>> getDependentComputations() {
 		return Collections.emptyList();

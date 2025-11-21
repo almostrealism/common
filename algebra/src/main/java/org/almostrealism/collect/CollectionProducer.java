@@ -43,7 +43,6 @@ import java.util.function.Supplier;
  *   <li><b>Advanced transformations:</b> repeat, enumerate, permute, pad, map, reduce</li>
  *   <li><b>Automatic differentiation:</b> delta, grad for gradient computation</li>
  * </ul>
- * </p>
  *
  * <h2>Core Design Principles</h2>
  * <ul>
@@ -495,14 +494,14 @@ public interface CollectionProducer<T extends Shape<?>> extends
 	}
 
 	/**
-	 * Produces 1.0 if this < operand, 0.0 otherwise.
+	 * Produces 1.0 if this &lt; operand, 0.0 otherwise.
 	 */
 	default CollectionProducer<PackedCollection<?>> lessThan(Producer<?> operand) {
 		return lessThan(this, operand);
 	}
 
 	/**
-	 * Produces 1.0 if this <= operand, 0.0 otherwise.
+	 * Produces 1.0 if this &lt;= operand, 0.0 otherwise.
 	 */
 	default CollectionProducer<PackedCollection<?>> lessThanOrEqual(Producer<?> operand) {
 		return lessThanOrEqual(this, operand);

@@ -171,23 +171,44 @@ import java.util.function.Supplier;
 @Deprecated
 public class AcceleratedOperationContainer<T extends MemoryData>
 		implements Countable, Evaluable<T>, ProcessArgumentEvaluator {
+	/** The wrapped accelerated operation that performs the actual computation. */
 	private AcceleratedOperation<T> operation;
+	/** Thread-local storage for producer substitutions, allowing concurrent execution with different inputs. */
 	private ThreadLocal<List<ProducerSubstitution<?>>> substitutions;
 
+	/**
+	 * Creates a new container wrapping the specified accelerated operation.
+	 *
+	 * @param operation the accelerated operation to wrap
+	 */
 	public AcceleratedOperationContainer(AcceleratedOperation<T> operation) {
 		this.operation = operation;
 		this.substitutions = new ThreadLocal<>();
 	}
 
+	/**
+	 * Sets the producer substitutions for the current thread.
+	 * This also resets the operation's details factory to clear cached details.
+	 *
+	 * @param substitutions the list of producer substitutions to apply
+	 */
 	public void setSubstitutions(List<ProducerSubstitution<?>> substitutions) {
 		this.substitutions.set(substitutions);
 		this.operation.getDetailsFactory().reset();
 	}
 
+	/** Clears the producer substitutions for the current thread. */
 	public void clearSubstitutions() {
 		this.substitutions.remove();
 	}
 
+	/**
+	 * Evaluates the wrapped operation with the given arguments.
+	 *
+	 * @param args the arguments to pass to the operation
+	 * @return the result of the evaluation
+	 * @throws UnsupportedOperationException if the wrapped operation is not an {@link Evaluable}
+	 */
 	@Override
 	public T evaluate(Object... args) {
 		if (operation instanceof Evaluable<?>) {
@@ -197,14 +218,32 @@ public class AcceleratedOperationContainer<T extends MemoryData>
 		throw new UnsupportedOperationException();
 	}
 
+	/** Returns the count from the wrapped operation. */
 	@Override
 	public long getCountLong() { return operation.getCountLong(); }
 
+	/**
+	 * Returns an evaluable for the given array variable argument.
+	 * Delegates to {@link #getEvaluable(Supplier)} using the argument's producer.
+	 *
+	 * @param argument the array variable to get an evaluable for
+	 * @param <V> the value type of the argument
+	 * @return an evaluable that may be substituted based on thread-local substitutions
+	 */
 	@Override
 	public <V> Evaluable<? extends Multiple<V>> getEvaluable(ArrayVariable<V> argument) {
 		return getEvaluable(argument.getProducer());
 	}
 
+	/**
+	 * Returns an evaluable for the given producer, applying any matching substitution.
+	 * Searches the current thread's substitutions for a match and returns the
+	 * replacement if found, otherwise returns the original producer's evaluable.
+	 *
+	 * @param producer the producer to get an evaluable for
+	 * @param <V> the value type produced
+	 * @return the substituted evaluable if a match is found, otherwise the original evaluable
+	 */
 	public <V> Evaluable<? extends V> getEvaluable(Supplier<Evaluable<? extends V>> producer) {
 		List<ProducerSubstitution<?>> subs = substitutions.get();
 

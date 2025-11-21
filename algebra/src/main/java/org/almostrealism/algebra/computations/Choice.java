@@ -35,7 +35,6 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  *   <li>The decision value is scaled by choiceCount and floored to get an integer index</li>
  *   <li>The corresponding option is extracted from the choices array</li>
  * </ul>
- * </p>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code

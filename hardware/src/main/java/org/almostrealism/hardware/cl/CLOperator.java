@@ -105,20 +105,43 @@ import java.util.function.Consumer;
  */
 public class CLOperator extends HardwareOperator {
 
+	/** Total number of kernel invocations across all CLOperator instances. */
 	private static long totalInvocations;
 
+	/** The compute context providing command queues and profiling support. */
 	private final CLComputeContext context;
+
+	/** The compiled OpenCL program containing this operator's kernel. */
 	private final CLProgram prog;
+
+	/** The kernel function name within the program. */
 	private final String name;
 
+	/** Cache of previously set kernel arguments to avoid redundant clSetKernelArg calls. */
 	private final Object argCache[];
+
+	/** The number of arguments this kernel expects. */
 	private final int argCount;
 
+	/** The OpenCL kernel handle, lazily created on first execution. */
 	private cl_kernel kernel;
 
+	/** Processor for converting CLException to HardwareException with context. */
 	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
+
+	/** Consumer for recording execution timing data when profiling is enabled. */
 	private Consumer<RunData> profile;
 
+	/**
+	 * Creates a new CLOperator for executing an OpenCL kernel.
+	 *
+	 * @param context            the compute context providing command queues
+	 * @param program            the compiled OpenCL program containing the kernel
+	 * @param name               the kernel function name
+	 * @param argCount           the number of arguments the kernel expects
+	 * @param profile            consumer for recording execution timing, or null to skip profiling
+	 * @param exceptionProcessor processor for converting OpenCL exceptions to HardwareException
+	 */
 	public CLOperator(CLComputeContext context, CLProgram program, String name, int argCount, Consumer<RunData> profile,
 					  BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.context = context;
@@ -130,15 +153,23 @@ public class CLOperator extends HardwareOperator {
 		this.exceptionProcessor = exceptionProcessor;
 	}
 
+	/** Returns the kernel function name. */
 	@Override
 	public String getName() { return name; }
 
+	/** Returns the hardware identifier "CL" for OpenCL backend. */
 	@Override
 	protected String getHardwareName() { return "CL"; }
 
+	/** Returns the operation metadata from the compiled program. */
 	@Override
 	public OperationMetadata getMetadata() { return prog.getMetadata(); }
 
+	/**
+	 * Returns whether this operator executes on a GPU device.
+	 *
+	 * @return true if the kernel will execute on a GPU, false for CPU
+	 */
 	@Override
 	public boolean isGPU() {
 		if (context.getClQueue() == context.getKernelClQueue()) {
@@ -148,14 +179,27 @@ public class CLOperator extends HardwareOperator {
 		return context.getClQueue(getGlobalWorkSize() > 1) == context.getKernelClQueue();
 	}
 
+	/** Returns the number of arguments this kernel expects. */
 	@Override
 	protected int getArgCount() { return argCount; }
 
+	/** Returns the list of memory providers supported by this operator's compute context. */
 	@Override
 	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
 		return context.getDataContext().getMemoryProviders();
 	}
 
+	/**
+	 * Executes the OpenCL kernel with the provided arguments.
+	 *
+	 * <p>Lazily creates the kernel on first invocation, sets kernel arguments (using caching
+	 * to skip unchanged arguments), and enqueues the kernel for execution. Waits for completion
+	 * and records profiling data if enabled.</p>
+	 *
+	 * @param args      the arguments to pass to the kernel (MemoryData objects)
+	 * @param dependsOn optional semaphore to wait on before execution, or null
+	 * @return null (future versions may return a semaphore for async execution)
+	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
@@ -252,6 +296,10 @@ public class CLOperator extends HardwareOperator {
 		return null;
 	}
 
+	/**
+	 * Releases the OpenCL kernel resource.
+	 * After calling this method, the operator can no longer be used for execution.
+	 */
 	public void destroy() {
 		if (kernel != null) CL.clReleaseKernel(kernel);
 		kernel = null;
