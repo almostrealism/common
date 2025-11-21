@@ -50,6 +50,11 @@ public class MetalCommandRunner {
 	private MTLBuffer size;
 	private final MTLCommandQueue queue;
 
+	/**
+	 * Creates a Metal command runner with pre-allocated argument buffers.
+	 *
+	 * @param queue The {@link MTLCommandQueue} for submitting commands
+	 */
 	public MetalCommandRunner(MTLCommandQueue queue) {
 		this.executor = Executors.newSingleThreadExecutor();
 		this.queue = queue;
@@ -57,10 +62,24 @@ public class MetalCommandRunner {
 		size = queue.getDevice().newIntBuffer32(MAX_ARGS);
 	}
 
+	/**
+	 * Submits a Metal command for asynchronous execution.
+	 *
+	 * <p>Commands execute on a single-threaded executor to avoid concurrency issues.
+	 * The command receives pre-allocated offset and size buffers.</p>
+	 *
+	 * @param command The {@link MetalCommand} to execute
+	 * @return {@link Future} for tracking command completion
+	 */
 	public Future<?> submit(MetalCommand command) {
 		return executor.submit(() -> command.run(offset, size, queue));
 	}
 
+	/**
+	 * Destroys this command runner and releases all resources.
+	 *
+	 * <p>Releases offset and size buffers and shuts down the executor service.</p>
+	 */
 	public void destroy() {
 		if (offset != null) offset.release();
 		if (size != null) size.release();

@@ -52,6 +52,14 @@ public class MetalOperatorMap implements InstructionSet {
 	private ThreadLocal<Map<String, MetalOperator>> operators;
 	private List<MetalOperator> allOperators;
 
+	/**
+	 * Creates a Metal operator map and compiles the Metal Shading Language source.
+	 *
+	 * @param ctx The {@link MetalComputeContext} for compilation and execution
+	 * @param metadata Operation metadata for profiling and identification
+	 * @param func Name of the kernel function in the source
+	 * @param src Metal Shading Language source code
+	 */
 	public MetalOperatorMap(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
 		this.context = ctx;
 		this.operators = new ThreadLocal<>();
@@ -59,6 +67,14 @@ public class MetalOperatorMap implements InstructionSet {
 		init(metadata, func, src);
 	}
 
+	/**
+	 * Initializes and compiles the Metal program.
+	 *
+	 * @param metadata Operation metadata
+	 * @param func Kernel function name
+	 * @param src Metal Shading Language source code
+	 * @throws RuntimeException if compilation fails
+	 */
 	protected void init(OperationMetadata metadata, String func, String src) {
 		if (MetalOperator.enableLog) {
 			System.out.println("MetalOperatorMap: init " + metadata.getDisplayName());
@@ -88,6 +104,16 @@ public class MetalOperatorMap implements InstructionSet {
 		}
 	}
 
+	/**
+	 * Returns a thread-local {@link MetalOperator} for the specified kernel and argument count.
+	 *
+	 * <p>Each thread gets its own operator instance for thread-safe execution. Operators
+	 * are cached per thread.</p>
+	 *
+	 * @param key Operator key (typically the kernel name)
+	 * @param argCount Number of buffer arguments expected by the kernel
+	 * @return Thread-local {@link MetalOperator} instance
+	 */
 	public MetalOperator get(String key, int argCount) {
 		Map<String, MetalOperator> ops = operators.get();
 
@@ -105,6 +131,11 @@ public class MetalOperatorMap implements InstructionSet {
 		return ops.get(key);
 	}
 
+	/**
+	 * Checks if this operator map has been destroyed.
+	 *
+	 * @return True if {@link #destroy()} has been called
+	 */
 	@Override
 	public boolean isDestroyed() {
 		return operators == null;
