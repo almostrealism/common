@@ -20,23 +20,62 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Qwen3 model implementation using the Almost Realism framework.
+ * Qwen3 language model implementation using the Almost Realism framework.
  *
- * This implementation supports Qwen3-Instruct-2507 4B with:
- * - 36 transformer layers
- * - Grouped Query Attention (32 query heads / 8 KV heads)
- * - QK-Norm for training stability
- * - SwiGLU activation in FFN
- * - RoPE positional embeddings (1M base frequency)
- * - 151,669 vocabulary (byte-level BPE)
- * - 128K context window
+ * <p>This class implements the Qwen3 transformer architecture with full support for
+ * autoregressive text generation. It loads model weights from protobuf format
+ * (exported via extract_qwen3_weights.py) and provides a high-level API for
+ * text generation.</p>
  *
- * Usage:
- * <pre>
- * Qwen3 model = new Qwen3("qwen3-4B.bin", "tokenizer.bin");
- * model.setTemperature(0.7);
+ * <h2>Architecture Details (Qwen3-4B-Instruct)</h2>
+ * <table>
+ * <caption>Qwen3 Model Parameters</caption>
+ *   <tr><th>Parameter</th><th>Value</th></tr>
+ *   <tr><td>Transformer Layers</td><td>36</td></tr>
+ *   <tr><td>Model Dimension</td><td>3584</td></tr>
+ *   <tr><td>FFN Hidden Dimension</td><td>11008</td></tr>
+ *   <tr><td>Query Heads</td><td>32</td></tr>
+ *   <tr><td>KV Heads (GQA)</td><td>8</td></tr>
+ *   <tr><td>Head Dimension</td><td>112</td></tr>
+ *   <tr><td>Vocabulary Size</td><td>151,669</td></tr>
+ *   <tr><td>Context Length</td><td>128K</td></tr>
+ *   <tr><td>RoPE Theta</td><td>1,000,000</td></tr>
+ * </table>
+ *
+ * <h2>Key Features</h2>
+ * <ul>
+ *   <li><strong>Grouped Query Attention (GQA):</strong> 4:1 query-to-KV head ratio for efficiency</li>
+ *   <li><strong>QK-Normalization:</strong> Per-head normalization for training stability</li>
+ *   <li><strong>SwiGLU FFN:</strong> Gated linear unit with SiLU activation</li>
+ *   <li><strong>RoPE:</strong> Rotary embeddings with 1M base frequency for extended context</li>
+ *   <li><strong>Shared Embeddings:</strong> Input and output embeddings are tied</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Load model from protobuf weights
+ * Qwen3 model = new Qwen3("/path/to/weights", "/path/to/tokenizer.bin");
+ *
+ * // Configure generation
+ * model.setTemperature(0.7);  // 0.0 for greedy, higher for more creativity
+ *
+ * // Generate text
  * model.run(256, "Once upon a time", token -> System.out.print(token));
- * </pre>
+ *
+ * // View performance metrics
+ * model.getProfile().print();
+ * }</pre>
+ *
+ * <h2>Weight Loading</h2>
+ * <p>Weights are loaded via {@link StateDictionary} from protobuf files exported using
+ * the provided Python script. The configuration can be explicitly provided or inferred
+ * from weight shapes.</p>
+ *
+ * @see StateDictionary
+ * @see Qwen3Config
+ * @see Qwen3Tokenizer
+ * @see AttentionFeatures
+ * @author Michael Murray
  */
 public class Qwen3 implements AttentionFeatures {
 	static {

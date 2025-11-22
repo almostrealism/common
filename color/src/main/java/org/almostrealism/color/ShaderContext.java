@@ -29,10 +29,55 @@ import org.almostrealism.geometry.Curve;
 import io.almostrealism.relation.Evaluable;
 
 /**
- * A {@link ShaderContext} provides access to the set of {@link Evaluable}s
- * in a {@link org.almostrealism.space.Scene}.
- * 
- * @author  Michael Murray
+ * Extends {@link LightingContext} with surface-specific information for shading.
+ *
+ * <p>A {@code ShaderContext} provides complete rendering context including:</p>
+ * <ul>
+ *   <li>Light information (inherited from {@link LightingContext})</li>
+ *   <li>Surface being shaded and other surfaces in the scene</li>
+ *   <li>Ray-surface intersection details</li>
+ *   <li>Fog/atmospheric effects parameters</li>
+ *   <li>Reflection/refraction tracking for recursive ray tracing</li>
+ * </ul>
+ *
+ * <h2>Usage in Ray Tracing</h2>
+ * <p>The context is typically created when a ray intersects a surface and passed
+ * to shaders for color computation:</p>
+ * <pre>{@code
+ * // Create context from ray intersection
+ * ShaderContext ctx = new ShaderContext(
+ *     intersection,           // Where the ray hit
+ *     lightDirection,         // Direction to light
+ *     light,                  // The light source
+ *     otherLights,           // Other scene lights
+ *     surface,               // Surface being shaded
+ *     otherSurfaces          // For shadows/reflections
+ * );
+ *
+ * // Compute shaded color
+ * Producer<RGB> color = surface.shade(ctx);
+ * }</pre>
+ *
+ * <h2>Reflection/Refraction Tracking</h2>
+ * <p>The context tracks recursive ray operations to prevent infinite recursion:</p>
+ * <ul>
+ *   <li>{@link #addReflection()}: Increment when ray reflects</li>
+ *   <li>{@link #addEntrance()}: Increment when ray enters a transparent surface</li>
+ *   <li>{@link #addExit()}: Increment when ray exits a transparent surface</li>
+ * </ul>
+ *
+ * <h2>Fog Parameters</h2>
+ * <p>Atmospheric effects can be applied using:</p>
+ * <ul>
+ *   <li>{@code fogColor}: The color of the fog/atmosphere</li>
+ *   <li>{@code fogRatio}: Blend ratio between surface and fog color</li>
+ *   <li>{@code fogDensity}: How quickly fog increases with distance</li>
+ * </ul>
+ *
+ * @see LightingContext
+ * @see Shader
+ * @see Shadable
+ * @author Michael Murray
  */
 public class ShaderContext extends LightingContext {
 	private ContinuousField intersection;

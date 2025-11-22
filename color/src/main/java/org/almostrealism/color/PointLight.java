@@ -26,10 +26,49 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 
 /**
- * An {@link PointLight} object represents a light which has its source at a point in the scene.
- * The color and intensity of the light may by specified, but by default it is white light.
- * Also, coefficients for distance attenuation may be specified also, but by default are 0.0, 0.0,
- * and 1.0 (no attenuation).
+ * Represents a point light source that emanates light from a specific location in 3D space.
+ *
+ * <p>A {@code PointLight} simulates an omnidirectional light source (like a light bulb)
+ * where light radiates equally in all directions from a single point. The light intensity
+ * can decrease with distance using configurable attenuation coefficients.</p>
+ *
+ * <h2>Distance Attenuation</h2>
+ * <p>Light intensity decreases with distance according to a quadratic function:</p>
+ * <pre>
+ * attenuated_color = color / (da * d^2 + db * d + dc)
+ * </pre>
+ * <p>Where:</p>
+ * <ul>
+ *   <li>{@code da} - quadratic coefficient (inverse-square falloff)</li>
+ *   <li>{@code db} - linear coefficient</li>
+ *   <li>{@code dc} - constant coefficient (no falloff)</li>
+ *   <li>{@code d} - distance from light to surface point</li>
+ * </ul>
+ *
+ * <h2>Common Attenuation Configurations</h2>
+ * <ul>
+ *   <li>{@code (0, 0, 1)} - No attenuation (constant brightness)</li>
+ *   <li>{@code (1, 0, 0)} - Physically realistic inverse-square falloff</li>
+ *   <li>{@code (0, 1, 0)} - Linear falloff</li>
+ *   <li>{@code (1, 0.1, 0.01)} - Combined falloff for artistic control</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create a white point light at position (5, 5, 5)
+ * PointLight light = new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1.0, 1.0, 1.0));
+ *
+ * // Set quadratic attenuation for realistic falloff
+ * light.setAttenuationCoefficients(1.0, 0.0, 0.0);
+ *
+ * // Get the attenuated color at a specific point
+ * Producer<RGB> colorAtSurface = light.getColorAt(surfacePointProducer);
+ * }</pre>
+ *
+ * @see Light
+ * @see AmbientLight
+ * @see DirectionalAmbientLight
+ * @author Michael Murray
  */
 public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	private double intensity;

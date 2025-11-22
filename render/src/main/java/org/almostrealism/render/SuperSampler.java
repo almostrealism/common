@@ -25,15 +25,76 @@ import io.almostrealism.relation.Producer;
 
 import java.util.stream.IntStream;
 
+/**
+ * {@link SuperSampler} implements anti-aliasing by averaging multiple color samples
+ * within a single pixel. It acts as a {@link Producer} that combines multiple
+ * sub-pixel color producers into a single averaged result.
+ *
+ * <p>Supersampling works by casting multiple rays through slightly different positions
+ * within each pixel, then averaging the resulting colors. This smooths out aliasing
+ * artifacts like jagged edges on diagonal lines and high-frequency texture patterns.</p>
+ *
+ * <h2>Sample Grid</h2>
+ * <p>Samples are organized in a 2D grid within the pixel. For example, 2x2 supersampling
+ * divides each pixel into 4 sub-regions:</p>
+ * <pre>
+ * Pixel bounds: (x, y) to (x+1, y+1)
+ *
+ * Sample positions:
+ *   (x + 0.00, y + 0.00)  (x + 0.50, y + 0.00)
+ *   (x + 0.00, y + 0.50)  (x + 0.50, y + 0.50)
+ * </pre>
+ *
+ * <h2>Evaluation</h2>
+ * <p>When {@link #get()} is called, the SuperSampler creates an {@link Evaluable} that:</p>
+ * <ol>
+ *   <li>Evaluates each sample producer at the sub-pixel position</li>
+ *   <li>Multiplies each result by the scale factor (1/totalSamples)</li>
+ *   <li>Sums all scaled samples to produce the final averaged color</li>
+ * </ol>
+ *
+ * <h2>Batch Evaluation</h2>
+ * <p>The {@link Evaluable#into(Object)} method supports efficient batch evaluation for
+ * multiple pixels at once, computing all samples and combining them in memory banks.</p>
+ *
+ * @see Pixel
+ * @see org.almostrealism.raytrace.RenderParameters
+ * @author Michael Murray
+ */
 public class SuperSampler implements Producer<RGB> {
+
+	/**
+	 * The 2D grid of sample color producers. First index is horizontal (x),
+	 * second index is vertical (y).
+	 */
 	protected Producer<RGB> samples[][];
+
+	/**
+	 * Scale factor applied to each sample when averaging.
+	 * Equals 1.0 / (samples.length * samples[0].length).
+	 */
 	private double scale;
 
+	/**
+	 * Creates a new SuperSampler with the given sample producer grid.
+	 *
+	 * @param samples A 2D array of color producers, one for each sub-pixel sample position.
+	 *                The array dimensions determine the supersampling factor.
+	 */
 	public SuperSampler(Producer<RGB> samples[][]) {
 		this.samples = samples;
 		scale = 1.0 / (this.samples.length * this.samples[0].length);
 	}
 
+	/**
+	 * Creates an {@link Evaluable} that computes the averaged color from all samples.
+	 *
+	 * <p>The returned Evaluable supports both single-pixel evaluation (via {@link Evaluable#evaluate})
+	 * and batch evaluation (via {@link Evaluable#into}). In batch mode, all samples are computed
+	 * for all pixels efficiently before being combined.</p>
+	 *
+	 * @return An Evaluable that produces the averaged RGB color when evaluated with a pixel position
+	 */
 	@Override
 	public Evaluable<RGB> get() {
 		Evaluable<RGB> ev[][] = new Evaluable[samples.length][samples[0].length];

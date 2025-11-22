@@ -20,5 +20,29 @@ import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Node;
 import io.almostrealism.lifecycle.Lifecycle;
 
+/**
+ * An interface representing a cell in a computation graph with lifecycle management.
+ *
+ * <p>A {@code Cellular} entity combines three key behaviors:
+ * <ul>
+ *   <li>{@link Node} - Can be connected to other nodes in a graph structure</li>
+ *   <li>{@link Setup} - Has initialization/setup requirements</li>
+ *   <li>{@link Lifecycle} - Has lifecycle events (reset, etc.)</li>
+ * </ul>
+ *
+ * <p>This interface is used as a base for components that need to participate
+ * in computational graphs while also supporting proper initialization and cleanup.
+ *
+ * <h2>Usage in Evolution</h2>
+ * <p>In evolutionary algorithms, cells can represent computational units that
+ * evolve over time. The lifecycle methods allow proper initialization before
+ * each evaluation and cleanup/reset between generations.
+ *
+ * @see TemporalCellular
+ * @see CellularTemporalFactor
+ * @see Node
+ * @see Setup
+ * @see Lifecycle
+ */
 public interface Cellular extends Node, Setup, Lifecycle {
 }

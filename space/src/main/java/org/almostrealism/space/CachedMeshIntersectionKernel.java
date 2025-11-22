@@ -32,6 +32,39 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.stream.Stream;
 
+/**
+ * {@link CachedMeshIntersectionKernel} provides a caching layer for mesh-ray intersection
+ * computations that is aware of render dimensions for efficient batch processing.
+ *
+ * <p>This class is designed to work with ray tracing renderers that process pixels in batches.
+ * When rendering, the kernel first evaluates intersections for all rays in a batch and caches
+ * the results. Subsequent queries for individual pixel positions retrieve cached values rather
+ * than recomputing intersections.
+ *
+ * <p>The class implements {@link DimensionAware} to receive information about the render
+ * dimensions (width, height, supersampling), which is used to map 2D pixel positions to
+ * linear indices in the cache.
+ *
+ * <h3>Usage Pattern:</h3>
+ * <pre>{@code
+ * CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(meshData, rayProducer);
+ * kernel.setDimensions(width, height, ssw, ssh);
+ *
+ * // Batch evaluation (populates cache)
+ * kernel.into(destinationBank).evaluate(args);
+ *
+ * // Individual queries (uses cache)
+ * Scalar distance = kernel.evaluate(new Object[]{new Pair(x, y)});
+ *
+ * // Get normal at closest intersection
+ * Vector normal = kernel.getClosestNormal().evaluate(args);
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see MeshData
+ * @see Mesh
+ * @see DimensionAware
+ */
 public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, DimensionAware {
 	private MeshData data;
 	private Evaluable<Ray> ray;
@@ -41,11 +74,22 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
+	/**
+	 * Constructs a new {@link CachedMeshIntersectionKernel} for the specified mesh data and ray producer.
+	 *
+	 * @param data the mesh data containing triangle information
+	 * @param ray  the ray producer that generates rays for intersection testing
+	 */
 	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray) {
 		this.data = data;
 		this.ray = ray.get();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Sets the render dimensions used to compute cache indices from 2D pixel positions.
+	 */
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		this.width = width;
@@ -54,9 +98,22 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 		this.ssh = ssh;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @param size the number of scalars to allocate
+	 * @return a new scalar memory bank of the specified size
+	 */
 	@Override
 	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
 
+	/**
+	 * Creates an evaluable that computes intersections for all rays and stores results
+	 * in the provided destination, while also populating the internal cache.
+	 *
+	 * @param destination the memory bank to store intersection distances
+	 * @return an evaluable that performs batch intersection computation
+	 */
 	@Override
 	public Evaluable into(Object destination) {
 		return args -> {
@@ -71,9 +128,14 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 	}
 
 	/**
-	 * Returns a cached value from kernel evaluation.
-	 * This method will not work properly unless kernel
-	 * evaluation has already taken place.
+	 * Evaluates the intersection distance for a ray at the specified position.
+	 *
+	 * <p>If the cache has been populated via a prior call to {@link #into(Object)},
+	 * this method retrieves the cached result using the pixel position from args.
+	 * Otherwise, it computes the intersection directly.
+	 *
+	 * @param args arguments containing a {@link Pair} with the pixel (x, y) position as the first element
+	 * @return the intersection distance as a {@link Scalar}, or a negative value if no intersection
 	 */
 	@Override
 	public Scalar evaluate(Object[] args) {
@@ -86,6 +148,15 @@ public class CachedMeshIntersectionKernel implements Evaluable<Scalar>, Dimensio
 		}
 	}
 
+	/**
+	 * Returns an evaluable that computes the surface normal at the closest intersection point.
+	 *
+	 * <p>The returned evaluable uses the cached intersection results to look up which triangle
+	 * was hit and returns its precomputed face normal. If no intersection occurred at the
+	 * queried position, a zero vector is returned.
+	 *
+	 * @return an evaluable that produces the normal vector at the intersection point
+	 */
 	public Evaluable<Vector> getClosestNormal() {
 		if (closestNormal == null) {
 			closestNormal = new HardwareEvaluable<>(() -> args -> {

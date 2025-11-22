@@ -18,6 +18,20 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
 
+/**
+ * An interface for objects that can be positioned in 3D space using a {@link Vector}.
+ * This interface provides a single method for setting the location using a Vector
+ * object, which provides more precision than the float-based {@link Positioned} interface.
+ *
+ * @author Michael Murray
+ * @see Positioned
+ * @see Vector
+ */
 public interface Locatable {
-	public void setLocation(Vector location);
+	/**
+	 * Sets the location of this object in 3D space.
+	 *
+	 * @param location a {@link Vector} representing the new position
+	 */
+	void setLocation(Vector location);
 }

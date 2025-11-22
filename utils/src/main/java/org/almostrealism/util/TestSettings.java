@@ -18,16 +18,89 @@ package org.almostrealism.util;
 
 import java.util.Objects;
 
+/**
+ * Global test configuration interface that provides access to test settings
+ * controlled by environment variables.
+ *
+ * <p>This interface exposes static configuration fields that are initialized
+ * at class loading time from system environment variables and properties.
+ * Tests implementing this interface gain access to these configuration values.</p>
+ *
+ * <h2>Environment Variables</h2>
+ * <table>
+ * <caption>Test Configuration Environment Variables</caption>
+ * <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+ * <tr><td>{@code AR_LONG_TESTS}</td><td>Enable long-running tests</td><td>false</td></tr>
+ * <tr><td>{@code AR_TRAIN_TESTS}</td><td>Enable ML training tests</td><td>false</td></tr>
+ * <tr><td>{@code AR_TEST_DEPTH}</td><td>Test thoroughness level (higher = more tests)</td><td>Integer.MAX_VALUE</td></tr>
+ * <tr><td>{@code AR_TEST_PROFILE}</td><td>Test profile name (e.g., "pipeline")</td><td>"default"</td></tr>
+ * <tr><td>{@code AR_KNOWN_ISSUES}</td><td>Include tests for known issues</td><td>true</td></tr>
+ * </table>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * public class MyTest implements TestFeatures {
+ *     @Test
+ *     public void longRunningTest() {
+ *         if (skipLongTests) return;  // Skip in quick test runs
+ *         // ... long test code ...
+ *     }
+ *
+ *     @Test
+ *     public void trainingTest() {
+ *         if (!trainingTests) return;  // Only run when explicitly enabled
+ *         // ... training code ...
+ *     }
+ * }
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see TestUtils for environment variable parsing logic
+ * @see TestFeatures for the primary testing interface
+ */
 public interface TestSettings {
 
+	/**
+	 * If true, long-running tests should be skipped.
+	 * Controlled by the {@code AR_LONG_TESTS} environment variable.
+	 */
 	boolean skipLongTests = TestUtils.getSkipLongTests();
+
+	/**
+	 * If true, tests for known issues should be skipped.
+	 * Controlled by the {@code AR_KNOWN_ISSUES} environment variable.
+	 */
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
+
+	/**
+	 * If true, geometry-related issue tests should be skipped.
+	 */
 	boolean skipGeometryIssues = false;
+
+	/**
+	 * If true, ML model training tests are enabled.
+	 * Controlled by the {@code AR_TRAIN_TESTS} environment variable.
+	 */
 	boolean trainingTests = TestUtils.getTrainTests();
+
+	/**
+	 * If true, verbose logging is enabled during test execution.
+	 */
 	boolean verboseLogs = TestUtils.getVerboseLogs();
 
+	/**
+	 * The test depth level controlling test thoroughness.
+	 * Higher values enable more comprehensive testing.
+	 * Controlled by the {@code AR_TEST_DEPTH} environment variable.
+	 */
 	int testDepth = TestUtils.getTestDepth();
 
+	/**
+	 * Checks if the current test profile matches the specified profile name.
+	 *
+	 * @param profile the profile name to check (e.g., "pipeline")
+	 * @return true if the current profile matches the specified profile
+	 */
 	default boolean testProfileIs(String profile) {
 		return (Objects.equals(TestUtils.getTestProfile(), profile));
 	}

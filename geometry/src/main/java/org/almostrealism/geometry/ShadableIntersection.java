@@ -28,20 +28,53 @@ import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.collect.PackedCollection;
 
 /**
- * Extends {@link Intersection} to provide metadata that is required for shading.
- * 
+ * Extends {@link Intersection} to provide metadata that is required for shading,
+ * including the surface normal and incident ray direction.
+ *
+ * <p>This class implements {@link ContinuousField}, allowing it to be used in
+ * shading calculations that require gradient information. The normal is stored
+ * as a {@link Ray} where:</p>
+ * <ul>
+ *   <li>The origin is the intersection point</li>
+ *   <li>The direction is the surface normal at that point</li>
+ * </ul>
+ *
+ * <p>Usage in shading:</p>
+ * <pre>{@code
+ * ShadableIntersection hit = surface.intersectAt(ray);
+ * Producer<Vector> point = hit.getPoint();
+ * Producer<Vector> normal = hit.getNormalAt(point);
+ * // Use for lighting calculations...
+ * }</pre>
+ *
  * @author  Michael Murray
+ * @see Intersection
+ * @see ContinuousField
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
+	/**
+	 * Constructs a ShadableIntersection from a surface gradient, ray, and distance.
+	 *
+	 * @param surface the surface gradient (provides normal calculation)
+	 * @param r the incident ray
+	 * @param distance the parametric distance to the intersection
+	 */
 	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer distance) {
 		this(surface,
 				RayFeatures.getInstance().pointAt(r, distance),
 				RayFeatures.getInstance().direction(r), distance);
 	}
 
+	/**
+	 * Constructs a ShadableIntersection from a ray, explicit normal, and distance.
+	 *
+	 * @param r the incident ray
+	 * @param normal the surface normal at the intersection
+	 * @param distance the parametric distance to the intersection
+	 */
 	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal,
 								Producer<PackedCollection<?>> distance) {
 		this(RayFeatures.getInstance().pointAt(r, distance),
@@ -49,12 +82,28 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 				normal, distance);
 	}
 
+	/**
+	 * Constructs a ShadableIntersection from a surface gradient, point, incident direction, and distance.
+	 *
+	 * @param surface the surface gradient (provides normal calculation)
+	 * @param point the intersection point
+	 * @param incident the incident ray direction
+	 * @param distance the parametric distance to the intersection
+	 */
 	public ShadableIntersection(Gradient surface,
 								Producer<Vector> point, Producer<Vector> incident,
 								Producer<PackedCollection<?>> distance) {
 		this(point, incident, surface.getNormalAt(point), distance);
 	}
 
+	/**
+	 * Constructs a ShadableIntersection with explicit point, incident, normal, and distance.
+	 *
+	 * @param point the intersection point
+	 * @param incident the incident ray direction
+	 * @param normal the surface normal at the intersection
+	 * @param distance the parametric distance to the intersection
+	 */
 	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident,
 								Producer<Vector> normal, Producer<PackedCollection<?>> distance) {
 		super(point, distance);
@@ -64,8 +113,14 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 		Producer<Ray> p = ray(getPoint(), normal);
 		this.normal = new ProducerWithRankAdapter<>(p, (Producer) distance);
 	}
-	
-	/** Returns the viewer direction. */
+
+	/**
+	 * Returns the viewer direction (normalized negative incident direction).
+	 * This is useful for view-dependent shading calculations.
+	 *
+	 * @param point the point at which to get the normal (ignored, uses stored incident)
+	 * @return a producer for the negated, normalized incident direction
+	 */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
 		return minus(normalize(incident));

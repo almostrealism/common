@@ -26,10 +26,39 @@ import org.almostrealism.geometry.Curve;
 import io.almostrealism.relation.Producer;
 
 /**
- * A {@link DirectionalAmbientLight} represents an ambient light source that always
- * comes from a particular direction. The direction is a vector that represents
- * the direction from which the light enters the scene. By default the light
- * comes from the top, parallel to the yz plane.
+ * Represents a directional light source that illuminates from a specific direction.
+ *
+ * <p>A {@code DirectionalAmbientLight} extends {@link AmbientLight} to provide light
+ * from a specific direction, similar to sunlight. Unlike point lights, directional
+ * lights have parallel rays and do not attenuate with distance - the light direction
+ * is the same everywhere in the scene.</p>
+ *
+ * <h2>Direction Convention</h2>
+ * <p>The direction vector represents the direction <em>from which</em> the light
+ * enters the scene (i.e., pointing from the light source toward the scene).
+ * By default, light comes from above: {@code (0, -1, 0)}.</p>
+ *
+ * <h2>Use Cases</h2>
+ * <ul>
+ *   <li>Simulating sunlight (infinitely distant light source)</li>
+ *   <li>Creating consistent shadows across large scenes</li>
+ *   <li>Architectural visualization with predictable lighting</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create sunlight coming from upper-right
+ * Vector sunDirection = new Vector(1, -1, 0.5);
+ * DirectionalAmbientLight sun = new DirectionalAmbientLight(1.0, new RGB(1.0, 0.95, 0.8), sunDirection);
+ *
+ * // The light direction is used for shading calculations
+ * Producer<RGB> shadedColor = sun.lightingCalculation(intersection, surface, otherSurfaces, otherLights, context);
+ * }</pre>
+ *
+ * @see AmbientLight
+ * @see PointLight
+ * @see Light
+ * @author Michael Murray
  */
 public class DirectionalAmbientLight extends AmbientLight implements VectorFeatures {
   private Vector direction;

@@ -22,10 +22,41 @@ import org.almostrealism.geometry.Curve;
 import io.almostrealism.relation.Producer;
 
 /**
- * An {@link AmbientLight} represents a light that is applied to all objects in the scene.
- * The color and intensity of the light may by specified, but by default it is white light.
- * 
- * @author  Michael Murray
+ * Represents an ambient light that illuminates all surfaces uniformly regardless of position.
+ *
+ * <p>An {@code AmbientLight} provides constant, non-directional illumination to simulate
+ * the effect of indirect light bouncing around an environment. Unlike point lights or
+ * directional lights, ambient light has no specific direction and illuminates all surfaces
+ * equally, regardless of their position or orientation.</p>
+ *
+ * <h2>Purpose</h2>
+ * <p>Ambient light serves several purposes in rendering:</p>
+ * <ul>
+ *   <li>Prevents completely black shadows (global illumination approximation)</li>
+ *   <li>Provides base illumination level for scenes</li>
+ *   <li>Simulates scattered environmental light</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create a dim ambient light
+ * AmbientLight ambient = new AmbientLight(0.2, new RGB(0.8, 0.85, 1.0));
+ *
+ * // Use in lighting calculations
+ * Producer<RGB> surfaceColor = ambient.lightingCalculation(surface, pointProducer);
+ * }</pre>
+ *
+ * <h2>Typical Values</h2>
+ * <ul>
+ *   <li>Outdoor scenes: intensity 0.1-0.3, bluish tint (sky contribution)</li>
+ *   <li>Indoor scenes: intensity 0.2-0.4, warm tint (bounced light)</li>
+ *   <li>Stylized rendering: higher values for flat shading effects</li>
+ * </ul>
+ *
+ * @see Light
+ * @see PointLight
+ * @see DirectionalAmbientLight
+ * @author Michael Murray
  */
 public class AmbientLight implements Light, RGBFeatures {
 	private double intensity;

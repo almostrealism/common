@@ -3,17 +3,58 @@ package org.almostrealism.ml.qwen3;
 import java.nio.ByteBuffer;
 
 /**
- * Configuration for Qwen3 models.
+ * Configuration class for Qwen3 language models.
  *
- * Qwen3-4B-Instruct-2507 specifications:
- * - Layers: 36 transformer blocks
- * - Attention Heads: 32 query heads / 8 KV heads (GQA)
- * - Model Dimension: ~3584 (estimated from 4B params)
- * - FFN Hidden Dimension: ~11008 (estimated, typically 3x)
- * - Vocabulary Size: 151,669 tokens (byte-level BPE)
- * - Context Length: 128K (starting with 32K for initial implementation)
- * - Shared Embeddings: Yes (input/output embeddings shared in 4B model)
- * - RoPE Base Frequency: 1,000,000 (for extended context)
+ * <p>This class holds all architectural parameters needed to construct a Qwen3 model.
+ * Configuration can be loaded from a binary checkpoint header, constructed explicitly,
+ * or created using factory methods for standard model sizes.</p>
+ *
+ * <h2>Qwen3-4B-Instruct Architecture</h2>
+ * <table>
+ * <caption>Model Configuration Parameters</caption>
+ *   <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+ *   <tr><td>dim</td><td>3584</td><td>Transformer embedding dimension</td></tr>
+ *   <tr><td>hiddenDim</td><td>11008</td><td>FFN hidden layer dimension (~3x dim)</td></tr>
+ *   <tr><td>layerCount</td><td>36</td><td>Number of transformer blocks</td></tr>
+ *   <tr><td>headCount</td><td>32</td><td>Query attention heads</td></tr>
+ *   <tr><td>kvHeadCount</td><td>8</td><td>Key/value heads for GQA</td></tr>
+ *   <tr><td>vocabSize</td><td>151,669</td><td>Byte-level BPE vocabulary</td></tr>
+ *   <tr><td>seqLen</td><td>131,072</td><td>Maximum context length (128K)</td></tr>
+ *   <tr><td>ropeTheta</td><td>1,000,000</td><td>RoPE base frequency</td></tr>
+ * </table>
+ *
+ * <h2>Binary Format</h2>
+ * <p>When loading from a binary checkpoint, the header format is:</p>
+ * <pre>
+ * int32: dim
+ * int32: hiddenDim
+ * int32: layerCount
+ * int32: headCount
+ * int32: kvHeadCount
+ * int32: vocabSize (negative if sharedWeights=false)
+ * int32: seqLen
+ * double: ropeTheta (optional)
+ * </pre>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Factory method for standard 4B model
+ * Qwen3Config config = Qwen3Config.qwen3_4B();
+ *
+ * // Explicit construction
+ * Qwen3Config custom = new Qwen3Config(
+ *     3584, 11008, 36, 32, 8, 151669, 131072, true, 1000000.0
+ * );
+ *
+ * // Test configuration (smaller model)
+ * Qwen3Config test = Qwen3Config.qwen3_test();
+ *
+ * // Validate configuration
+ * config.validate();  // Throws if invalid
+ * }</pre>
+ *
+ * @see Qwen3
+ * @author Michael Murray
  */
 public class Qwen3Config {
 	/** Transformer embedding dimension */

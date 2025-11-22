@@ -18,5 +18,26 @@ package io.almostrealism.relation;
 
 import io.almostrealism.uml.Plural;
 
+/**
+ * A sequence of {@link Node}s representing a path through a graph or tree.
+ *
+ * <p>{@link Path} extends {@link Plural} to represent an ordered sequence of nodes.
+ * Paths are useful for representing traversal routes, dependencies, or
+ * sequences of operations in computation graphs.</p>
+ *
+ * <h2>Use Cases</h2>
+ * <ul>
+ *   <li>Representing traversal paths through computation graphs</li>
+ *   <li>Storing dependency chains between producers</li>
+ *   <li>Recording the route from root to leaf in a tree</li>
+ *   <li>Tracing execution paths for debugging</li>
+ * </ul>
+ *
+ * @see Node
+ * @see Tree
+ * @see Graph
+ *
+ * @author Michael Murray
+ */
 public interface Path extends Plural<Node> {
 }

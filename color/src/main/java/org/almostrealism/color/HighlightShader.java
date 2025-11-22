@@ -27,10 +27,54 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import io.almostrealism.relation.Producer;
 
 /**
- * A {@link HighlightShader} provides a shading method for highlights on surfaces.
- * The {@link HighlightShader} uses a phong shading algorithm.
- * 
- * @author  Michael Murray
+ * Provides specular highlight shading using the Phong reflection model.
+ *
+ * <p>The {@code HighlightShader} computes specular highlights that appear on shiny
+ * surfaces when the viewing angle approaches the angle of perfect reflection. This
+ * creates the characteristic "hot spots" seen on glossy materials like plastic,
+ * polished metal, or wet surfaces.</p>
+ *
+ * <h2>Phong Reflection Model</h2>
+ * <p>The highlight intensity is computed as:</p>
+ * <pre>
+ * intensity = (H dot N) ^ exponent
+ * </pre>
+ * <p>Where:</p>
+ * <ul>
+ *   <li><b>H</b>: The half-vector between light direction and view direction</li>
+ *   <li><b>N</b>: The surface normal</li>
+ *   <li><b>exponent</b>: Controls highlight sharpness (higher = sharper, smaller highlight)</li>
+ * </ul>
+ *
+ * <h2>Exponent Values</h2>
+ * <ul>
+ *   <li>1-10: Very broad, diffuse highlights (rough surfaces)</li>
+ *   <li>10-50: Medium highlights (semi-glossy plastics)</li>
+ *   <li>50-200: Sharp highlights (polished surfaces)</li>
+ *   <li>200+: Very sharp highlights (mirrors, chrome)</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Create a sharp white highlight for a glossy surface
+ * HighlightShader specular = new HighlightShader(white(), 64.0);
+ *
+ * // Create a colored highlight for metallic materials
+ * HighlightShader goldHighlight = new HighlightShader(rgb(1.0, 0.8, 0.3), 100.0);
+ *
+ * // Combine with diffuse for complete Phong shading
+ * ShaderSet<ShaderContext> phong = new ShaderSet<>();
+ * phong.add(new DiffuseShader());
+ * phong.add(specular);
+ * }</pre>
+ *
+ * <p>This shader also extends {@link ShaderSet}, allowing additional sub-shaders
+ * to modulate the highlight color.</p>
+ *
+ * @see DiffuseShader
+ * @see ShaderSet
+ * @see Shader
+ * @author Michael Murray
  */
 public class HighlightShader extends ShaderSet<ShaderContext> implements
 		Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {

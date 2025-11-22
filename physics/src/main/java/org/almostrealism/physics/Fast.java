@@ -16,6 +16,35 @@
 
 package org.almostrealism.physics;
 
+/**
+ * Interface for absorbers that support optimized photon absorption with delayed processing.
+ * <p>
+ * The {@code Fast} interface extends the absorption model by allowing absorbers to specify
+ * a delay between when a photon interaction is detected and when the actual absorption occurs.
+ * This optimization allows for more efficient simulation of photon propagation by batching
+ * absorption events or interpolating positions.
+ * </p>
+ *
+ * <h2>Optimization Strategy</h2>
+ * <p>
+ * Instead of immediately processing each photon absorption, implementations can:
+ * </p>
+ * <ol>
+ *   <li>Record the original position of the photon at detection time</li>
+ *   <li>Calculate the time until actual absorption occurs</li>
+ *   <li>Process the absorption at the correct future simulation time</li>
+ * </ol>
+ *
+ * <h2>Usage</h2>
+ * <p>
+ * This interface is typically implemented by {@link Absorber} implementations that need
+ * high-performance photon field simulations with accurate timing.
+ * </p>
+ *
+ * @author Michael Murray
+ * @see Absorber
+ * @see PhotonField
+ */
 // TODO  getDependencies appears to have been injected by a refactor...
 public interface Fast {
 	/**

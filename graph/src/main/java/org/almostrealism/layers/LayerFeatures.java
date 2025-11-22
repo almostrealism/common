@@ -52,6 +52,97 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * A comprehensive factory interface for creating neural network layers.
+ * LayerFeatures provides methods for constructing all common layer types used in
+ * deep learning, including dense layers, convolutions, normalizations, activations,
+ * and more.
+ *
+ * <p>This interface follows the mix-in pattern and is typically implemented by classes
+ * that need access to layer creation functionality. Most layer factory methods return
+ * a {@code Function<TraversalPolicy, Block>} or {@code Function<TraversalPolicy, CellularLayer>},
+ * allowing layers to be created with flexible input shapes.</p>
+ *
+ * <h2>Layer Categories</h2>
+ *
+ * <h3>Linear Layers</h3>
+ * <ul>
+ *   <li>{@link #dense(int, int)} - Fully connected (dense) layer</li>
+ *   <li>{@link #dense(PackedCollection, PackedCollection)} - Dense layer with pre-defined weights</li>
+ * </ul>
+ *
+ * <h3>Convolutional Layers</h3>
+ * <ul>
+ *   <li>{@link #convolution2d(int, int, int)} - 2D convolution layer</li>
+ *   <li>{@link #convolution1d(int, int, int, int, int, int, PackedCollection, PackedCollection)} - 1D convolution</li>
+ *   <li>{@link #pool2d(int)} - 2D max pooling layer</li>
+ * </ul>
+ *
+ * <h3>Normalization Layers</h3>
+ * <ul>
+ *   <li>{@link #norm(int)} - Group normalization</li>
+ *   <li>{@link #norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
+ *   <li>{@link #rmsnorm(PackedCollection)} - RMS normalization</li>
+ * </ul>
+ *
+ * <h3>Activation Functions</h3>
+ * <ul>
+ *   <li>{@link #relu(TraversalPolicy)} - ReLU activation</li>
+ *   <li>{@link #silu()} - SiLU (Swish) activation</li>
+ *   <li>{@link #gelu()} - GELU activation</li>
+ *   <li>{@link #softmax()} - Softmax activation</li>
+ *   <li>{@link #logSoftmax()} - Log-softmax activation</li>
+ * </ul>
+ *
+ * <h3>Shape Manipulation</h3>
+ * <ul>
+ *   <li>{@link #reshape(TraversalPolicy, TraversalPolicy)} - Reshape layer</li>
+ *   <li>{@link #flattened()} - Flatten layer</li>
+ *   <li>{@link #subset(TraversalPolicy, TraversalPolicy)} - Subset extraction</li>
+ *   <li>{@link #pad(TraversalPolicy, TraversalPolicy, int...)} - Padding layer</li>
+ * </ul>
+ *
+ * <h3>Composition Operations</h3>
+ * <ul>
+ *   <li>{@link #residual(Block)} - Residual connection</li>
+ *   <li>{@link #accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
+ *   <li>{@link #product(CellularPropagation)} - Element-wise multiplication</li>
+ *   <li>{@link #concat(int, Block)} - Concatenation along an axis</li>
+ *   <li>{@link #compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition)} - General composition</li>
+ * </ul>
+ *
+ * <h2>Usage Patterns</h2>
+ *
+ * <h3>Function-Based Layer Creation</h3>
+ * <p>Most methods return functions that take input shape and produce layers:</p>
+ * <pre>{@code
+ * Function<TraversalPolicy, CellularLayer> denseFactory = dense(256);
+ * CellularLayer layer = denseFactory.apply(inputShape);
+ * }</pre>
+ *
+ * <h3>Using with Model</h3>
+ * <p>Layers integrate seamlessly with the Model class:</p>
+ * <pre>{@code
+ * Model model = new Model(shape(784));
+ * model.add(dense(256));
+ * model.add(relu(model.getOutputShape()));
+ * model.add(dense(10));
+ * model.add(softmax());
+ * }</pre>
+ *
+ * <h3>Pre-trained Weights</h3>
+ * <p>Layers can be created with pre-defined weights:</p>
+ * <pre>{@code
+ * PackedCollection<?> weights = stateDict.get("layer.weight");
+ * PackedCollection<?> biases = stateDict.get("layer.bias");
+ * CellularLayer layer = dense(weights, biases).apply(inputShape);
+ * }</pre>
+ *
+ * @see CellularLayer
+ * @see Block
+ * @see org.almostrealism.model.Model
+ * @author Michael Murray
+ */
 public interface LayerFeatures extends MatrixFeatures, GeometryFeatures, ConsoleFeatures {
 
 	boolean allowNonComposites = false;

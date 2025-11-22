@@ -28,7 +28,76 @@ import org.almostrealism.layers.LayerFeatures;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * Provides Rotary Position Embedding (RoPE) implementations for transformer attention.
+ *
+ * <p>Rotary Position Embeddings encode positional information by rotating query and key
+ * vectors in the complex plane. This approach was introduced in RoFormer and is now
+ * widely used in models like Llama, Qwen, and Mistral for its advantages:</p>
+ *
+ * <ul>
+ *   <li><strong>Relative positions:</strong> RoPE naturally encodes relative positions through rotation angles</li>
+ *   <li><strong>No learned parameters:</strong> Position embeddings are computed from sinusoidal frequencies</li>
+ *   <li><strong>Extrapolation:</strong> Can handle sequences longer than seen during training (with appropriate theta)</li>
+ *   <li><strong>Efficiency:</strong> Applied only to Q/K, not to values or output projections</li>
+ * </ul>
+ *
+ * <h2>RoPE Mathematics</h2>
+ * <p>For a vector x at position p, RoPE applies rotation:</p>
+ * <pre>
+ * RoPE(x, p) = [x_0 * cos(p*theta_0) - x_1 * sin(p*theta_0),
+ *              x_0 * sin(p*theta_0) + x_1 * cos(p*theta_0),
+ *              x_2 * cos(p*theta_1) - x_3 * sin(p*theta_1),
+ *              ...]
+ * </pre>
+ *
+ * <p>Where theta_i = 1 / (base^(2i/d)) and base is typically 10000 (or 1000000 for extended context).</p>
+ *
+ * <h2>Key Methods</h2>
+ * <ul>
+ *   <li>{@link #ropeRotation} - Single-position rotation for autoregressive generation</li>
+ *   <li>{@link #applyRotaryPositionEmbedding} - Full-sequence rotation for batch processing</li>
+ *   <li>{@link #computeRotaryFreqs} - Precomputes frequency tensors from inverse frequencies</li>
+ * </ul>
+ *
+ * <h2>Usage Example (Autoregressive)</h2>
+ * <pre>{@code
+ * // Precompute frequency tensor
+ * PackedCollection<?> freqCis = computeRopeFreqs(seqLen, headSize, theta);
+ *
+ * // In attention layer
+ * keys.add(ropeRotation(shape(kvHeads, headSize/2, 2), freqCis, position));
+ * queries.add(ropeRotation(shape(heads, headSize/2, 2), freqCis, position));
+ * }</pre>
+ *
+ * <h2>Usage Example (Full Sequence)</h2>
+ * <pre>{@code
+ * // Precompute inverse frequencies
+ * PackedCollection<?> invFreq = computeInvFreq(dimHead, theta);
+ *
+ * // Apply to full sequence
+ * queries.add(applyRotaryPositionEmbedding(shape(batch, heads, seqLen, dimHead), invFreq));
+ * keys.add(applyRotaryPositionEmbedding(shape(batch, heads, seqLen, dimHead), invFreq));
+ * }</pre>
+ *
+ * @see AttentionFeatures
+ * @see org.almostrealism.algebra.PairFeatures
+ */
 public interface RotationFeatures extends PairFeatures, LayerFeatures {
+
+	/**
+	 * Creates a RoPE rotation layer for single-position autoregressive attention.
+	 *
+	 * <p>This method applies rotary embeddings at a specific position, suitable for
+	 * token-by-token generation where only one position is processed at a time.</p>
+	 *
+	 * @param shape Input shape (heads, headSize/2, 2) - last dimension is [real, imag]
+	 * @param weights Precomputed frequency tensor (seqLen, headSize/2, 2) containing [cos, sin]
+	 * @param position Producer that provides the current sequence position
+	 * @param requirements Compute requirements for hardware acceleration
+	 * @return CellularLayer that applies RoPE rotation
+	 * @throws IllegalArgumentException if shape is not 3D or doesn't end with dimension 2
+	 */
 	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights,
 									   Producer<PackedCollection<?>> position,
 									   ComputeRequirement... requirements) {
@@ -51,6 +120,16 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		}, List.of(weights), requirements);
 	}
 
+	/**
+	 * Computes rotary frequency tensor from inverse frequencies for full-sequence RoPE.
+	 *
+	 * <p>This precomputes position * inv_freq for all positions, producing a tensor
+	 * that can be used with {@link #applyRotaryPositionEmbedding} for batch processing.</p>
+	 *
+	 * @param seqLen Maximum sequence length to compute frequencies for
+	 * @param invFreq Inverse frequency tensor of shape (dimHead/4)
+	 * @return Frequency tensor of shape (seqLen, dimHead/2) ready for cos/sin computation
+	 */
 	default PackedCollection<?> computeRotaryFreqs(int seqLen, PackedCollection<?> invFreq) {
 		int freqDim = invFreq.getShape().getTotalSize(); // (dimHead / 4)
 		int rotaryDim = freqDim * 2; // (dimHead / 2)
@@ -69,14 +148,35 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		return freqs;
 	}
 
+	/**
+	 * Creates a function that applies rotary position embedding to any compatible input shape.
+	 *
+	 * @param invFreq Inverse frequency tensor for computing rotations
+	 * @return Function mapping input shape to a CellularLayer that applies RoPE
+	 */
 	default Function<TraversalPolicy, CellularLayer> applyRotaryPositionEmbedding(PackedCollection<?> invFreq) {
 		return inputShape -> applyRotaryPositionEmbedding(inputShape, invFreq);
 	}
 
 	/**
-	 * Applies rotary positional embedding to a sequence input.
+	 * Applies rotary positional embedding to a full sequence input.
 	 *
-	 * @param inputShape  (batchSize, heads, seqLen, dimHead)
+	 * <p>This method applies RoPE to all positions in a sequence simultaneously,
+	 * suitable for batch processing or full-sequence attention. The rotation is applied
+	 * only to the first {@code rotaryDim} dimensions; remaining dimensions pass through unchanged.</p>
+	 *
+	 * <p>Implementation:</p>
+	 * <ol>
+	 *   <li>Precomputes frequency tensor from invFreq for all positions</li>
+	 *   <li>Expands frequencies to match batch and head dimensions</li>
+	 *   <li>Applies rotation: x * cos(freqs) + rotate_half(x) * sin(freqs)</li>
+	 *   <li>Concatenates rotated and non-rotated portions</li>
+	 * </ol>
+	 *
+	 * @param inputShape Shape (batchSize, heads, seqLen, dimHead)
+	 * @param invFreq Inverse frequency tensor of shape (dimHead/4)
+	 * @return CellularLayer that applies RoPE to the input
+	 * @throws IllegalArgumentException if inputShape is not 4-dimensional
 	 */
 	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, PackedCollection<?> invFreq) {
 		if (inputShape.getDimensions() != 4) {
@@ -114,6 +214,20 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		}, List.of(freqs));
 	}
 
+	/**
+	 * Applies the rotary transform to an input tensor.
+	 *
+	 * <p>This implements the core RoPE formula:
+	 * output = input * cos(freqs) + rotate_half(input) * sin(freqs)</p>
+	 *
+	 * @param input Input tensor (batchSize, heads, seqLen, rotaryDim)
+	 * @param freqs Frequency tensor (seqLen, rotaryDim)
+	 * @param batchSize Batch dimension
+	 * @param heads Number of attention heads
+	 * @param seqLen Sequence length
+	 * @param rotaryDim Dimension to apply rotation (typically dimHead/2)
+	 * @return Rotated tensor with same shape as input
+	 */
 	default CollectionProducer<PackedCollection<?>> applyRotaryTransform(
 			CollectionProducer<PackedCollection<?>> input,
 			CollectionProducer<PackedCollection<?>> freqs,
@@ -146,7 +260,23 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 	}
 
 	/**
-	 * For input [..., d], it returns [..., -x2, x1] where x1 is first half, x2 is second half
+	 * Rotates the input tensor by swapping and negating halves.
+	 *
+	 * <p>For input [..., d], returns [..., -x2, x1] where:</p>
+	 * <ul>
+	 *   <li>x1 is the first half: input[..., 0:d/2]</li>
+	 *   <li>x2 is the second half: input[..., d/2:d]</li>
+	 * </ul>
+	 *
+	 * <p>This is the "rotate_half" operation from the original RoPE implementation,
+	 * used to compute the imaginary component of the complex rotation.</p>
+	 *
+	 * @param input Input tensor (batchSize, heads, seqLen, rotaryDim)
+	 * @param batchSize Batch dimension
+	 * @param heads Number of attention heads
+	 * @param seqLen Sequence length
+	 * @param rotaryDim Dimension being rotated (must be even)
+	 * @return Tensor with halves swapped and first half negated
 	 */
 	default CollectionProducer<PackedCollection<?>> rotateHalf(
 			CollectionProducer<PackedCollection<?>> input,
@@ -167,6 +297,12 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 		return concat(3, x2.minus(), x1);
 	}
 
+	/**
+	 * Returns a default instance of RotationFeatures.
+	 * Useful for static access to RoPE utilities without implementing the interface.
+	 *
+	 * @return A new RotationFeatures instance
+	 */
 	static RotationFeatures getInstance() {
 		return new RotationFeatures() { };
 	}

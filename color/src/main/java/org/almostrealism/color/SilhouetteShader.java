@@ -22,10 +22,39 @@ import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 
 /**
- * A {@link SilhouetteShader} can be used to shade a surface with one color value
- * for all pixels where the surface appears.
- * 
- * @author  Michael Murray
+ * Provides flat-color shading that ignores lighting, rendering surfaces as solid silhouettes.
+ *
+ * <p>A {@code SilhouetteShader} applies a single, uniform color to all pixels where
+ * a surface appears, regardless of lighting conditions, surface orientation, or
+ * any other factors. This is useful for:</p>
+ * <ul>
+ *   <li>Creating silhouette masks for compositing</li>
+ *   <li>Object ID rendering for selection</li>
+ *   <li>Flat/graphic design aesthetics</li>
+ *   <li>Debug visualization (e.g., seeing object extents)</li>
+ *   <li>Stencil/outline effects when combined with edge detection</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Black silhouette for shadow casting
+ * SilhouetteShader shadow = new SilhouetteShader(black());
+ *
+ * // Colored silhouette for object identification
+ * SilhouetteShader objectId = new SilhouetteShader(rgb(1.0, 0.0, 0.0));
+ *
+ * // Apply the shader
+ * Producer<RGB> flatColor = silhouette.shade(context, normalField);
+ * }</pre>
+ *
+ * <h2>Implementation Note</h2>
+ * <p>This shader completely ignores the light direction, surface normal, and
+ * all other context information. The same color is returned regardless of
+ * rendering parameters.</p>
+ *
+ * @see Shader
+ * @see DiffuseShader
+ * @author Michael Murray
  */
 public class SilhouetteShader implements Evaluable<RGB>, Editable, Shader<LightingContext>, RGBFeatures {
 	private Producer<RGB> color;

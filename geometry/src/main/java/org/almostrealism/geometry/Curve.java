@@ -22,11 +22,24 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Gradient;
 
 /**
- * Like a {@link Gradient}, which has a normal vector for points in space,
- * a {@link Curve} has an arbitrary type of value for every point in space.
+ * A parametric curve interface that maps 3D points in space to values of type {@code T}.
+ * Unlike a {@link Gradient}, which specifically provides normal vectors, a {@link Curve}
+ * can provide an arbitrary type of value for every point in space.
  *
+ * <p>This interface is useful for defining continuous fields over 3D space,
+ * such as color gradients, density fields, or any other spatially-varying property.</p>
+ *
+ * @param <T> the type of value returned at each point in space
  * @author  Michael Murray
+ * @see Gradient
+ * @see CurveAdapter
  */
 public interface Curve<T> extends Gradient<T>, Node {
+	/**
+	 * Returns the value of this curve at the specified point in 3D space.
+	 *
+	 * @param point the position in 3D space at which to evaluate the curve
+	 * @return a {@link Producer} that produces the value at the specified point
+	 */
 	Producer<T> getValueAt(Producer<Vector> point);
 }

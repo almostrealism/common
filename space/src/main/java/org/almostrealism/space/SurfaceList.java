@@ -21,7 +21,19 @@ import java.util.ArrayList;
 import org.almostrealism.algebra.Gradient;
 
 /**
- * @author  Michael Murray
+ * A generic list container for surface objects in 3D scenes.
+ *
+ * <p>{@link SurfaceList} extends {@link ArrayList} to provide a typed collection
+ * for storing objects that implement the {@link Gradient} interface. This serves
+ * as the base class for scene and surface group containers.
+ *
+ * <p>The class implements {@link Cloneable} to support scene duplication operations.
+ *
+ * @param <T> the type of gradient/surface objects stored in this list
+ * @author Michael Murray
+ * @see Scene
+ * @see SurfaceGroup
+ * @see Gradient
  */
 public class SurfaceList<T extends Gradient> extends ArrayList<T> implements Cloneable {
 

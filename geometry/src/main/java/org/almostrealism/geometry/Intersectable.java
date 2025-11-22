@@ -24,21 +24,49 @@ import io.almostrealism.uml.Function;
 import java.util.function.Supplier;
 
 /**
+ * An interface for objects that can be tested for ray intersections.
+ * Implementations provide methods to compute intersection points between
+ * a ray and the surface geometry.
+ *
+ * <p>The interface is parameterized by type {@code T}, which represents
+ * the type of value used to determine if an intersection occurred
+ * (typically {@link org.almostrealism.algebra.Scalar} for distance values).</p>
+ *
+ * <p>Usage example:</p>
+ * <pre>{@code
+ * Intersectable<Scalar> surface = getSurface();
+ * ContinuousField intersections = surface.intersectAt(ray);
+ * Producer<Ray> hitNormal = intersections.get(0);
+ * }</pre>
+ *
+ * @param <T> the type of value used for intersection testing
  * @author  Michael Murray
+ * @see ContinuousField
+ * @see Ray
  */
 @Function
 public interface Intersectable<T> extends Supplier<Operator<T>> {
 	/**
-	 * Returns a {@link ContinuousField} that represents the values for t that solve
-	 * the vector equation p = o + t * d where p is a point of intersection of
-	 * the specified ray and the surface.
+	 * Computes the intersection points between the specified ray and this surface.
+	 *
+	 * <p>Returns a {@link ContinuousField} that represents the values for t that solve
+	 * the vector equation {@code p = o + t * d} where p is a point of intersection of
+	 * the specified ray and the surface.</p>
+	 *
+	 * @param ray the ray to test for intersection, containing origin and direction
+	 * @return a {@link ContinuousField} containing intersection data (position and normal),
+	 *         or an empty field if no intersection occurs
 	 */
 	ContinuousField intersectAt(Producer<Ray> ray);
 
 	/**
-	 * If the evaluation of the {@link Operator} returned by {@link #get()}
-	 * is equal to the evaluation of this {@link Operator}, the {@link Vector}
-	 * is an intersection point for this {@link Intersectable}.
+	 * Returns an {@link Operator} representing the expected value for a valid intersection.
+	 *
+	 * <p>If the evaluation of the {@link Operator} returned by {@link #get()}
+	 * is equal to the evaluation of this {@link Operator}, the tested point
+	 * is an intersection point for this {@link Intersectable}.</p>
+	 *
+	 * @return an operator representing the expected intersection value
 	 */
 	Operator<T> expect();
 }

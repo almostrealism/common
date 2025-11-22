@@ -19,24 +19,49 @@ package org.almostrealism.util;
 import io.almostrealism.relation.Editable;
 
 /**
- * EditableFactory is the parent class for classes that can be used to construct
- * Editable objects of some type.
+ * Abstract factory for constructing {@link Editable} objects of various types.
+ *
+ * <p>Subclasses implement this factory to provide a registry of editable object types
+ * that can be created by index. The type names array provides human-readable names
+ * for each type index.</p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * public class ShapeFactory extends EditableFactory {
+ *     public String[] getTypeNames() {
+ *         return new String[] { "Circle", "Rectangle", "Triangle" };
+ *     }
+ *
+ *     public Editable constructObject(int index) {
+ *         switch (index) {
+ *             case 0: return new Circle();
+ *             case 1: return new Rectangle();
+ *             case 2: return new Triangle();
+ *             default: return null;
+ *         }
+ *     }
+ * }
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @deprecated Use more flexible factory patterns or dependency injection instead.
  */
 @Deprecated
 public abstract class EditableFactory {
+
 	/**
-	  Returns an array of String objects containing names for each type of Editable object
-	  this EditableFactory implementation can construct. The names must be in the array
-	  in the same order as the object indices they represent. This method must be implemented
-	  by classes that extend EditableFactory.
-	*/
-	
+	 * Returns the names of all editable object types this factory can construct.
+	 * The names correspond to indices passed to {@link #constructObject(int)}.
+	 *
+	 * @return an array of type names in index order
+	 */
 	public abstract String[] getTypeNames();
-	
+
 	/**
-	  Constructs an Editable object of the type specified by the integer index.
-	  This method must be implemented by classes that extend EditableFactory.
-	*/
-	
+	 * Constructs an editable object of the type specified by the index.
+	 *
+	 * @param index the type index (must be valid for {@link #getTypeNames()})
+	 * @return a new Editable instance of the specified type
+	 */
 	public abstract Editable constructObject(int index);
 }

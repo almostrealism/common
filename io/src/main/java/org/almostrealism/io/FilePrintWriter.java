@@ -21,29 +21,79 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 
 
+/**
+ * A {@link PrintWriter} implementation that writes to a file.
+ *
+ * <p>FilePrintWriter supports indentation using 4-space increments and
+ * automatically flushes output to the file. The file is opened for writing
+ * when the writer is constructed.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * try (FilePrintWriter writer = new FilePrintWriter(new File("output.txt"))) {
+ *     writer.println("Line 1");
+ *     writer.moreIndent();
+ *     writer.println("Indented line");
+ *     writer.lessIndent();
+ *     writer.println("Back to no indent");
+ * }
+ * }</pre>
+ *
+ * @see PrintWriter
+ * @see PrintStreamPrintWriter
+ */
 public class FilePrintWriter implements PrintWriter {
 	private StringBuffer indent;
 	private java.io.PrintWriter out;
-	
-	public FilePrintWriter(File f) throws FileNotFoundException { 
+
+	/**
+	 * Creates a new FilePrintWriter that writes to the specified file.
+	 * If the file exists, it will be overwritten.
+	 *
+	 * @param f the file to write to
+	 * @throws FileNotFoundException if the file cannot be created or opened
+	 */
+	public FilePrintWriter(File f) throws FileNotFoundException {
 		this.out = new java.io.PrintWriter(new FileOutputStream(f), true);
 	}
 
+	/**
+	 * Closes the underlying file writer.
+	 */
 	@Override
 	public void close() { this.out.close(); }
 
+	/**
+	 * Increases the indentation level by 4 spaces.
+	 */
 	@Override
 	public void moreIndent() { this.indent.append("    "); }
 
+	/**
+	 * Decreases the indentation level by 4 spaces.
+	 */
 	@Override
 	public void lessIndent() { this.indent.delete(this.indent.length() - 4, this.indent.length()); }
 
+	/**
+	 * Prints a string with the current indentation prefix.
+	 *
+	 * @param s the string to print
+	 */
 	@Override
 	public void print(String s) { this.out.print(this.indent.toString() + s); }
 
+	/**
+	 * Prints a string with indentation, followed by a newline.
+	 *
+	 * @param s the string to print
+	 */
 	@Override
 	public void println(String s) { this.out.println(this.indent.toString() + s); }
 
+	/**
+	 * Prints a newline character.
+	 */
 	@Override
 	public void println() { this.out.println(); }
 }

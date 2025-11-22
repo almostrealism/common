@@ -25,6 +25,46 @@ import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.TransformMatrix;
 import io.almostrealism.relation.Producer;
 
+/**
+ * {@link SpacePartition} implements a Binary Space Partitioning (BSP) tree for accelerating
+ * ray-surface intersection tests on collections of {@link ShadableSurface} objects.
+ *
+ * <p>BSP trees recursively subdivide 3D space along axis-aligned planes (XY, XZ, YZ),
+ * organizing surfaces into a hierarchical structure. During ray intersection tests,
+ * the tree is traversed to quickly eliminate large groups of surfaces that cannot
+ * possibly intersect with the ray, significantly improving performance for complex scenes.
+ *
+ * <p>The partitioning algorithm classifies each triangle based on which side of the
+ * splitting plane its vertices fall:
+ * <ul>
+ *   <li><b>LEFT</b>: All vertices are on the negative side of the plane</li>
+ *   <li><b>RIGHT</b>: All vertices are on the positive side of the plane</li>
+ *   <li><b>SPANNING</b>: Vertices span both sides of the plane (stored at current node)</li>
+ * </ul>
+ *
+ * <h3>Usage Example:</h3>
+ * <pre>{@code
+ * SpacePartition<Triangle> partition = new SpacePartition<>();
+ * partition.addSurface(triangle1);
+ * partition.addSurface(triangle2);
+ * // ... add more triangles
+ *
+ * // Build the BSP tree (required before intersection queries)
+ * partition.loadTree();
+ *
+ * // Query intersections
+ * ContinuousField intersection = partition.intersectAt(rayProducer);
+ * }</pre>
+ *
+ * <p>This class extends {@link SurfaceGroup} and inherits its surface management capabilities.
+ * The tree must be explicitly built by calling {@link #loadTree()} before intersection
+ * queries will use the BSP acceleration.
+ *
+ * @param <T> the type of surface stored in this partition, must extend {@link ShadableSurface}
+ * @author Michael Murray
+ * @see SurfaceGroup
+ * @see Mesh
+ */
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public static int l, r, s;
 	
@@ -305,16 +345,43 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	}
 	
 	private Node root;
-	
+
+	/**
+	 * Builds the BSP tree using all surfaces currently in this partition.
+	 * This must be called before intersection queries will use BSP acceleration.
+	 */
 	public void loadTree() { this.loadTree(this.getSurfaces().length); }
-	
+
+	/**
+	 * Builds the BSP tree using the specified number of surfaces.
+	 * The tree starts with a YZ splitting plane at the root and alternates
+	 * through XZ and XY planes as depth increases.
+	 *
+	 * @param s the number of surfaces to include in the tree
+	 */
 	public void loadTree(int s) {
 		this.root = new Node(Plane.YZ);
 		for (int i = 0; i < s; i++) this.root.add(i);
 	}
-	
+
+	/**
+	 * Returns whether the BSP tree has been built.
+	 *
+	 * @return {@code true} if the tree has been loaded, {@code false} otherwise
+	 */
 	public boolean isTreeLoaded() { return (this.root != null); }
 
+	/**
+	 * Returns a {@link ContinuousField} representing the ray-surface intersection
+	 * for this partition.
+	 *
+	 * <p>If the BSP tree has been loaded, this method uses the tree structure to
+	 * accelerate intersection tests. Otherwise, it falls back to the standard
+	 * linear search from {@link SurfaceGroup}.
+	 *
+	 * @param ray the ray producer to test for intersection
+	 * @return a continuous field representing the intersection, or {@code null} if no intersection
+	 */
 	@Override
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);

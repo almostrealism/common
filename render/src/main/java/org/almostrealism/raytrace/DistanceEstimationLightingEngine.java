@@ -34,7 +34,54 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.Callable;
 
+/**
+ * {@link DistanceEstimationLightingEngine} is a specialized {@link LightingEngine} that uses
+ * ray marching with signed distance functions (SDFs) to find ray-surface intersections.
+ *
+ * <p>Unlike {@link IntersectionalLightingEngine} which uses explicit geometric intersection
+ * calculations, this engine uses sphere tracing (ray marching) with a {@link DistanceEstimator}
+ * to find surface intersections. This approach is powerful for rendering:</p>
+ * <ul>
+ *   <li>Implicit surfaces defined mathematically (SDFs)</li>
+ *   <li>Fractal geometry (Mandelbulb, Julia sets, etc.)</li>
+ *   <li>Complex CSG combinations</li>
+ *   <li>Procedural geometry</li>
+ * </ul>
+ *
+ * <h2>Ray Marching Algorithm</h2>
+ * <p>The algorithm works by iteratively stepping along the ray:</p>
+ * <pre>
+ * for each step (up to MAX_RAY_STEPS):
+ *     distance = estimator.estimateDistance(currentPoint)
+ *     if (distance < threshold):
+ *         // Hit found at currentPoint
+ *         break
+ *     currentPoint += ray.direction * distance
+ * </pre>
+ *
+ * <p>The distance estimator returns the minimum distance to any surface from the current point.
+ * This guarantees we can safely step that distance without passing through any surface.</p>
+ *
+ * <h2>Current Status</h2>
+ * <p><b>Note:</b> This implementation is currently incomplete (see TODO in constructor).
+ * The class structure and inner {@link Locus} class are in place, but the ray marching
+ * integration with the lighting system needs work.</p>
+ *
+ * <h2>Inner Class: Locus</h2>
+ * <p>The {@link Locus} inner class represents a point found by ray marching. It implements
+ * {@link ContinuousField} to provide intersection data (position, normal) and {@link Shadable}
+ * to support shader evaluation at the marched point.</p>
+ *
+ * @see RayMarchingEngine
+ * @see LightingEngine
+ * @see DistanceEstimator
+ * @author Michael Murray
+ */
 public class DistanceEstimationLightingEngine extends LightingEngine {
+	/**
+	 * Maximum number of ray marching steps before giving up.
+	 * Higher values find more distant/detailed intersections but are slower.
+	 */
 	public static final int MAX_RAY_STEPS = 30;
 
 	private DistanceEstimator estimator;
@@ -87,11 +134,30 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 		this.shaders = shaders;
 	}
 
+	/**
+	 * {@link Locus} represents an intersection point found by ray marching.
+	 *
+	 * <p>It wraps the intersection location and surface normal, providing them through
+	 * the {@link ContinuousField} interface. It also implements {@link Shadable} to
+	 * support shader evaluation at the intersection point.</p>
+	 *
+	 * <p>The locus contains a single ray representing the intersection point (origin)
+	 * and surface normal (direction). This is stored in an ArrayList for compatibility
+	 * with the ContinuousField interface.</p>
+	 */
 	public static class Locus extends ArrayList<Producer<Ray>>
 			implements ContinuousField, Callable<Producer<RGB>>, Shadable, CodeFeatures {
 		private ShaderSet shaders;
 		private ShaderContext params;
 
+		/**
+		 * Creates a new Locus at the specified location with the given surface normal.
+		 *
+		 * @param location The 3D intersection point
+		 * @param normal   The surface normal at the intersection
+		 * @param s        The shader set to use for shading
+		 * @param p        The shader context for lighting parameters
+		 */
 		public Locus(Vector location, Vector normal, ShaderSet s, ShaderContext p) {
 			this.add(p(new Ray(location, normal)));
 			shaders = s;

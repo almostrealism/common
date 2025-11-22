@@ -42,10 +42,28 @@ package io.almostrealism.relation;
  * @see io.almostrealism.compute.ParallelProcess
  */
 public interface Countable {
+	/**
+	 * Returns the number of element groups as an integer.
+	 *
+	 * <p>This is a convenience method that delegates to {@link #getCountLong()}
+	 * and converts the result to an {@code int}. Use {@link #getCountLong()}
+	 * directly when dealing with very large counts that might overflow.</p>
+	 *
+	 * @return the count as an integer
+	 * @throws ArithmeticException if the count overflows an {@code int}
+	 */
 	default int getCount() {
 		return Math.toIntExact(getCountLong());
 	}
 
+	/**
+	 * Returns the number of element groups that can be operated on independently.
+	 *
+	 * <p>This value determines the parallelism potential of the computation.
+	 * For GPU execution, this typically maps to the kernel grid size.</p>
+	 *
+	 * @return the number of independent element groups
+	 */
 	long getCountLong();
 
 	/**
@@ -54,16 +72,36 @@ public interface Countable {
 	 *
 	 * <p>The default implementation returns {@code true}.</p>
 	 *
-	 * @return {@code true} if count is fixed, {@code false} if variable.
+	 * @return {@code true} if count is fixed, {@code false} if variable
 	 */
 	default boolean isFixedCount() {
 		return true;
 	}
 
+	/**
+	 * Static utility to get the count of any object.
+	 *
+	 * <p>If the object implements {@link Countable}, returns its count.
+	 * Otherwise, returns 1 (treating the object as a single element).</p>
+	 *
+	 * @param <T> the type of the object
+	 * @param c the object to get the count of
+	 * @return the count as an integer
+	 */
 	static <T> int count(T c) {
 		return Math.toIntExact(countLong(c));
 	}
 
+	/**
+	 * Static utility to get the count of any object as a long.
+	 *
+	 * <p>If the object implements {@link Countable}, returns its count.
+	 * Otherwise, returns 1 (treating the object as a single element).</p>
+	 *
+	 * @param <T> the type of the object
+	 * @param c the object to get the count of
+	 * @return the count as a long
+	 */
 	static <T> long countLong(T c) {
 		if (c instanceof Countable) {
 			return ((Countable) c).getCountLong();
@@ -72,6 +110,17 @@ public interface Countable {
 		return 1;
 	}
 
+	/**
+	 * Static utility to determine if an object has a fixed count.
+	 *
+	 * <p>If the object implements {@link Countable}, delegates to its
+	 * {@link #isFixedCount()} method. Otherwise, returns {@code true}
+	 * (non-countable objects are considered to have a fixed count of 1).</p>
+	 *
+	 * @param <T> the type of the object
+	 * @param c the object to check
+	 * @return {@code true} if the object has a fixed count
+	 */
 	static <T> boolean isFixedCount(T c) {
 		if (c instanceof Countable) {
 			return ((Countable) c).isFixedCount();

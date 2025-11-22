@@ -22,7 +22,38 @@ import java.awt.image.BufferedImage;
 import java.net.URL;
 
 /**
- * Retrieves Google maps imagery for a given latitude/longitude extent.
+ * Client for retrieving satellite and map imagery from Google Maps Static API.
+ *
+ * <p>This class fetches map images for a specified geographic extent (latitude/longitude
+ * bounding box) at the optimal zoom level, then extracts the requested region from
+ * the downloaded tile.</p>
+ *
+ * <h2>Coordinate System</h2>
+ * <p>Geographic coordinates use the format {@code Vector(latitude, longitude, 0)}
+ * where latitude is the X component and longitude is the Y component.</p>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * GoogleImagery imagery = new GoogleImagery("YOUR_API_KEY");
+ *
+ * // Define bounding box (SW and NE corners)
+ * Vector sw = new Vector(37.7749, -122.4194, 0);  // San Francisco
+ * Vector ne = new Vector(37.7849, -122.4094, 0);
+ *
+ * // Fetch satellite imagery
+ * BufferedImage image = imagery.getImagery(sw, ne, MapType.SATELLITE);
+ *
+ * // Save or process the image
+ * ImageIO.write(image, "png", new File("sf_satellite.png"));
+ * }</pre>
+ *
+ * <h2>API Limits</h2>
+ * <p>Uses Google Maps Static API free tier limits:</p>
+ * <ul>
+ *   <li>Maximum tile size: 640x640 pixels</li>
+ *   <li>Maximum scale: 2x (1280x1280 actual pixels)</li>
+ *   <li>22 zoom levels available</li>
+ * </ul>
  *
  * @author Dan Chivers
  */
@@ -43,10 +74,28 @@ public class GoogleImagery {
 
 	private static final boolean ADD_MARKERS = false;
 
+	/**
+	 * Creates a new GoogleImagery client with the specified API key.
+	 *
+	 * @param apiKey the Google Maps API key
+	 */
 	public GoogleImagery(String apiKey) {
 		GoogleImagery.apiKey = apiKey;
 	}
 
+	/**
+	 * Retrieves map imagery for the specified geographic extent.
+	 *
+	 * <p>The method automatically determines the optimal zoom level to fit
+	 * the requested extent, downloads the map tile, and extracts the
+	 * region matching the bounding box.</p>
+	 *
+	 * @param swLatLng the southwest corner as Vector(latitude, longitude, 0)
+	 * @param neLatLng the northeast corner as Vector(latitude, longitude, 0)
+	 * @param mapType  the type of map imagery to retrieve
+	 * @return a BufferedImage containing the extracted imagery
+	 * @throws Exception if the API request fails or image cannot be read
+	 */
 	public BufferedImage getImagery(Vector swLatLng, Vector neLatLng, MapType mapType) throws Exception {
 		Vector center = getCenter(swLatLng, neLatLng);
 		int zoom = determineZoomLevel(center, swLatLng);
@@ -149,10 +198,17 @@ public class GoogleImagery {
 		return request + sb.toString();
 	}
 
+	/**
+	 * Types of map imagery available from the Google Maps Static API.
+	 */
 	public enum MapType {
+		/** Standard road map showing streets and labels */
 		ROADMAP     ("roadmap"),
+		/** Satellite imagery */
 		SATELLITE   ("satellite"),
+		/** Satellite imagery with road overlay */
 		HYBRID      ("hybrid"),
+		/** Physical terrain map showing elevation */
 		TERRAIN     ("terrain");
 
 		String value;

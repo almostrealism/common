@@ -37,10 +37,56 @@ import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
 
 /**
- * The {@link GraphicsConverter} provides static methods that allow conversion between colors
- * and images stored as {@link RGB} instances and arrays with those stored as AWT {@link Color}s.
- * 
- * @author  Michael Murray
+ * Provides utilities for converting between Almost Realism color types and AWT graphics types.
+ *
+ * <p>The {@code GraphicsConverter} is the bridge between the Almost Realism color system
+ * ({@link RGB}, {@link PackedCollection}) and Java's AWT graphics system ({@link Color},
+ * {@link Image}, {@link BufferedImage}). It supports:</p>
+ *
+ * <h2>Core Capabilities</h2>
+ * <ul>
+ *   <li><b>Color Conversion</b>: Convert between {@link RGB} and AWT {@link Color}</li>
+ *   <li><b>Image Loading</b>: Load image files into {@link PackedCollection} format</li>
+ *   <li><b>Image Saving</b>: Convert packed collections to AWT images for output</li>
+ *   <li><b>Pixel Manipulation</b>: Extract and process raw pixel data</li>
+ * </ul>
+ *
+ * <h2>Memory Layouts</h2>
+ * <p>Images can be loaded in two layouts:</p>
+ * <ul>
+ *   <li><b>RGB (channels-last)</b>: Shape [height, width, 3] - standard image format</li>
+ *   <li><b>Channels-first</b>: Shape [3, height, width] - neural network input format</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Load an image file
+ * PackedCollection<RGB> image = GraphicsConverter.loadRgb(new File("input.png"));
+ *
+ * // Load as channels-first for neural networks
+ * PackedCollection<?> channels = GraphicsConverter.loadRgb(new File("input.png"), true);
+ *
+ * // Convert RGB to AWT Color
+ * RGB myColor = new RGB(1.0, 0.5, 0.0);
+ * Color awtColor = GraphicsConverter.convertToAWTColor(myColor);
+ *
+ * // Convert back
+ * RGB backToRgb = GraphicsConverter.convertToRGB(awtColor);
+ *
+ * // Save packed collection as image
+ * BufferedImage output = GraphicsConverter.convertToAWTImage(packedData, false);
+ * ImageIO.write(output, "png", new File("output.png"));
+ * }</pre>
+ *
+ * <h2>Color Range</h2>
+ * <p>Almost Realism uses double values in range [0.0, 1.0] while AWT uses integers
+ * in range [0, 255]. Conversion handles this automatically. Values exceeding 1.0
+ * are clamped during conversion to AWT types.</p>
+ *
+ * @see RGB
+ * @see PackedCollection
+ * @see RGBFeatures
+ * @author Michael Murray
  */
 public class GraphicsConverter {
 	public static final int image32Bit = 2;

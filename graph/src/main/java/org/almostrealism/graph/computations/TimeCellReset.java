@@ -34,31 +34,99 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * Computation that resets a {@link org.almostrealism.graph.TimeCell} frame counter
+ * at scheduled reset points.
+ *
+ * <p>{@code TimeCellReset} extends {@link OperationComputationAdapter} to implement
+ * conditional frame counter reset logic. It checks if the current total frame count
+ * matches any of the scheduled reset values and, if so, resets the looping frame
+ * counter to zero.</p>
+ *
+ * <p>This is used by {@link org.almostrealism.graph.TimeCell} to support scheduled
+ * restarts of temporal sequences at specific points during playback.</p>
+ *
+ * <p>The computation generates conditional code that checks each reset slot:</p>
+ * <pre>
+ * if (reset[0] > 0 && time[1] == reset[0]) {
+ *     time[0] = 0.0;
+ * } else if (reset[1] > 0 && time[1] == reset[1]) {
+ *     time[0] = 0.0;
+ * }
+ * // ... for each reset slot
+ * </pre>
+ *
+ * @author Michael Murray
+ * @see org.almostrealism.graph.TimeCell
+ * @see OperationComputationAdapter
+ */
 public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
+	/** The hybrid scope containing the generated conditional reset code. */
 	protected HybridScope scope;
+
+	/** The number of reset slots to check. */
 	private int len;
 
+	/**
+	 * Creates a new TimeCellReset computation.
+	 *
+	 * @param time   producer for the time pair (looping counter, total counter)
+	 * @param resets the collection of scheduled reset frame numbers (-1 = disabled)
+	 */
 	public TimeCellReset(Producer<Pair<?>> time, PackedCollection<?> resets) {
 		super((Producer) time, () -> new Provider<>(resets));
 		len = resets.getMemLength();
 	}
 
+	/**
+	 * Creates a new TimeCellReset from producer arguments.
+	 *
+	 * @param len       the number of reset slots
+	 * @param arguments the producer arguments (time, resets)
+	 */
 	private TimeCellReset(int len, Producer<PackedCollection<?>>... arguments) {
 		super(arguments);
 		this.len = len;
 	}
 
+	/**
+	 * Returns the time pair variable (index 0: looping, index 1: total).
+	 *
+	 * @return the time array variable
+	 */
 	public ArrayVariable getTime() { return getArgument(0); }
+
+	/**
+	 * Returns the reset schedule variable containing frame numbers to reset at.
+	 *
+	 * @return the resets array variable
+	 */
 	public ArrayVariable getResets() { return getArgument(1); }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates a new TimeCellReset instance from the child processes.</p>
+	 */
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
 		return new TimeCellReset(len, children.toArray(Producer[]::new));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the hybrid scope containing the conditional reset logic.</p>
+	 */
 	@Override
 	public Scope getScope(KernelStructureContext context) { return scope; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Prepares the scope by generating conditional code that checks each
+	 * reset slot and resets the frame counter if a match is found.</p>
+	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);

@@ -27,21 +27,75 @@ import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 
+/**
+ * {@link MeshData} is a hardware-accelerated data structure that stores triangle mesh data
+ * in a format optimized for ray-mesh intersection computations.
+ *
+ * <p>This class extends {@link PackedCollection} to store triangle data in a contiguous
+ * memory layout suitable for GPU/hardware acceleration. Each triangle is represented as
+ * a 4x3 matrix containing:
+ * <ul>
+ *   <li>Three rows for the three vertex positions</li>
+ *   <li>One row for the precomputed face normal</li>
+ * </ul>
+ *
+ * <p>The class provides efficient batch ray intersection evaluation methods that can
+ * operate on multiple rays simultaneously, leveraging hardware parallelism when available.
+ * For memory-constrained environments, a partial kernel mode allows processing one ray
+ * at a time.
+ *
+ * <h3>Usage Example:</h3>
+ * <pre>{@code
+ * MeshData meshData = new MeshData(triangleCount);
+ * // Populate with triangle data from a Mesh
+ * Triangle.dataProducer.into(meshData).evaluate(mesh.getMeshPointData());
+ *
+ * // Evaluate intersection for a single ray
+ * Pair result = meshData.evaluateIntersection(rayEvaluable, args);
+ * // result.getA() = intersection distance
+ * // result.getB() = triangle index
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see Mesh
+ * @see Triangle
+ * @see CachedMeshIntersectionKernel
+ */
 public class MeshData extends PackedCollection<PackedCollection<?>> {
 	/**
-	 * If there is not enough RAM to run the entire kernel at once,
-	 * it can be run one {@link Ray} at a time by enabling this flag.
+	 * Flag to enable partial kernel mode for memory-constrained environments.
+	 * When enabled, rays are processed one at a time instead of in a single batch.
+	 * If there is not enough RAM to run the entire kernel at once, this flag
+	 * allows processing one {@link Ray} at a time.
 	 */
 	public static boolean enablePartialKernel = true;
 
 	private PackedCollection<Scalar> distances;
 
+	/**
+	 * Constructs a new {@link MeshData} instance with capacity for the specified
+	 * number of triangles.
+	 *
+	 * @param triangles the number of triangles this mesh data will hold
+	 */
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 		distances = Scalar.scalarBank(getCount());
 	}
 
+	/**
+	 * Evaluates the intersection of a single ray with all triangles in this mesh,
+	 * returning the closest intersection point.
+	 *
+	 * <p>This method is thread-safe (synchronized) and suitable for single-ray queries.
+	 * For batch ray processing, use {@link #evaluateIntersectionKernel} instead.
+	 *
+	 * @param ray  the ray evaluable to test for intersection
+	 * @param args additional arguments passed to the ray evaluable
+	 * @return a {@link Pair} where {@code getA()} is the intersection distance
+	 *         (or negative if no intersection) and {@code getB()} is the triangle index
+	 */
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
 		PackedCollection<Ray> in = Ray.bank(1);
 		PackedCollection<Pair<?>> out = Pair.bank(1);
@@ -55,6 +109,14 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		return out.get(0);
 	}
 
+	/**
+	 * Evaluates ray-mesh intersections for multiple rays, storing only the scalar
+	 * distance values in the destination collection.
+	 *
+	 * @param ray         the ray evaluable to test for intersection
+	 * @param destination collection to receive scalar intersection distances
+	 * @param args        additional arguments passed to the ray evaluable
+	 */
 	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<PackedCollection<?>> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
@@ -63,6 +125,20 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		}
 	}
 
+	/**
+	 * Evaluates ray-mesh intersections for multiple rays in batch, storing both
+	 * distance and triangle index information.
+	 *
+	 * <p>This method supports two modes based on the {@link #enablePartialKernel} flag:
+	 * <ul>
+	 *   <li>When enabled (default): Rays are processed one at a time, using less memory</li>
+	 *   <li>When disabled: All rays are processed in a single kernel call for maximum performance</li>
+	 * </ul>
+	 *
+	 * @param ray         the ray evaluable to test for intersection
+	 * @param destination collection to receive intersection results (distance, triangle index pairs)
+	 * @param args        additional arguments passed to the ray evaluable
+	 */
 	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());

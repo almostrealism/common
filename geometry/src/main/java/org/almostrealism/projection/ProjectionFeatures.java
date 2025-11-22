@@ -26,13 +26,54 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 
+/**
+ * A feature interface providing hardware-accelerated camera projection utilities.
+ * This interface is used internally by camera implementations to generate rays
+ * in a way that can be efficiently executed on GPU hardware.
+ *
+ * <p>The methods handle the transformation from screen-space coordinates to
+ * 3D ray directions using the camera's orthonormal basis vectors (u, v, w).</p>
+ *
+ * @author Michael Murray
+ * @see PinholeCamera
+ * @see RayFeatures
+ */
 public interface ProjectionFeatures extends PairFeatures, RayFeatures {
+	/**
+	 * Generates a camera ray for the given screen position using hardware acceleration.
+	 *
+	 * @param pos the screen position (pixel coordinates)
+	 * @param sd the screen dimensions (width, height)
+	 * @param location the camera location in world space
+	 * @param projectionDimensions the projection plane dimensions
+	 * @param blur the blur amount for depth of field effects
+	 * @param focalLength the camera focal length
+	 * @param u the camera's right direction vector
+	 * @param v the camera's up direction vector
+	 * @param w the camera's negative view direction vector
+	 * @return a producer for the camera ray
+	 */
 	default CollectionProducer<Ray> rayAt(Producer<Pair<?>> pos, Producer<Pair<?>> sd, Vector location, Pair projectionDimensions,
 										  double blur, double focalLength, Vector u, Vector v, Vector w) {
 		return ray(v(location),
 				direction(pos, sd, projectionDimensions, focalLength, u, v, w, new Pair(blur, blur)));
 	}
 
+	/**
+	 * Computes the ray direction for the given screen position.
+	 * The direction is computed in camera space using the orthonormal basis (u, v, w)
+	 * and optionally perturbed for depth of field blur effects.
+	 *
+	 * @param pos the screen position (pixel coordinates)
+	 * @param sd the screen dimensions (width, height)
+	 * @param projectionDimensions the projection plane dimensions
+	 * @param focalLength the camera focal length
+	 * @param u the camera's right direction vector
+	 * @param v the camera's up direction vector
+	 * @param w the camera's negative view direction vector
+	 * @param blur the blur amount (x, y) for depth of field
+	 * @return a producer for the normalized ray direction
+	 */
 	default CollectionProducer<Vector> direction(Producer<Pair<?>> pos, Producer<Pair<?>> sd,
 												 Pair projectionDimensions, double focalLength,
 												 Vector u, Vector v, Vector w, Pair blur) {

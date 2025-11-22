@@ -45,15 +45,64 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * A {@link ReflectionShader} provides a shading method for reflective surfaces.
- * The ReflectionShader class uses a shading algorithm based on Shlick's
- * approximation to the Fresnel equations.
- * 
- * @author  Michael Murray
+ * {@link ReflectionShader} provides realistic reflection rendering for surfaces using
+ * Schlick's approximation to the Fresnel equations.
+ *
+ * <p>The Fresnel effect describes how reflectivity varies with viewing angle - surfaces
+ * become more reflective at grazing angles. Schlick's approximation provides an efficient
+ * calculation:</p>
+ * <pre>
+ * R(theta) = R0 + (1 - R0) * (1 - cos(theta))^5
+ * </pre>
+ * <p>where R0 is the base reflectivity at normal incidence and theta is the angle between
+ * the view direction and surface normal.</p>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li><b>Fresnel reflection:</b> Physically-based view-dependent reflectivity</li>
+ *   <li><b>Recursive tracing:</b> Supports multiple reflection bounces (up to {@link #maxReflections})</li>
+ *   <li><b>Reflection blur:</b> Optional blurred reflections for rough surfaces</li>
+ *   <li><b>Environment mapping:</b> Can use textures as environment maps</li>
+ *   <li><b>Editable properties:</b> Configurable through the {@link Editable} interface</li>
+ * </ul>
+ *
+ * <h2>Configuration</h2>
+ * <ul>
+ *   <li>{@link #setReflectivity(double)} - Base reflectivity at normal viewing angle (0.0-1.0)</li>
+ *   <li>{@link #setReflectiveColor(Producer)} - Tint color applied to reflections</li>
+ *   <li>{@link #setBlur(double)} - Blur factor for diffuse/rough reflections</li>
+ *   <li>{@link #setEnvironmentMap(Texture)} - Fallback texture when rays miss all surfaces</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * ReflectionShader mirror = new ReflectionShader();
+ * mirror.setReflectivity(0.95);           // 95% reflective at normal
+ * mirror.setReflectiveColor(white());     // No tint
+ * mirror.setBlur(0.0);                    // Perfect mirror
+ *
+ * sphere.addShader(mirror);
+ * }</pre>
+ *
+ * <h2>Recursion Control</h2>
+ * <p>Recursive reflections are limited by {@link #maxReflections} (default 4) to prevent
+ * infinite loops in hall-of-mirrors scenarios. When the limit is reached, the base
+ * reflective color is returned without further tracing.</p>
+ *
+ * @see org.almostrealism.color.Shader
+ * @see RefractionShader
+ * @see org.almostrealism.raytrace.LightingEngineAggregator
+ * @author Michael Murray
  */
 public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {
-  public static int maxReflections = 4;
+
+	/**
+	 * Maximum number of recursive reflection bounces allowed.
+	 * <p>Limits recursion to prevent infinite loops (e.g., parallel mirrors).
+	 * Default is 4. Higher values produce more accurate results but are slower.</p>
+	 */
+	public static int maxReflections = 4;
   
   private static final String propNames[] = {"Reflectivity", "Reflective Color",
   										"Blur factor", "Environment map"};

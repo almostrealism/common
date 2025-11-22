@@ -6,41 +6,73 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Abstract base class for byte-level BPE tokenizers.
+ * Abstract base class for byte-level BPE (Byte Pair Encoding) tokenizers.
  *
- * Implements the full tokenization pipeline:
- * 1. Pre-tokenization (split text into segments)
- * 2. Byte-level encoding (convert segments to Unicode)
- * 3. BPE merging (apply learned merges to each segment)
- * 4. Token ID lookup
+ * <p>This class implements the complete tokenization pipeline used by modern language models
+ * like GPT-2, Llama, Qwen, and others. Byte-level BPE operates on UTF-8 byte sequences
+ * rather than characters, allowing it to handle any text including rare Unicode characters.</p>
  *
- * Subclasses must provide:
- * - Vocabulary (token string -> ID mapping)
- * - BPE merges (pair -> merged token mapping)
- * - Pre-tokenizer strategy
+ * <h2>Tokenization Pipeline</h2>
+ * <ol>
+ *   <li><strong>Pre-tokenization:</strong> Split text into segments (words, punctuation, etc.)</li>
+ *   <li><strong>Byte-level encoding:</strong> Convert each segment's UTF-8 bytes to Unicode characters</li>
+ *   <li><strong>BPE merging:</strong> Iteratively merge character pairs according to learned rules</li>
+ *   <li><strong>Token ID lookup:</strong> Map final tokens to vocabulary IDs</li>
+ * </ol>
  *
- * Usage:
- * <pre>
- * class MyTokenizer extends ByteLevelBPETokenizer {
- *     public MyTokenizer(String vocabFile, String mergesFile) {
+ * <h2>Subclass Requirements</h2>
+ * <p>Subclasses must provide:</p>
+ * <ul>
+ *   <li><strong>Vocabulary:</strong> Token string to ID mapping via {@link #vocabMap} and {@link #vocab}</li>
+ *   <li><strong>BPE merges:</strong> Pair to merged token mapping via {@link #bpeMerges}</li>
+ *   <li><strong>Special tokens:</strong> Override {@link #getBOSToken()}, {@link #getEOSToken()}, etc.</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * class Qwen3Tokenizer extends ByteLevelBPETokenizer {
+ *     public Qwen3Tokenizer(String tokenizerPath) throws IOException {
  *         super(new RegexPreTokenizer());
- *         loadVocabulary(vocabFile);
- *         loadMerges(mergesFile);
+ *         loadVocabulary(tokenizerPath);
+ *         loadMerges(mergesPath);
  *     }
+ *
+ *     protected int getBOSToken() { return 151643; }
+ *     protected int getEOSToken() { return 151645; }
+ *     // ...
  * }
- * </pre>
+ *
+ * // Use the tokenizer
+ * int[] tokens = tokenizer.encode("Hello, world!", true);
+ * String decoded = tokenizer.decode(tokens);
+ * }</pre>
+ *
+ * @see PreTokenizer
+ * @see ByteLevelEncoder
+ * @see RegexPreTokenizer
+ * @author Michael Murray
  */
 public abstract class ByteLevelBPETokenizer {
 
+    /** The pre-tokenization strategy used to split input text into segments. */
     protected final PreTokenizer preTokenizer;
+
+    /** Maps token strings to their vocabulary IDs. */
     protected Map<String, Integer> vocabMap;
+
+    /** Array of token strings indexed by vocabulary ID. */
     protected String[] vocab;
-    protected Map<String, String> bpeMerges;  // "token1 token2" -> "merged"
+
+    /** BPE merge rules mapping "token1 token2" to "merged_token". */
+    protected Map<String, String> bpeMerges;
 
     /**
-     * Create a byte-level BPE tokenizer with the given pre-tokenization strategy.
+     * Creates a byte-level BPE tokenizer with the given pre-tokenization strategy.
      *
-     * @param preTokenizer Pre-tokenization strategy
+     * <p>The tokenizer is initialized with empty vocabulary and merge maps.
+     * Subclasses must populate these during construction.</p>
+     *
+     * @param preTokenizer Pre-tokenization strategy for splitting input text
      */
     public ByteLevelBPETokenizer(PreTokenizer preTokenizer) {
         this.preTokenizer = preTokenizer;
@@ -111,9 +143,14 @@ public abstract class ByteLevelBPETokenizer {
     }
 
     /**
-     * Apply BPE merges to a list of tokens.
+     * Applies BPE merges to a list of tokens.
      *
-     * Iteratively merges adjacent token pairs according to the learned merge rules.
+     * <p>This method iteratively merges adjacent token pairs according to the learned
+     * merge rules. At each step, it finds the highest-priority merge (earliest in the
+     * merge file) and applies it. This continues until no more merges are possible.</p>
+     *
+     * @param tokens List of single-character or previously-merged tokens
+     * @return List of tokens after all applicable merges have been applied
      */
     protected List<String> applyBPEMerges(List<String> tokens) {
         if (tokens.size() <= 1 || bpeMerges.isEmpty()) {
@@ -189,8 +226,14 @@ public abstract class ByteLevelBPETokenizer {
     }
 
     /**
-     * Get merge priority (lower is higher priority).
-     * Subclasses can override to provide priority based on merge order.
+     * Returns the priority of a merge rule.
+     *
+     * <p>Lower values indicate higher priority. Merges learned earlier during
+     * BPE training have lower indices and should be applied first. Subclasses
+     * should override this to return the actual priority from the merges file.</p>
+     *
+     * @param pair The merge pair in format "token1 token2"
+     * @return The priority (lower = higher priority), or 0 if using default priority
      */
     protected int getMergePriority(String pair) {
         // Default: all merges have equal priority
@@ -198,7 +241,12 @@ public abstract class ByteLevelBPETokenizer {
     }
 
     /**
-     * Check if a token ID is a special token (BOS, EOS, PAD, etc.)
+     * Checks if a token ID is a special token (BOS, EOS, PAD, UNK).
+     *
+     * <p>Special tokens are typically skipped during decoding to produce clean text output.</p>
+     *
+     * @param tokenId The token ID to check
+     * @return true if the token is a special token, false otherwise
      */
     protected boolean isSpecialToken(int tokenId) {
         return tokenId == getBOSToken() ||
@@ -210,35 +258,58 @@ public abstract class ByteLevelBPETokenizer {
     // Abstract methods for subclasses to implement
 
     /**
-     * Get the BOS (beginning of sequence) token ID, or -1 if not used.
+     * Returns the BOS (beginning of sequence) token ID.
+     *
+     * @return The BOS token ID, or -1 if this tokenizer doesn't use a BOS token
      */
     protected abstract int getBOSToken();
 
     /**
-     * Get the EOS (end of sequence) token ID, or -1 if not used.
+     * Returns the EOS (end of sequence) token ID.
+     *
+     * @return The EOS token ID, or -1 if this tokenizer doesn't use an EOS token
      */
     protected abstract int getEOSToken();
 
     /**
-     * Get the PAD (padding) token ID, or -1 if not used.
+     * Returns the PAD (padding) token ID.
+     *
+     * @return The PAD token ID, or -1 if this tokenizer doesn't use padding
      */
     protected abstract int getPADToken();
 
     /**
-     * Get the UNK (unknown) token ID, or 0 as fallback.
+     * Returns the UNK (unknown) token ID for handling out-of-vocabulary tokens.
+     *
+     * @return The UNK token ID, typically 0 or a designated special token
      */
     protected abstract int getUNKToken();
 
     // Getters
 
+    /**
+     * Returns the vocabulary as an array of token strings.
+     *
+     * @return Array where index i contains the string for token ID i
+     */
     public String[] getVocab() {
         return vocab;
     }
 
+    /**
+     * Returns the size of the vocabulary.
+     *
+     * @return Number of tokens in the vocabulary
+     */
     public int getVocabSize() {
         return vocab.length;
     }
 
+    /**
+     * Returns the pre-tokenizer used by this tokenizer.
+     *
+     * @return The pre-tokenization strategy
+     */
     public PreTokenizer getPreTokenizer() {
         return preTokenizer;
     }

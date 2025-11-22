@@ -18,8 +18,40 @@ package org.almostrealism.heredity;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * An interface for genes that expose their underlying parameters.
+ *
+ * <p>This interface is implemented by genes that have configurable parameters
+ * (such as {@link ProjectedGene}) and need to expose those parameters for
+ * inspection, modification, or breeding operations.
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * GeneParameters gene = ...;
+ *
+ * // Get the parameters
+ * PackedCollection<?> params = gene.getParameters();
+ *
+ * // Get the valid ranges for each parameter
+ * PackedCollection<?> ranges = gene.getParameterRanges();
+ * // ranges[i] typically contains [min, max] for parameter i
+ * }</pre>
+ *
+ * @see ChoiceGene
+ */
 public interface GeneParameters {
+	/**
+	 * Returns the underlying parameters for this gene.
+	 *
+	 * @return the parameter collection
+	 */
 	PackedCollection<?> getParameters();
 
+	/**
+	 * Returns the valid ranges for each parameter.
+	 * <p>Typically structured as pairs of [min, max] values for each parameter.
+	 *
+	 * @return the parameter ranges collection
+	 */
 	PackedCollection<?> getParameterRanges();
 }

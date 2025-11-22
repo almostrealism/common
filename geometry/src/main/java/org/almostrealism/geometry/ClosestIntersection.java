@@ -25,10 +25,35 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+/**
+ * Finds the closest intersection point among multiple surfaces for a given ray.
+ * This class is central to ray tracing, where rays must be tested against many
+ * surfaces to find the nearest hit point.
+ *
+ * <p>The class evaluates all intersections lazily and returns the one with the
+ * smallest positive distance value (i.e., in front of the ray origin).</p>
+ *
+ * <p>Usage example:</p>
+ * <pre>{@code
+ * List<Intersectable<Scalar>> surfaces = scene.getSurfaces();
+ * ClosestIntersection closest = new ClosestIntersection(ray, surfaces);
+ * Producer<Ray> hitNormal = closest.get(0);  // Gets intersection position and normal
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see Intersectable
+ * @see ContinuousField
+ */
 public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
 	private Producer<Ray> r;
 	private List<ContinuousField> s;
 
+	/**
+	 * Constructs a ClosestIntersection finder for the given ray and surfaces.
+	 *
+	 * @param ray the ray to test for intersections
+	 * @param surfaces the collection of surfaces to test against
+	 */
 	public ClosestIntersection(Producer<Ray> ray, Iterable<Intersectable> surfaces) {
 		r = ray;
 		s = new ArrayList<>();
@@ -59,6 +84,12 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 		});
 	}
 
+	/**
+	 * Returns the surface normal at the closest intersection point.
+	 *
+	 * @param point the point at which to get the normal (typically the intersection point)
+	 * @return a producer for the surface normal vector at the closest intersection
+	 */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
 		return () -> args -> {

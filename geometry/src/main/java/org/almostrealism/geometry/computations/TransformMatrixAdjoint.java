@@ -31,9 +31,26 @@ import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.List;
 
+/**
+ * Computes the adjoint (adjugate) matrix of a 4x4 transformation matrix.
+ * The adjoint matrix is the transpose of the cofactor matrix and is used in
+ * computing the inverse of a matrix: {@code A^(-1) = adj(A) / det(A)}.
+ *
+ * <p>The computation generates hardware-accelerated code that calculates
+ * all 16 elements of the adjoint matrix using cofactor expansion with
+ * 3x3 minor determinants.</p>
+ *
+ * @author Michael Murray
+ * @see TransformMatrix
+ */
 public class TransformMatrixAdjoint extends CollectionProducerComputationBase<PackedCollection<?>, TransformMatrix> {
 	private int varIdx = 0;
 
+	/**
+	 * Constructs a new TransformMatrixAdjoint computation.
+	 *
+	 * @param input the producer of the input transformation matrix
+	 */
 	public TransformMatrixAdjoint(Producer<TransformMatrix> input) {
 		super("transformMatrixAdjoint", new TraversalPolicy(4, 4), (Producer) input);
 		setPostprocessor(TransformMatrix.postprocessor());

@@ -59,6 +59,72 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * The master interface that aggregates all feature interfaces in the Almost Realism framework.
+ * CodeFeatures provides a comprehensive API for building computations, creating neural networks,
+ * performing mathematical operations, and managing hardware execution contexts.
+ *
+ * <p>This interface combines capabilities from multiple specialized feature interfaces:</p>
+ * <ul>
+ *   <li>{@link LayerFeatures} - Neural network layer creation (dense, conv2d, norm, etc.)</li>
+ *   <li>{@link TriangleFeatures} - 3D geometry and mesh operations</li>
+ *   <li>{@link TransformMatrixFeatures} - Transformation matrix operations</li>
+ *   <li>{@link TemporalFeatures} - Time-based processing</li>
+ *   <li>{@link ComputerFeatures} - Hardware execution and memory operations</li>
+ * </ul>
+ *
+ * <h2>Producer Creation</h2>
+ * <p>CodeFeatures provides several methods for creating data producers:</p>
+ * <ul>
+ *   <li>{@link #v(Object)} - Create a producer from a value</li>
+ *   <li>{@link #v(TraversalPolicy, int)} - Create an input producer by index</li>
+ *   <li>{@link #x(int...)}, {@link #y(int...)}, {@link #z(int...)} - Shorthand for indexed inputs</li>
+ *   <li>{@link #value(Object)} - Flexible value wrapping</li>
+ * </ul>
+ *
+ * <h2>Context Management</h2>
+ * <p>Methods for managing hardware and compute contexts:</p>
+ * <ul>
+ *   <li>{@link #dc()} - Get the current data context</li>
+ *   <li>{@link #dc(Runnable)} - Execute within a data context</li>
+ *   <li>{@link #cc()} - Get the current compute context</li>
+ *   <li>{@link #cc(Runnable, ComputeRequirement...)} - Execute with compute requirements</li>
+ * </ul>
+ *
+ * <h2>Profiling</h2>
+ * <p>Performance profiling support:</p>
+ * <ul>
+ *   <li>{@link #profile(String, Supplier)} - Profile an operation supplier</li>
+ *   <li>{@link #profile(OperationProfileNode, Runnable)} - Profile a runnable</li>
+ * </ul>
+ *
+ * <h2>Usage Pattern</h2>
+ * <p>Classes implementing CodeFeatures gain access to all operations:</p>
+ * <pre>{@code
+ * public class MyModel implements CodeFeatures {
+ *     public void build() {
+ *         // All operations available directly
+ *         Model model = new Model(shape(784));
+ *         model.add(dense(256));
+ *         model.add(silu());
+ *         model.add(dense(10));
+ *         model.add(softmax());
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>Alternatively, access through the {@link Ops} singleton:</p>
+ * <pre>{@code
+ * import static org.almostrealism.Ops.o;
+ *
+ * CollectionProducer<?> result = o().multiply(a, b);
+ * }</pre>
+ *
+ * @see Ops
+ * @see LayerFeatures
+ * @see ComputerFeatures
+ * @author Michael Murray
+ */
 public interface CodeFeatures extends LayerFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {

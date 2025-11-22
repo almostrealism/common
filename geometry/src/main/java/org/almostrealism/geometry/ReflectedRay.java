@@ -24,12 +24,40 @@ import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
+/**
+ * Computes a reflected ray from an intersection point, given an incident direction and surface normal.
+ * This is used in ray tracing to calculate specular reflections.
+ *
+ * <p>The reflection formula used is: {@code R = I - 2(N . I)N / |N|^2}</p>
+ *
+ * <p>The blur parameter allows for glossy reflections by randomly perturbing the
+ * reflected ray direction. A blur of 0.0 produces perfect mirror reflections,
+ * while higher values produce increasingly diffuse reflections.</p>
+ *
+ * <p>Usage example:</p>
+ * <pre>{@code
+ * ReflectedRay reflection = new ReflectedRay(hitPoint, incidentDir, normal, 0.0);
+ * Ray reflectedRay = reflection.get().evaluate();
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see Ray
+ * @see GeometryFeatures#reflect(Producer, Producer)
+ */
 public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures {
 	private Producer<Vector> point;
 	private Producer<Vector> normal;
 	private Producer<Vector> reflected;
 	private double blur;
 
+	/**
+	 * Constructs a ReflectedRay computation.
+	 *
+	 * @param point the intersection point where the reflection occurs
+	 * @param incident the incident ray direction (pointing towards the surface)
+	 * @param normal the surface normal at the intersection point
+	 * @param blur the amount of random perturbation for glossy reflections (0.0 = perfect mirror)
+	 */
 	public ReflectedRay(Producer<Vector> point, Producer<Vector> incident, Producer<Vector> normal, double blur) {
 		this.point = point;
 		this.normal = normal;
@@ -37,6 +65,13 @@ public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures 
 		this.blur = blur;
 	}
 
+	/**
+	 * Returns an evaluable that computes the reflected ray.
+	 * If blur is non-zero, the reflected direction is randomly perturbed
+	 * to simulate glossy reflections.
+	 *
+	 * @return an evaluable that produces the reflected ray when evaluated
+	 */
 	@Override
 	public Evaluable<Ray> get() {
 		Evaluable<Vector> nor = normal.get();

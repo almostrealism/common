@@ -33,13 +33,63 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 
 
-// TODO  Improve documentation.
-
 /**
- * An {@link ImageTexture} object can be used to provide an image as the color data for a surface.
- * 
- * TODO  This should accept an {@link ImageSource} rather than a {@link URL}.
- * 
+ * Provides image-based texture mapping for surfaces.
+ *
+ * <p>An {@code ImageTexture} loads a 2D image and maps it onto 3D surfaces using
+ * various projection methods. This enables surfaces to display photographic textures,
+ * patterns, or any image-based detail.</p>
+ *
+ * <h2>Projection Modes</h2>
+ * <ul>
+ *   <li>{@link #SPHERICAL_PROJECTION}: Wraps the image around a sphere using
+ *       latitude/longitude mapping. Best for globe-like objects.</li>
+ *   <li>{@link #XY_PLANAR_PROJECTION}: Projects the image onto the XY plane.
+ *       Uses X for U and Y for V coordinates.</li>
+ *   <li>{@link #XZ_PLANAR_PROJECTION}: Projects the image onto the XZ plane.
+ *       Uses X for U and Z for V coordinates.</li>
+ *   <li>{@link #YZ_PLANAR_PROJECTION}: Projects the image onto the YZ plane.
+ *       Uses Y for U and Z for V coordinates.</li>
+ * </ul>
+ *
+ * <h2>UV Coordinate System</h2>
+ * <p>Textures use UV coordinates in the range [0.0, 1.0]:</p>
+ * <ul>
+ *   <li>U (horizontal): 0.0 = left edge, 1.0 = right edge</li>
+ *   <li>V (vertical): 0.0 = top edge, 1.0 = bottom edge</li>
+ * </ul>
+ *
+ * <h2>Scaling and Offset</h2>
+ * <p>The texture can be tiled and offset using scale/offset parameters:</p>
+ * <ul>
+ *   <li>{@code xScale/yScale}: Number of texture repetitions (2.0 = tile twice)</li>
+ *   <li>{@code xOff/yOff}: Texture offset (0.5 = shift by half the texture)</li>
+ * </ul>
+ *
+ * <h2>Example Usage</h2>
+ * <pre>{@code
+ * // Spherical texture for a planet
+ * ImageTexture earth = new ImageTexture(
+ *     ImageTexture.SPHERICAL_PROJECTION,
+ *     new URL("http://example.com/earth.jpg"),
+ *     1.0, 1.0,  // No tiling
+ *     0.0, 0.0   // No offset
+ * );
+ *
+ * // Tiled floor texture
+ * ImageTexture floor = new ImageTexture(
+ *     ImageTexture.XZ_PLANAR_PROJECTION,
+ *     new URL("http://example.com/tiles.jpg"),
+ *     10.0, 10.0,  // Tile 10x10
+ *     0.0, 0.0
+ * );
+ *
+ * // Get color at a surface point
+ * RGB color = texture.operate(surfacePoint);
+ * }</pre>
+ *
+ * @see Texture
+ * @see GraphicsConverter
  * @author Mike Murray
  */
 public class ImageTexture implements Texture, Editable {

@@ -29,76 +29,161 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Curve;
 
 /**
- * {@link Scene} extends {@link SurfaceList} to store {@link Light}s and a {@link Camera}.
+ * A {@link Scene} represents a complete 3D scene containing surfaces, lights, and a camera
+ * for ray tracing and rendering.
  *
- * TODO  Since the ray tracing engine now accepts a camera separately, this field should
- *       probably be removed (or only stored by a subclass, projectable scene).
+ * <p>{@link Scene} extends {@link SurfaceList} to provide a container for all renderable
+ * objects in a 3D environment. It manages:
+ * <ul>
+ *   <li><b>Surfaces</b>: The geometric objects that can be rendered (inherited from SurfaceList)</li>
+ *   <li><b>Lights</b>: Light sources that illuminate the scene</li>
+ *   <li><b>Camera</b>: The viewpoint from which the scene is rendered</li>
+ * </ul>
+ *
+ * <h3>Usage Example:</h3>
+ * <pre>{@code
+ * Scene<ShadableSurface> scene = new Scene<>();
+ *
+ * // Add surfaces
+ * scene.add(new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 0, 0)));
+ * scene.add(new Plane(new Vector(0, -1, 0), new Vector(0, 1, 0), 10, 10, 0.1));
+ *
+ * // Add lights
+ * scene.addLight(new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1, 1, 1)));
+ *
+ * // Set camera
+ * scene.setCamera(new PinholeCamera(new Vector(0, 0, -10), new Vector(0, 0, 1), new Vector(0, 1, 0)));
+ *
+ * // Calculate scene bounds
+ * BoundingSolid bounds = scene.calculateBoundingSolid();
+ * }</pre>
+ *
+ * <p>Note: The camera field may be deprecated in future versions as the ray tracing engine
+ * now accepts the camera separately.
+ *
+ * @param <T> the type of surface objects in this scene, must extend {@link ShadableSurface}
+ * @author Michael Murray
+ * @see SurfaceList
+ * @see Light
+ * @see Camera
  */
 public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
+	/** The camera used to view the scene. */
 	private Camera camera;
-	
+
+	/** The list of lights illuminating the scene. */
 	private List<Light> lights;
-	
-	/** Constructs a {@link Scene} with no {@link Camera} and no {@link Light}s or {@link ShadableSurface}s. */
+
+	/**
+	 * Constructs an empty {@link Scene} with no camera, lights, or surfaces.
+	 */
 	public Scene() {
 		this.setLights(new ArrayList<>());
 	}
 
-	/** Constructs a {@link Scene} with the specified camera and no {@link Light}s or {@link ShadableSurface}s. */
+	/**
+	 * Constructs a {@link Scene} with the specified camera.
+	 *
+	 * @param c the camera to use for viewing the scene
+	 */
 	public Scene(Camera c) { this(); this.setCamera(c); }
 
 	/**
-	 * Constructs a {@link Scene} object with no {@link Camera}, no {@link Light}s,
-	 * and the surfaces represented by the specified {@link ShadableSurface} array.
+	 * Constructs a {@link Scene} with the specified surfaces but no camera or lights.
+	 *
+	 * @param surfaces the surfaces to add to the scene
 	 */
 	public Scene(T surfaces[]) {
 		this();
 		this.setSurfaces(surfaces);
 	}
-	
+
 	/**
-	 * Constructs a {@link Scene} with the specified {@link Camera}, {@link Light}s,
-	 * and {@link ShadableSurface}s.
+	 * Constructs a {@link Scene} with the specified camera, lights, and surfaces.
+	 *
+	 * @param camera   the camera to use for viewing the scene
+	 * @param lights   the lights illuminating the scene
+	 * @param surfaces the surfaces in the scene
 	 */
 	public Scene(Camera camera, List<Light> lights, T surfaces[]) {
 		this.setCamera(camera);
 		this.setLights(lights);
 		this.setSurfaces(surfaces);
 	}
-	
+
+	/**
+	 * Replaces all surfaces in this scene with the specified array.
+	 *
+	 * @param surfaces the new surfaces for this scene
+	 */
 	public void setSurfaces(T surfaces[]) {
 		clear();
 		addAll(Arrays.asList(surfaces));
 	}
-	
+
+	/**
+	 * Returns all surfaces in this scene as an array.
+	 *
+	 * @return an array containing all surfaces in the scene
+	 */
 	public ShadableSurface[] getSurfaces() { return toArray(new ShadableSurface[0]); }
 	
-	/** Sets the camera of this {@link Scene}. */
-	public void setCamera(Camera camera) { this.camera = camera; }
-	
 	/**
-	 * Replace the {@link List} of {@link Light}s for this {@link Scene} with the specified
-	 * {@link Light} {@link List}.
+	 * Sets the camera used to view this scene.
+	 *
+	 * @param camera the camera to use
+	 */
+	public void setCamera(Camera camera) { this.camera = camera; }
+
+	/**
+	 * Replaces the list of lights for this scene with the specified list.
+	 *
+	 * @param lights the new list of lights
 	 */
 	public void setLights(List<Light> lights) { this.lights = lights; }
-	
-	/** Adds the specified {@link Light} to this {@link Scene}. */
-	public void addLight(Light light) { lights.add(light); }
-	
-	/** Removes the {@link Light} stored at the specified index from this {@link Scene}. */
-	public void removeLight(int index) { lights.remove(index); }
-	
-	/** Returns the Camera object stored by this Scene object. */
-	public Camera getCamera() { return this.camera; }
-	
-	/** Returns {@link Light} {@link List} for this {@link Scene}. */
-	public List<Light> getLights() { return this.lights; }
-	
-	/** Returns the {@link Light} stored by this {@link Scene} at the specified index. */
-	public Light getLight(int index) { return this.lights.get(index); }
-	
+
 	/**
-	 * @return  A Scene object that stores the same Camera, Lights, and Surfaces as this Scene object.
+	 * Adds a light to this scene.
+	 *
+	 * @param light the light to add
+	 */
+	public void addLight(Light light) { lights.add(light); }
+
+	/**
+	 * Removes the light at the specified index from this scene.
+	 *
+	 * @param index the index of the light to remove
+	 */
+	public void removeLight(int index) { lights.remove(index); }
+
+	/**
+	 * Returns the camera used to view this scene.
+	 *
+	 * @return the camera, or null if not set
+	 */
+	public Camera getCamera() { return this.camera; }
+
+	/**
+	 * Returns the list of lights illuminating this scene.
+	 *
+	 * @return the list of lights
+	 */
+	public List<Light> getLights() { return this.lights; }
+
+	/**
+	 * Returns the light at the specified index.
+	 *
+	 * @param index the index of the light to retrieve
+	 * @return the light at the specified index
+	 */
+	public Light getLight(int index) { return this.lights.get(index); }
+
+	/**
+	 * Creates a shallow clone of this scene.
+	 *
+	 * <p>The cloned scene shares the same camera, lights, and surfaces as this scene.
+	 *
+	 * @return a clone of this scene
 	 */
 	public Object clone() {
 		Scene l = (Scene) super.clone();

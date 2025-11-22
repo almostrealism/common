@@ -40,16 +40,72 @@ import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
 
-// TODO  Fix refraction algorithm.
-
 /**
- * A {@link RefractionShader} provides a shading method for dielectric surfaces.
- * 
- * @author  Michael Murray
+ * {@link RefractionShader} provides physically-based refraction rendering for transparent
+ * and translucent materials such as glass, water, and crystals.
+ *
+ * <p>Refraction occurs when light passes through the boundary between two media with
+ * different indices of refraction (IOR), causing the light ray to bend according to
+ * Snell's law:</p>
+ * <pre>
+ * n1 * sin(theta1) = n2 * sin(theta2)
+ * </pre>
+ * <p>where n1 and n2 are the indices of refraction of the two media, and theta1/theta2
+ * are the angles of incidence and refraction.</p>
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li><b>Snell's Law refraction:</b> Physically accurate ray bending at material boundaries</li>
+ *   <li><b>Total internal reflection:</b> Handled when rays exceed the critical angle</li>
+ *   <li><b>Color attenuation:</b> Absorption effects for tinted glass</li>
+ *   <li><b>Density sampling:</b> Supports variable IOR within a volume</li>
+ *   <li><b>Recursive tracing:</b> Follows refracted rays through multiple surfaces</li>
+ * </ul>
+ *
+ * <h2>Common Index of Refraction Values</h2>
+ * <ul>
+ *   <li>Air: 1.0</li>
+ *   <li>Water: 1.33</li>
+ *   <li>Glass: 1.5 - 1.9</li>
+ *   <li>Diamond: 2.42</li>
+ * </ul>
+ *
+ * <h2>Configuration</h2>
+ * <ul>
+ *   <li>{@link #setIndexOfRefraction(double)} - IOR of the material (default 1.0)</li>
+ *   <li>{@link #setAttenuationFactors(double, double, double)} - RGB attenuation for colored glass</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * RefractionShader glass = new RefractionShader();
+ * glass.setIndexOfRefraction(1.5);                    // Standard glass
+ * glass.setAttenuationFactors(0.95, 0.95, 0.98);     // Slight blue-green tint
+ *
+ * sphere.addShader(glass);
+ * sphere.setRefractedPercentage(0.9);                 // 90% transparent
+ * }</pre>
+ *
+ * <h2>Known Issues</h2>
+ * <p><b>Note:</b> The refraction algorithm has some known issues (see TODO at class level).
+ * Results may not be perfectly physically accurate in all edge cases.</p>
+ *
+ * @see org.almostrealism.color.Shader
+ * @see ReflectionShader
+ * @see org.almostrealism.raytrace.LightingEngineAggregator
+ * @author Michael Murray
  */
+// TODO  Fix refraction algorithm.
 public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFeatures, CodeFeatures {
+
+	/**
+	 * The last refracted ray direction (for debugging purposes).
+	 */
 	public static Vector lastRay;
-	
+
+	/**
+	 * Enables debug output during refraction calculations.
+	 */
 	public static boolean produceOutput = false;
   
 	private static final String propNames[] = {"Index of refraction", "Red attenuation", "Green attenuation", "Blue attenuation"};
@@ -67,10 +123,23 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
   
 	private int entered, exited;
 
-	/** Constructs a new {@link RefractionShader}. */
+	/**
+	 * Constructs a new {@link RefractionShader} with default settings.
+	 * The index of refraction defaults to 0.0 (should be set before use).
+	 */
 	public RefractionShader() { }
-	
-	/** Method specified by the {@link Shader} interface. */
+
+	/**
+	 * Computes the refracted color at a surface intersection point.
+	 *
+	 * <p>This method traces a refracted ray through the surface based on the index of
+	 * refraction and returns the color seen through the transparent material. It handles
+	 * both front-face and back-face refractions for proper entry/exit behavior.</p>
+	 *
+	 * @param p       The shader context containing intersection and lighting information
+	 * @param normals The surface normals at the intersection point
+	 * @return A Producer that computes the refracted color
+	 */
 	public Producer<RGB> shade(ShaderContext p, DiscreteField normals) {
 		Producer pr = new Producer<RGB>() {
 			@Override
@@ -228,6 +297,21 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		return color;
 	}
 	
+	/**
+	 * Samples the index of refraction at a point near the surface.
+	 *
+	 * <p>This method supports materials with spatially varying IOR by sampling
+	 * multiple points and averaging. For simple materials with uniform IOR,
+	 * use a single sample.</p>
+	 *
+	 * @param s        The surface to sample
+	 * @param p        The surface intersection point
+	 * @param n        The surface normal at the intersection
+	 * @param sd       The sampling distance (how far to step from surface)
+	 * @param samples  Number of samples to take (1 for uniform materials)
+	 * @param entering True if ray is entering the material, false if exiting
+	 * @return The averaged index of refraction at the sampled location
+	 */
 	public double sampleDensity(AbstractSurface s, Vector p, Vector n,
 								double sd, int samples, boolean entering) {
 		double totalR = 0.0;
@@ -269,6 +353,14 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 			return totalR;
 	}
 	
+	/**
+	 * Determines whether a ray is entering or exiting a surface based on the
+	 * ray direction and surface normal.
+	 *
+	 * @param d The ray direction vector
+	 * @param n The surface normal vector (pointing outward)
+	 * @return True if the ray is entering the surface, false if exiting
+	 */
 	public boolean checkEntering(Vector d, Vector n) {
 		double dot = d.dotProduct(n);
 		
@@ -279,6 +371,18 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		}
 	}
 	
+	/**
+	 * Computes the refracted ray direction using Snell's law.
+	 *
+	 * <p>When total internal reflection occurs (ray angle exceeds critical angle),
+	 * this method returns the reflected direction instead.</p>
+	 *
+	 * @param n      The surface normal
+	 * @param d      The incident ray direction
+	 * @param rindex The index of refraction of the current medium
+	 * @param eindex The index of refraction of the medium being entered
+	 * @return The refracted (or reflected) ray direction
+	 */
 	public Vector refract(Vector n, Vector d, double rindex, double eindex) {
 		Vector refracted;
 		

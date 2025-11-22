@@ -17,21 +17,56 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Qwen3 byte-level BPE tokenizer implementation.
+ * Qwen3-specific byte-level BPE tokenizer implementation.
  *
- * Extends {@link ByteLevelBPETokenizer} with Qwen3-specific configuration:
- * - Uses regex pre-tokenization (GPT-2 pattern)
- * - 151,669 vocabulary size
- * - Special tokens: BOS=151643, EOS=151645
+ * <p>This tokenizer extends {@link ByteLevelBPETokenizer} with Qwen3-specific
+ * configuration including vocabulary, special tokens, and merge rules. It supports
+ * both encoding (text to tokens) and decoding (tokens to text).</p>
  *
- * Binary format:
- * - int32: vocab_size
- * - For each token (vocab_size entries):
- *   - float32: score
- *   - int32: token_length
- *   - byte[]: token_bytes (UTF-8 encoded)
+ * <h2>Qwen3 Tokenizer Specifications</h2>
+ * <table>
+ * <caption>Tokenizer Parameters</caption>
+ *   <tr><th>Parameter</th><th>Value</th></tr>
+ *   <tr><td>Vocabulary Size</td><td>151,669 tokens</td></tr>
+ *   <tr><td>BOS Token</td><td>151643 (&lt;|endoftext|&gt;)</td></tr>
+ *   <tr><td>EOS Token</td><td>151645 (&lt;|im_end|&gt;)</td></tr>
+ *   <tr><td>PAD Token</td><td>151643 (same as BOS)</td></tr>
+ *   <tr><td>UNK Token</td><td>128244</td></tr>
+ *   <tr><td>Pre-tokenizer</td><td>GPT-2 regex pattern</td></tr>
+ * </table>
  *
- * BPE merges are loaded from merges.txt in HuggingFace format.
+ * <h2>Binary Format</h2>
+ * <p>The tokenizer.bin file format:</p>
+ * <pre>
+ * int32: vocab_size
+ * For each token (vocab_size entries):
+ *   float32: score (used for BPE prioritization)
+ *   int32: token_length
+ *   byte[]: token_bytes (UTF-8 encoded string)
+ * </pre>
+ *
+ * <h2>Merges File</h2>
+ * <p>BPE merges are loaded from merges.txt in HuggingFace format (space-separated pairs).
+ * The merges file should be in the same directory as tokenizer.bin.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * // Load from tokenizer.bin
+ * Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
+ *
+ * // Encode text with special tokens
+ * int[] tokens = tokenizer.encode("Hello, world!", true, false);  // BOS, no EOS
+ *
+ * // Decode back to text
+ * String text = tokenizer.decode(tokens);
+ *
+ * // Get vocabulary info
+ * System.out.println("Vocab size: " + tokenizer.getVocabSize());
+ * }</pre>
+ *
+ * @see ByteLevelBPETokenizer
+ * @see Qwen3
+ * @author Michael Murray
  */
 public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 	// Special token IDs (Qwen3 defaults)

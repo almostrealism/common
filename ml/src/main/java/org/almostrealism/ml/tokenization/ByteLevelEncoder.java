@@ -5,13 +5,46 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * GPT-2 style byte-level encoding.
+ * GPT-2 style byte-level encoding for BPE tokenization.
  *
- * Maps bytes (0-255) to Unicode characters in a printable range.
- * This allows BPE to work directly on Unicode strings while preserving
- * all possible byte values.
+ * <p>This class implements the byte-to-Unicode mapping used by GPT-2, Llama, Qwen, and other
+ * models that use byte-level BPE. It maps each possible byte value (0-255) to a Unicode
+ * character, allowing BPE to operate on Unicode strings while maintaining the ability to
+ * represent any byte sequence (including invalid UTF-8).</p>
  *
- * Reference: https://github.com/openai/gpt-2/blob/master/src/encoder.py
+ * <h2>Why Byte-Level Encoding?</h2>
+ * <ul>
+ *   <li><strong>Universal coverage:</strong> Can represent any text, including rare Unicode</li>
+ *   <li><strong>No UNK tokens:</strong> Every input can be encoded at the byte level</li>
+ *   <li><strong>Smaller base vocabulary:</strong> Only 256 base tokens needed</li>
+ *   <li><strong>BPE compatibility:</strong> Standard BPE can operate on the encoded strings</li>
+ * </ul>
+ *
+ * <h2>Mapping Strategy</h2>
+ * <p>Bytes are mapped to Unicode characters as follows:</p>
+ * <ul>
+ *   <li><strong>Printable ASCII (33-126):</strong> Direct mapping (e.g., 'A' -> 'A')</li>
+ *   <li><strong>Extended Latin (161-172, 174-255):</strong> Direct mapping</li>
+ *   <li><strong>Non-printable (0-32, 127-160, 173):</strong> Mapped to U+0100+ range</li>
+ * </ul>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * // Encode text to byte-level string
+ * String encoded = ByteLevelEncoder.encode("Hello!");
+ * // encoded: "Hello!" (printable chars pass through)
+ *
+ * // Encode text with non-printable chars
+ * String encoded2 = ByteLevelEncoder.encode("Hello\nWorld");
+ * // '\n' (byte 10) maps to U+010A
+ *
+ * // Decode back to original
+ * String decoded = ByteLevelEncoder.decode(encoded);
+ * // decoded: "Hello!"
+ * }</pre>
+ *
+ * @see ByteLevelBPETokenizer
+ * @see <a href="https://github.com/openai/gpt-2/blob/master/src/encoder.py">GPT-2 encoder.py</a>
  */
 public class ByteLevelEncoder {
 

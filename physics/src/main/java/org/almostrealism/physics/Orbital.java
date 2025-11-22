@@ -21,6 +21,55 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.TreeSet;
 
+/**
+ * Represents an atomic orbital defined by quantum numbers.
+ * <p>
+ * An orbital is a region in an atom where there is a high probability of finding
+ * an electron. Each orbital is characterized by three quantum numbers:
+ * </p>
+ * <ul>
+ *   <li><b>Principal quantum number (n)</b> - Determines the energy level and size (1, 2, 3, ...)</li>
+ *   <li><b>Angular momentum quantum number (l)</b> - Determines the shape (0=s, 1=p, 2=d, 3=f)</li>
+ *   <li><b>Magnetic quantum number (m)</b> - Determines the orientation (-l to +l)</li>
+ * </ul>
+ *
+ * <h2>Orbital Types</h2>
+ * <table border="1">
+ *   <tr><th>Type</th><th>l value</th><th>Shape</th><th>Orbitals per subshell</th></tr>
+ *   <tr><td>s</td><td>0</td><td>Spherical</td><td>1</td></tr>
+ *   <tr><td>p</td><td>1</td><td>Dumbbell</td><td>3 (px, py, pz)</td></tr>
+ *   <tr><td>d</td><td>2</td><td>Cloverleaf</td><td>5</td></tr>
+ *   <tr><td>f</td><td>3</td><td>Complex</td><td>7</td></tr>
+ * </table>
+ *
+ * <h2>Energy Calculation</h2>
+ * <p>
+ * The energy of an orbital depends on the principal quantum number and the atomic
+ * number (number of protons). Higher principal quantum numbers correspond to higher
+ * energy levels, and more protons result in stronger binding (lower energy).
+ * </p>
+ *
+ * <h2>Factory Methods</h2>
+ * <p>
+ * The class provides factory methods for creating standard orbitals:
+ * </p>
+ * <pre>{@code
+ * // Create 1s orbital
+ * Orbital orbital1s = Orbital.s1();
+ *
+ * // Create 2px orbital
+ * Orbital orbital2px = Orbital.p2x();
+ *
+ * // Create 3d orbital
+ * Orbital orbital3d = Orbital.d3a();
+ * }</pre>
+ *
+ * @author Michael Murray
+ * @see SubShell
+ * @see Shell
+ * @see Electron
+ * @see PhysicalConstants
+ */
 public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 	private static TreeSet<Orbital> all = new TreeSet<>();
 
@@ -44,23 +93,86 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 	}
 
 	private int principal, angular, magnetic;
-	
+
+	/**
+	 * Constructs an orbital with the specified quantum numbers.
+	 *
+	 * @param principal the principal quantum number (n >= 1)
+	 * @param angular   the angular momentum quantum number (0 <= l < n)
+	 * @param magnetic  the magnetic quantum number (-l <= m <= l)
+	 */
 	public Orbital(int principal, int angular, int magnetic) {
 		this.principal = principal;
 		this.angular = angular;
 		this.magnetic = magnetic;
 	}
-	
+
+	/**
+	 * Returns the principal quantum number (n).
+	 * <p>
+	 * This determines the energy level and size of the orbital.
+	 * Values start at 1 (K shell) and increase.
+	 * </p>
+	 *
+	 * @return the principal quantum number
+	 */
 	public int getPrincipal() { return principal; }
+
+	/**
+	 * Returns the angular momentum quantum number (l).
+	 * <p>
+	 * This determines the shape of the orbital:
+	 * 0=s (spherical), 1=p (dumbbell), 2=d (cloverleaf), 3=f (complex).
+	 * </p>
+	 *
+	 * @return the angular momentum quantum number
+	 */
 	public int getAngular() { return angular; }
+
+	/**
+	 * Returns the magnetic quantum number (m).
+	 * <p>
+	 * This determines the orientation of the orbital in space.
+	 * Values range from -l to +l.
+	 * </p>
+	 *
+	 * @return the magnetic quantum number
+	 */
 	public int getMagnetic() { return magnetic; }
-	
+
+	/**
+	 * Creates a subshell by populating this orbital with the specified number of electrons.
+	 *
+	 * @param electrons the number of electrons (1 or 2)
+	 * @return a new SubShell containing this orbital and the specified electrons
+	 * @throws IllegalArgumentException if electrons is not 1 or 2
+	 */
 	public SubShell populate(int electrons) { return new SubShell(this, electrons); }
 
+	/**
+	 * Calculates the energy of this orbital for an atom with the specified number of protons.
+	 * <p>
+	 * The energy is calculated using the formula: E = HCR * Z^2 * n^2,
+	 * where HCR is the product of physical constants, Z is the atomic number,
+	 * and n is the principal quantum number.
+	 * </p>
+	 *
+	 * @param protons the number of protons in the atom (atomic number)
+	 * @return the orbital energy in electron volts (eV)
+	 */
 	public double getEnergy(int protons) {
 		return HCR * protons * protons * principal * principal;
 	}
 
+	/**
+	 * Returns a list of orbitals with higher energy than this orbital.
+	 * <p>
+	 * This is used to determine possible excitation transitions for electrons
+	 * in this orbital.
+	 * </p>
+	 *
+	 * @return a list of higher-energy orbitals
+	 */
 	protected List<Orbital> getHigherOrbitals() {
 		double energy = this.getEnergy(1);
 		List<Orbital> l = new ArrayList<>();
@@ -74,19 +186,45 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 		return l;
 	}
 
+	/**
+	 * Compares this orbital to another object for equality.
+	 * <p>
+	 * Two orbitals are equal if they have the same principal, angular, and magnetic quantum numbers.
+	 * </p>
+	 *
+	 * @param o the object to compare
+	 * @return true if the objects are equal orbitals
+	 */
 	public boolean equals(Object o) {
 		if (o instanceof Orbital == false) return false;
 		Orbital or = (Orbital) o;
 		return principal == or.principal && angular == or.angular && magnetic == or.magnetic;
 	}
-	
+
+	/**
+	 * Returns a hash code based on the principal quantum number.
+	 *
+	 * @return the hash code
+	 */
 	public int hashCode() { return principal; }
 
+	/**
+	 * Compares this orbital to another based on energy level.
+	 * <p>
+	 * Orbitals are ordered by their energy, calculated for a hydrogen atom (1 proton).
+	 * </p>
+	 *
+	 * @param o the orbital to compare
+	 * @return negative if this orbital has lower energy, positive if higher, zero if equal
+	 */
 	@Override
 	public int compareTo(Orbital o) {
 		return (int) (10000 * (this.getEnergy(1) - o.getEnergy(1)));
 	}
-	
+
+	// ==================== Factory methods for s orbitals ====================
+
+	/** Creates the 1s orbital (K shell, l=0). @return the 1s orbital */
 	public static Orbital s1() { return new Orbital(1, 0, 0); }
 	public static Orbital s2() { return new Orbital(2, 0, 0); }
 	public static Orbital s3() { return new Orbital(3, 0, 0); }

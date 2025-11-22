@@ -33,6 +33,39 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.space.DistanceEstimator;
 import org.almostrealism.CodeFeatures;
 
+/**
+ * {@link RayMarchingEngine} is an alternative {@link Engine} implementation that uses ray marching
+ * (sphere tracing) with distance estimation functions instead of explicit ray-surface intersection.
+ *
+ * <p>Ray marching works by stepping along a ray in increments determined by a distance estimator.
+ * At each step, the distance estimator provides the minimum distance to any surface in the scene.
+ * The algorithm continues stepping until either:</p>
+ * <ul>
+ *   <li>The distance falls below a threshold (intersection found)</li>
+ *   <li>The maximum number of steps is reached (no hit)</li>
+ *   <li>The ray travels beyond the scene bounds</li>
+ * </ul>
+ *
+ * <p>This approach is particularly useful for:</p>
+ * <ul>
+ *   <li>Rendering implicit surfaces defined by signed distance functions (SDFs)</li>
+ *   <li>Fractal geometry (Mandelbulb, etc.)</li>
+ *   <li>Soft shadows and ambient occlusion</li>
+ *   <li>Complex CSG operations</li>
+ * </ul>
+ *
+ * <p><b>Current Status:</b> This implementation is incomplete (see TODO in {@link #trace(Producer)}).
+ * The class structure is in place but the actual ray marching logic delegates to
+ * {@link DistanceEstimationLightingEngine} which is also incomplete.</p>
+ *
+ * <p>This class also implements {@link ShadableCurve} and {@link DiscreteField} to provide
+ * surface properties (color, normals) at marched intersection points.</p>
+ *
+ * @see Engine
+ * @see DistanceEstimator
+ * @see DistanceEstimationLightingEngine
+ * @author Michael Murray
+ */
 public class RayMarchingEngine extends ArrayList<Producer<Ray>> implements Engine, ShadableCurve, DiscreteField, RGBFeatures, CodeFeatures {
 	private ShaderContext sparams;
 	private RenderParameters params;

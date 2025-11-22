@@ -6,17 +6,48 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Regex-based pre-tokenizer for GPT-2/Qwen style tokenization.
+ * Regex-based pre-tokenizer for GPT-2, Qwen, and Llama style tokenization.
  *
- * Splits text using a regex pattern that handles:
- * - Contractions ('s, 't, 're, 've, 'm, 'll, 'd)
- * - Words (sequences of letters)
- * - Numbers
- * - Punctuation and special characters
- * - Whitespace
+ * <p>This pre-tokenizer splits input text into segments using a carefully designed
+ * regular expression pattern. It is the standard approach used by most modern
+ * language models and ensures consistent tokenization behavior.</p>
  *
- * Pattern based on HuggingFace tokenizers:
- * https://github.com/huggingface/tokenizers
+ * <h2>Handled Patterns</h2>
+ * <ul>
+ *   <li><strong>Contractions:</strong> 's, 't, 're, 've, 'm, 'll, 'd (English)</li>
+ *   <li><strong>Words:</strong> Sequences of Unicode letters (\\p{L}+)</li>
+ *   <li><strong>Numbers:</strong> Individual digits (\\p{N})</li>
+ *   <li><strong>Punctuation:</strong> Non-letter/number sequences with optional leading space</li>
+ *   <li><strong>Whitespace:</strong> Various whitespace patterns including newlines</li>
+ * </ul>
+ *
+ * <h2>Design Goals</h2>
+ * <ul>
+ *   <li><strong>Preserve spacing:</strong> Leading spaces attached to words for natural tokenization</li>
+ *   <li><strong>Language agnostic:</strong> Unicode properties handle non-English text</li>
+ *   <li><strong>BPE friendly:</strong> Segments align with natural token boundaries</li>
+ * </ul>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * RegexPreTokenizer preTokenizer = new RegexPreTokenizer();
+ *
+ * // Basic usage
+ * List<String> segments = preTokenizer.preTokenize("Hello, world!");
+ * // ["Hello", ",", " world", "!"]
+ *
+ * // With contractions
+ * List<String> segments2 = preTokenizer.preTokenize("I'm happy");
+ * // ["I", "'m", " happy"]
+ *
+ * // Custom pattern
+ * Pattern myPattern = Pattern.compile("\\S+|\\s+");
+ * RegexPreTokenizer custom = new RegexPreTokenizer(myPattern);
+ * }</pre>
+ *
+ * @see PreTokenizer
+ * @see ByteLevelBPETokenizer
+ * @see <a href="https://github.com/huggingface/tokenizers">HuggingFace Tokenizers</a>
  */
 public class RegexPreTokenizer implements PreTokenizer {
 
