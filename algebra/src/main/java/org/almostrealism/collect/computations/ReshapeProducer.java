@@ -611,9 +611,7 @@ public class ReshapeProducer<T extends Shape<T>>
 
 		HardwareEvaluable<T> hev = new HardwareEvaluable<>(producer::get, null, null, false);
 		hev.setShortCircuit(args -> {
-			long start = System.nanoTime();
 			Shape<T> out = hev.getKernel().getValue().evaluate(args);
-			AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
 			return apply(out);
 		});
 		return hev;
