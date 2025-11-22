@@ -152,8 +152,11 @@ import java.util.List;
  * @see NativeCompiler
  */
 public abstract class LlvmCommandProvider implements CompilerCommandProvider, ConsoleFeatures {
+	/** Custom include path for non-local toolchains, configured via AR_HARDWARE_NATIVE_INCLUDES. */
 	private static String includePath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_INCLUDES", "Contents/Resources/include");
+	/** Custom library path for non-local toolchains, configured via AR_HARDWARE_NATIVE_LIBS. */
 	private static String libPath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS", "Contents/Resources/lib");
+	/** The math optimization level, configured via AR_HARDWARE_MATH_OPT environment variable. */
 	private static MathOptLevel optLevel;
 
 	static {
@@ -174,16 +177,35 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		}
 	}
 
-	private String path, cmd;
+	/** The path to the compiler executable. */
+	private String path;
+	/** The shared library flag ("shared" for Linux, "dynamiclib" for macOS). */
+	private String cmd;
+	/** List of include path flags (-I...) for JNI headers and custom includes. */
 	private List<String> includes;
+	/** Whether using a compiler from the system PATH (true) or a custom toolchain path (false). */
 	private boolean localToolchain;
 
+	/**
+	 * Creates a new LLVM command provider with the specified compiler path and command.
+	 *
+	 * @param path           The path to the compiler executable (relative for local, absolute for non-local)
+	 * @param command        The shared library flag to use ("shared" for Linux, "dynamiclib" for macOS)
+	 * @param localToolchain {@code true} if using a compiler from PATH, {@code false} for custom toolchain paths
+	 */
 	public LlvmCommandProvider(String path, String command, boolean localToolchain) {
 		this.path = localToolchain ? path : new File(path).getAbsolutePath();
 		this.cmd = command;
 		this.localToolchain = localToolchain;
 	}
 
+	/**
+	 * Initializes the include and library paths for JNI compilation.
+	 *
+	 * <p>This method discovers JNI headers from {@code JAVA_HOME} and adds
+	 * platform-specific include directories. For non-local toolchains, it also
+	 * adds custom include and library paths configured via environment variables.</p>
+	 */
 	protected void init() {
 		includes = new ArrayList<>();
 
@@ -205,10 +227,21 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		}
 	}
 
+	/**
+	 * Hook for subclasses to add linker flags to the command.
+	 *
+	 * @param command The command list to add linker flags to
+	 */
 	protected void addLinker(List<String> command) { }
 
+	/**
+	 * Returns the configured math optimization level.
+	 *
+	 * @return the math optimization level
+	 */
 	public MathOptLevel getMathOptLevel() { return optLevel; }
 
+	/** {@inheritDoc} */
 	@Override
 	public List<String> getCommand(String inputFile, String outputFile, boolean lib) {
 		if (includes == null) init();
@@ -235,14 +268,31 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		return command;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Console console() {
 		return Hardware.console;
 	}
 
+	/**
+	 * Math optimization levels for native code compilation.
+	 *
+	 * <p>These levels control the trade-off between compilation speed,
+	 * IEEE 754 compliance, and runtime performance.</p>
+	 */
 	public enum MathOptLevel {
-		AGGRESSIVE, FAST, NONE;
+		/** Maximum optimization with fast-math (may break IEEE 754 compliance). */
+		AGGRESSIVE,
+		/** Standard optimization (-O3), IEEE 754 compliant. */
+		FAST,
+		/** No optimization (-O0), for debugging. */
+		NONE;
 
+		/**
+		 * Returns the compiler flags for this optimization level.
+		 *
+		 * @return A list of compiler flags (e.g., "-O3", "-ffast-math")
+		 */
 		public List<String> getFlags() {
 			switch (this) {
 				case AGGRESSIVE: return List.of("-O3", "-ffast-math");

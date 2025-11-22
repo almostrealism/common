@@ -30,6 +30,13 @@ import org.jocl.cl_event;
  * @see CLNativeComputeContext
  */
 public class CLJNILanguageOperations extends CJNILanguageOperations {
+	/**
+	 * Creates a new OpenCL JNI language operations instance with the specified precision.
+	 * Registers OpenCL memory transfer methods (clEnqueueWriteBuffer, clEnqueueReadBuffer,
+	 * clWaitForEvents) as library methods.
+	 *
+	 * @param precision  the floating-point precision (FP32 or FP64) for type mappings
+	 */
 	public CLJNILanguageOperations(Precision precision) {
 		super(precision);
 		getLibraryMethods().add("clEnqueueWriteBuffer");
@@ -37,6 +44,13 @@ public class CLJNILanguageOperations extends CJNILanguageOperations {
 		getLibraryMethods().add("clWaitForEvents");
 	}
 
+	/**
+	 * Returns the C type name for the given Java class.
+	 * Maps {@link cl_event} to "cl_event" in addition to the base JNI type mappings.
+	 *
+	 * @param type  the Java class to map to a C type name
+	 * @return the C type name for the class
+	 */
 	@Override
 	public String nameForType(Class<?> type) {
 		if (type == cl_event.class) {

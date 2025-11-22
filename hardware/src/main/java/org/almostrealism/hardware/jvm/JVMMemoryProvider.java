@@ -47,6 +47,7 @@ import io.almostrealism.code.MemoryProvider;
  * <h2>Comparison to Other Providers</h2>
  *
  * <table border="1">
+ *   <caption>Memory Provider Comparison</caption>
  *   <tr>
  *     <th>Provider</th>
  *     <th>Storage</th>

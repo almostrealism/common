@@ -52,7 +52,6 @@ import java.util.function.Supplier;
  *   <li>Weighted sum computations for implementing operations like matrix multiplication</li>
  *   <li>Producer matching utilities for automatic differentiation and optimization</li>
  * </ul>
- * </p>
  *
  * <h2>Broadcasting Examples</h2>
  * <pre>{@code

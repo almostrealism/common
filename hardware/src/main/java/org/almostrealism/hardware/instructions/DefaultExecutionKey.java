@@ -71,17 +71,44 @@ import java.util.Objects;
  * @see ComputationInstructionsManager
  */
 public class DefaultExecutionKey implements ExecutionKey {
+	/** The name of the function this key identifies. */
 	private String functionName;
+
+	/** The number of arguments expected by the function. */
 	private int argsCount;
 
+	/**
+	 * Creates a new execution key for a function with the specified name and argument count.
+	 *
+	 * @param functionName the name of the function to identify
+	 * @param argsCount    the number of arguments expected by the function
+	 */
 	public DefaultExecutionKey(String functionName, int argsCount) {
 		this.functionName = functionName;
 		this.argsCount = argsCount;
 	}
 
+	/**
+	 * Returns the function name.
+	 *
+	 * @return the function name
+	 */
 	public String getFunctionName() { return functionName; }
+
+	/**
+	 * Returns the argument count.
+	 *
+	 * @return the argument count
+	 */
 	public int getArgsCount() { return argsCount; }
 
+	/**
+	 * Compares this key to another object for equality.
+	 * Two keys are equal if they have the same function name and argument count.
+	 *
+	 * @param o the object to compare
+	 * @return true if the objects are equal, false otherwise
+	 */
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
@@ -89,6 +116,11 @@ public class DefaultExecutionKey implements ExecutionKey {
 		return argsCount == that.argsCount && Objects.equals(functionName, that.functionName);
 	}
 
+	/**
+	 * Returns a hash code based on the function name and argument count.
+	 *
+	 * @return the hash code
+	 */
 	@Override
 	public int hashCode() {
 		return Objects.hash(functionName, argsCount);

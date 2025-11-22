@@ -117,7 +117,7 @@ public class MTLComputeCommandEncoder extends MTLObject {
 	 * Dispatches a 3D grid of threadgroups.
 	 *
 	 * <p>Explicitly specifies the number of threadgroups to execute. Total thread
-	 * count is {@code (groupWidth × groupHeight × groupDepth) × (gridWidth × gridHeight × gridDepth)}.</p>
+	 * count is {@code (groupWidth x groupHeight x groupDepth) x (gridWidth x gridHeight x gridDepth)}.</p>
 	 *
 	 * @param groupWidth Threads per threadgroup in X dimension
 	 * @param groupHeight Threads per threadgroup in Y dimension
@@ -135,7 +135,7 @@ public class MTLComputeCommandEncoder extends MTLObject {
 	/**
 	 * Dispatches threads with Metal automatically calculating threadgroup count.
 	 *
-	 * <p>Specifies total thread count ({@code gridWidth × gridHeight × gridDepth}) and
+	 * <p>Specifies total thread count ({@code gridWidth x gridHeight x gridDepth}) and
 	 * threadgroup size. Metal divides the work into appropriate threadgroups.</p>
 	 *
 	 * @param groupWidth Threads per threadgroup in X dimension

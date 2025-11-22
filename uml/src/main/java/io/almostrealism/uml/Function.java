@@ -105,6 +105,7 @@ import java.lang.annotation.Target;
  *
  * <h2>Function vs Procedural Types</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Aspect</th>
  *     <th>@Function Types</th>

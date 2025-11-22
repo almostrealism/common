@@ -45,25 +45,57 @@ import org.jocl.cl_mem;
  * @see RAM
  */
 public class CLMemory extends RAM {
+	/** The underlying OpenCL memory object handle. */
 	private final cl_mem mem;
+
+	/** The size of this memory allocation in bytes. */
 	private final long size;
+
+	/** The memory provider that allocated this buffer. */
 	private final CLMemoryProvider provider;
 
+	/**
+	 * Creates a new CLMemory wrapping an OpenCL memory buffer.
+	 *
+	 * @param provider  the memory provider that allocated this buffer
+	 * @param mem       the OpenCL memory object handle
+	 * @param size      the size of the allocation in bytes
+	 */
 	protected CLMemory(CLMemoryProvider provider, cl_mem mem, long size) {
 		this.provider = provider;
 		this.mem = mem;
 		this.size = size;
 	}
 
+	/**
+	 * Returns the underlying OpenCL memory object handle.
+	 *
+	 * @return the OpenCL memory object
+	 */
 	protected cl_mem getMem() { return mem; }
 
+	/**
+	 * Returns the size of this memory allocation in bytes.
+	 *
+	 * @return the size in bytes
+	 */
 	public long getSize() {
 		return size;
 	}
 
+	/**
+	 * Returns the native pointer to the OpenCL memory object.
+	 *
+	 * @return the native pointer value
+	 */
 	@Override
 	public long getContentPointer() { return mem.getNativePointer(); }
 
+	/**
+	 * Returns the memory provider that allocated this buffer.
+	 *
+	 * @return the CLMemoryProvider for this memory
+	 */
 	@Override
 	public CLMemoryProvider getProvider() { return provider; }
 }

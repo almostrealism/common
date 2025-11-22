@@ -154,18 +154,40 @@ import java.util.List;
  */
 @Deprecated
 public class AcceleratedSubstitutionEvaluable<T extends MemoryData> implements Evaluable<T> {
+	/** The wrapped operation container to which substitutions are applied during evaluation. */
 	private AcceleratedOperationContainer<T> container;
+	/** The list of producer substitutions to apply before each evaluation. */
 	protected List<ProducerSubstitution<?>> substitutions;
 
+	/**
+	 * Creates a new substitution evaluable wrapping the given container.
+	 *
+	 * @param container the operation container to wrap
+	 */
 	public AcceleratedSubstitutionEvaluable(AcceleratedOperationContainer<T> container) {
 		this.container = container;
 		this.substitutions = new ArrayList<>();
 	}
 
+	/**
+	 * Adds a producer substitution to be applied during evaluation.
+	 *
+	 * @param <V>          the type of value being substituted
+	 * @param substitution the substitution to add
+	 */
 	public <V> void addSubstitution(ProducerSubstitution<V> substitution) {
 		substitutions.add(substitution);
 	}
 
+	/**
+	 * Evaluates the operation with all accumulated substitutions applied.
+	 *
+	 * <p>Substitutions are applied to the container before evaluation and
+	 * cleared afterward, even if an exception occurs.</p>
+	 *
+	 * @param args the evaluation arguments
+	 * @return the result of evaluation with substitutions applied
+	 */
 	@Override
 	public T evaluate(Object... args) {
 		try {

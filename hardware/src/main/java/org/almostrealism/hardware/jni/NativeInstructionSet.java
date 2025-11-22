@@ -194,37 +194,93 @@ import java.util.stream.Stream;
  * @see NativeExecution
  */
 public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
+	/**
+	 * Returns the JNI function name for the native apply method.
+	 * The name follows JNI naming conventions: {@code Java_<package>_<class>_apply}
+	 * with dots replaced by underscores.
+	 *
+	 * @return the fully qualified JNI function name
+	 */
 	default String getFunctionName() {
 		return "Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
 				"_apply";
 	}
 
+	/**
+	 * Returns the compute context used for execution.
+	 *
+	 * @return the compute context
+	 */
 	ComputeContext<MemoryData> getComputeContext();
 
+	/**
+	 * Sets the compute context for execution.
+	 *
+	 * @param context the compute context to use
+	 */
 	void setComputeContext(ComputeContext<MemoryData> context);
 
+	/**
+	 * Returns the operation metadata associated with this instruction set.
+	 *
+	 * @return the operation metadata
+	 */
 	OperationMetadata getMetadata();
 
+	/**
+	 * Sets the operation metadata for profiling and debugging.
+	 *
+	 * @param metadata the operation metadata
+	 */
 	void setMetadata(OperationMetadata metadata);
 
+	/**
+	 * Returns the parallelism level for native execution.
+	 *
+	 * @return the parallelism level
+	 */
 	int getParallelism();
 
+	/**
+	 * Sets the parallelism level for multi-threaded native execution.
+	 *
+	 * @param parallelism the number of parallel execution threads
+	 */
 	void setParallelism(int parallelism);
 
+	/**
+	 * Returns a {@link NativeExecution} wrapper for this instruction set.
+	 *
+	 * @param function ignored; native instruction sets have a single entry point
+	 * @param argCount the number of arguments expected by the native function
+	 * @return a new {@link NativeExecution} instance
+	 */
 	@Override
 	default Execution get(String function, int argCount) {
 		return new NativeExecution(this, argCount);
 	}
 
+	/** Returns {@code false}; native instruction sets are not destroyed after use. */
 	@Override
 	default boolean isDestroyed() {
 		return false;
 	}
 
+	/** No-op; native libraries remain loaded for the lifetime of the JVM. */
 	@Override
 	default void destroy() { }
 
+	/**
+	 * Executes the native kernel with the given arguments.
+	 * Extracts memory pointers, offsets, and sizes from the {@link MemoryData} arguments
+	 * and delegates to the lower-level apply method.
+	 *
+	 * @param idx the starting global index for kernel execution
+	 * @param kernelSize the total number of kernel iterations
+	 * @param args the memory data arguments to pass to the native function
+	 * @throws UnsupportedOperationException if idx exceeds {@link Integer#MAX_VALUE}
+	 */
 	default void apply(long idx, long kernelSize, MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
@@ -244,6 +300,18 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 					i, kernelSize);
 	}
 
+	/**
+	 * Executes the native kernel with RAM arrays and explicit offsets/sizes.
+	 * Validates that no arguments are null and obtains the OpenCL command queue
+	 * if available from the compute context.
+	 *
+	 * @param args the RAM memory regions containing the data
+	 * @param offsets the starting offset within each RAM region
+	 * @param sizes the size of each memory region in atomic units
+	 * @param globalId the starting global index for kernel execution
+	 * @param kernelSize the total number of kernel iterations
+	 * @throws NullPointerException if any element of args is null
+	 */
 	default void apply(RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
 		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
 
@@ -265,14 +333,43 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 				args, offsets, sizes, globalId, kernelSize);
 	}
 
+	/**
+	 * Executes the native kernel with an explicit command queue and RAM arrays.
+	 * Converts RAM regions to native content pointers and delegates to the
+	 * primitive array apply method.
+	 *
+	 * @param commandQueue the OpenCL command queue pointer, or -1 if not using OpenCL
+	 * @param args the RAM memory regions containing the data
+	 * @param offsets the starting offset within each RAM region
+	 * @param sizes the size of each memory region in atomic units
+	 * @param globalId the starting global index for kernel execution
+	 * @param kernelSize the total number of kernel iterations
+	 */
 	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
 		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
 				offsets, sizes, args.length, globalId, kernelSize);
 	}
 
+	/**
+	 * Native method to execute the compiled kernel.
+	 * Implementations must declare this as a native method linked to compiled C code.
+	 *
+	 * @param commandQueue the OpenCL command queue pointer, or -1 if not using OpenCL
+	 * @param arg array of native memory pointers for each argument
+	 * @param offset the starting offset within each memory region
+	 * @param size the size of each memory region in atomic units
+	 * @param count the number of arguments
+	 * @param globalId the starting global index for kernel execution
+	 * @param kernelSize the total number of kernel iterations
+	 */
 	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count, int globalId, long kernelSize);
 
+	/**
+	 * Returns the hardware console for logging.
+	 *
+	 * @return the hardware console
+	 */
 	@Override
 	default Console console() { return Hardware.console; }
 }

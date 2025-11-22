@@ -67,7 +67,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li><strong>Process spawn:</strong> ~10ms overhead per execution</li>
  *   <li><strong>File I/O:</strong> ~0.5ms per MB of data</li>
- *   <li><strong>Total overhead:</strong> 10-100× slower than JNI backend</li>
+ *   <li><strong>Total overhead:</strong> 10-100x slower than JNI backend</li>
  *   <li><strong>Use case:</strong> Development/debugging only, not production</li>
  * </ul>
  *
@@ -75,7 +75,10 @@ import java.util.stream.Stream;
  * @see LocalExternalMemoryProvider
  */
 public class ExternalInstructionSet implements InstructionSet {
+	/** Path to the compiled standalone executable. */
 	private String executable;
+
+	/** Supplier of temporary directory for file-based I/O. */
 	private Supplier<File> dataDirectory;
 
 	/**
@@ -134,6 +137,15 @@ public class ExternalInstructionSet implements InstructionSet {
 		};
 	}
 
+	/**
+	 * Executes the external process with the specified data directory.
+	 *
+	 * <p>Launches the compiled executable with the directory path as an argument,
+	 * waits for completion, and logs execution time.</p>
+	 *
+	 * @param dir the absolute path to the data directory containing input files
+	 * @throws HardwareException if execution fails or returns non-zero exit code
+	 */
 	protected void run(String dir) {
 		try {
 			long start = System.currentTimeMillis();
@@ -149,6 +161,14 @@ public class ExternalInstructionSet implements InstructionSet {
 		}
 	}
 
+	/**
+	 * Recursively deletes temporary data files and directories.
+	 *
+	 * <p>If lazy reading is enabled, files are scheduled for deletion on JVM exit
+	 * instead of being deleted immediately.</p>
+	 *
+	 * @param data the file or directory to delete
+	 */
 	protected void deleteData(File data) {
 		if (data.isDirectory()) Stream.of(data.listFiles()).forEach(this::deleteData);
 		if (LocalExternalMemoryProvider.enableLazyReading) {
@@ -158,9 +178,19 @@ public class ExternalInstructionSet implements InstructionSet {
 		}
 	}
 
+	/**
+	 * Returns whether this instruction set has been destroyed.
+	 *
+	 * @return always false, as external instruction sets are not destroyable
+	 */
 	@Override
 	public boolean isDestroyed() { return false; }
 
+	/**
+	 * Destroys this instruction set.
+	 *
+	 * <p>No-op for external instruction sets since there are no resources to release.</p>
+	 */
 	@Override
 	public void destroy() { }
 }

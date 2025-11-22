@@ -81,13 +81,29 @@ import java.util.function.Consumer;
  * @see InstructionSet
  */
 public class CLOperatorMap implements InstructionSet, BiFunction<String, CLException, HardwareException> {
+	/** The compute context for OpenCL operations. */
 	private CLComputeContext context;
+
+	/** The compiled OpenCL program. */
 	private CLProgram prog;
 
+	/** Thread-local map of operator name to CLOperator instances. */
 	private ThreadLocal<Map<String, CLOperator>> operators;
+
+	/** List of all created operators for cleanup during destroy. */
 	private List<CLOperator> allOperators;
+
+	/** Consumer for recording execution timing data. */
 	private Consumer<RunData> profile;
 
+	/**
+	 * Creates a new CLOperatorMap from OpenCL source code.
+	 *
+	 * @param ctx       the compute context for OpenCL operations
+	 * @param metadata  metadata describing the operation
+	 * @param src       the OpenCL C source code to compile
+	 * @param profile   consumer for recording execution timing, or null to skip profiling
+	 */
 	public CLOperatorMap(CLComputeContext ctx, OperationMetadata metadata, String src, Consumer<RunData> profile) {
 		this.context = ctx;
 		this.operators = new ThreadLocal<>();
@@ -96,6 +112,13 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 		init(metadata, src);
 	}
 
+	/**
+	 * Compiles the OpenCL source code and creates the program.
+	 *
+	 * @param metadata  metadata describing the operation
+	 * @param src       the OpenCL C source code to compile
+	 * @throws RuntimeException if compilation fails
+	 */
 	protected void init(OperationMetadata metadata, String src) {
 		if (CLOperator.enableLog) {
 			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
@@ -129,10 +152,24 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 		}
 	}
 
+	/**
+	 * Returns the operator for the specified kernel function with the default argument count of 2.
+	 *
+	 * @param key  the kernel function name
+	 * @return the CLOperator for executing the kernel
+	 */
 	public CLOperator get(String key) {
 		return get(key, 2);
 	}
 
+	/**
+	 * Returns the operator for the specified kernel function.
+	 * Creates a new thread-local operator if one does not exist for the current thread.
+	 *
+	 * @param key       the kernel function name
+	 * @param argCount  the number of arguments the kernel expects
+	 * @return the CLOperator for executing the kernel
+	 */
 	public CLOperator get(String key, int argCount) {
 		Map<String, CLOperator> ops = operators.get();
 
@@ -150,6 +187,13 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 		return ops.get(key);
 	}
 
+	/**
+	 * Converts a CLException to a HardwareException with source context information.
+	 *
+	 * @param name  the kernel function name that caused the exception
+	 * @param e     the original OpenCL exception
+	 * @return a HardwareException containing error details and source code for debugging
+	 */
 	@Override
 	public HardwareException apply(String name, CLException e) {
 		if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
@@ -159,6 +203,11 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 		}
 	}
 
+	/**
+	 * Returns whether this operator map has been destroyed.
+	 *
+	 * @return true if {@link #destroy()} has been called, false otherwise
+	 */
 	@Override
 	public boolean isDestroyed() {
 		return operators == null;

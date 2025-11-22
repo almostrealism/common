@@ -169,7 +169,10 @@ import java.util.function.Supplier;
 public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T>
 		implements ComputableParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 
+	/** Operation metadata for profiling and debugging. */
 	private final OperationMetadata metadata;
+
+	/** Factory for creating output memory banks for batch operations. */
 	private final IntFunction<MemoryBank<T>> destination;
 
 	/**

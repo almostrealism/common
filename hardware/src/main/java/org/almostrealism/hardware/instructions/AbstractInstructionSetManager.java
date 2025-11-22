@@ -77,8 +77,14 @@ import io.almostrealism.code.ComputeContext;
  */
 public abstract class AbstractInstructionSetManager<K extends ExecutionKey>
 											implements InstructionSetManager<K> {
+	/** The compute context used for compilation and execution. */
 	private ComputeContext<?> computeContext;
 
+	/**
+	 * Creates a new instruction set manager with the specified compute context.
+	 *
+	 * @param computeContext The {@link ComputeContext} for compilation and execution
+	 */
 	public AbstractInstructionSetManager(ComputeContext<?> computeContext) {
 		this.computeContext = computeContext;
 	}

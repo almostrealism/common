@@ -40,7 +40,6 @@ import io.almostrealism.compute.Process;
  *   <li>Optimization and fusion of operations</li>
  *   <li>Memory-efficient batch processing</li>
  * </ul>
- * </p>
  *
  * @param <T>  the shape type produced by this process
  * @author  Michael Murray

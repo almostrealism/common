@@ -177,21 +177,48 @@
                 </div>
 
                 <div class="backend-card">
-                    <h4>🍎 Metal Backend (<a href="../apidocs/org/almostrealism/hardware/metal/package-summary.html">metal package</a> - 23 classes)</h4>
-                    <p><strong>Purpose:</strong> Apple Silicon GPU acceleration via Metal Shading Language</p>
-                    <p><strong>Key Classes:</strong>
-                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalDataContext.html">MetalDataContext</a>,
-                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryProvider.html">MetalMemoryProvider</a>,
-                        <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a>,
-                        <a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a>
-                    </p>
-                    <p><strong>Use Case:</strong> High-performance computation on macOS/iOS with M1/M2/M3 chips</p>
-                    <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=mtl</span> or <span class="env-var">gpu</span></p>
+                    <h4>🍎 Metal Backend (<a href="../apidocs/org/almostrealism/hardware/metal/package-summary.html">metal package</a> - 21 classes)</h4>
+                    <p><strong>Purpose:</strong> Apple Silicon GPU acceleration via Metal Shading Language (MSL)</p>
+
+                    <p><strong>Core Metal Wrappers (JNI via libMTL.dylib):</strong></p>
                     <ul>
-                        <li>FP16/FP32 precision support</li>
-                        <li>Shared memory mode for unified memory architecture</li>
-                        <li>Threadgroup sizing with SIMD width optimization</li>
-                        <li>JNI wrappers for <a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a>, <a href="../apidocs/org/almostrealism/hardware/metal/MTLBuffer.html">MTLBuffer</a>, <a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandQueue.html">MTLCommandQueue</a>, etc.</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a> - GPU device abstraction (id&lt;MTLDevice&gt;)</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLBuffer.html">MTLBuffer</a> - GPU memory buffers with FP16/FP32 support</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandQueue.html">MTLCommandQueue</a> - Command submission queue</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandBuffer.html">MTLCommandBuffer</a> - One-time-use command buffer</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a> - Command encoding API</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputePipelineState.html">MTLComputePipelineState</a> - Compiled compute pipeline</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MTLFunction.html">MTLFunction</a> - Compiled MSL function wrapper</li>
+                    </ul>
+
+                    <p><strong>High-Level Abstractions:</strong></p>
+                    <ul>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalDataContext.html">MetalDataContext</a> - Backend initialization and device management</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalComputeContext.html">MetalComputeContext</a> - MSL compilation and program caching</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryProvider.html">MetalMemoryProvider</a> - MTLBuffer allocation with reference counting</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalMemory.html">MetalMemory</a> - RAM wrapper backed by MTLBuffer</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a> - Kernel execution with argument encoding</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a> - Thread-local operator management</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalProgram.html">MetalProgram</a> - MSL source compilation wrapper</li>
+                    </ul>
+
+                    <p><strong>Code Generation:</strong></p>
+                    <ul>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalLanguageOperations.html">MetalLanguageOperations</a> - MSL-specific syntax (address spaces, kernel index)</li>
+                        <li><a href="../apidocs/org/almostrealism/hardware/metal/MetalPrintWriter.html">MetalPrintWriter</a> - MSL code output with [[kernel]] attributes</li>
+                    </ul>
+
+                    <p><strong>Use Case:</strong> High-performance computation on macOS 10.13+/iOS 11+ with M1/M2/M3 or Intel Iris Plus GPUs</p>
+                    <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=mtl</span> or <span class="env-var">gpu</span></p>
+
+                    <p><strong>Metal-Specific Features:</strong></p>
+                    <ul>
+                        <li><strong>Unified Memory Architecture:</strong> Shared memory mode eliminates CPU↔GPU transfers on Apple Silicon</li>
+                        <li><strong>Precision Support:</strong> Native FP16 and FP32 operations</li>
+                        <li><strong>Threadgroup Optimization:</strong> Automatic SIMD width detection (typically 32 threads)</li>
+                        <li><strong>Dispatch Methods:</strong> dispatchThreads (total threads) vs dispatchThreadgroups (explicit control)</li>
+                        <li><strong>Reference Counting:</strong> GC-integrated MTLBuffer lifecycle via <a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryRef.html">MetalMemoryRef</a></li>
+                        <li><strong>Thread-Safe Execution:</strong> Thread-local <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a> instances</li>
                     </ul>
                 </div>
 
@@ -299,6 +326,57 @@
                     <li><strong>Thread-Local Default:</strong> <code>Heap.getDefault()</code> per thread</li>
                     <li><strong>Scope-Based:</strong> <code>heap.use(() -> {...})</code> for automatic management</li>
                     <li><strong>Performance:</strong> Single large allocation instead of many small ones</li>
+                </ul>
+
+                <h3>Metal Backend Architecture</h3>
+                <p>The Metal backend provides comprehensive GPU acceleration for Apple platforms through a carefully designed JNI bridge and high-level abstractions.</p>
+
+                <h4>Command Encoding Workflow</h4>
+                <p>Metal uses a command encoding pattern for GPU operations:</p>
+                <ol>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandQueue.html">MTLCommandQueue</a>.commandBuffer()</strong> - Create one-time-use command buffer</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandBuffer.html">MTLCommandBuffer</a>.encoder()</strong> - Begin encoding compute commands</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a>.setComputePipelineState()</strong> - Bind compiled kernel</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a>.setBuffer()</strong> - Bind argument buffers</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a>.dispatchThreads()</strong> - Configure grid size</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a>.endEncoding()</strong> - Finalize encoding</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandBuffer.html">MTLCommandBuffer</a>.commit()</strong> - Submit to GPU</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandBuffer.html">MTLCommandBuffer</a>.waitUntilCompleted()</strong> - Synchronize with GPU</li>
+                </ol>
+
+                <h4>Memory Management</h4>
+                <ul>
+                    <li><strong>Storage Modes:</strong> Shared (unified memory, zero-copy on Apple Silicon) vs Managed (explicit synchronization)</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryProvider.html">MetalMemoryProvider</a>:</strong> Allocates MTLBuffers and tracks them with <a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryRef.html">MetalMemoryRef</a></li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalMemoryRef.html">MetalMemoryRef</a>:</strong> PhantomReference-based GC tracking for automatic MTLBuffer deallocation</li>
+                    <li><strong>Reference Counting:</strong> Native Metal objects use release() pattern via <a href="../apidocs/org/almostrealism/hardware/metal/MTLObject.html">MTLObject</a> base class</li>
+                </ul>
+
+                <h4>MSL Code Generation</h4>
+                <ul>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalPrintWriter.html">MetalPrintWriter</a>:</strong> Configures kernel prefix as <code>[[kernel]] void</code> for entry points</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalLanguageOperations.html">MetalLanguageOperations</a>:</strong> Metal-specific syntax (device/thread address spaces, [[buffer(N)]] attributes)</li>
+                    <li><strong>Kernel Attributes:</strong> [[kernel]], [[buffer(N)]], [[thread_position_in_grid]]</li>
+                    <li><strong>Address Spaces:</strong> <code>device</code> for GPU memory, <code>thread</code> for private memory</li>
+                </ul>
+
+                <h4>Threadgroup Sizing</h4>
+                <ul>
+                    <li><strong>SIMD Width:</strong> Query via <a href="../apidocs/org/almostrealism/hardware/metal/MTLComputePipelineState.html">MTLComputePipelineState</a>.threadExecutionWidth() (typically 32)</li>
+                    <li><strong>Max Threads:</strong> Query via maxTotalThreadsPerThreadgroup() (typically 1024 on Apple Silicon)</li>
+                    <li><strong>Dispatch Modes:</strong>
+                        <ul>
+                            <li><code>dispatchThreads(totalX, totalY, totalZ, groupX, groupY, groupZ)</code> - Specify total threads + threadgroup size</li>
+                            <li><code>dispatchThreadgroups(groupW, groupH, groupD, gridW, gridH, gridD)</code> - Explicit threadgroup count</li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <h4>Thread Safety</h4>
+                <ul>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a>:</strong> Thread-local <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a> instances</li>
+                    <li><strong><a href="../apidocs/org/almostrealism/hardware/metal/MetalCommandRunner.html">MetalCommandRunner</a>:</strong> Single-threaded executor service for command submission</li>
+                    <li><strong>Shared Program:</strong> <a href="../apidocs/org/almostrealism/hardware/metal/MetalProgram.html">MetalProgram</a> is immutable after compilation, shared across threads</li>
                 </ul>
             </section>
 
@@ -538,6 +616,110 @@ export AR_HARDWARE_DRIVER=mtl,cl,native
 
 # Auto-select best available
 export AR_HARDWARE_DRIVER=*</code></pre>
+
+                <h3>Metal Backend: Buffer Creation and Data Transfer</h3>
+                <pre><code class="language-java">import org.almostrealism.hardware.metal.*;
+
+// Get Metal device (default GPU)
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLDevice.html">MTLDevice</a> device = <a href="../apidocs/org/almostrealism/hardware/metal/MTL.html">MTL</a>.createSystemDefaultDevice();
+
+// Create buffer with FP32 precision (1000 elements)
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLBuffer.html">MTLBuffer</a> buffer = device.newBuffer32(1000);
+
+// Write data to buffer
+float[] data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+buffer.setContents(data);
+
+// Read data back
+float[] result = buffer.getContents32(5);
+
+// Release when done
+buffer.release();</code></pre>
+
+                <h3>Metal Backend: Command Encoding Workflow</h3>
+                <pre><code class="language-java">// Compile MSL kernel source
+String mslSource = """
+    [[kernel]] void vectorAdd(
+        device float* a [[buffer(0)]],
+        device float* b [[buffer(1)]],
+        device float* result [[buffer(2)]],
+        uint id [[thread_position_in_grid]])
+    {
+        result[id] = a[id] + b[id];
+    }
+    """;
+
+<a href="../apidocs/org/almostrealism/hardware/metal/MetalProgram.html">MetalProgram</a> program = <a href="../apidocs/org/almostrealism/hardware/metal/MetalProgram.html">MetalProgram</a>.create(context, metadata, "vectorAdd", mslSource);
+program.compile();
+
+// Create command queue
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandQueue.html">MTLCommandQueue</a> queue = device.commandQueue();
+
+// Create command buffer (one-time use)
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLCommandBuffer.html">MTLCommandBuffer</a> cmdBuffer = queue.commandBuffer();
+
+// Begin encoding compute commands
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLComputeCommandEncoder.html">MTLComputeCommandEncoder</a> encoder = cmdBuffer.encoder();
+
+// Set pipeline state (compiled kernel)
+encoder.setComputePipelineState(program.getPipeline());
+
+// Bind argument buffers at indices 0, 1, 2
+encoder.setBuffer(bufferA, 0, 0);
+encoder.setBuffer(bufferB, 0, 1);
+encoder.setBuffer(bufferResult, 0, 2);
+
+// Dispatch 1024 threads total, 32 threads per threadgroup
+int totalThreads = 1024;
+int threadsPerGroup = 32;
+encoder.dispatchThreads(totalThreads, 1, 1, threadsPerGroup, 1, 1);
+
+// Finalize encoding
+encoder.endEncoding();
+
+// Submit to GPU
+cmdBuffer.commit();
+
+// Wait for completion
+cmdBuffer.waitUntilCompleted();</code></pre>
+
+                <h3>Metal Backend: High-Level Usage via <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a></h3>
+                <pre><code class="language-java">// High-level wrapper handles command encoding automatically
+<a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a> op = new <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a>(context, program, "vectorAdd", 3);
+
+// Prepare arguments (typically PackedCollections)
+<a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a>[] args = {dataA, dataB, resultData};
+
+// Execute kernel (encoding/dispatch/sync handled internally)
+op.accept(args);
+
+// Thread-safe: Each thread gets its own MetalOperator instance via MetalOperatorMap
+<a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a> map = new <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a>(context, metadata, "vectorAdd", mslSource);
+<a href="../apidocs/org/almostrealism/hardware/metal/MetalOperator.html">MetalOperator</a> threadLocalOp = map.get("vectorAdd", 3);
+threadLocalOp.accept(args);</code></pre>
+
+                <h3>Metal Backend: Threadgroup Sizing</h3>
+                <pre><code class="language-java">// Query optimal threadgroup size
+<a href="../apidocs/org/almostrealism/hardware/metal/MTLComputePipelineState.html">MTLComputePipelineState</a> pipeline = program.getPipeline();
+int simdWidth = pipeline.threadExecutionWidth();  // Typically 32
+int maxThreads = pipeline.maxTotalThreadsPerThreadgroup();  // Typically 1024
+
+// Use SIMD width for optimal performance
+int threadsPerGroup = simdWidth;
+int totalThreads = dataSize;
+
+// Dispatch with automatic threadgroup calculation
+encoder.dispatchThreads(
+    totalThreads, 1, 1,      // Total threads (X, Y, Z)
+    threadsPerGroup, 1, 1     // Threads per threadgroup (X, Y, Z)
+);
+
+// Or explicitly control threadgroup count
+int numGroups = (totalThreads + threadsPerGroup - 1) / threadsPerGroup;
+encoder.dispatchThreadgroups(
+    threadsPerGroup, 1, 1,    // Threads per group
+    numGroups, 1, 1           // Number of groups
+);</code></pre>
             </section>
 
             <section id="troubleshooting">
@@ -588,22 +770,97 @@ export AR_HARDWARE_MEMORY_LOCATION=host</pre>
                     <strong>Check:</strong> Generated kernels in results/instruction_set_*.cl<br>
                     <strong>Common causes:</strong> Precision mismatch (FP64 on FP32-only GPU), unsupported operations
                 </div>
+
+                <h3>Metal-Specific Issues</h3>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Metal backend initialization failure<br>
+                    <strong>Requirements:</strong>
+                    <ul>
+                        <li>macOS 10.13+ or iOS 11+</li>
+                        <li>Metal-capable GPU (check: <code>system_profiler SPDisplaysDataType | grep Metal</code>)</li>
+                        <li>Native library libMTL.dylib accessible on java.library.path</li>
+                    </ul>
+                    <strong>Solution:</strong> Use <code>AR_HARDWARE_DRIVER=cl,native</code> for fallback
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> MSL compilation errors<br>
+                    <strong>Debug:</strong> Enable Metal operator logging:
+                    <pre>MetalOperator.enableLog = true;
+MetalOperator.enableVerboseLog = true;  // Prints MSL source</pre>
+                    <strong>Check:</strong> Look for Metal-specific syntax issues:
+                    <ul>
+                        <li>Address space qualifiers (<code>device</code>, <code>thread</code>, <code>constant</code>)</li>
+                        <li>Kernel attributes (<code>[[kernel]]</code>, <code>[[buffer(N)]]</code>)</li>
+                        <li>Unsupported C++ features (Metal uses subset of C++14)</li>
+                    </ul>
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Threadgroup size errors<br>
+                    <strong>Error message:</strong> <code>Compute Function exceeds available resources</code><br>
+                    <strong>Cause:</strong> Threadgroup size exceeds device limits<br>
+                    <strong>Solution:</strong> Query device capabilities:
+                    <pre>MTLComputePipelineState pipeline = program.getPipeline();
+int maxThreads = pipeline.maxTotalThreadsPerThreadgroup();  // Use this limit
+int simdWidth = pipeline.threadExecutionWidth();  // Optimal size</pre>
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Buffer allocation failures<br>
+                    <strong>Error:</strong> <code>OutOfMemoryError</code> or null MTLBuffer<br>
+                    <strong>Causes:</strong>
+                    <ul>
+                        <li>Insufficient GPU memory</li>
+                        <li>Too many active buffers</li>
+                        <li>Buffer not released after use</li>
+                    </ul>
+                    <strong>Solution:</strong>
+                    <pre>// Always release buffers
+buffer.release();
+
+// Or use try-with-resources pattern if supported
+// Check AR_HARDWARE_MEMORY_SCALE setting</pre>
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Incorrect kernel results<br>
+                    <strong>Common causes:</strong>
+                    <ul>
+                        <li><strong>Missing synchronization:</strong> Call <code>cmdBuffer.waitUntilCompleted()</code></li>
+                        <li><strong>Race conditions:</strong> Use thread-local operators via <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a></li>
+                        <li><strong>Precision issues:</strong> FP16 has limited range (±65504) and precision (~3 decimal digits)</li>
+                        <li><strong>Threadgroup sizing:</strong> Ensure total threads ≥ data size</li>
+                    </ul>
+                </div>
+
+                <div class="warning">
+                    <strong>Issue:</strong> Performance slower than expected<br>
+                    <strong>Check:</strong>
+                    <ul>
+                        <li><strong>Unified memory advantage:</strong> On Apple Silicon, shared storage mode avoids transfers</li>
+                        <li><strong>SIMD width alignment:</strong> Use threadgroup size = multiple of SIMD width (32)</li>
+                        <li><strong>Kernel recompilation:</strong> Enable <a href="../apidocs/org/almostrealism/hardware/metal/MetalOperatorMap.html">MetalOperatorMap</a> caching</li>
+                        <li><strong>Excessive synchronization:</strong> Minimize waitUntilCompleted() calls</li>
+                    </ul>
+                </div>
             </section>
 
             <section id="resources">
                 <h2>Additional Resources</h2>
                 <ul>
                     <li><a href="../../hardware/README.md">Hardware Module README</a> - Comprehensive module documentation</li>
-                    <li><a href="../apidocs/org/almostrealism/hardware/package-summary.html">JavaDoc API</a> - Complete API reference for 128+ classes</li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/package-summary.html">JavaDoc API</a> - Complete API reference</li>
                     <li><a href="../tutorials/">Framework Tutorials</a> - Step-by-step guides</li>
                 </ul>
 
                 <h3>Backend-Specific Documentation</h3>
                 <ul>
-                    <li><a href="../apidocs/org/almostrealism/hardware/cl/package-summary.html">OpenCL Backend (cl package)</a> - 21 classes</li>
-                    <li><a href="../apidocs/org/almostrealism/hardware/metal/package-summary.html">Metal Backend (metal package)</a> - 23 classes</li>
-                    <li><a href="../apidocs/org/almostrealism/hardware/jni/package-summary.html">JNI Backend (jni package)</a> - 15 classes</li>
-                    <li><a href="../apidocs/org/almostrealism/hardware/mem/package-summary.html">Memory Management (mem package)</a> - 19 classes</li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/cl/package-summary.html">OpenCL Backend (cl package)</a></li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/metal/package-summary.html">Metal Backend (metal package)</a></li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/jni/package-summary.html">JNI Backend (jni package)</a></li>
+                    <li><a href="../apidocs/org/almostrealism/hardware/mem/package-summary.html">Memory Management (mem package)</a></li>
                 </ul>
             </section>
         </main>

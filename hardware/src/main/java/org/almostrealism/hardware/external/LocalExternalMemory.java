@@ -54,13 +54,13 @@ import java.io.IOException;
  * LocalExternalMemory mem = provider.allocate(file, 1000);
  *
  * // Lazy load from file
- * mem.read();  // File → memory array
+ * mem.read();  // File to memory array
  *
  * // Modify data
  * mem.data[0] = 42.0;
  *
  * // Write back to file
- * mem.write();  // Memory array → file
+ * mem.write();  // Memory array to file
  *
  * // Free memory but keep file
  * mem.restore();

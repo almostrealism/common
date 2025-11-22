@@ -34,6 +34,7 @@ package io.almostrealism.uml;
  *
  * <h2>Relationship with Named</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Named</th>
  *     <th>Nameable</th>

@@ -196,10 +196,16 @@ import java.util.function.Supplier;
 public class AcceleratedComputationOperation<T> extends AcceleratedOperation<MemoryData>
 		implements Countable, Signature {
 
+	/** The high-level computation to be compiled and executed on hardware accelerators. */
 	private Computation<T> computation;
+
+	/** Compiler that transforms the computation into executable {@link Scope} objects. */
 	private ComputationScopeCompiler<T> compiler;
 
+	/** Manages compiled instruction sets and caching for this computation. */
 	private ComputableInstructionSetManager<?> instructions;
+
+	/** Unique key identifying this operation's compiled form for caching purposes. */
 	private ExecutionKey executionKey;
 
 	/**
@@ -412,6 +418,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 	}
 
+	/**
+	 * Returns the index of the output argument in the argument list.
+	 *
+	 * <p>Delegates to the instruction set manager to determine which argument
+	 * contains the operation's output based on the execution key.</p>
+	 *
+	 * @return The index of the output argument
+	 */
 	@Override
 	protected int getOutputArgumentIndex() {
 		return getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
@@ -510,6 +524,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		return operator;
 	}
 
+	/**
+	 * Returns the compiled scope for this operation.
+	 *
+	 * <p>If the scope has not been compiled yet, triggers compilation
+	 * before returning. This ensures the scope is always available.</p>
+	 *
+	 * @return The compiled scope
+	 */
 	protected Scope<T> getScope() {
 		if (getCompiler().getScope() == null) {
 			compile();
@@ -560,6 +582,13 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		this.executionKey = executionKey;
 	}
 
+	/**
+	 * Resets the instruction set manager and execution key.
+	 *
+	 * <p>Clears cached instructions and destroys the compiler, allowing
+	 * the operation to be recompiled. Called when the shared instruction
+	 * set is destroyed.</p>
+	 */
 	protected void resetInstructions() {
 		instructions = null;
 		executionKey = null;
@@ -584,16 +613,38 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().postCompile();
 	}
 
+	/**
+	 * Sets up argument mappings from the given scope.
+	 *
+	 * @param scope The scope containing inputs and arguments
+	 */
 	protected void setupArguments(Scope<?> scope) {
 		setupArguments(scope.getInputs(), scope.getArguments());
 	}
 
+	/**
+	 * Sets up argument mappings from the given inputs and arguments lists.
+	 *
+	 * @param inputs The list of input suppliers
+	 * @param arguments The list of arguments
+	 */
 	protected void setupArguments(List<Supplier<Evaluable<? extends MemoryData>>> inputs,
 								  List<Argument<? extends MemoryData>> arguments) {
 		setInputs(inputs);
 		setArguments(arguments);
 	}
 
+	/**
+	 * Creates process details for kernel execution.
+	 *
+	 * <p>Validates that the computed kernel size is acceptable for the
+	 * compiler before returning the process details.</p>
+	 *
+	 * @param output The output memory bank
+	 * @param args The input arguments
+	 * @return The process details for execution
+	 * @throws UnsupportedOperationException if the kernel size is invalid
+	 */
 	@Override
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
@@ -641,6 +692,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public String signature() { return getCompiler().signature(); }
 
+	/**
+	 * Waits for the given semaphore to complete.
+	 *
+	 * <p>Prevents deadlock by checking if called from the executor thread,
+	 * which would block the compute context.</p>
+	 *
+	 * @param semaphore The semaphore to wait on
+	 * @throws IllegalStateException if called from the compute context executor thread
+	 */
 	@Override
 	protected void waitFor(Semaphore semaphore) {
 		if (getComputeContext().isExecutorThread()) {

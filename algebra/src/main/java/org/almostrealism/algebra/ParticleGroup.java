@@ -29,7 +29,6 @@ package org.almostrealism.algebra;
  *   <li>Geometry and mesh processing</li>
  *   <li>Physics simulations</li>
  * </ul>
- * </p>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code

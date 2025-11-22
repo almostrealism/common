@@ -41,7 +41,6 @@ import java.util.Optional;
  *   <li>Off-diagonal elements are zero</li>
  * </ul>
  * This is equivalent to s . I where I is the identity matrix.
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

@@ -36,7 +36,6 @@ import java.util.Optional;
  *   <li>Diagonal elements (i, i) are 1.0</li>
  *   <li>Off-diagonal elements are 0.0</li>
  * </ul>
- * </p>
  *
  * <p>
  * The identity matrix has the property that I . A = A . I = A for any matrix A

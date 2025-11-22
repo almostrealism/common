@@ -35,6 +35,7 @@ package io.almostrealism.lifecycle;
  *
  * <h2>Comparison with Destroyable</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Lifecycle.reset()</th>
  *     <th>Destroyable.destroy()</th>

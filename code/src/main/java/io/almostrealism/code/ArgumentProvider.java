@@ -23,10 +23,34 @@ import io.almostrealism.scope.Variable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * Provides array variables for computation inputs during scope compilation.
+ *
+ * <p>{@link ArgumentProvider} is responsible for creating {@link ArrayVariable} instances
+ * that represent computation inputs. It handles delegation to output variables from
+ * other computations, avoiding unnecessary memory copies when one computation's output
+ * feeds directly into another's input.</p>
+ *
+ * @see ArrayVariable
+ * @see Computation
+ */
 public interface ArgumentProvider {
+	/** Enables delegation to output variables to avoid memory copies between computations. */
 	boolean enableOutputVariableDelegation = true;
+
+	/** Enables post-processing of output variable delegation after argument creation. */
 	boolean enableArgumentPostProcessing = false;
 
+	/**
+	 * Creates an array variable for the given input producer.
+	 *
+	 * @param <T>            the type of value produced
+	 * @param p              the name provider for generating variable names
+	 * @param input          the input producer to create a variable for
+	 * @param delegate       optional delegate variable for memory sharing
+	 * @param delegateOffset offset into the delegate variable, or -1 if not delegating
+	 * @return the array variable representing the input
+	 */
 	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
 	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {

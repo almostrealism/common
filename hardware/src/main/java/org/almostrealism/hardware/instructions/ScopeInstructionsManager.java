@@ -161,21 +161,46 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		extends AbstractInstructionSetManager<K>
 		implements ComputableInstructionSetManager<K>, ConsoleFeatures {
 
+	/** Supplier that lazily provides the scope for compilation. */
 	private Supplier<Scope<?>> scope;
+
+	/** Optional listener invoked when an operator is accessed. */
 	private Consumer<ScopeInstructionsManager<K>> accessListener;
+
+	/** List of callbacks to invoke when this manager is destroyed. */
 	private List<Runnable> destroyListeners;
+
+	/** The Process associated with this manager for argument mapping. */
 	private Process<?, ?> process;
 
+	/** The name of the compiled scope. */
 	private String scopeName;
+
+	/** The input suppliers from the compiled scope. */
 	private List<Supplier<Evaluable<?>>> inputs;
+
+	/** The arguments from the compiled scope. */
 	private List<Argument<?>> arguments;
+
+	/** Map for routing arguments from Process tree to scope arguments. */
 	private ProcessArgumentMap argumentMap;
 
+	/** Map of execution keys to their output argument indices. */
 	private Map<K, Integer> outputArgIndices;
+
+	/** Map of execution keys to their output offsets. */
 	private Map<K, Integer> outputOffsets;
 
+	/** The compiled instruction set containing operators. */
 	private InstructionSet operators;
 
+	/**
+	 * Creates a new scope instructions manager.
+	 *
+	 * @param computeContext the compute context for compilation
+	 * @param scope          supplier providing the scope to compile (lazily invoked)
+	 * @param accessListener optional listener invoked when operators are accessed, or null
+	 */
 	public ScopeInstructionsManager(ComputeContext<?> computeContext,
 									Supplier<Scope<?>> scope,
 									Consumer<ScopeInstructionsManager<K>> accessListener) {
@@ -187,10 +212,25 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		this.outputOffsets = new HashMap<>();
 	}
 
+	/**
+	 * Returns the Process associated with this manager.
+	 *
+	 * @return the associated Process
+	 */
 	public Process<?, ?> getProcess() { return process; }
 
+	/**
+	 * Associates a Process with this manager for argument mapping.
+	 *
+	 * @param process the Process to associate
+	 */
 	public void setProcess(Process<?, ?> process) { this.process = process; }
 
+	/**
+	 * Populates the argument map by mapping Process inputs to scope arguments.
+	 *
+	 * @param process the Process to map arguments from
+	 */
 	public void populateArgumentMap(Process<?, ?> process) {
 		this.argumentMap = new ProcessArgumentMap(process,
 				arguments.stream().map(Argument::getVariable)
@@ -199,8 +239,16 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 						.collect(Collectors.toList()));
 	}
 
+	/**
+	 * Returns the argument map for this manager.
+	 *
+	 * @return the argument map
+	 */
 	public ProcessArgumentMap getArgumentMap() { return argumentMap; }
 
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public int getOutputArgumentIndex(K key) {
 		Integer argIndex = outputArgIndices.get(key);
@@ -211,27 +259,64 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		return argIndex;
 	}
 
+	/**
+	 * Sets the output argument index for the specified key.
+	 *
+	 * @param key            the execution key
+	 * @param outputArgIndex the index of the output argument
+	 */
 	public void setOutputArgumentIndex(K key, int outputArgIndex) {
 		this.outputArgIndices.put(key, outputArgIndex);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public int getOutputOffset(K key) {
 		return outputOffsets.get(key);
 	}
 
+	/**
+	 * Sets the output offset for the specified key.
+	 *
+	 * @param key          the execution key
+	 * @param outputOffset the output offset in bytes
+	 */
 	public void setOutputOffset(K key, int outputOffset) {
 		this.outputOffsets.put(key, outputOffset);
 	}
 
+	/**
+	 * Returns the scope inputs.
+	 *
+	 * @return the list of scope inputs
+	 */
 	public List<Supplier<Evaluable<?>>> getScopeInputs() { return inputs; }
 
+	/**
+	 * Returns the scope arguments.
+	 *
+	 * @return the list of scope arguments
+	 */
 	public List<Argument<?>> getScopeArguments() { return arguments; }
 
+	/**
+	 * Adds a listener to be notified when this manager is destroyed.
+	 *
+	 * @param listener the destroy listener
+	 */
 	public void addDestroyListener(Runnable listener) {
 		destroyListeners.add(listener);
 	}
 
+	/**
+	 * Retrieves and initializes the scope for compilation.
+	 *
+	 * <p>This method invokes the scope supplier and caches metadata including
+	 * the scope name, inputs, and arguments. If a Process is associated with
+	 * this manager, the argument map is also populated.</p>
+	 *
+	 * @return the scope to compile
+	 */
 	protected Scope<?> getScope() {
 		if (scopeName != null) {
 			warn("Repeated attempt to retrieve Scope");
@@ -249,6 +334,14 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		return s;
 	}
 
+	/**
+	 * Returns the compiled instruction set, compiling if necessary.
+	 *
+	 * <p>This method is synchronized to ensure only one compilation occurs
+	 * even under concurrent access.</p>
+	 *
+	 * @return the compiled instruction set
+	 */
 	protected synchronized InstructionSet getInstructionSet() {
 		if (operators == null || operators.isDestroyed()) {
 			operators = getComputeContext().deliver(getScope());
@@ -258,6 +351,12 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		return operators;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Compiles the scope on first call and caches the result. Subsequent calls
+	 * return the cached operator. Notifies the access listener if one is registered.</p>
+	 */
 	@Override
 	public synchronized Execution getOperator(K key) {
 		try {
@@ -274,6 +373,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Destroys the compiled instruction set and notifies all destroy listeners.</p>
+	 */
 	@Override
 	public void destroy() {
 		if (operators != null) {
@@ -284,6 +388,7 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		destroyListeners.forEach(Runnable::run);
 	}
 
+	/** Returns the console for logging. */
 	@Override
 	public Console console() { return Hardware.console; }
 }

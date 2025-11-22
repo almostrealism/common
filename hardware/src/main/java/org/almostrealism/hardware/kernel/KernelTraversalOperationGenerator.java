@@ -40,7 +40,7 @@ import java.util.stream.IntStream;
  * for complex expression subtrees during kernel compilation.
  *
  * <p>Analyzes {@link Expression} trees during compilation to identify expensive index-dependent
- * calculations. For sufficiently complex expressions (≥16 child nodes), generates a
+ * calculations. For sufficiently complex expressions (>=16 child nodes), generates a
  * {@link KernelTraversalOperation} that precomputes values for all indices, replacing the
  * complex expression with a simple array lookup.</p>
  *
@@ -48,7 +48,7 @@ import java.util.stream.IntStream;
  *
  * <p>Automatically optimizes expressions that meet all criteria:</p>
  * <ul>
- *   <li><strong>Complexity:</strong> Expression has {@code ≥ minimumChildren} (default: 16) nodes</li>
+ *   <li><strong>Complexity:</strong> Expression has {@code >= minimumChildren} (default: 16) nodes</li>
  *   <li><strong>Fixed count:</strong> Traversal length is known at compile time</li>
  *   <li><strong>Cache space:</strong> Fewer than {@code defaultMaxEntries} (128) operations cached</li>
  * </ul>
@@ -71,7 +71,7 @@ import java.util.stream.IntStream;
  * <h2>Performance Trade-offs</h2>
  *
  * <ul>
- *   <li><strong>Speedup:</strong> 2-50× for expressions with 16+ operations</li>
+ *   <li><strong>Speedup:</strong> 2-50x for expressions with 16+ operations</li>
  *   <li><strong>Memory:</strong> {@code N * sizeof(double)} bytes per cached expression</li>
  *   <li><strong>Compilation time:</strong> +10-50ms per optimized expression</li>
  *   <li><strong>Best for:</strong> FFT twiddle factors, coordinate transforms, lookup tables</li>
@@ -99,7 +99,7 @@ import java.util.stream.IntStream;
  *
  * @see KernelTraversalOperation
  * @see KernelSeriesCache
- * @see io.almostrealism.code.AcceleratedComputationOperation
+ * @see org.almostrealism.hardware.AcceleratedOperation
  */
 public class KernelTraversalOperationGenerator implements KernelTraversalProvider, Destroyable, ConsoleFeatures {
 	public static boolean enableGeneration = true;
@@ -127,7 +127,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	/**
 	 * Attempts to optimize an expression by generating a lookup table operation.
 	 *
-	 * <p>If the expression is sufficiently complex (≥{@link #minimumChildren} nodes),
+	 * <p>If the expression is sufficiently complex (>={@link #minimumChildren} nodes),
 	 * creates a {@link KernelTraversalOperation} that precomputes all index values
 	 * and replaces the expression with an array reference.</p>
 	 *

@@ -50,7 +50,6 @@ import java.util.List;
  *   <li>Attention mechanisms in transformers</li>
  *   <li>Custom tensor contractions</li>
  * </ul>
- * </p>
  *
  * <h2>Matrix Multiplication Example</h2>
  * <pre>{@code

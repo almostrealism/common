@@ -278,12 +278,13 @@ public class ConstantRepeatedProducerComputation<T extends PackedCollection<?>>
 	 * <p>The differentiation process:</p>
 	 * <ol>
 	 *   <li>Attempts standard delta computation via {@link #attemptDelta(Producer)}</li>
-	 *   <li>If unsuccessful, creates a {@link ConstantRepeatedDeltaComputation} with:</li>
-	 *   <ul>
-	 *     <li>The same iteration count as this computation</li>
-	 *     <li>Specialized expression that computes derivatives at each iteration</li>
-	 *     <li>Optimized handling of constant iteration bounds</li>
-	 *   </ul>
+	 *   <li>If unsuccessful, creates a {@link ConstantRepeatedDeltaComputation} with:
+	 *     <ul>
+	 *       <li>The same iteration count as this computation</li>
+	 *       <li>Specialized expression that computes derivatives at each iteration</li>
+	 *       <li>Optimized handling of constant iteration bounds</li>
+	 *     </ul>
+	 *   </li>
 	 * </ol>
 	 * 
 	 * <p><strong>Usage in gradient computation:</strong></p>

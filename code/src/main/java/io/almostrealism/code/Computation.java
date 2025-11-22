@@ -26,23 +26,71 @@ import org.almostrealism.io.ConsoleFeatures;
 
 /**
  * A {@link Computation} is a {@link Computable} that describes a computational
- * process specifically via a {@link Scope}.
+ * process specifically via a {@link Scope}. This interface is the primary abstraction
+ * for defining executable computations in the Almost Realism framework.
  *
- * @param <T>  The type of the ultimate result of computation.
+ * <p>{@link Computation} extends several key interfaces:
+ * <ul>
+ *   <li>{@link Computable} - Provides the foundation for computable operations</li>
+ *   <li>{@link ScopeLifecycle} - Manages the compilation lifecycle of scopes</li>
+ *   <li>{@link OutputSupport} - Provides access to output variables</li>
+ *   <li>{@link ConsoleFeatures} - Provides logging capabilities</li>
+ * </ul>
  *
- * @author  Michael Murray
+ * <p>The central method {@link #getScope(KernelStructureContext)} returns a {@link Scope}
+ * that contains all the variables, methods, and expressions needed to execute this
+ * computation. The scope is then compiled into executable code by a {@link ComputeContext}.
+ *
+ * <h2>Implementation</h2>
+ * <p>Most implementations should extend {@link ComputationBase} rather than implementing
+ * this interface directly. {@link ComputationBase} provides default implementations
+ * for scope lifecycle management and argument handling.
+ *
+ * <h2>Console Logging</h2>
+ * <p>This interface provides a shared {@link Console} instance for logging computation-related
+ * messages. The console is a child of the {@link Scope#console}, allowing for hierarchical
+ * log filtering.
+ *
+ * @param <T> the type of the ultimate result of computation
+ *
+ * @author Michael Murray
+ * @see ComputationBase
+ * @see Scope
+ * @see Computable
  */
 public interface Computation<T> extends
 		Computable, ScopeLifecycle, OutputSupport, ConsoleFeatures {
+
+	/**
+	 * Shared console instance for logging computation-related messages.
+	 * This console is a child of {@link Scope#console}.
+	 */
 	Console console = Scope.console.child();
 
 	/**
-	 * Return a {@link Scope} containing the {@link Variable}s
-	 * and {@link Method}s necessary to compute the output of
-	 * this {@link Computation}.
+	 * Returns a {@link Scope} containing the {@link Variable}s and {@link Method}s
+	 * necessary to compute the output of this {@link Computation}.
+	 *
+	 * <p>The returned scope represents the complete computation logic that will be
+	 * compiled into executable code. It includes:
+	 * <ul>
+	 *   <li>Input variable declarations</li>
+	 *   <li>Intermediate calculation variables</li>
+	 *   <li>Output variable assignments</li>
+	 *   <li>Method calls and expressions</li>
+	 * </ul>
+	 *
+	 * @param context the kernel structure context providing compilation settings
+	 *                and shared resources for scope generation
+	 * @return the scope containing this computation's logic
 	 */
 	Scope<T> getScope(KernelStructureContext context);
 
+	/**
+	 * Returns the console instance for logging.
+	 *
+	 * @return the shared computation console
+	 */
 	@Override
 	default Console console() { return console; }
 }

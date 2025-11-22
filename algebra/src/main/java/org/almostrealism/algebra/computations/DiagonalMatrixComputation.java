@@ -36,7 +36,6 @@ import java.util.List;
  *   <li>Diagonal elements (i, i) contain the values from the input vector</li>
  *   <li>Off-diagonal elements are zero</li>
  * </ul>
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

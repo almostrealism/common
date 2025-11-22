@@ -173,6 +173,7 @@ import java.lang.annotation.Target;
  *
  * <h2>ViewModel vs ModelEntity</h2>
  * <table>
+ * <caption>Table</caption>
  *   <tr>
  *     <th>Aspect</th>
  *     <th>@ViewModel</th>

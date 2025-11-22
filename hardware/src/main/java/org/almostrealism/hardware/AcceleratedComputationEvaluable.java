@@ -183,9 +183,12 @@ import java.util.function.IntFunction;
 public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
 		implements StreamingEvaluable<T>, Evaluable<T> {
+	/** Controls whether multiple evaluables with the same signature can compile independently. */
 	public static boolean enableRedundantCompilation = true;
 
+	/** Custom factory for allocating output memory, or null for default allocation. */
 	private IntFunction<Multiple<T>> destinationFactory;
+	/** Consumer to receive evaluation results for streaming pipelines. */
 	private Consumer<T> downstream;
 
 	/**
@@ -345,6 +348,19 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		}
 	}
 
+	/**
+	 * Ensures the kernel is compiled and ready for execution.
+	 *
+	 * <p>Checks whether the evaluable has been compiled by verifying that argument
+	 * variables are available. If not compiled and either {@link #enableRedundantCompilation}
+	 * is true or no instruction set manager exists, triggers compilation via {@link #load()}.</p>
+	 *
+	 * <p>Logs warnings when:</p>
+	 * <ul>
+	 *   <li>The evaluable was not compiled ahead of time (just-in-time compilation)</li>
+	 *   <li>Instructions already exist but redundant compilation is occurring</li>
+	 * </ul>
+	 */
 	protected void confirmLoad() {
 		if (getArgumentVariables() == null &&
 				(enableRedundantCompilation || getInstructionSetManager() == null)) {
@@ -369,7 +385,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * <ol>
 	 *   <li>Ensures the kernel is compiled ({@link #confirmLoad()})</li>
 	 *   <li>Retrieves output argument index and offset from instruction manager</li>
-	 *   <li>Dispatches the kernel via {@link #apply(Object, Object[])}</li>
+	 *   <li>Dispatches the kernel via {@link AcceleratedOperation#apply(MemoryBank, Object[])}</li>
 	 *   <li>Waits for kernel completion</li>
 	 *   <li>Extracts result from output argument via {@link #postProcessOutput}</li>
 	 *   <li>Validates result (checks for NaN if monitoring enabled)</li>
@@ -469,6 +485,16 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		return this;
 	}
 
+	/**
+	 * Validates the evaluation result and logs warnings for invalid values.
+	 *
+	 * <p>When {@code outputMonitoring} is enabled, checks the result for NaN values
+	 * and logs a warning if any are found. This helps identify numerical stability
+	 * issues in computations.</p>
+	 *
+	 * @param result The result to validate
+	 * @return The validated result (unchanged)
+	 */
 	protected T validate(T result) {
 		if (outputMonitoring) {
 			int nanCount = result.count(Double::isNaN);
@@ -482,10 +508,16 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	}
 
 	/**
-	 * As the result of an {@link AcceleratedComputationEvaluable} is not guaranteed to be
+	 * Post-processes the output memory to ensure correct type.
+	 *
+	 * <p>As the result of an {@link AcceleratedComputationEvaluable} is not guaranteed to be
 	 * of the correct type of {@link MemoryData}, depending on what optimizations
 	 * are used during compilation, subclasses can override this method to ensure that the
-	 * expected type is returned by the {@link #evaluate(Object...)} method.
+	 * expected type is returned by the {@link #evaluate(Object...)} method.</p>
+	 *
+	 * @param output the raw output memory data from kernel execution
+	 * @param offset the offset within the output memory
+	 * @return the processed output cast to type T
 	 */
 	protected T postProcessOutput(MemoryData output, int offset) {
 		return (T) output;

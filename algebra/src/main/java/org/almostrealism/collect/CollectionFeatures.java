@@ -171,10 +171,10 @@ import java.util.stream.Stream;
  *
  * <h3>6. Comparison and Logical Operations</h3>
  * <ul>
- *   <li>{@code greaterThan(Producer, Producer)} - Element-wise > comparison</li>
- *   <li>{@code lessThan(Producer, Producer)} - Element-wise < comparison</li>
- *   <li>{@code greaterThanOrEqual(Producer, Producer)} - Element-wise >= comparison</li>
- *   <li>{@code lessThanOrEqual(Producer, Producer)} - Element-wise <= comparison</li>
+ *   <li>{@code greaterThan(Producer, Producer)} - Element-wise &gt; comparison</li>
+ *   <li>{@code lessThan(Producer, Producer)} - Element-wise &lt; comparison</li>
+ *   <li>{@code greaterThanOrEqual(Producer, Producer)} - Element-wise &gt;= comparison</li>
+ *   <li>{@code lessThanOrEqual(Producer, Producer)} - Element-wise &lt;= comparison</li>
  *   <li>{@code and(Producer, Producer)} - Logical AND</li>
  *   <li>{@code conditional selection via greaterThan/lessThan overloads}</li>
  * </ul>
@@ -3218,7 +3218,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare
-	 * @return a {@link CollectionProducer} that generates 1.0 where a < b, 0.0 otherwise
+	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt; b, 0.0 otherwise
 	 */
 	default CollectionProducer<PackedCollection<?>> lessThan(Producer<?> a, Producer<?> b) {
 		return lessThan(a, b, c(1.0), c(0.0), false);
@@ -3231,7 +3231,7 @@ public interface CollectionFeatures extends ExpressionFeatures, ProducerFeatures
 	 *
 	 * @param a the first collection to compare
 	 * @param b the second collection to compare
-	 * @return a {@link CollectionProducer} that generates 1.0 where a <= b, 0.0 otherwise
+	 * @return a {@link CollectionProducer} that generates 1.0 where a &lt;= b, 0.0 otherwise
 	 */
 	default CollectionProducer<PackedCollection<?>> lessThanOrEqual(Producer<?> a, Producer<?> b) {
 		return lessThan(a, b, c(1.0), c(0.0), true);

@@ -57,16 +57,16 @@ import java.util.function.Supplier;
  *
  * <p>Automatically recognizes:</p>
  * <ul>
- *   <li><strong>Arithmetic sequences:</strong> {@code [0, 1, 2, 3, ...]} → {@code start + i * step}</li>
- *   <li><strong>Geometric sequences:</strong> {@code [1, 2, 4, 8, ...]} → {@code start * ratio^i}</li>
- *   <li><strong>Polynomial patterns:</strong> {@code [0, 1, 4, 9, ...]} → {@code i^2}</li>
+ *   <li><strong>Arithmetic sequences:</strong> {@code [0, 1, 2, 3, ...]} to {@code start + i * step}</li>
+ *   <li><strong>Geometric sequences:</strong> {@code [1, 2, 4, 8, ...]} to {@code start * ratio^i}</li>
+ *   <li><strong>Polynomial patterns:</strong> {@code [0, 1, 4, 9, ...]} to {@code i^2}</li>
  * </ul>
  *
  * <h2>Caching Strategy</h2>
  *
  * <ol>
  *   <li>Expression tree analyzed to find index-dependent patterns</li>
- *   <li>Pattern evaluated for all indices → {@link IndexSequence}</li>
+ *   <li>Pattern evaluated for all indices to {@link IndexSequence}</li>
  *   <li>Sequence signature computed (hash of pattern)</li>
  *   <li>If new pattern and space available: store in {@link MemoryDataCacheManager}</li>
  *   <li>Replace expression subtree with cache array reference</li>
@@ -85,8 +85,8 @@ import java.util.function.Supplier;
  * <h2>Performance Impact</h2>
  *
  * <ul>
- *   <li><strong>Speedup:</strong> 2-10× for kernels with repetitive index calculations</li>
- *   <li><strong>Memory:</strong> {@code count * maxEntries * 8} bytes per cache</li>
+ *   <li><strong>Speedup:</strong> 2-10x for kernels with repetitive index calculations</li>
+ *   <li><strong>Memory:</strong> {@code count x maxEntries x 8} bytes per cache</li>
  *   <li><strong>Overhead:</strong> Pattern detection during compilation (~10ms per operation)</li>
  * </ul>
  *
@@ -98,7 +98,7 @@ import java.util.function.Supplier;
  *
  * // KernelSeriesCache detects this is an arithmetic progression in the exponent
  * // Replaces with: cachedSequence[i]
- * // Speedup: ~5× for N=1024
+ * // Speedup: ~5x for N=1024
  * }</pre>
  *
  * @see KernelTraversalOperationGenerator

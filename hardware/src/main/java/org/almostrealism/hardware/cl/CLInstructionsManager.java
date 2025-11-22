@@ -48,21 +48,46 @@ import java.util.Map;
  * @see org.almostrealism.hardware.instructions.InstructionSetManager
  */
 public class CLInstructionsManager extends AbstractInstructionSetManager<DefaultExecutionKey> {
+	/** Global cache mapping function names to thread-local CLOperator instances. */
 	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
 
+	/** The class containing the source operations managed by this instance. */
 	private Class<?> sourceClass;
 
+	/**
+	 * Creates a new CLInstructionsManager for managing OpenCL operators.
+	 *
+	 * @param computeContext  the compute context for OpenCL execution
+	 * @param sourceClass     the class containing the source operations
+	 */
 	public CLInstructionsManager(ComputeContext<?> computeContext, Class<?> sourceClass) {
 		super(computeContext);
 		this.sourceClass = sourceClass;
 	}
 
+	/**
+	 * Returns the OpenCL compute context, cast to {@link CLComputeContext}.
+	 *
+	 * @return the CLComputeContext for this manager
+	 */
 	public CLComputeContext getComputeContext() {
 		return (CLComputeContext) super.getComputeContext();
 	}
 
+	/**
+	 * Returns the source class containing the operations managed by this instance.
+	 *
+	 * @return the source class
+	 */
 	public Class<?> getSourceClass() { return sourceClass; }
 
+	/**
+	 * Returns the OpenCL operator for the given execution key.
+	 * Creates a new thread-local operator if one does not exist.
+	 *
+	 * @param key  the execution key identifying the function name and argument count
+	 * @return the CLOperator for the specified key
+	 */
 	@Override
 	public Execution getOperator(DefaultExecutionKey key) {
 		// TODO  This needs to be by class in addition to function, as function names may collide

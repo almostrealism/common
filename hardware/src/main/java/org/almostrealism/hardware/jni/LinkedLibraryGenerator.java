@@ -142,5 +142,12 @@ import java.util.function.Consumer;
  * @see NativeCompiler
  */
 public interface LinkedLibraryGenerator {
+	/**
+	 * Generates a native library from the input file.
+	 *
+	 * @param inputFile       the source file to compile
+	 * @param outputFile      the destination library file
+	 * @param commandExecutor consumer that executes the compiler command
+	 */
 	void generateLibrary(String inputFile, String outputFile, Consumer<List<String>> commandExecutor);
 }

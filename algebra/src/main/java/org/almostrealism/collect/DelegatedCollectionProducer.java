@@ -33,7 +33,6 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
  *   <li>Modifying specific behaviors while preserving most functionality</li>
  *   <li>Creating proxy or adapter patterns for collection operations</li>
  * </ul>
- * </p>
  *
  * <h2>Direct vs Indirect Delegation</h2>
  * <p>
@@ -42,7 +41,6 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
  *   <li><b>Direct (true):</b> Methods are delegated directly to the wrapped producer</li>
  *   <li><b>Indirect (false):</b> Additional processing or filtering may occur before delegation</li>
  * </ul>
- * </p>
  *
  * <h2>Fixed Count Behavior</h2>
  * <p>

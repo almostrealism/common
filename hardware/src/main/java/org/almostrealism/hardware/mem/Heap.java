@@ -199,6 +199,16 @@ public class Heap {
 		return getStage().allocate(count);
 	}
 
+	/**
+	 * Wraps a callable to execute with this heap as the default.
+	 *
+	 * <p>The returned callable sets this heap as the thread-local default before
+	 * executing and restores the previous default afterwards.</p>
+	 *
+	 * @param <T> The return type of the callable
+	 * @param r The callable to wrap
+	 * @return A wrapped callable that uses this heap as default during execution
+	 */
 	public <T> Callable<T> wrap(Callable<T> r) {
 		return () -> {
 			Heap old = defaultHeap.get();
@@ -212,6 +222,15 @@ public class Heap {
 		};
 	}
 
+	/**
+	 * Executes a runnable with this heap as the thread-local default.
+	 *
+	 * <p>Sets this heap as the default, runs the runnable, and restores the
+	 * previous default regardless of exceptions.</p>
+	 *
+	 * @param r The runnable to execute
+	 * @return This heap (for method chaining)
+	 */
 	public Heap use(Runnable r) {
 		Heap old = defaultHeap.get();
 		defaultHeap.set(this);
@@ -225,6 +244,16 @@ public class Heap {
 		return this;
 	}
 
+	/**
+	 * Executes a supplier with this heap as the thread-local default.
+	 *
+	 * <p>Sets this heap as the default, evaluates the supplier, and restores
+	 * the previous default regardless of exceptions.</p>
+	 *
+	 * @param <T> The return type of the supplier
+	 * @param r The supplier to execute
+	 * @return The result of the supplier
+	 */
 	public <T> T use(Supplier<T> r) {
 		Heap old = defaultHeap.get();
 		defaultHeap.set(this);
@@ -236,6 +265,13 @@ public class Heap {
 		}
 	}
 
+	/**
+	 * Pushes a new stage onto the stack.
+	 *
+	 * <p>Creates a new {@link HeapStage} with the configured stage size
+	 * and adds it to the stage stack. Allocations will use this new stage
+	 * until it is popped.</p>
+	 */
 	protected void push() {
 		if (stages == null) {
 			stages = new Stack<>();
@@ -244,12 +280,24 @@ public class Heap {
 		stages.push(new HeapStage(stageSize));
 	}
 
+	/**
+	 * Pops and destroys the top stage from the stack.
+	 *
+	 * <p>Removes the topmost stage and calls its {@code destroy()} method,
+	 * freeing all allocations made within that stage.</p>
+	 */
 	protected void pop() {
 		if (stages != null && !stages.isEmpty()) {
 			stages.pop().destroy();
 		}
 	}
 
+	/**
+	 * Destroys this heap and all its stages.
+	 *
+	 * <p>Pops and destroys all stages on the stack, then destroys the root stage.
+	 * All allocations and tracked dependencies are freed.</p>
+	 */
 	public synchronized void destroy() {
 		if (stages != null) {
 			while (!stages.isEmpty()) {

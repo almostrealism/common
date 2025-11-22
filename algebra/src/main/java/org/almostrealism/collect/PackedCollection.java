@@ -62,7 +62,6 @@ import java.util.stream.Stream;
  *   <li><b>Flexible traversal:</b> Custom access patterns via {@link TraversalOrdering}</li>
  *   <li><b>Type safety:</b> Generic type parameter for specialized memory data types</li>
  * </ul>
- * </p>
  *
  * <h2>Memory Layout</h2>
  * <p>

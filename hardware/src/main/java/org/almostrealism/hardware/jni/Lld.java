@@ -47,10 +47,21 @@ package org.almostrealism.hardware.jni;
  */
 public class Lld extends LlvmCommandProvider {
 
+	/**
+	 * Creates a new LLD instance with default settings.
+	 * Uses "lld" command from the system PATH with dynamiclib format.
+	 */
 	public Lld() {
 		this("lld", true);
 	}
 
+	/**
+	 * Creates a new LLD instance with the specified path.
+	 *
+	 * @param path           the linker command or path
+	 * @param localToolchain true to use the local toolchain from PATH,
+	 *                       false to use an absolute path
+	 */
 	public Lld(String path, boolean localToolchain) {
 		super(path, "dynamiclib", localToolchain);
 	}

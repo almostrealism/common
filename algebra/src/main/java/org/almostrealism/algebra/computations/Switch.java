@@ -41,7 +41,6 @@ import java.util.stream.IntStream;
  *   <li>The value range is divided into equal intervals, one for each choice</li>
  *   <li>Each choice is a full {@link Computation} that can have its own logic</li>
  * </ul>
- * </p>
  *
  * <p>
  * This differs from {@link Choice} in that:
@@ -49,7 +48,6 @@ import java.util.stream.IntStream;
  *   <li>{@link Choice} selects from pre-computed values (data selection)</li>
  *   <li>{@link Switch} executes one of multiple computations (control flow)</li>
  * </ul>
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

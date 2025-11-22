@@ -202,16 +202,41 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
+	/**
+	 * Thread-local storage for {@link Semaphore} instances used to control concurrent access to
+	 * accelerated operations. Each thread maintains its own semaphore to prevent race conditions
+	 * during parallel execution.
+	 */
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 
+	/** Indicates whether this operation executes as a kernel (GPU/OpenCL/Metal) or JNI native code. */
 	private final boolean kernel;
+
+	/** Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}. */
 	private boolean argumentMapping;
+
+	/** The {@link ComputeContext} this operation executes within (OpenCL, Metal, JNI, etc.). */
 	private ComputeContext<MemoryData> context;
 
+	/** Evaluator responsible for preparing and processing operation arguments. */
 	private ProcessArgumentEvaluator evaluator;
+
+	/** Factory for creating {@link AcceleratedProcessDetails} instances with operation metadata. */
 	private ProcessDetailsFactory detailsFactory;
+
+	/**
+	 * Manages argument mapping, aggregation, and memory allocation for kernel operations.
+	 * Handles input/output buffer preparation and automatic garbage collection.
+	 */
 	protected MemoryDataArgumentMap argumentMap;
 
+	/**
+	 * Creates a new accelerated operation within the specified compute context.
+	 *
+	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
+	 * @param kernel  {@code true} if this operation executes as a GPU/OpenCL/Metal kernel,
+	 *                {@code false} for JNI native code execution
+	 */
 	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel) {
 		setArgumentMapping(true);
 		this.context = context;
@@ -250,6 +275,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	public abstract <K extends ExecutionKey> K getExecutionKey();
 
+	/**
+	 * Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}.
+	 *
+	 * @param enabled true to enable argument mapping, false to disable
+	 */
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
 	}
@@ -291,8 +321,21 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	public abstract boolean isAggregatedInput();
 
+	/**
+	 * Returns the index of the output argument in the argument list.
+	 *
+	 * @return The output argument index
+	 */
 	protected abstract int getOutputArgumentIndex();
 
+	/**
+	 * Prepares the scope for compilation by creating argument mappings and input managers.
+	 *
+	 * <p>This method initializes the {@link MemoryDataArgumentMap} if argument mapping is enabled,
+	 * and delegates to {@link #prepareScope(ScopeInputManager)} for scope-specific setup.</p>
+	 *
+	 * @throws UnsupportedOperationException if prepareScope has already been called
+	 */
 	protected void prepareScope() {
 		if (argumentMap != null) {
 			throw new UnsupportedOperationException("Redundant call to prepareScope");
@@ -310,6 +353,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
 	}
 
+	/**
+	 * Prepares the scope with the specified input manager.
+	 *
+	 * @param manager The {@link ScopeInputManager} for handling input registration
+	 */
 	protected void prepareScope(ScopeInputManager manager) {
 		prepareScope(manager, null);
 	}
@@ -413,12 +461,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Creates a {@link MemoryReplacementManager} for managing memory aggregation and replacement
+	 * during kernel execution. The manager handles input/output buffer allocation and consolidation.
+	 *
+	 * @return A new {@link MemoryReplacementManager} configured for this operation
+	 */
 	protected MemoryReplacementManager createMemoryReplacementManager() {
 		return new MemoryReplacementManager(
 				getComputeContext().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput);
 	}
 
+	/**
+	 * Creates and initializes the {@link ProcessDetailsFactory} for this operation.
+	 *
+	 * <p>The factory produces {@link AcceleratedProcessDetails} instances that contain
+	 * argument metadata, memory configuration, and execution context for each operation invocation.
+	 * This method is synchronized to ensure only one factory is created even under concurrent access.</p>
+	 */
 	protected synchronized void createDetailsFactory() {
 		if (detailsFactory != null) return;
 
@@ -433,6 +494,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Returns the {@link ProcessDetailsFactory} for this operation, creating it if necessary.
+	 *
+	 * <p>The factory is lazily initialized on first access. It produces {@link AcceleratedProcessDetails}
+	 * instances containing argument metadata and execution context for each operation invocation.</p>
+	 *
+	 * @return The process details factory
+	 */
 	public ProcessDetailsFactory getDetailsFactory() {
 		if (detailsFactory == null) {
 			createDetailsFactory();
@@ -441,6 +510,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return detailsFactory;
 	}
 
+	/**
+	 * Creates {@link AcceleratedProcessDetails} for executing this operation with the specified arguments.
+	 *
+	 * <p>Process details contain all information needed for execution: argument arrays, memory buffers,
+	 * output destination, and semaphore for synchronization. This method prepares arguments according to
+	 * the operation's configuration (kernel vs JNI, aggregated vs non-aggregated).</p>
+	 *
+	 * @param output The destination memory bank for operation results
+	 * @param args   The input arguments for the operation
+	 * @return Process details ready for execution
+	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		Semaphore lastSemaphore = getSemaphore();
 
@@ -452,6 +532,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Pushes a new semaphore onto the thread-local stack for this operation.
+	 *
+	 * <p>If no semaphore exists for the current thread, creates a new {@link DefaultLatchSemaphore}
+	 * with zero permits. Otherwise, creates a child semaphore linked to the current one using
+	 * this operation's metadata as the requester.</p>
+	 */
 	protected void pushSemaphore() {
 		Semaphore current = getSemaphore();
 
@@ -462,6 +549,28 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Applies this operation with the specified output destination and arguments.
+	 *
+	 * <p>This method orchestrates the full execution lifecycle:</p>
+	 * <ol>
+	 *   <li>Creates process details with argument configuration</li>
+	 *   <li>Sets up a semaphore for synchronization</li>
+	 *   <li>Registers a completion listener that:
+	 *       <ul>
+	 *         <li>Loads and configures the operator</li>
+	 *         <li>Runs preprocessing (if required)</li>
+	 *         <li>Executes the kernel</li>
+	 *         <li>Runs postprocessing (if required)</li>
+	 *       </ul>
+	 *   </li>
+	 * </ol>
+	 *
+	 * @param output The destination memory bank for operation results, or null
+	 * @param args   The input arguments for the operation
+	 * @return Process details containing execution state and semaphore for synchronization
+	 * @throws UnsupportedOperationException if the operation was not compiled
+	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null && getInstructionSetManager() == null) {
 			throw new UnsupportedOperationException("Operation was not compiled");
@@ -506,6 +615,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return process;
 	}
 
+	/**
+	 * Prepares the {@link Execution} operator for running the kernel with the specified process details.
+	 *
+	 * <p>This method loads the compiled kernel/native code and configures execution parameters such as
+	 * global work size based on the process details. For kernel operations, it sets up the {@link KernelWork}
+	 * interface with appropriate work dimensions.</p>
+	 *
+	 * @param process The process details containing kernel size and execution metadata
+	 * @return The configured {@link Execution} operator ready to accept arguments
+	 * @throws UnsupportedOperationException if the operator is not a {@link KernelWork}
+	 * @throws HardwareException if the operator has been destroyed
+	 */
 	protected Execution setupOperator(AcceleratedProcessDetails process) {
 		try {
 			Execution operator = load();
@@ -527,6 +648,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/**
+	 * Determines whether preprocessing (memory aggregation) is required before kernel execution.
+	 *
+	 * @param process The process details to check
+	 * @return true if preprocessing is required, false otherwise
+	 */
 	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
 		if (!process.isEmpty())
 			return true;
@@ -534,8 +661,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return argumentMap != null && argumentMap.hasReplacements();
 	}
 
+	/**
+	 * Returns true if this operation executes as a GPU/OpenCL/Metal kernel.
+	 *
+	 * @return true if kernel-based, false if JNI native
+	 */
 	public boolean isKernel() { return kernel; }
 
+	/**
+	 * Destroys this operation and releases associated resources.
+	 *
+	 * <p>Calls the parent destroy method and cleans up the argument map.</p>
+	 */
 	@Override
 	public void destroy() {
 		super.destroy();
@@ -545,11 +682,24 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/** Returns the console for logging operations. */
 	@Override
 	public Console console() { return console; }
 
+	/**
+	 * Returns the thread-local semaphore for the current thread, or null if none is set.
+	 *
+	 * @return the current thread's semaphore, or null
+	 */
 	public static Semaphore getSemaphore() { return semaphores.get(); }
 
+	/**
+	 * Waits for the current thread's semaphore to complete and clears it.
+	 *
+	 * <p>If a semaphore exists for the current thread, this method blocks until it
+	 * is released, then clears the thread-local reference. If no semaphore exists,
+	 * this method returns immediately.</p>
+	 */
 	public static void waitFor() {
 		Semaphore s = getSemaphore();
 
@@ -559,6 +709,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	/** Prints timing statistics. */
 	public static void printTimes() {
 		// Memory access
 		if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {

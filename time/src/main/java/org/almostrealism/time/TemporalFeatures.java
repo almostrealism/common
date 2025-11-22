@@ -131,7 +131,7 @@ import java.util.stream.IntStream;
  *
  * <h2>Method Categories</h2>
  *
- * <h3>Iteration & Looping</h3>
+ * <h3>Iteration &amp; Looping</h3>
  * <ul>
  *   <li>{@link #iter(Temporal, int)} - Execute temporal with iteration count</li>
  *   <li>{@link #loop(Temporal, int)} - Hardware-accelerated loop</li>
@@ -146,7 +146,7 @@ import java.util.stream.IntStream;
  *   <li>{@link #interpolate(Producer, Producer, Producer, Function, Function)} - Custom mapping functions</li>
  * </ul>
  *
- * <h3>FFT & Signal Analysis</h3>
+ * <h3>FFT &amp; Signal Analysis</h3>
  * <ul>
  *   <li>{@link #fft(int, Producer, ComputeRequirement...)} - Forward FFT</li>
  *   <li>{@link #ifft(int, Producer, ComputeRequirement...)} - Inverse FFT</li>

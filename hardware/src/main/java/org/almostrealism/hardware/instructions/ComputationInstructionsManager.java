@@ -80,11 +80,26 @@ import java.util.function.Supplier;
  */
 public class ComputationInstructionsManager extends ScopeInstructionsManager<DefaultExecutionKey> {
 
+	/**
+	 * Creates a new computation instructions manager for the given compute context and scope.
+	 *
+	 * @param computeContext the compute context for kernel compilation and execution
+	 * @param scope          supplier providing the scope containing the functions to manage
+	 */
 	public ComputationInstructionsManager(ComputeContext<?> computeContext,
 										  Supplier<Scope<?>> scope) {
 		super(computeContext, scope, null);
 	}
 
+	/**
+	 * Retrieves the compiled execution operator for the specified key.
+	 *
+	 * <p>Uses the function name and argument count from the key to locate
+	 * the appropriate function within the compiled instruction set.</p>
+	 *
+	 * @param key the execution key containing function name and argument count
+	 * @return the compiled execution operator for the specified function
+	 */
 	@Override
 	public synchronized Execution getOperator(DefaultExecutionKey key) {
 		return getInstructionSet().get(key.getFunctionName(), key.getArgsCount());

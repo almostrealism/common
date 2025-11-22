@@ -40,7 +40,6 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  *   <li>The index of that value</li>
  * </ul>
  * The result is returned as a {@link Pair} containing (value, index).
- * </p>
  *
  * <p>
  * This is commonly used in:
@@ -49,7 +48,6 @@ import org.almostrealism.collect.computations.CollectionProducerComputationBase;
  *   <li>Finding highest confidence predictions</li>
  *   <li>Best match selection in pattern recognition</li>
  * </ul>
- * </p>
  *
  * <h2>Example</h2>
  * <pre>{@code

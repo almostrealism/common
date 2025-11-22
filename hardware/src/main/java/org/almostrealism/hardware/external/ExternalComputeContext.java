@@ -59,7 +59,7 @@ import java.io.InputStreamReader;
  * <h2>Limitations</h2>
  *
  * <ul>
- *   <li><strong>Performance:</strong> File I/O overhead (10-100× slower than JNI)</li>
+ *   <li><strong>Performance:</strong> File I/O overhead (10-100x slower than JNI)</li>
  *   <li><strong>Process Overhead:</strong> Spawning new process per operation</li>
  *   <li><strong>No GPU:</strong> CPU-only execution</li>
  *   <li><strong>Experimental:</strong> Not recommended for production use</li>
@@ -70,6 +70,7 @@ import java.io.InputStreamReader;
  * @see NativeCompiler
  */
 public class ExternalComputeContext extends AbstractComputeContext {
+	/** C wrapper template loaded from external-wrapper.c resource for file-based argument passing. */
 	private static final String externalWrapper;
 
 	static {
@@ -90,6 +91,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		externalWrapper = buf.toString();
 	}
 
+	/** The native compiler for generating standalone executables. */
 	private NativeCompiler compiler;
 
 	/**
@@ -150,9 +152,18 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		}
 	}
 
+	/**
+	 * Returns {@code true} since external process execution is CPU-only.
+	 *
+	 * @return always {@code true}
+	 */
 	@Override
 	public boolean isCPU() { return true; }
 
+	/**
+	 * Releases resources held by this compute context.
+	 * Currently a no-op as executables are not cached.
+	 */
 	@Override
 	public void destroy() { }
 }

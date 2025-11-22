@@ -95,14 +95,28 @@ import java.util.Objects;
  * @see io.almostrealism.uml.Signature
  */
 public class ScopeSignatureExecutionKey implements ExecutionKey {
+	/** The signature string uniquely identifying this operation's scope. */
 	private String signature;
 
+	/**
+	 * Creates a new execution key for the specified scope signature.
+	 *
+	 * @param signature the scope signature string
+	 */
 	public ScopeSignatureExecutionKey(String signature) {
 		this.signature = signature;
 	}
 
+	/** Returns the scope signature string. */
 	public String getSignature() { return signature; }
 
+	/**
+	 * Compares this key to another object for equality.
+	 * Two keys are equal if they have the same signature.
+	 *
+	 * @param o the object to compare
+	 * @return true if the objects are equal, false otherwise
+	 */
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
@@ -110,6 +124,11 @@ public class ScopeSignatureExecutionKey implements ExecutionKey {
 		return Objects.equals(getSignature(), that.getSignature());
 	}
 
+	/**
+	 * Returns a hash code based on the signature.
+	 *
+	 * @return the hash code
+	 */
 	@Override
 	public int hashCode() {
 		return Objects.hash(getSignature());

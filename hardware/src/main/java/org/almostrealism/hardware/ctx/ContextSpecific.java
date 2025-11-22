@@ -117,8 +117,13 @@ import java.util.function.Supplier;
  * @see ContextListener
  */
 public abstract class ContextSpecific<T> implements ContextListener, Destroyable, ConsoleFeatures {
+	/** Stack of context-specific values, one per nested context level. */
 	private Stack<SuppliedValue<T>> val;
+
+	/** Supplier used to create new values when contexts start. */
 	private Supplier<T> supply;
+
+	/** Optional consumer to clean up values when contexts are destroyed. */
 	private Consumer<T> disposal;
 
 	/**
@@ -230,6 +235,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 		Hardware.getLocalHardware().removeContextListener(this);
 	}
 
+	/** Returns the console for logging context-specific events. */
 	@Override
 	public Console console() { return Hardware.console; }
 }
