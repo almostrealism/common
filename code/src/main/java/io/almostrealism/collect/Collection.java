@@ -18,5 +18,29 @@ package io.almostrealism.collect;
 
 import io.almostrealism.uml.Multiple;
 
+/**
+ * A core interface representing a shaped collection of elements. This interface
+ * combines the multi-dimensional shape capabilities of {@link Shape} with the
+ * element multiplicity semantics of {@link Multiple}.
+ *
+ * <p>{@code Collection} is the fundamental type for representing arrays, tensors,
+ * and other multi-dimensional data structures in the computation framework.
+ * It provides:</p>
+ * <ul>
+ *   <li>Shape information and transformation operations (from {@link Shape})</li>
+ *   <li>Multiple element semantics (from {@link Multiple})</li>
+ * </ul>
+ *
+ * <p>Implementations typically represent packed collections of numeric data
+ * (usually Double values) that can be reshaped, traversed, and operated upon
+ * in a hardware-accelerated manner.</p>
+ *
+ * @param <T> the element type contained in the collection (typically Double)
+ * @param <S> the self-referential type for fluent shape transformation methods
+ *
+ * @see Shape
+ * @see Multiple
+ * @see CollectionVariable
+ */
 public interface Collection<T, S> extends Shape<S>, Multiple<T> {
 }

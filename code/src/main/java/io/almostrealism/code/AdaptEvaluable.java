@@ -29,9 +29,18 @@ import io.almostrealism.relation.Evaluable;
  * @author  Michael Murray
  */
 public class AdaptEvaluable<T> implements Evaluable<T> {
+	/** The primary evaluable whose result type is produced. */
 	private Evaluable<T> p;
+
+	/** The evaluables that compute argument values for the primary evaluable. */
 	private Evaluable args[];
 
+	/**
+	 * Creates an adapted evaluable that computes its arguments from other evaluables.
+	 *
+	 * @param p    the primary evaluable to adapt
+	 * @param args the evaluables that compute argument values for {@code p}
+	 */
 	public AdaptEvaluable(Evaluable<T> p, Evaluable... args) {
 		this.p = p;
 		this.args = args;

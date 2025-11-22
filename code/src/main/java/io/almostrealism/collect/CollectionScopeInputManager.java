@@ -21,12 +21,39 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.function.Supplier;
 
+/**
+ * A specialized {@link DefaultScopeInputManager} that creates {@link CollectionVariable}
+ * instances for scope inputs. This manager extends the default scope input handling to
+ * support collection-based variables with shape information.
+ *
+ * <p>When inputs are registered with this manager, it uses the
+ * {@link CollectionVariable#create(String, Supplier)} factory method to create
+ * appropriate variable instances. This allows inputs that implement {@link Shape}
+ * to be represented as {@code CollectionVariable} instances with proper shape tracking.</p>
+ *
+ * @see DefaultScopeInputManager
+ * @see CollectionVariable
+ */
 public class CollectionScopeInputManager extends DefaultScopeInputManager {
+
+	/**
+	 * Constructs a new {@code CollectionScopeInputManager} with the specified language operations.
+	 * The manager is configured with a variable factory that creates {@link CollectionVariable}
+	 * instances using auto-generated argument names.
+	 *
+	 * @param lang the {@link LanguageOperations} providing language-specific functionality
+	 */
 	public CollectionScopeInputManager(LanguageOperations lang) {
 		super(lang);
 		setVariableFactory((p, input) -> CollectionVariable.create(p.getArgumentName(counter++), (Supplier) input));
 	}
 
+	/**
+	 * Factory method to create a new {@code CollectionScopeInputManager} instance.
+	 *
+	 * @param lang the {@link LanguageOperations} providing language-specific functionality
+	 * @return a new {@code CollectionScopeInputManager} instance
+	 */
 	public static CollectionScopeInputManager getInstance(LanguageOperations lang) {
 		return new CollectionScopeInputManager(lang);
 	}

@@ -16,8 +16,40 @@
 
 package io.almostrealism.code;
 
+/**
+ * {@link NamedFunction} is an interface for objects that have an associated function name.
+ * This is typically used for computations and operations that will be compiled into
+ * named functions in generated code.
+ *
+ * <p>The function name serves as an identifier in the generated code and is used for:
+ * <ul>
+ *   <li>Function declarations in generated source code</li>
+ *   <li>Debugging and logging to identify operations</li>
+ *   <li>Metadata association for profiling</li>
+ *   <li>Code organization and lookup</li>
+ * </ul>
+ *
+ * <p>Implementations typically generate a default function name based on the class name
+ * if one is not explicitly set.
+ *
+ * @author Michael Murray
+ * @see ComputableBase
+ * @see OperationAdapter#functionName(Class)
+ */
 public interface NamedFunction {
+
+	/**
+	 * Sets the function name for this object.
+	 * The name should be a valid identifier in the target language (e.g., C, OpenCL).
+	 *
+	 * @param name the function name to set
+	 */
 	void setFunctionName(String name);
 
+	/**
+	 * Returns the function name for this object.
+	 *
+	 * @return the function name, or {@code null} if not set
+	 */
 	String getFunctionName();
 }

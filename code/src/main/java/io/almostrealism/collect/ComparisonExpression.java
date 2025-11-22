@@ -21,7 +21,39 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.BiFunction;
 
+/**
+ * A {@link UniformConditionalExpression} that implements element-wise comparison
+ * operations between two collections, selecting values from positive or negative
+ * result collections based on the comparison outcome.
+ *
+ * <p>For each element index, this expression:</p>
+ * <ol>
+ *   <li>Evaluates the comparison function on corresponding elements from collections {@code a} and {@code b}</li>
+ *   <li>If the comparison is true, returns the value from the {@code positive} collection</li>
+ *   <li>If the comparison is false, returns the value from the {@code negative} collection</li>
+ * </ol>
+ *
+ * <p>This is useful for implementing operations like element-wise maximum, minimum,
+ * clamping, and conditional selection based on comparisons.</p>
+ *
+ * @see UniformConditionalExpression
+ * @see Conditional
+ */
 public class ComparisonExpression extends UniformConditionalExpression {
+
+	/**
+	 * Constructs a new comparison expression with the specified comparison function
+	 * and source collections.
+	 *
+	 * @param name       a descriptive name for this expression
+	 * @param shape      the {@link TraversalPolicy} defining the output shape
+	 * @param comparison a function that takes two expressions and returns a boolean
+	 *                   expression representing the comparison result
+	 * @param a          the first collection to compare (provides first comparison operand)
+	 * @param b          the second collection to compare (provides second comparison operand)
+	 * @param positive   the collection to select values from when comparison is true
+	 * @param negative   the collection to select values from when comparison is false
+	 */
 	public ComparisonExpression(String name, TraversalPolicy shape,
 								BiFunction<Expression<?>, Expression<?>, Expression<Boolean>> comparison,
 								TraversableExpression a, TraversableExpression b,
